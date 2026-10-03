@@ -1,6 +1,6 @@
 <div align="center">
 
-# Gitframes
+<img src="assets/brand/banner.png" alt="gitframes — code-first video, rendered natively on WebGPU" width="100%">
 
 **High-Performance WebGPU Rendering Engine & SDK for Programmatic Video, Motion Graphics, Audio DSP, and Neural Vision.**
 

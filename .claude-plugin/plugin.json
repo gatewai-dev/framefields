@@ -5,8 +5,18 @@
 	"version": "0.1.0",
 	"description": "Author, render and verify video compositions with the gitframes WebGPU SDK.",
 	"author": {
-		"name": "Gitframes"
+		"name": "Gitframes",
+		"url": "https://github.com/gatewai-dev"
 	},
 	"license": "Apache-2.0",
-	"keywords": ["gitframes", "webgpu", "video", "motion-graphics"]
+	"keywords": [
+		"gitframes",
+		"webgpu",
+		"video",
+		"composition",
+		"motion-graphics",
+		"skills"
+	],
+	"homepage": "https://github.com/gatewai-dev/gitframes",
+	"repository": "https://github.com/gatewai-dev/gitframes"
 }

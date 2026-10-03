@@ -6,6 +6,8 @@ Gitframes is a code-first video composition engine built directly on native WebG
 
 Unlike browser-dependent frameworks that run inside headless Chromium, Gitframes executes directly on GPU hardware via Dawn / WebGPU / Vulkan / Metal in Node.js and in modern WebGPU-enabled browsers—delivering 60–120 FPS rendering speeds with a tiny resource footprint.
 
+> **Using an AI coding agent?** Install the gitframes skills in **Claude Code** with `/plugin marketplace add gatewai-dev/gitframes` → `/plugin install gitframes@gitframes-plugins`, or in **Codex** with `codex plugin marketplace add gatewai-dev/gitframes`. See [Agent Skills & Plugins](#agent-skills--plugins).
+
 ---
 
 ## Table of Contents
@@ -32,6 +34,9 @@ Unlike browser-dependent frameworks that run inside headless Chromium, Gitframes
   - [5. Headless Video & FrameGrid Rendering](#5-headless-video--framegrid-rendering)
 - [Engineering Doctrines & Best Practices](#engineering-doctrines--best-practices)
 - [Agent Skills & Plugins](#agent-skills--plugins)
+  - [Claude Code](#claude-code)
+  - [Codex](#codex)
+  - [Any other agent (skills only)](#any-other-agent-skills-only)
 - [Reference Showcase Examples](#reference-showcase-examples)
 - [Development & Building](#development--building)
 
@@ -379,7 +384,7 @@ console.log(`Video rendered successfully to: ${filePath}`);
 
 ## Agent Skills & Plugins
 
-Gitframes ships its agent knowledge as a plugin: the repository root *is* the plugin root, so the skills in [`skills/`](skills) load in every plugin-capable client without a copy step.
+Gitframes ships agent skills that teach Claude, Codex and other coding agents how to write, render and check gitframes compositions. The repository is a plugin marketplace (`gitframes-plugins`) with a single plugin (`gitframes`), and that plugin contains only skills: no MCP servers, hooks or commands.
 
 | Skill | Use it for |
 | --- | --- |
@@ -387,16 +392,73 @@ Gitframes ships its agent knowledge as a plugin: the repository root *is* the pl
 | `gitframes-effects` | Effect classes, the unified section architecture, premultiplied-alpha invariants |
 | `gitframes-render` | Headless rendering, FrameGrid inspection, pixel probes, MP4 delivery checks |
 
-Three manifests describe the same plugin: [`plugin.json`](plugin.json) (portable [Agent Plugins 1.0](https://agent-plugins.org)), [`.claude-plugin/plugin.json`](.claude-plugin/plugin.json) (Claude Code) and [`.codex-plugin/plugin.json`](.codex-plugin/plugin.json) (Codex). The portable field set is closed, so client-specific fields belong in that client's manifest, not in `plugin.json`.
+Once installed, the skills load on their own when a task matches them (e.g. *"add a film-grain pass to this scene"* or *"render a frame grid of intro.ts"*). You don't need to invoke them.
 
-| Client | Install |
-| --- | --- |
-| Claude Code | `/plugin marketplace add gatewai-dev/gitframes`, then `/plugin install gitframes@gitframes-plugins` |
-| Codex | `codex plugin marketplace add gatewai-dev/gitframes`; this repo's `.codex/config.toml` already enables `gitframes@gitframes-plugins` |
-| VS Code / Copilot / Cursor / ChatGPT / Kiro | Load the root `plugin.json` with its `skills/` directory through the client's plugin UI |
-| Any other agent | Copy `skills/<name>/` into `.claude/skills/`, `.agents/skills/` or `~/.agents/skills/` |
+### Claude Code
 
-While working in this repository, Codex and Claude pick the skills up automatically through the symlinks in `.agents/skills/` and `.claude/skills/`. Skills are authored only under `skills/` — never copy them elsewhere. `pnpm run check:plugins` validates the manifests, skill frontmatter, marketplace catalogs, symlinks and the generated effects catalog; `pnpm run sync:effects-catalog` regenerates `gitframes-effects`'s catalog after any change to the `Effect` classes.
+Inside a Claude Code session:
+
+```text
+/plugin marketplace add gatewai-dev/gitframes
+/plugin install gitframes@gitframes-plugins
+```
+
+Or from your shell:
+
+```bash
+claude plugin marketplace add gatewai-dev/gitframes
+claude plugin install gitframes@gitframes-plugins
+```
+
+Add `--scope project` to the install command to record the plugin in the project's `.claude/settings.json` so your whole team gets it. To pull new skill versions later, run `/plugin marketplace update gitframes-plugins`.
+
+**Enable it for everyone working in your repo.** Commit this to `.claude/settings.json`; Claude Code prompts teammates to install it when they trust the folder:
+
+```json
+{
+  "extraKnownMarketplaces": {
+    "gitframes-plugins": {
+      "source": { "source": "github", "repo": "gatewai-dev/gitframes" }
+    }
+  },
+  "enabledPlugins": {
+    "gitframes@gitframes-plugins": true
+  }
+}
+```
+
+**Claude desktop app (Code tab):** open the plugins settings, add the marketplace `gatewai-dev/gitframes`, then install **Gitframes**.
+
+### Codex
+
+Add the marketplace:
+
+```bash
+codex plugin marketplace add gatewai-dev/gitframes
+```
+
+Then install **gitframes** from `/plugins` in the Codex TUI, or turn it on in `~/.codex/config.toml` (or in a project's `.codex/config.toml`):
+
+```toml
+[plugins."gitframes@gitframes-plugins"]
+enabled = true
+```
+
+### Any other agent (skills only)
+
+With the [`skills`](https://skills.sh) CLI, which supports Claude Code, Codex, Cursor, Copilot and others:
+
+```bash
+npx skills add gatewai-dev/gitframes
+```
+
+Or copy the folders by hand: put `skills/<name>/` into `.claude/skills/`, `.agents/skills/` or `~/.agents/skills/`. VS Code / Copilot / Cursor / Kiro can also load the portable root [`plugin.json`](plugin.json) through their plugin UI.
+
+### Maintaining the plugin
+
+Three manifests describe the same plugin: [`plugin.json`](plugin.json) (portable [Agent Plugins 1.0](https://agent-plugins.org)), [`.claude-plugin/plugin.json`](.claude-plugin/plugin.json) (Claude Code) and [`.codex-plugin/plugin.json`](.codex-plugin/plugin.json) (Codex). The marketplace catalogs are [`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json) and [`.agents/plugins/marketplace.json`](.agents/plugins/marketplace.json). The portable field set is closed, so client-specific fields go in that client's manifest, not in `plugin.json`. Bump `version` in all three manifests together, because clients use it to decide when to update.
+
+When you work inside this repository, Codex and Claude pick up the skills automatically through the symlinks in `.agents/skills/` and `.claude/skills/`. Skills are written only under `skills/`, so never copy them anywhere else. `pnpm run check:plugins` validates the manifests, skill frontmatter, marketplace catalogs, symlinks and the generated effects catalog. `pnpm run sync:effects-catalog` regenerates `gitframes-effects`'s catalog after any change to the `Effect` classes.
 
 ---
 

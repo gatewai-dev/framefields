@@ -102,11 +102,11 @@ export class HeadlessChartCanvasElementMock {
 				}
 				if (!this.ctx2d) {
 					this.ctx2d = {
-						save: () => { },
-						restore: () => { },
-						setTransform: () => { },
-						clearRect: () => { },
-						fillText: () => { },
+						save: () => {},
+						restore: () => {},
+						setTransform: () => {},
+						clearRect: () => {},
+						fillText: () => {},
 						measureText: (text: string) => ({ width: text.length * 7 }),
 					};
 				}
@@ -142,23 +142,23 @@ export class HeadlessChartCanvasElementMock {
 		_type: string,
 		_listener: unknown,
 		_options?: unknown,
-	): void { }
+	): void {}
 
 	removeEventListener(
 		_type: string,
 		_listener: unknown,
 		_options?: unknown,
-	): void { }
+	): void {}
 
-	setPointerCapture(_pointerId: number): void { }
+	setPointerCapture(_pointerId: number): void {}
 
-	releasePointerCapture(_pointerId: number): void { }
+	releasePointerCapture(_pointerId: number): void {}
 
 	hasPointerCapture(_pointerId: number): boolean {
 		return false;
 	}
 
-	remove(): void { }
+	remove(): void {}
 }
 
 export class HeadlessChartContainerMock {
@@ -298,8 +298,8 @@ export class ChartGPUEngineBridge {
 		const originalCreateElement =
 			typeof doc.createElement === "function"
 				? (
-					doc.createElement as (tag: string, ...args: unknown[]) => unknown
-				).bind(doc)
+						doc.createElement as (tag: string, ...args: unknown[]) => unknown
+					).bind(doc)
 				: null;
 
 		doc.createElement = (tag: string, ...args: unknown[]) => {
@@ -314,15 +314,15 @@ export class ChartGPUEngineBridge {
 						const el = originalCreateElement(tag, ...args);
 						if (el) {
 							const elObj = el as Record<string, unknown>;
-							if (typeof elObj.remove !== "function") elObj.remove = () => { };
+							if (typeof elObj.remove !== "function") elObj.remove = () => {};
 							if (typeof elObj.addEventListener !== "function")
-								elObj.addEventListener = () => { };
+								elObj.addEventListener = () => {};
 							if (typeof elObj.removeEventListener !== "function")
-								elObj.removeEventListener = () => { };
+								elObj.removeEventListener = () => {};
 							if (!elObj.style) elObj.style = {};
 							return el;
 						}
-					} catch (_) { }
+					} catch (_) {}
 				}
 				return new HeadlessChartCanvasElementMock(this.target);
 			}
@@ -332,37 +332,37 @@ export class ChartGPUEngineBridge {
 					const el = originalCreateElement(tag, ...args);
 					if (el) {
 						const elObj = el as Record<string, unknown>;
-						if (typeof elObj.remove !== "function") elObj.remove = () => { };
+						if (typeof elObj.remove !== "function") elObj.remove = () => {};
 						if (typeof elObj.addEventListener !== "function")
-							elObj.addEventListener = () => { };
+							elObj.addEventListener = () => {};
 						if (typeof elObj.removeEventListener !== "function")
-							elObj.removeEventListener = () => { };
+							elObj.removeEventListener = () => {};
 						if (!elObj.style) elObj.style = {};
 						return el;
 					}
-				} catch (_) { }
+				} catch (_) {}
 			}
 
 			return {
 				style: {},
-				appendChild: () => { },
-				removeChild: () => { },
-				remove: () => { },
-				addEventListener: () => { },
-				removeEventListener: () => { },
+				appendChild: () => {},
+				removeChild: () => {},
+				remove: () => {},
+				addEventListener: () => {},
+				removeEventListener: () => {},
 			};
 		};
 
 		if (typeof doc.createElementNS === "undefined") {
 			doc.createElementNS = (_ns: string, _tag: string) => ({
 				style: {},
-				setAttribute: () => { },
+				setAttribute: () => {},
 				getAttribute: () => null,
-				appendChild: () => { },
-				removeChild: () => { },
-				remove: () => { },
-				addEventListener: () => { },
-				removeEventListener: () => { },
+				appendChild: () => {},
+				removeChild: () => {},
+				remove: () => {},
+				addEventListener: () => {},
+				removeEventListener: () => {},
 			});
 		}
 
@@ -525,7 +525,7 @@ export class ChartGPUEngineBridge {
 			) {
 				try {
 					this.target.currentTexture.destroy();
-				} catch (_) { }
+				} catch (_) {}
 				this.ownsTexture = false;
 			}
 			this.target.currentTexture = destinationTexture;
@@ -578,7 +578,7 @@ export class ChartGPUEngineBridge {
 		if (this.ownsTexture && this.target.currentTexture) {
 			try {
 				this.target.currentTexture.destroy();
-			} catch (_) { }
+			} catch (_) {}
 		}
 	}
 }

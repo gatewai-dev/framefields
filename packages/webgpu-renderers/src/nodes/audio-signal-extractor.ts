@@ -135,7 +135,8 @@ export async function drawAudioSignalExtractorNode(
 	props: AudioSignalExtractorNodeProps,
 ): Promise<void> {
 	const config = props.signalConfig as Record<string, unknown> | undefined;
-	const nodeId = props.nodeId ?? (config?.nodeId as string) ?? "audio-extractor";
+	const nodeId =
+		props.nodeId ?? (config?.nodeId as string) ?? "audio-extractor";
 	const frame = props.frame ?? 0;
 	const fps = props.fps ?? 24;
 	const width = props.width ?? 512;
@@ -202,7 +203,9 @@ export async function drawAudioSignalExtractorNode(
 
 	const calculatedStats =
 		signalRegistry.getStats(nodeId) ??
-		(config?.nodeId ? signalRegistry.getStats(config.nodeId as string) : undefined);
+		(config?.nodeId
+			? signalRegistry.getStats(config.nodeId as string)
+			: undefined);
 	const minVal = calculatedStats?.min ?? 0.0;
 	const maxVal = calculatedStats?.max ?? 1.0;
 

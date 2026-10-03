@@ -7,7 +7,7 @@
  *   warp … bass      its vertices push out along their normals with the 20–120 Hz band
  *   ripple           concentric waves run across a torus, struck by the drums
  *   twist            a column winds about its axis on the bass
- *   fold the space   the floor folds up around it
+ *   fold the space   the camera cranes over the winding column
  *   every frame …    a new shape on every beat, pulsing from the centre
  */
 import { CameraAnimation, Layer, Layer3D, LayerAnimation } from "gitframes";
@@ -21,10 +21,8 @@ import {
 	EASE_OUT,
 	FG,
 	flashes,
-	GRID,
 	H,
 	keys,
-	label,
 	plane,
 	SNAP,
 	scene,
@@ -36,7 +34,6 @@ import { type MeshName, meshFile } from "../warp/meshes.js";
 
 const CX = W / 2;
 const CY = H / 2 - 40;
-const FLOOR_Y = CY + 380;
 const SONG = asset("song.mp3");
 
 type Mode =
@@ -54,8 +51,6 @@ interface Take {
 	amp: number;
 	color: string;
 	rotateX?: number;
-	/** Shown bottom left: the deformer's name. */
-	chip: string;
 }
 
 /** One mesh under one deformer, on screen over [at, until) of the scene, turning slowly. */
@@ -91,29 +86,6 @@ function warped(t: Take, i: number) {
 		});
 }
 
-/** The floor in two halves hinged at the stage: "fold the space" closes them up like a book. */
-function floor(foldAt: number) {
-	const half = (side: number) =>
-		Layer3D.grid({
-			id: `warp-floor-${side < 0 ? "l" : "r"}`,
-			width: 3000,
-			height: 6000,
-			divisions: 30,
-			lineWidth: 4,
-			color: GRID,
-			x: CX + side * 1500,
-			y: FLOOR_Y,
-			z: 0,
-		}).animate(
-			keys("rotateZ", [
-				[0, 0],
-				[foldAt, 0],
-				[foldAt + 22, side * -70, EASE_OUT],
-			]),
-		);
-	return [half(-1), half(1)];
-}
-
 export function warpScene() {
 	const from = bar(CH.warp);
 	const to = bar(CH.code);
@@ -147,7 +119,6 @@ export function warpScene() {
 			amp: 1.4,
 			color: k % 2 ? FG : ACCENT,
 			rotateX: 20,
-			chip: "deformWithAudio · radial_pulse",
 		});
 	const takes: Take[] = [
 		{
@@ -157,7 +128,6 @@ export function warpScene() {
 			until: local(warp),
 			amp: 2.2,
 			color: ACCENT,
-			chip: "deformWithAudio · harmonic_wave",
 		},
 		{
 			mesh: "sphere",
@@ -166,7 +136,6 @@ export function warpScene() {
 			until: local(ripple),
 			amp: 2.6,
 			color: ACCENT,
-			chip: "deformWithAudio · normal_extrusion · 20–120 Hz",
 		},
 		{
 			mesh: "torus",
@@ -176,7 +145,6 @@ export function warpScene() {
 			amp: 2,
 			color: FG,
 			rotateX: -62,
-			chip: "deformWithAudio · ripple",
 		},
 		{
 			mesh: "column",
@@ -185,7 +153,6 @@ export function warpScene() {
 			until: local(every),
 			amp: 1.6,
 			color: ACCENT,
-			chip: "deformWithAudio · twist",
 		},
 		...shapeTakes,
 	];
@@ -207,7 +174,7 @@ export function warpScene() {
 			end: local(fold),
 			ease: "sine.inOut",
 		})
-		// "fold the space": crane up as the floor closes around the column.
+		// "fold the space": crane over the column as it winds.
 		.orbit({
 			azimuth: { from: -10, to: 20 },
 			elevation: { from: 30, to: 8 },
@@ -243,7 +210,6 @@ export function warpScene() {
 				color: "#FFFFFF",
 				intensity: 0.5,
 			} as never),
-			...floor(local(fold)),
 			// "Drop a mesh": the first one falls onto the stage.
 			Layer.box({
 				id: "warp-drop",
@@ -276,22 +242,6 @@ export function warpScene() {
 					outAt: lineEnds[i] - 4 < len - 6 ? lineEnds[i] - 4 : undefined,
 				}),
 			),
-			...takes
-				.filter((t, i) => i === 0 || t.chip !== takes[i - 1]?.chip)
-				.map((t, i, list) =>
-					label({
-						id: `warp-chip-${i}`,
-						text: t.chip,
-						x: 90,
-						width: 1000,
-						align: "start",
-						y: 80,
-						size: 20,
-						color: FG,
-						inAt: t.at + 4,
-						outAt: list[i + 1] ? list[i + 1].at - 2 : undefined,
-					}),
-				),
 		],
 		{ background: BG },
 	);

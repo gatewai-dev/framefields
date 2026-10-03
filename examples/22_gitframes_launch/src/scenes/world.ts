@@ -1,6 +1,7 @@
 /**
  * The 3D verse: one camera move through one world, every waypoint on a sung word.
- *   "Step inside the camera"        the lens pushes through a giant viewfinder
+ * ("Step inside the camera" closes the type chapter: its wall shrinks into a
+ * viewfinder and the lens rushes it; this chapter opens mid-flight.)
  *   "fly the third dimension"       a banking flight past words standing in depth
  *   "paths and planes in motion"    curves draw themselves across the floor, planes rise and turn
  *   "cubes in every direction"      a cluster of cubes bursts outward on "direction"
@@ -19,11 +20,9 @@ import {
 	EASE_IN_OUT,
 	EASE_OUT,
 	FG,
-	GRID,
 	H,
 	type Key,
 	keys,
-	MONO,
 	SNAP,
 	SURFACE,
 	scene,
@@ -135,115 +134,6 @@ function standing(s: Standing) {
 	);
 }
 
-// ── 1. The viewfinder ────────────────────────────────────────────────────────
-const FRAME_W = 1240;
-const FRAME_H = 700;
-
-function viewfinder(
-	steps: SungWord[],
-	cams: SungWord[],
-	from: number,
-	lyrics: boolean,
-) {
-	const stepAt = steps[0].at - from;
-	const corner = (id: string, x: number, y: number, rot: number) =>
-		Layer.shape("path", {
-			id,
-			is3D: true,
-			position: "absolute",
-			x,
-			y,
-			z: 0,
-			width: 120,
-			height: 120,
-			rotateZ: rot,
-			d: "M 10 110 L 10 10 L 110 10",
-			fillType: "none",
-			strokeColor: ACCENT,
-			strokeWidth: 14,
-			strokeLineCap: "round",
-			startFrame: stepAt - 6,
-		} as never).animate(
-			keys("trimEnd", [
-				[0, 0],
-				[12, 1, EASE_OUT],
-			]),
-		);
-	const l = CX - FRAME_W / 2;
-	const t = CY - FRAME_H / 2;
-	return [
-		corner("world-c-tl", l - 20, t - 20, 0),
-		corner("world-c-tr", l + FRAME_W - 100, t - 20, 90),
-		corner("world-c-br", l + FRAME_W - 100, t + FRAME_H - 100, 180),
-		corner("world-c-bl", l - 20, t + FRAME_H - 100, 270),
-		Layer.shape("ellipse", {
-			id: "world-rec",
-			is3D: true,
-			position: "absolute",
-			x: l + 50,
-			y: t + 46,
-			z: 0,
-			width: 26,
-			height: 26,
-			fillColor: ACCENT,
-			startFrame: stepAt,
-		} as never).animate(
-			keys("opacity", [
-				[0, 1],
-				[10, 0, "hold"],
-				[20, 1, "hold"],
-				[30, 0, "hold"],
-				[40, 1, "hold"],
-			]),
-		),
-		Layer.text("REC  ·  60 FPS  ·  1920×1080", {
-			id: "world-rec-label",
-			is3D: true,
-			position: "absolute",
-			x: l + 90,
-			y: t + 40,
-			z: 0,
-			width: 700,
-			fontFamily: MONO,
-			fontSize: 26,
-			fontWeight: 600,
-			letterSpacing: 6,
-			fill: FG,
-			startFrame: stepAt,
-		} as never),
-		...lyric(
-			lyrics,
-			sungLine({
-				id: "world-step",
-				words: steps,
-				from,
-				x: CX - 900,
-				width: 1800,
-				y: CY - 140,
-				size: 120,
-				weight: 300,
-				enter: "rise",
-				z: 0,
-			}),
-		),
-		...lyric(
-			lyrics,
-			sungLine({
-				id: "world-camera",
-				words: cams,
-				from,
-				x: CX - 900,
-				width: 1800,
-				y: CY + 10,
-				size: 150,
-				color: ACCENT,
-				enter: "rise",
-				z: 0,
-			}),
-		),
-	];
-}
-
 // ── 3. Paths and planes ──────────────────────────────────────────────────────
 const PATHS_Z = 5200;
 
@@ -320,13 +210,7 @@ const CUBES_Z = 6900;
 const RING_Z = 9300;
 const DEPTH_Z = 13000;
 
-function depth(
-	probeAt: number,
-	lightAt: number,
-	depthAt: number,
-	len: number,
-	lyrics: boolean,
-) {
+function depth(probeAt: number, lightAt: number, depthAt: number, len: number) {
 	return [
 		// What the dolly flies toward and the light comes up on before DEPTH lands: a glossy probe sphere.
 		window3D("world-probe-window", probeAt, len - probeAt, [
@@ -341,25 +225,22 @@ function depth(
 				shininess: 96,
 			} as never),
 		]),
-		...lyric(
-			lyrics,
-			window3D("world-depth-window", depthAt, len - depthAt, [
-				Layer3D.extrudedText({
-					id: "world-depth",
-					text: "DEPTH",
-					fontFamily: DISPLAY,
-					fontWeight: 900,
-					fontSize: 300,
-					fill: ACCENT,
-					bevelColor: ACCENT_DEEP,
-					depth: 140,
-					slices: 28,
-					x: CX,
-					y: CY + 40,
-					z: DEPTH_Z,
-				}),
-			]),
-		),
+		window3D("world-depth-window", depthAt, len - depthAt, [
+			Layer3D.extrudedText({
+				id: "world-depth",
+				text: "DEPTH",
+				fontFamily: DISPLAY,
+				fontWeight: 900,
+				fontSize: 300,
+				fill: ACCENT,
+				bevelColor: ACCENT_DEEP,
+				depth: 140,
+				slices: 28,
+				x: CX,
+				y: CY + 40,
+				z: DEPTH_Z,
+			}),
+		]),
 		Layer.pointLight({
 			id: "world-sweep",
 			color: "#FFFFFF",
@@ -433,7 +314,7 @@ function carousel(at: number, len: number) {
 	return window3D("world-carousel-window", at, len - at, [ring]);
 }
 
-/** Seeded cubes hanging in the air between the viewfinder and the flight words. */
+/** Seeded cubes hanging in the air the flight opens through. */
 function cubeField(count: number) {
 	let seed = 7;
 	const rand = () => {
@@ -565,24 +446,13 @@ function orbitShots(
 	});
 }
 
-/** Lyric layers, left out when the scene is rendered as footage (precomp.ts). */
-const lyric = <T>(on: boolean, node: T): T[] => (on ? [node] : []);
-
-export interface WorldOptions {
-	/** The sung words standing in the world; off for the chorus footage, which must not replay them. */
-	lyrics?: boolean;
-}
-
-export function worldScene(o: WorldOptions = {}) {
-	const lyrics = o.lyrics ?? true;
+export function worldScene() {
 	const from = bar(CH.world);
 	const to = bar(CH.warp);
 	const len = to - from;
 	const at = (w: SungWord) => w.at - from;
 
-	const step = sung("step", from - BEAT);
-	const cameraW = sung("camera", step.at);
-	const fly = sung("fly", cameraW.at);
+	const fly = sung("fly", from - BEAT);
 	const theThird = sung("the", fly.at);
 	const third = sung("third", fly.at);
 	const dimension = sung("dimension", fly.at);
@@ -596,22 +466,15 @@ export function worldScene(o: WorldOptions = {}) {
 	const through = sung("through", dolly.at);
 	const light = sung("light", through.at);
 	const depthW = sung("depth", light.at);
-	const stepLine = lineWords(step.line);
 
 	const cam = camera([
-		{ f: 0, eye: [CX, CY, -2400], at: [CX, CY, 0] },
+		// Already moving: in through the cubes hanging at the threshold.
+		{ f: 0, eye: [CX, CY - 40, -900], at: [CX - 100, CY - 40, 2000] },
 		{
-			f: at(cameraW) - 4,
-			eye: [CX, CY, -1300],
-			at: [CX, CY, 0],
-			ease: "sine.inOut",
-		},
-		// Through the viewfinder and on through the cubes.
-		{
-			f: at(fly) - 4,
+			f: Math.max(at(fly) + 6, 10),
 			eye: [CX, CY - 40, 600],
 			at: [CX - 100, CY - 40, 2000],
-			ease: EASE_IN_OUT,
+			ease: "none",
 		},
 		// The flight: bank past FLY and THE THIRD, level onto DIMENSION.
 		{
@@ -736,7 +599,7 @@ export function worldScene(o: WorldOptions = {}) {
 			id: "world-cam",
 			x: CX,
 			y: CY,
-			z: -2400,
+			z: -900,
 			targetX: CX,
 			targetY: CY,
 			targetZ: 0,
@@ -753,86 +616,57 @@ export function worldScene(o: WorldOptions = {}) {
 			color: "#FFFFFF",
 			intensity: 0.55,
 		} as never),
-		Layer3D.grid({
-			id: "world-floor",
-			width: 9000,
-			height: 18000,
-			divisions: 72,
-			lineWidth: 4,
-			color: GRID,
-			x: CX,
-			y: FLOOR,
-			z: 6500,
-		}),
-		...viewfinder(
-			stepLine.filter((w) => w.at < sung("the", step.at).at),
-			stepLine.filter((w) => w.at >= sung("the", step.at).at),
-			from,
-			lyrics,
-		),
 		...cubeField(22),
-		...(lyrics ? flight.map(standing) : []),
+		...flight.map(standing),
 		...floorCurves(at(paths)),
 		...risingPlanes(at(planes)),
-		...lyric(
-			lyrics,
-			standing({
-				id: "world-motion",
-				text: "MOTION",
-				at: at(motion),
-				until: at(cubes),
-				x: CX,
-				y: FLOOR - 640,
-				z: PATHS_Z + 400,
-				size: 200,
-				color: ACCENT,
-			}),
-		),
+		standing({
+			id: "world-motion",
+			text: "MOTION",
+			at: at(motion),
+			until: at(cubes),
+			x: CX,
+			y: FLOOR - 640,
+			z: PATHS_Z + 400,
+			size: 200,
+			color: ACCENT,
+		}),
 		...cubeBurst(at(cubes), at(direction)),
-		...lyric(
-			lyrics,
-			sungLine({
-				id: "world-cubes",
-				words: lineWords(cubes.line),
-				from,
-				x: CX - 1300,
-				width: 2600,
-				y: CY - 420,
-				size: 130,
-				outAt: at(orbit) - 4,
-				z: CUBES_Z + 400,
-			}),
-		),
+		sungLine({
+			id: "world-cubes",
+			words: lineWords(cubes.line),
+			from,
+			x: CX - 1300,
+			width: 2600,
+			y: CY - 420,
+			size: 130,
+			outAt: at(orbit) - 4,
+			z: CUBES_Z + 400,
+		}),
 		carousel(at(orbit) - 10, len),
-		...lyric(
-			lyrics,
-			sungLine({
-				id: "world-orbit",
-				words: lineWords(orbit.line),
-				from,
-				x: CX - 1300,
-				width: 2600,
-				y: CY - 520,
-				size: 120,
-				weight: 300,
-				outAt: at(light) - 4,
-				z: RING_Z,
-			}),
-		),
-		...lyric(
-			lyrics,
-			sungLine({
-				id: "world-light",
-				words: lineWords(light.line).filter((w) => w !== depthW),
-				from,
-				x: CX - 1200,
-				width: 2400,
-				y: CY - 330,
-				size: 110,
-				weight: 300,
-				z: DEPTH_Z - 150,
-			}),
-		),
-		...depth(at(through), at(light), at(depthW), len, lyrics),
+		sungLine({
+			id: "world-orbit",
+			words: lineWords(orbit.line),
+			from,
+			x: CX - 1300,
+			width: 2600,
+			y: CY - 520,
+			size: 120,
+			weight: 300,
+			outAt: at(light) - 4,
+			z: RING_Z,
+		}),
+		sungLine({
+			id: "world-light",
+			words: lineWords(light.line).filter((w) => w !== depthW),
+			from,
+			x: CX - 1200,
+			width: 2400,
+			y: CY - 330,
+			size: 110,
+			weight: 300,
+			z: DEPTH_Z - 150,
+		}),
+		...depth(at(through), at(light), at(depthW), len),
 	]);
 }

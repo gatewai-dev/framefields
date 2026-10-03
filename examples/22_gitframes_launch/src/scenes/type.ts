@@ -6,7 +6,9 @@
  *   "type that moves the way you speak"  each word lands on its spoken syllable
  *   "split it, stagger it, spin it sweet"  each verb is the text animator it names
  *   "every font a different feel"     a face per word, FONT flickering through them all
- *   "kinetic on every beat"           the words slam, then a marquee wall of faces runs
+ *   "kinetic on every beat"           each word slams into its own row, and the row runs:
+ *                                     a wall of faces sliding against each other
+ *   "Step inside the camera"          the wall closes into a viewfinder and the lens rushes it
  */
 import {
 	Layer,
@@ -20,6 +22,7 @@ import { bare, lineSpan, lineWords, type SungWord, sung } from "../lyrics.js";
 import {
 	ACCENT,
 	DISPLAY,
+	EASE_IN,
 	EASE_OUT,
 	FG,
 	GUEST,
@@ -28,6 +31,7 @@ import {
 	MUTED,
 	SNAP,
 	scene,
+	sungLine,
 	W,
 	word,
 } from "../theme.js";
@@ -389,73 +393,213 @@ function faces(line: number, from: number, until: number) {
 	];
 }
 
-/** "KINETIC ON EVERY BEAT": each word slams on its syllable in a different face. */
-function kinetic(line: number, from: number, until: number) {
-	const words = lineWords(line);
-	const faces = [DISPLAY, GUEST.anton, GUEST.dela, GUEST.shade];
-	const rows = [CY - 330, CY - 140, CY + 40, CY + 210];
-	return words.map((w, i) =>
-		word({
-			id: `type-kinetic-${i}`,
-			text: bare(w).toUpperCase(),
-			at: w.at - from,
-			outAt: until - from,
-			y: rows[i],
-			size: i === 0 ? 170 : 130,
-			font: faces[i],
-			weight: faces[i] === DISPLAY ? 900 : 400,
-			color: i === words.length - 1 ? ACCENT : FG,
+const ROWS = 6;
+const ROW_H = H / ROWS;
+/** Each row keeps its own face; the kinetic words land in rows 1–4. */
+const ROW_FACES = [
+	GUEST.fraunces,
+	DISPLAY,
+	GUEST.anton,
+	GUEST.dela,
+	GUEST.shade,
+	GUEST.michroma,
+];
+/** Rough advance of a face's caps, in em: sizes the run of copies a row needs. */
+const CAP_EM = 0.95;
+
+interface Row {
+	text: string;
+	/** Scene frame the centre copy lands (the word is sung). */
+	at: number;
+	/** Scene frame the rest of the row fills in and starts to run. */
+	runAt: number;
+	color: string;
+}
+
+/**
+ * One row of the wall: copies of a word in a line, the centre one exactly
+ * where the word slams in. The copies fill in either side and the row runs,
+ * picking up speed, alternate rows in opposite directions.
+ */
+function row(r: Row, i: number, until: number) {
+	const face = ROW_FACES[i];
+	const size = Math.round(ROW_H * 0.72);
+	const gap = Math.round(size * 0.45);
+	const copyW = r.text.length * CAP_EM * size + gap;
+	const dir = i % 2 ? 1 : -1;
+	const travel = 1700;
+	// Enough copies to cover the screen wherever the row has run to.
+	const side = Math.ceil((W / 2 + travel + copyW) / copyW);
+	const copies = side * 2 + 1;
+	const span = 40000;
+	return Layer.flex({
+		id: `type-row-${i}`,
+		position: "absolute",
+		x: CX - span / 2,
+		y: i * ROW_H,
+		width: span,
+		height: ROW_H,
+		dir: "row",
+		justify: "center",
+		align: "center",
+		gap,
+		children: Array.from({ length: copies }, (_, k) => {
+			const centre = k === side;
+			const anim = centre
+				? LayerAnimation.create()
+						.fromTo("scale", 1.6, 1, {
+							start: r.at,
+							end: r.at + 9,
+							ease: EASE_OUT,
+						})
+						.fromTo("opacity", 0, 1, {
+							start: r.at,
+							end: r.at + 3,
+							ease: "none",
+						})
+				: LayerAnimation.create().fromTo("opacity", 0, 1, {
+						start: r.runAt + Math.abs(k - side) * 2,
+						end: r.runAt + Math.abs(k - side) * 2 + 4,
+						ease: "none",
+					});
+			return Layer.text(r.text, {
+				id: `type-row-${i}-${k}`,
+				fontFamily: face,
+				fontWeight: face === DISPLAY ? 900 : 400,
+				fontSize: size,
+				fill: centre ? r.color : i % 3 === 1 ? FG : MUTED,
+				anchorX: 0.5,
+				anchorY: 0.5,
+				opacity: 0,
+			}).animate(anim);
 		}),
+	}).animate(
+		keys("x", [
+			[r.runAt, CX - span / 2],
+			[until, CX - span / 2 + dir * travel, "power2.in"],
+		]),
 	);
 }
 
-const MARQUEE = ["GITFRAMES", "KINETIC", "TYPE", "SLUG", "GPU"];
+/**
+ * The viewfinder's corners, drawn round the window the wall shrinks into on
+ * "Step inside the camera".
+ */
+const FRAME_W = 1240;
+const FRAME_H = 700;
+const FRAME_L = CX - FRAME_W / 2;
+const FRAME_T = CY - FRAME_H / 2;
 
-/** The wall: rows of faces scrolling against each other, breathing with the kick. */
-function marquee(at: number, len: number) {
-	const rows = FACES.slice(0, 7);
-	const rowH = H / rows.length;
+function viewfinder(at: number) {
+	const corner = (id: string, x: number, y: number, rot: number) =>
+		Layer.shape("path", {
+			id,
+			position: "absolute",
+			x,
+			y,
+			width: 120,
+			height: 120,
+			rotation: rot,
+			d: "M 10 110 L 10 10 L 110 10",
+			fillType: "none",
+			strokeColor: ACCENT,
+			strokeWidth: 14,
+			strokeLineCap: "round",
+		} as never).animate(
+			keys("trimEnd", [
+				[0, 0],
+				[at, 0],
+				[at + 12, 1, EASE_OUT],
+			]),
+		);
+	const l = FRAME_L - 30;
+	const t = FRAME_T - 30;
+	const r = FRAME_L + FRAME_W - 90;
+	const b = FRAME_T + FRAME_H - 90;
+	return [
+		corner("type-vf-tl", l, t, 0),
+		corner("type-vf-tr", r, t, 90),
+		corner("type-vf-br", r, b, 180),
+		corner("type-vf-bl", l, b, 270),
+	];
+}
+
+/**
+ * The wall in a window: full frame until "Step", then an overflow-hidden box
+ * closes to the viewfinder (the wall holds still inside it), and on the way
+ * out into the 3D chapter the window rushes the lens.
+ */
+function window2D(
+	children: unknown[],
+	closeAt: number,
+	pushAt: number,
+	end: number,
+) {
+	const outer = LayerAnimation.create();
+	const close = (prop: string, a: number, b: number) =>
+		keys(
+			prop as never,
+			[
+				[closeAt, a],
+				[closeAt + 14, b, EASE_OUT],
+			],
+			outer,
+		);
+	close("x", 0, FRAME_L);
+	close("y", 0, FRAME_T);
+	close("width", W, FRAME_W);
+	close("height", H, FRAME_H);
+	close("borderRadius", 0, 36);
+	const inner = LayerAnimation.create();
+	keys(
+		"x",
+		[
+			[closeAt, 0],
+			[closeAt + 14, -FRAME_L, EASE_OUT],
+		],
+		inner,
+	);
+	keys(
+		"y",
+		[
+			[closeAt, 0],
+			[closeAt + 14, -FRAME_T, EASE_OUT],
+		],
+		inner,
+	);
 	return Layer.box({
-		id: "type-wall",
+		id: "type-lens",
 		position: "absolute",
 		x: 0,
 		y: 0,
 		width: W,
 		height: H,
-		startFrame: at,
-		durationFrames: len,
-		children: rows.map((face, i) =>
-			Layer.text(`${MARQUEE.join("  ·  ")}  ·  `.repeat(3), {
-				id: `type-wall-${i}`,
+		children: [
+			Layer.box({
+				id: "type-window",
 				position: "absolute",
 				x: 0,
-				y: i * rowH,
+				y: 0,
 				width: W,
-				height: rowH,
-				fontFamily: face,
-				fontSize: rowH * 0.62,
-				fill: i % 3 === 1 ? ACCENT : FG,
-				verticalAlign: "middle",
-				marquee: {
-					direction: i % 2 ? "right" : "left",
-					velocity: 700 + i * 90,
-					loop: true,
-					repeatGap: 60,
-				},
-			} as never).animate(
-				LayerAnimation.create()
-					.fromTo("opacity", 0, 1, {
-						start: i * 2,
-						end: i * 2 + 6,
-						ease: "none",
-					})
-					.signal("scale", kickPulse(), { multiplier: 0.05, offset: 1 }),
-			),
-		),
+				height: H,
+				overflow: "hidden",
+				children: [
+					Layer.box({
+						id: "type-window-hold",
+						position: "absolute",
+						x: 0,
+						y: 0,
+						width: W,
+						height: H,
+						children: children as never,
+					}).animate(inner),
+				],
+			} as never).animate(outer),
+		],
 	}).animate(
-		keys("rotation", [
-			[0, -8],
-			[len, -4, "sine.inOut"],
+		keys("scale", [
+			[pushAt, 1],
+			[end, 3.2, EASE_IN],
 		]),
 	);
 }
@@ -476,8 +620,24 @@ export function typeScene() {
 	const faceLine = verbLine + 1;
 	const face = lineSpan(faceLine);
 	const kineticLine = faceLine + 1;
-	const kin = lineSpan(kineticLine);
-	const wallAt = kin.end + 4;
+	const kin = lineWords(kineticLine);
+	const kinEnd = lineSpan(kineticLine).end;
+	// "Step inside the camera" is the wall's last line: the 3D chapter starts on "fly".
+	const stepWords = lineWords(kineticLine + 1);
+	const step = stepWords[0];
+	const theCam = sung("the", step.at);
+	const local = (f: number) => f - from;
+	const fill = local(kinEnd) + 2;
+	const rows: Row[] = [
+		{ text: "gitframes", at: fill, runAt: fill, color: MUTED },
+		...kin.map((w, i) => ({
+			text: bare(w).toUpperCase(),
+			at: local(w.at),
+			runAt: local(w.at) + BEAT / 2,
+			color: i === kin.length - 1 ? ACCENT : FG,
+		})),
+		{ text: "TYPE", at: fill + 4, runAt: fill + 4, color: MUTED },
+	];
 
 	const group = (
 		id: string,
@@ -534,10 +694,50 @@ export function typeScene() {
 		group(
 			"type-faces-group",
 			face.at - 2,
-			kin.at - 2,
-			faces(faceLine, face.at - 2, kin.at - 2),
+			kin[0].at - 2,
+			faces(faceLine, face.at - 2, kin[0].at - 2),
 		),
-		...kinetic(kineticLine, from, wallAt),
-		marquee(wallAt - from, to - wallAt),
+		window2D(
+			[
+				Layer.box({
+					id: "type-wall",
+					position: "absolute",
+					x: 0,
+					y: 0,
+					width: W,
+					height: H,
+					children: rows.map((r, i) => row(r, i, to - from)),
+				}).animate(
+					LayerAnimation.create().signal("scale", kickPulse(), {
+						multiplier: 0.04,
+						offset: 1,
+					}),
+				),
+			],
+			step.at - from,
+			to - from - 12,
+			to - from,
+		),
+		...viewfinder(step.at - from),
+		sungLine({
+			id: "type-step",
+			words: stepWords.filter((w) => w.at < theCam.at),
+			from,
+			y: 40,
+			size: 96,
+			weight: 300,
+			enter: "rise",
+			outAt: to - from - 12,
+		}),
+		sungLine({
+			id: "type-camera",
+			words: stepWords.filter((w) => w.at >= theCam.at),
+			from,
+			y: FRAME_T + FRAME_H + 30,
+			size: 110,
+			color: ACCENT,
+			enter: "rise",
+			outAt: to - from - 12,
+		}),
 	]);
 }

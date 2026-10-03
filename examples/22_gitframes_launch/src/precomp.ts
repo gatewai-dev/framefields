@@ -1,19 +1,18 @@
 /**
- * pnpm precomp → assets/plate.mp4: the 3D chapter rendered on its own, as the
- * footage the chorus grades, grains and glitches. Effects attach to media, so
- * the film's own frames become media first (an After Effects-style precomp),
- * rendered on the film's clock: frame f of the plate is film frame from + f.
- * Re-run after the song or the world scene changes.
+ * pnpm precomp → assets/plate.mp4: the compositing chapter's finished
+ * composite (backdrop, keyed camera, light leak in screen, paper in multiply)
+ * rendered on its own, as the footage the chorus grades, grains and glitches.
+ * Effects attach to media, so the composite becomes media first (an After
+ * Effects-style precomp). Re-run after the images or the composite change.
  */
 import { execFileSync } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { Composition, HeadlessMediaRenderer } from "gitframes";
-import { bar, FPS } from "./grid.js";
+import { FPS } from "./grid.js";
 import { asset, OUTPUT } from "./paths.js";
-import { worldScene } from "./scenes/world.js";
+import { compPlate, PLATE_FRAMES } from "./scenes/comp.js";
 import { BG, H, registerFonts, W } from "./theme.js";
-import { CH } from "./timeline.js";
 
 interface Plate {
 	from: number;
@@ -24,12 +23,12 @@ interface Plate {
 }
 
 const PLATES: Record<string, Plate> = {
-	world: {
-		from: bar(CH.world),
-		to: bar(CH.warp),
+	comp: {
+		from: 0,
+		to: PLATE_FRAMES,
 		file: "plate.mp4",
 		background: BG,
-		build: () => worldScene({ lyrics: false }),
+		build: () => compPlate(),
 	},
 };
 

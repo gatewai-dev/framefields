@@ -8,7 +8,7 @@ import path from "node:path";
 import { FontManager, Layer, LayerAnimation, TextAnimator } from "gitframes";
 import { FPS } from "./grid.js";
 import { bare, type SungWord } from "./lyrics.js";
-import { ASSETS } from "./paths.js";
+import { ASSETS, ROOT } from "./paths.js";
 
 export const W = 1920;
 export const H = 1080;
@@ -21,7 +21,6 @@ export const SURFACE = "#E4E0D8";
 export const MUTED = "#7C786F";
 export const ACCENT = "#2B44FF";
 export const ACCENT_DEEP = "#1A2BB0";
-export const GRID = "#CFCAC0";
 export const HAIRLINE = "rgba(18,18,22,0.14)";
 /** The green screen behind the generated subject (images.ts), keyed out by ColorKey. */
 export const KEY_GREEN = "#00FF00";
@@ -365,5 +364,44 @@ export function window3D(
 		durationFrames: len,
 		transformStyle: "preserve-3d",
 		children: children as never,
+	} as never);
+}
+
+/** The gitframes logo (the repo's brand mark): a viewfinder round a play head. */
+export const LOGO = path.join(ROOT, "assets", "brand", "logo.png");
+
+export interface LogoOptions {
+	id: string;
+	size: number;
+	/** Centre of the mark. */
+	x: number;
+	y: number;
+	/** Stand the mark in the 3D scene at this depth. */
+	z?: number;
+	startFrame?: number;
+}
+
+/** The logo as a square layer centred on (x, y), flat or standing in 3D. */
+export function logoMark(o: LogoOptions): Node {
+	return Layer.box({
+		id: o.id,
+		position: "absolute",
+		x: o.x - o.size / 2,
+		y: o.y - o.size / 2,
+		width: o.size,
+		height: o.size,
+		...(o.z !== undefined ? { is3D: true, z: o.z } : {}),
+		startFrame: o.startFrame,
+		children: [
+			Layer.image(LOGO, {
+				id: `${o.id}-image`,
+				position: "absolute",
+				x: 0,
+				y: 0,
+				width: o.size,
+				height: o.size,
+				fit: "contain",
+			}),
+		],
 	} as never);
 }

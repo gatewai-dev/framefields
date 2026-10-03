@@ -12,7 +12,7 @@ pnpm song cost        # estimate (~$0.06), no calls
 pnpm song             # song → stems → words → grid → chapters (retries takes that skip a line)
 pnpm song measure     # re-run only the free steps on the cached take
 pnpm images           # the compositing chapter's four layers (~$0.25)
-pnpm precomp          # the 3D chapter, without its lyrics, rendered as footage → assets/plate.mp4
+pnpm precomp          # the finished composite rendered as footage for the chorus → assets/plate.mp4
 pnpm render frames 483 2900 3300
 pnpm render           # output/gitframes-launch.mp4
 pnpm test
@@ -43,17 +43,17 @@ window usually means a layer with its own `startFrame` was keyed in scene frames
 
 | Lyric | Picture |
 | --- | --- |
-| "What if video was just code? … just type it and let it hit." | the camera leaps phrase to phrase down a 3D runway; a commit, a timeline struck out; dives through the brand mark |
-| "Gitframes!" | the name, extruded, whips in on an orbiting camera |
+| "What if video was just code? … just type it and let it hit." | the camera leaps phrase to phrase through depth; a commit, a timeline struck out; dives through the logo (`assets/brand/logo.png`) |
+| "Gitframes!" | the logo and the lowercase name, extruded, whip in on an orbiting camera |
 | "No browser, no Chromium, no screenshots, just the GPU." | each word redacted on the beat |
-| "A hundred twenty frames a second, every pixel rendered true" | cube stacks build on sixteenths; the figure counts with the voice |
+| "A hundred twenty frames a second, every pixel rendered true, watch it move" | the figure counts with the voice; three lanes render the same clip, each bar filling left to right at 12, 30 or 120 frames rendered a second and counting the clips it finishes; gitframes laps the others, and on "watch it move" the slow lanes drop out |
 | "After Effects, Photoshop, Premiere, Cinema 4D, Blender, Illustrator, all of it in one import" | each tool lands as a monogram tile (not its logo) captioned with what gitframes takes from it; the tiles fall into one `import` line |
-| "Every letter razor sharp … kinetic on every beat." | a font per sixteenth, a 40× Slug zoom, the line built along an arc, split / stagger / spin each set with the animator they name, a face per word |
-| "Step inside the camera … light it up in depth." | one camera move: viewfinder, flight, floor paths, a cube burst, an orbit and dolly through a ring of capabilities, lit DEPTH |
-| "Drop a mesh and make it bend … every frame a different shape." | procedural meshes deformed on the GPU by the song: harmonic wave, normal extrusion on the bass, ripple, twist; the floor folds; a new shape every beat |
+| "Every letter razor sharp … kinetic on every beat. Step inside the camera" | a font per sixteenth, a 40× Slug zoom, the line built along an arc, split / stagger / spin each set with the animator they name, a face per word; each kinetic word slams into its own row and the rows run against each other, a sliding wall that closes into a viewfinder the lens rushes |
+| "fly the third dimension … light it up in depth." | one camera move: flight through hanging cubes, paths drawn in space, a cube burst, an orbit and dolly through a ring of capabilities, lit DEPTH |
+| "Drop a mesh and make it bend … every frame a different shape." | procedural meshes deformed on the GPU by the song: harmonic wave, normal extrusion on the bass, ripple, twist; a new shape every beat |
 | "It's just code … render true every night." | the comp's source beside its images; ColorKey pulls the green, an iris mask closes, a light leak screens and a paper grain multiplies; the stack explodes in 3D and collapses back |
-| "Frame by frame … faster and faster!" | the 3D chapter, precomposed, through each named effect; a knot twisting under an accelerating camera |
-| "Gitframes. Motion, compiled." | lock-up: brand mark, extruded name, the line built word by word, `pnpm add gitframes` on the final hit |
+| "Frame by frame … faster and faster!" | the composite, precomposed, through each named effect; two strips of graded footage accelerating against each other |
+| "Gitframes. Motion, compiled." | lock-up: logo, lowercase extruded name, the line built word by word, `pnpm add gitframes` on the final hit |
 
 ## Engine work done for this film
 
@@ -70,5 +70,6 @@ Each has a regression test (`packages/gitframes/src/*.test.ts`, `packages/webgpu
 - Audio mesh deformation gained `twist` and `ripple`.
 - Text on a path: SVG arcs (`A`/`a`) were ignored by the path parser; the last margin was read as an absolute position; force alignment dropped spaces.
 - `overflow: hidden` ignored `borderRadius` (rounded and animated clips now hold).
+- Text `verticalAlign` was ignored: a text block always sat at the top of its box (`text-vertical-align.test.ts`).
 - Text antialiasing: each glyph's quad was its exact bounding box, so pixels just outside the outline never got their partial coverage, and the two Slug coverage rays were averaged rather than weighted; a glyph turned in the shader (text on a path) had stair-stepped edges. Quads are now dilated by a pixel, rays weighted by how near they cross an edge, and the pixel footprint measured per glyph axis (`text-antialias.test.ts`).
 - `ColorKey` is exposed as an SDK effect (node-colorkey migrated to the generated classes).

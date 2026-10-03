@@ -1,5 +1,5 @@
 /**
- * The end. On "Gitframes." the name, extruded in 3D, whips in under an
+ * The end. On "Gitframes." the logo and the name, extruded in 3D, whips in under an
  * orbiting camera; "Motion, compiled." builds word by word beneath it, and
  * on the final hit the install line lands, held through the ring-out.
  */
@@ -13,11 +13,11 @@ import {
 	EASE_OUT,
 	FG,
 	flashes,
-	GRID,
 	GUEST,
 	H,
 	keys,
 	label,
+	logoMark,
 	MONO,
 	plane,
 	SNAP,
@@ -31,35 +31,15 @@ import { CH, DURATION } from "../timeline.js";
 const CX = W / 2;
 const CY = H / 2;
 
-const MARK = 150;
-
-/** The brand mark: a frame with a playhead, standing in the 3D scene above the name. */
+/** The logo, standing in the 3D scene above the name. */
 function brandMark(at: number) {
-	return Layer.box({
+	return logoMark({
 		id: "final-mark",
-		is3D: true,
-		position: "absolute",
-		x: CX - MARK / 2,
-		y: CY - 300,
+		size: 190,
+		x: CX,
+		y: CY - 225,
 		z: 0,
-		width: MARK,
-		height: MARK,
-		borderRadius: 26,
-		borderColor: ACCENT,
-		borderWidth: 14,
-		children: [
-			Layer.box({
-				id: "final-mark-head",
-				position: "absolute",
-				x: MARK * 0.36,
-				y: MARK * 0.36,
-				width: MARK * 0.28,
-				height: MARK * 0.28,
-				borderRadius: 8,
-				background: ACCENT,
-			}),
-		],
-	} as never).animate(
+	}).animate(
 		keys("scale", [
 			[0, 0],
 			[at, 0],
@@ -114,23 +94,12 @@ function lockup() {
 				color: "#FFFFFF",
 				intensity: 0.6,
 			} as never),
-			Layer3D.grid({
-				id: "final-floor",
-				width: 6000,
-				height: 6000,
-				divisions: 30,
-				lineWidth: 3,
-				color: GRID,
-				x: CX,
-				y: CY + 360,
-				z: 0,
-			}),
 			brandMark(settle - 10),
 			// The name stands only once it is sung.
 			window3D("final-name-window", settle - 10, len - settle + 10, [
 				Layer3D.extrudedText({
 					id: "final-name",
-					text: "GITFRAMES",
+					text: "gitframes",
 					fontFamily: DISPLAY,
 					fontWeight: 900,
 					fontSize: 200,
@@ -181,7 +150,7 @@ function lockup() {
 			),
 			label({
 				id: "final-url",
-				text: "gitframes · WebGPU motion engine",
+				text: "WebGPU motion engine",
 				y: H - 90,
 				inAt: hit + 16,
 				color: FG,

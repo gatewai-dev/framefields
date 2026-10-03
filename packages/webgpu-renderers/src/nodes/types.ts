@@ -120,6 +120,8 @@ export interface ParagraphNodeProps {
 	dstRect: Rect;
 	width?: number;
 	height?: number;
+	/** Where the text block sits in a `height` taller than it. Default "top". */
+	verticalAlign?: "top" | "middle" | "bottom";
 	fontFamily?: string;
 	fontSize?: number;
 	color?: string;
@@ -182,7 +184,6 @@ export interface CaptionNodeProps extends Omit<ParagraphNodeProps, "text"> {
 	fps: number;
 	maxWidth?: number;
 	padding?: number;
-	verticalAlign?: "top" | "middle" | "bottom";
 }
 
 export interface BlurNodeProps {

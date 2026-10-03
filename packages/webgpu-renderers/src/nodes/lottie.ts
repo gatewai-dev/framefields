@@ -515,7 +515,8 @@ class LottieLoader {
 				let resolvedSrc = src;
 				try {
 					let lottieJson: any = null;
-					const isNode = typeof process !== "undefined" && Boolean(process.versions?.node);
+					const isNode =
+						typeof process !== "undefined" && Boolean(process.versions?.node);
 
 					if (resolvedSrc.startsWith("data:application/json;base64,")) {
 						const base64Data = resolvedSrc.split(",")[1];
@@ -524,7 +525,12 @@ class LottieLoader {
 					} else if (resolvedSrc.startsWith("data:application/json,")) {
 						const decodeData = decodeURIComponent(resolvedSrc.split(",")[1]);
 						lottieJson = JSON.parse(decodeData);
-					} else if (isNode && (resolvedSrc.startsWith("/") || resolvedSrc.startsWith("file://")) && resolvedSrc.endsWith(".json")) {
+					} else if (
+						isNode &&
+						(resolvedSrc.startsWith("/") ||
+							resolvedSrc.startsWith("file://")) &&
+						resolvedSrc.endsWith(".json")
+					) {
 						let filePath = resolvedSrc;
 						if (filePath.startsWith("file://")) {
 							try {
@@ -544,7 +550,10 @@ class LottieLoader {
 						resolvedSrc.startsWith("/")
 					) {
 						// Only pre-fetch JSON animations. Binary .lottie zip files pack their own fonts.
-						if (resolvedSrc.endsWith(".json") || resolvedSrc.includes("/assets/")) {
+						if (
+							resolvedSrc.endsWith(".json") ||
+							resolvedSrc.includes("/assets/")
+						) {
 							const response = await fetch(resolveUrl(resolvedSrc));
 							if (response.ok) {
 								lottieJson = await response.json();
@@ -568,7 +577,11 @@ class LottieLoader {
 				}
 
 				// 2. Create the instance and wait for it to be ready.
-				const instance = new LottieInstance(resolvedSrc, resolvedWidth, resolvedHeight);
+				const instance = new LottieInstance(
+					resolvedSrc,
+					resolvedWidth,
+					resolvedHeight,
+				);
 				await instance.ready();
 
 				return instance;

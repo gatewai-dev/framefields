@@ -179,12 +179,13 @@ export async function drawSignalNode(
 		config.type === "signal_math" ||
 		Boolean(cfgRecord.operation) ||
 		cfgRecord.op === "SignalMath";
-	const isGateNode =
-		config.type === "gate" || cfgRecord.op === "SignalGate";
+	const isGateNode = config.type === "gate" || cfgRecord.op === "SignalGate";
 
 	if (durationSec <= 0) {
 		const mathSigA = cfgRecord.signalA as Record<string, unknown> | undefined;
-		const gateSrcSig = cfgRecord.sourceSignal as Record<string, unknown> | undefined;
+		const gateSrcSig = cfgRecord.sourceSignal as
+			| Record<string, unknown>
+			| undefined;
 		const regDuration =
 			signalRegistry.getDuration?.(ctx.device, nodeId, props.renderId) ||
 			(isMathNode && mathSigA?.nodeId
@@ -285,7 +286,9 @@ export async function drawSignalNode(
 
 	const calculatedStats =
 		signalRegistry.getStats?.(nodeId) ??
-		(typeof cfgRecord.nodeId === "string" ? signalRegistry.getStats?.(cfgRecord.nodeId as string) : undefined);
+		(typeof cfgRecord.nodeId === "string"
+			? signalRegistry.getStats?.(cfgRecord.nodeId as string)
+			: undefined);
 	const minVal: number =
 		typeof calculatedStats?.min === "number"
 			? calculatedStats.min

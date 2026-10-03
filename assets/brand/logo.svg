@@ -1,7 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
 	<g transform="translate(0 0)">
-		<defs><linearGradient id="logo-g" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="512.00" y2="512.00"><stop offset="0" stop-color="#38BDF8"/><stop offset="0.5" stop-color="#3B82F6"/><stop offset="1" stop-color="#1D4ED8"/></linearGradient></defs>
-		<path d="M 184.00 56.00 L 86.00 56.00 Q 56.00 56.00 56.00 86.00 L 56.00 184.00 M 328.00 56.00 L 426.00 56.00 Q 456.00 56.00 456.00 86.00 L 456.00 184.00 M 184.00 456.00 L 86.00 456.00 Q 56.00 456.00 56.00 426.00 L 56.00 328.00 M 328.00 456.00 L 426.00 456.00 Q 456.00 456.00 456.00 426.00 L 456.00 328.00" fill="none" stroke="url(#logo-g)" stroke-width="34.00" stroke-linecap="round" stroke-linejoin="round"/>
-		<path d="M 214.00 178.00 L 346.00 256.00 L 214.00 334.00 Z" fill="url(#logo-g)" stroke="url(#logo-g)" stroke-width="40.00" stroke-linejoin="round"/>
+		<path d="M 184.00 56.00 L 86.00 56.00 Q 56.00 56.00 56.00 86.00 L 56.00 184.00 M 328.00 56.00 L 426.00 56.00 Q 456.00 56.00 456.00 86.00 L 456.00 184.00 M 184.00 456.00 L 86.00 456.00 Q 56.00 456.00 56.00 426.00 L 56.00 328.00 M 328.00 456.00 L 426.00 456.00 Q 456.00 456.00 456.00 426.00 L 456.00 328.00" fill="none" stroke="#3B82F6" stroke-width="34.00" stroke-linecap="round" stroke-linejoin="round"/>
+		<path d="M 176.00 182.00 L 176.00 330.00 M 176.00 182.00 C 176.00 256.00 236.00 256.00 276.00 256.00" fill="none" stroke="#3B82F6" stroke-width="28.00" stroke-linecap="round"/>
+		<circle cx="176.00" cy="172.00" r="32.00" fill="#3B82F6"/>
+		<circle cx="176.00" cy="340.00" r="32.00" fill="#3B82F6"/>
+		<path d="M 284.00 200.00 L 362.00 256.00 L 284.00 312.00 Z" fill="#3B82F6" stroke="#3B82F6" stroke-width="34.00" stroke-linejoin="round"/>
 	</g>
 </svg>

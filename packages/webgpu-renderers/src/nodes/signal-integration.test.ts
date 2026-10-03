@@ -62,10 +62,7 @@ describe("Signal Node Audio Integration", () => {
 					return buf;
 				},
 				samplerCache: {
-					getSampler: (
-						d: GPUDevice,
-						desc?: GPUSamplerDescriptor,
-					) => {
+					getSampler: (d: GPUDevice, desc?: GPUSamplerDescriptor) => {
 						return d.createSampler(desc);
 					},
 				},

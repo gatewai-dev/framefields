@@ -19,7 +19,7 @@ import {
 	LayerAnimation,
 	Signal,
 } from "gitframes";
-import { BEAT, bar } from "../grid.js";
+import { BEAT, bar, FPS } from "../grid.js";
 import { type ImageName, image } from "../images.js";
 import { lineWords, type SungWord, sung } from "../lyrics.js";
 import {
@@ -197,6 +197,66 @@ function iris(id: string, at: number, child: unknown) {
 			}).animate(inner),
 		],
 	} as never).animate(outer);
+}
+
+/** Length of the chorus footage (precomp.ts): eight seconds of the finished composite. */
+export const PLATE_FRAMES = 8 * FPS;
+
+/**
+ * The finished composite as footage for the chorus to grade: the same four
+ * layers and blend modes, the camera keyed from the first frame, drifting
+ * against the backdrop while the leak sweeps through.
+ */
+export function compPlate() {
+	const len = PLATE_FRAMES;
+	const drift = (
+		id: string,
+		child: unknown,
+		x0: number,
+		x1: number,
+		s0: number,
+		s1: number,
+	) =>
+		Layer.box({
+			id,
+			position: "absolute",
+			x: 0,
+			y: 0,
+			width: W,
+			height: H,
+			children: [child as never],
+		}).animate(
+			keys(
+				"x",
+				[
+					[0, x0],
+					[len, x1, "sine.inOut"],
+				],
+				keys("scale", [
+					[0, s0],
+					[len, s1, "sine.inOut"],
+				]),
+			),
+		);
+	return Layer.box({
+		id: "plate",
+		position: "absolute",
+		x: 0,
+		y: 0,
+		width: W,
+		height: H,
+		children: [
+			drift("plate-back", full("plate-backdrop", "backdrop"), 0, 0, 1.04, 1.16),
+			drift("plate-subject", keyed("plate-camera", -10), 60, -80, 1, 1.08),
+			full("plate-leak", "leak", { blendMode: "screen" }).animate(
+				keys("x", [
+					[0, -700],
+					[len, 500, "sine.inOut"],
+				]),
+			),
+			full("plate-paper", "paper", { blendMode: "multiply" }),
+		],
+	});
 }
 
 export function compScene() {

@@ -1,19 +1,18 @@
 /**
  * "Frame by frame, shader by shader, grade it, grain it, glitch it, make it
- * louder, frame by frame, faster and faster!" The 3D chapter, precomposed
- * (precomp.ts), is the footage; each verb is the effect it names, cut on the
- * syllable. "faster and faster" ends it under an accelerating camera.
+ * louder, frame by frame, faster and faster!" The composite the last chapter
+ * built (backdrop, keyed camera, light leak, paper), precomposed (precomp.ts),
+ * is the footage; each verb is the effect it names, cut on the syllable.
+ * "faster and faster" ends it on three strips of it accelerating to a blur.
  */
 import {
 	Blur,
-	CameraAnimation,
 	ColorBalance,
 	Curves,
 	FilmGrain,
 	GradientMap,
 	HalftoneScreen,
 	Layer,
-	Layer3D,
 	LayerAnimation,
 	Signal,
 	TileOffset,
@@ -38,7 +37,7 @@ import {
 	word,
 } from "../theme.js";
 import { CH } from "../timeline.js";
-import { meshFile } from "../warp/meshes.js";
+import { PLATE_FRAMES } from "./comp.js";
 
 type Clip = ReturnType<typeof Layer.video>;
 interface Frame {
@@ -50,8 +49,8 @@ interface Frame {
 
 const FULL: Frame = { x: 0, y: 0, w: W, h: H };
 
-/** The plate is the 3D chapter (precomp.ts); a shot's in-point is a fraction of it. */
-const PLATE_SEC = (bar(CH.warp) - bar(CH.world)) / FPS;
+/** The plate is the composite (precomp.ts); a shot's in-point is a fraction of it. */
+const PLATE_SEC = PLATE_FRAMES / FPS;
 const into = (fraction: number) =>
 	Number((fraction * (PLATE_SEC - 1.4)).toFixed(3));
 
@@ -457,85 +456,71 @@ function wall(words: SungWord[], sceneFrom: number, at: number, len: number) {
 	]);
 }
 
-/** "faster and faster": a knot winding on the bass under a camera that keeps accelerating round it. */
+/**
+ * "faster and faster": two strips of graded footage running against each
+ * other, accelerating to a blur, the words on the paper between them.
+ */
 function fasterShot(
 	words: SungWord[],
 	sceneFrom: number,
 	at: number,
 	len: number,
 ) {
-	const cam = CameraAnimation.camera().orbit({
-		azimuth: { from: 0, to: 540 },
-		elevation: { from: 6, to: 20 },
-		radius: { from: 1700, to: 1250 },
-		start: 0,
-		end: len,
-		ease: "expo.in",
+	const tile = { w: 440, h: 248 };
+	const gap = 24;
+	const count = 7;
+	const rowW = count * (tile.w + gap);
+	const margin = 70;
+	const passes = [grade, halftone];
+	const rows = passes.map((fx, r) => {
+		const dir = r % 2 ? 1 : -1;
+		const start = dir < 0 ? 0 : W - rowW;
+		return Layer.box({
+			id: `vfx-faster-row-${r}`,
+			position: "absolute",
+			x: 0,
+			y: r === 0 ? margin : H - margin - tile.h,
+			width: rowW,
+			height: tile.h,
+			children: Array.from({ length: count }, (_, i) =>
+				Layer.box({
+					id: `vfx-faster-${r}-${i}`,
+					position: "absolute",
+					x: i * (tile.w + gap),
+					y: 0,
+					width: tile.w,
+					height: tile.h,
+					borderRadius: 10,
+					overflow: "hidden",
+					children: [
+						fx(
+							plate(`vfx-faster-plate-${r}-${i}`, into(((i * 3 + r) % 8) / 8), {
+								x: 0,
+								y: 0,
+								w: tile.w,
+								h: tile.h,
+							}),
+						),
+					],
+				}),
+			),
+		}).animate(
+			keys("x", [
+				[0, start],
+				[len, start + dir * (rowW - W), "expo.in"],
+			]),
+		);
 	});
 	return shot("vfx-faster", at, at + len, [
-		Layer.camera({
-			id: "vfx-faster-cam",
-			targetX: W / 2,
-			targetY: H / 2,
-			targetZ: 0,
-			animation: cam,
-		} as never),
-		Layer.directionalLight({
-			id: "vfx-faster-key",
-			color: "#FFFFFF",
-			intensity: 1,
-			direction: [-0.4, 0.5, 1],
-		} as never),
-		Layer.ambientLight({
-			id: "vfx-faster-fill",
-			color: "#FFFFFF",
-			intensity: 0.6,
-		} as never),
-		Layer3D.grid({
-			id: "vfx-faster-floor",
-			width: 6000,
-			height: 6000,
-			divisions: 40,
-			lineWidth: 4,
-			color: ACCENT,
-			x: W / 2,
-			y: H / 2 + 430,
-			z: 0,
-			opacity: 0.5,
-		}),
-		Layer3D.obj(meshFile("knot"), {
-			id: "vfx-faster-knot",
-			x: W / 2,
-			y: H / 2,
-			z: 0,
-			color: ACCENT,
-			material: "lit",
-			shininess: 48,
-		} as never)
-			.animate(
-				LayerAnimation.create().fromTo("rotateX", 10, 70, {
-					start: 0,
-					end: len,
-					ease: "expo.in",
-				}),
-			)
-			.deformWithAudio({
-				audioTrackId: asset("song.mp3"),
-				mode: "twist",
-				frequencyRange: [20, 120],
-				amplitudeMultiplier: 2.2,
-			}),
+		...rows,
 		...words.map((w, i) =>
-			word({
-				id: `vfx-faster-word-${i}`,
-				text: bare(w).toUpperCase(),
-				at: w.at - sceneFrom - at,
-				outAt: i < words.length - 1 ? words[i + 1].at - sceneFrom - at : len,
-				y: i === 1 ? H / 2 - 80 : i === 0 ? 120 : H - 330,
-				size: i === 1 ? 110 : 210,
-				weight: i === 1 ? 300 : 900,
-				color: i === 2 ? ACCENT : FG,
-			}),
+			shout(
+				`vfx-faster-word-${i}`,
+				bare(w).toUpperCase(),
+				w.at - sceneFrom - at,
+				i < words.length - 1 ? words[i + 1].at - sceneFrom - at : len + 4,
+				i === 2 ? ACCENT : FG,
+			),
 		),
 	]);
 }

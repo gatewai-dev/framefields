@@ -67,7 +67,7 @@ export function chaptersOf(
 		speed: lineBar(words, "A hundred"),
 		tools: lineBar(words, "After Effects"),
 		type: lineBar(words, "Every letter"),
-		world: lineBar(words, "Step inside"),
+		world: lineBar(words, "fly the third"),
 		warp: lineBar(words, "Drop a mesh"),
 		code: lineBar(words, "It's just code"),
 		comp: lineBar(words, "key it"),

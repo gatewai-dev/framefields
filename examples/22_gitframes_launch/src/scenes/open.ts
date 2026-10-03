@@ -1,11 +1,11 @@
 /**
  * The hook, four lines in four bars. A dot lands with the first sound and a
- * ring draws around it; then the camera leaps down a runway from phrase to
+ * ring draws around it; then the camera leaps through depth from phrase to
  * phrase, arriving as each is sung (a word never shows before its syllable).
  * "commit" gets its commit, "no timeline" a timeline that is struck out, and
  * on "hit" the camera dives through the brand mark into the logo.
  */
-import { Layer, Layer3D, LayerAnimation } from "gitframes";
+import { Layer, LayerAnimation } from "gitframes";
 import { BEAT } from "../grid.js";
 import { type SungWord, sung } from "../lyrics.js";
 import {
@@ -18,6 +18,7 @@ import {
 	H,
 	type Key,
 	keys,
+	logoMark,
 	MONO,
 	MUTED,
 	plane,
@@ -32,7 +33,6 @@ const CX = W / 2;
 const CY = H / 2;
 /** Eye height above the look point: the camera looks slightly down onto the floor. */
 const LIFT = 160;
-const FLOOR_Y = CY + 420;
 const STEP_Z = 820;
 
 /** The logo takes over on the beat "Gitframes!" is sung in. */
@@ -113,8 +113,9 @@ function phrase(s: Stop, i: number, list: Stop[]) {
 		color: s.color,
 		enter: "rise",
 		z: s.z,
-		// Passed phrases leave as the camera leaps on, or they fill the lens.
-		outAt: next ? next.words[0].at - 4 : undefined,
+		// Passed phrases leave as the camera leaps on, or they fill the lens;
+		// the last clears as the camera dives, so the logo is seen whole.
+		outAt: next ? next.words[0].at - 4 : OPEN_TO - 12,
 	});
 }
 
@@ -215,56 +216,16 @@ function timeline(s: Stop, strikeAt: number) {
 	];
 }
 
-/** The runway: a grid of 3D line quads on the floor. */
-function floor(length: number) {
-	return Layer3D.grid({
-		id: "open-floor",
-		width: 9000,
-		height: length,
-		divisions: 80,
-		lineWidth: 4,
-		color: ACCENT,
-		x: CX,
-		y: FLOOR_Y,
-		z: length / 2 - 1200,
-		rotateX: 90,
-	}).animate(
-		keys("opacity", [
-			[0, 0],
-			[24, 0.4, EASE_OUT],
-		]),
-	);
-}
-
-/** The brand mark waiting at the end of the runway: a frame with a playhead. */
+/** The logo waiting at the end of the flight. */
 function brandMark(z: number, appearAt: number) {
-	const size = 420;
-	return Layer.box({
+	return logoMark({
 		id: "open-mark",
-		is3D: true,
-		position: "absolute",
-		x: CX - size / 2,
-		y: CY - size / 2,
+		size: 460,
+		x: CX,
+		y: CY,
 		z,
-		width: size,
-		height: size,
-		borderRadius: 64,
-		borderColor: ACCENT,
-		borderWidth: 34,
 		startFrame: appearAt,
-		children: [
-			Layer.box({
-				id: "open-mark-head",
-				position: "absolute",
-				x: size * 0.36,
-				y: size * 0.36,
-				width: size * 0.28,
-				height: size * 0.28,
-				borderRadius: 18,
-				background: ACCENT,
-			}),
-		],
-	} as never);
+	});
 }
 
 export function openScene() {
@@ -307,7 +268,6 @@ export function openScene() {
 			targetZ: 0,
 			animation: camAnim,
 		} as never),
-		floor(markZ + 3000),
 		Layer.shape("ellipse", {
 			id: "open-dot",
 			is3D: true,

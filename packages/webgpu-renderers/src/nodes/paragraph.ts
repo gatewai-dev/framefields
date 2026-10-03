@@ -1031,6 +1031,19 @@ export function drawParagraphNode(
 					pathOptions,
 					props.spans,
 				);
+	// verticalAlign places the text block inside a box taller than it (CSS
+	// line-box centring). Path text follows its path; captions place themselves.
+	const vAlign = props.verticalAlign ?? "top";
+	const slack =
+		props.height != null && !pathOptions && !props.isCaption
+			? props.height - (measured.height + padding * 2)
+			: 0;
+	const textRect = {
+		...props.dstRect,
+		y:
+			props.dstRect.y +
+			(vAlign === "middle" ? slack / 2 : vAlign === "bottom" ? slack : 0),
+	};
 	const anim = props.animation;
 	const isBold =
 		props.fontWeight === "bold" ||
@@ -1218,7 +1231,7 @@ export function drawParagraphNode(
 				{
 					rect: {
 						x: props.dstRect.x + padding + m.x,
-						y: props.dstRect.y + padding + m.y,
+						y: textRect.y + padding + m.y,
 						width: m.width,
 						height: m.height,
 					},
@@ -1522,7 +1535,7 @@ export function drawParagraphNode(
 						padding +
 						offsetX +
 						boldShift;
-					biasY = glyph.y + rotatedR0y + props.dstRect.y + padding + offsetY;
+					biasY = glyph.y + rotatedR0y + textRect.y + padding + offsetY;
 				} else {
 					biasX =
 						glyphX +
@@ -1536,7 +1549,7 @@ export function drawParagraphNode(
 						glyph.y -
 						cp.bearingY * fontScale +
 						scaleY +
-						props.dstRect.y +
+						textRect.y +
 						padding +
 						offsetY;
 				}
@@ -1902,7 +1915,7 @@ export function drawParagraphNode(
 
 		const emojiDstRect = {
 			x: props.dstRect.x + emoji.x + padding - offsetAdjustment,
-			y: props.dstRect.y + emoji.y + padding - offsetAdjustment,
+			y: textRect.y + emoji.y + padding - offsetAdjustment,
 			width: localEmojiSize,
 			height: localEmojiSize,
 		};
@@ -1951,14 +1964,14 @@ export function drawParagraphNode(
 		const cursorSpacing = cursorCfg.spacing ?? 3.0;
 
 		let cursorX = props.dstRect.x + padding;
-		let cursorY = props.dstRect.y + padding;
+		let cursorY = textRect.y + padding;
 
 		if (layout.glyphs.length > 0) {
 			const lastG = layout.glyphs[layout.glyphs.length - 1];
 			const fontScale = fontSize / slugFont.unitsPerEm;
 			const adv = (lastG.cp?.advanceWidth || 0) * fontScale;
 			cursorX = lastG.x + props.dstRect.x + padding + adv + cursorSpacing;
-			cursorY = lastG.y + props.dstRect.y + padding;
+			cursorY = lastG.y + textRect.y + padding;
 		}
 
 		if (cursorCfg.style === "underscore") {

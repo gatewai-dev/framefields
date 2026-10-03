@@ -109,7 +109,7 @@ Container styles (flex/block/box with children):
 
 Per-kind fields:
 - **`box`**: `background` (CSS color, also accepts gradients), `borderRadius` (number), `padding`. A `box` with children behaves like a column container.
-- **`text`**: `text` (string), `fontSize`, `fontFamily`, `fontWeight`, `fontStyle`, `fill` (text color), `align`, `verticalAlign`, `lineHeight`, `letterSpacing`, `textShadow`, `shadows`, `background` (rounded text box fill), `borderRadius`, `padding`.
+- **`text`**: `text` (string), `fontSize`, `fontFamily`, `fontWeight`, `fontStyle`, `fill` (text color), `align`, `verticalAlign` (`top` default | `middle` | `bottom`: places the text block in a `height` taller than it; ignored for path text), `lineHeight`, `letterSpacing`, `textShadow`, `shadows`, `background` (rounded text box fill), `borderRadius`, `padding`.
   - **Kinetic Typography Animators (`animators`)**: Array of text animators applied sequentially at the Slug GPU glyph instancing stage:
     - `id` (string): Unique animator identifier.
     - `unit` (`"character"` | `"word"` | `"line"`, default `"character"`): Granularity of text breakdown.

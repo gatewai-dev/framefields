@@ -10,18 +10,20 @@ import { drawSignalNode } from "./signal.js";
 
 vi.mock("../signals/signal-registry.js", () => {
 	const mockExtract = vi.fn().mockResolvedValue(undefined);
-	const mockEnsure = vi.fn().mockImplementation(async (device, sd, fps, renderId) => {
-		if (!sd) return;
-		const check = async (s: any) => {
-			if (!s || typeof s !== "object") return;
-			if (s.sourceUrl && s.nodeId) {
-				await mockExtract(device, s.sourceUrl, s, s.nodeId, fps, renderId);
-			}
-			if (s.signalA) await check(s.signalA);
-			if (s.signalB) await check(s.signalB);
-		};
-		await check(sd);
-	});
+	const mockEnsure = vi
+		.fn()
+		.mockImplementation(async (device, sd, fps, renderId) => {
+			if (!sd) return;
+			const check = async (s: any) => {
+				if (!s || typeof s !== "object") return;
+				if (s.sourceUrl && s.nodeId) {
+					await mockExtract(device, s.sourceUrl, s, s.nodeId, fps, renderId);
+				}
+				if (s.signalA) await check(s.signalA);
+				if (s.signalB) await check(s.signalB);
+			};
+			await check(sd);
+		});
 
 	return {
 		signalRegistry: {

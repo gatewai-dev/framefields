@@ -197,10 +197,7 @@ class SrtLoaderCache {
 					}
 				} else if (src.includes("-->")) {
 					srtString = src;
-				} else if (
-					src.startsWith("http://") ||
-					src.startsWith("https://")
-				) {
+				} else if (src.startsWith("http://") || src.startsWith("https://")) {
 					const res = await fetch(src);
 					if (!res.ok) throw new Error(`Failed to fetch SRT: ${src}`);
 					srtString = await res.text();
@@ -215,7 +212,9 @@ class SrtLoaderCache {
 					}
 					if (typeof process !== "undefined" && process.versions?.node) {
 						try {
-							const fs = await import(/* webpackIgnore: true */ "node:fs/promises");
+							const fs = await import(
+								/* webpackIgnore: true */ "node:fs/promises"
+							);
 							srtString = await fs.readFile(filePath, "utf-8");
 						} catch {
 							const res = await fetch(src);

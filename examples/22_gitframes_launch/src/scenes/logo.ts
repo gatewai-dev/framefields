@@ -1,5 +1,5 @@
 /**
- * "Gitframes!" — out of the accent flood the name, extruded in 3D, whips
+ * "Gitframes!" — out of the accent flood the logo and the name, extruded in 3D, whip
  * round on an orbiting camera and lands on the sung word, then drifts until
  * the drop cuts it away.
  */
@@ -11,10 +11,10 @@ import {
 	DISPLAY,
 	EASE_OUT,
 	FG,
-	GRID,
 	H,
 	keys,
 	label,
+	logoMark,
 	plane,
 	scene,
 	W,
@@ -69,22 +69,19 @@ export function logoScene() {
 			color: "#FFFFFF",
 			intensity: 0.6,
 		} as never),
-		Layer3D.grid({
-			id: "logo-floor",
-			width: 6000,
-			height: 6000,
-			divisions: 30,
-			lineWidth: 3,
-			color: GRID,
+		// The logo and the name stand only once the name is sung.
+		logoMark({
+			id: "logo-mark",
+			size: 200,
 			x: CX,
-			y: CY + 260,
+			y: CY - 250,
 			z: 0,
+			startFrame: land - 12,
 		}),
-		// The name stands only once it is sung.
 		window3D("logo-name-window", land - 12, len - land + 12, [
 			Layer3D.extrudedText({
 				id: "logo-3d",
-				text: "GITFRAMES",
+				text: "gitframes",
 				fontFamily: DISPLAY,
 				fontWeight: 900,
 				fontSize: 210,

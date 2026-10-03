@@ -27,12 +27,6 @@ const AZURE = "#3B82F6";
 const BLUE = "#1D4ED8";
 const NAVY = "#0B1E4D";
 const WHITE = "#FFFFFF";
-/** Mark gradient on light backgrounds: sky → azure → deep blue. */
-const BLUE_STOPS = [
-	[0, "#38BDF8"],
-	[0.5, AZURE],
-	[1, BLUE],
-];
 
 /** Lays out `text` as one SVG path (outlines), returning the path and its advance width. */
 function textPath(
@@ -57,10 +51,12 @@ function textPath(
 }
 
 /**
- * The mark: viewfinder brackets (frame + vision reticle) around a play triangle.
- * `paint` is a solid color; omit it for the blue gradient.
+ * The mark: git and frames. Viewfinder brackets (the frame) around a git
+ * branch: two commits on a line, and a branch leaving the top commit whose
+ * head is a play triangle (the commit that plays).
+ * One solid paint: azure unless `paint` says otherwise.
  */
-function mark({ x, y, size, id, paint }) {
+function mark({ x, y, size, paint }) {
 	const s = size / 512;
 	const t = (v) => (v * s).toFixed(2);
 	const stroke = 34;
@@ -77,18 +73,21 @@ function mark({ x, y, size, id, paint }) {
 		corner(a, b, 1, -1),
 		corner(b, b, -1, -1),
 	].join(" ");
-	// Play triangle, optically centered (nudged right); a round-joined stroke of the same
-	// paint softens the corners evenly.
-	const tri = `M ${t(214)} ${t(178)} L ${t(346)} ${t(256)} L ${t(214)} ${t(334)} Z`;
-	const fill = paint ?? `url(#${id}-g)`;
-	const defs = paint
-		? ""
-		: `<defs><linearGradient id="${id}-g" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="${t(512)}" y2="${t(512)}">${BLUE_STOPS.map(([o, c]) => `<stop offset="${o}" stop-color="${c}"/>`).join("")}</linearGradient></defs>`;
+	const fill = paint ?? AZURE;
+	// The branch: a trunk between two commits, and a curve off the top commit
+	// into the play triangle (the branch head), whose round-joined stroke of
+	// the same paint softens its corners evenly.
+	const trunk = `M ${t(176)} ${t(182)} L ${t(176)} ${t(330)} M ${t(176)} ${t(182)} C ${t(176)} ${t(256)} ${t(236)} ${t(256)} ${t(276)} ${t(256)}`;
+	const commit = (cy) =>
+		`<circle cx="${t(176)}" cy="${t(cy)}" r="${t(32)}" fill="${fill}"/>`;
+	const tri = `M ${t(284)} ${t(200)} L ${t(362)} ${t(256)} L ${t(284)} ${t(312)} Z`;
 	return `
 	<g transform="translate(${x} ${y})">
-		${defs}
 		<path d="${brackets}" fill="none" stroke="${fill}" stroke-width="${t(stroke)}" stroke-linecap="round" stroke-linejoin="round"/>
-		<path d="${tri}" fill="${fill}" stroke="${fill}" stroke-width="${t(40)}" stroke-linejoin="round"/>
+		<path d="${trunk}" fill="none" stroke="${fill}" stroke-width="${t(28)}" stroke-linecap="round"/>
+		${commit(172)}
+		${commit(340)}
+		<path d="${tri}" fill="${fill}" stroke="${fill}" stroke-width="${t(34)}" stroke-linejoin="round"/>
 	</g>`;
 }
 
@@ -111,7 +110,7 @@ function writeBoth(name, content, width) {
 // ── Logo (mark only, transparent) ───────────────────────────────────────────
 writeBoth(
 	"logo",
-	svg(512, 512, mark({ x: 0, y: 0, size: 512, id: "logo" })),
+	svg(512, 512, mark({ x: 0, y: 0, size: 512 })),
 	512,
 );
 
@@ -140,7 +139,7 @@ for (const [name, fg, gitFill, markPaint] of [
 		svg(
 			width,
 			150,
-			`${mark({ x: 0, y: 4, size: 140, id: name, paint: markPaint })}
+			`${mark({ x: 0, y: 4, size: 140, paint: markPaint })}
 	<path d="${git.d}" fill="${gitFill}"/>
 	<path d="${frames.d}" fill="${fg}"/>`,
 		),
@@ -235,7 +234,7 @@ for (const [name, fg, gitFill, markPaint] of [
 	<rect width="${W}" height="${H}" rx="24" fill="url(#banner-bg)"/>
 	<rect width="${W}" height="${H}" rx="24" fill="url(#banner-glow)"/>
 	<rect x="0.5" y="0.5" width="${W - 1}" height="${H - 1}" rx="23.5" fill="none" stroke="${WHITE}" stroke-opacity="0.14"/>
-	${mark({ x: 82, y: 148, size: 104, id: "banner", paint: WHITE })}
+	${mark({ x: 82, y: 148, size: 104, paint: WHITE })}
 	<path d="${git.d}" fill="${WHITE}" fill-opacity="0.6"/>
 	<path d="${frames.d}" fill="${WHITE}"/>
 	${timeline}

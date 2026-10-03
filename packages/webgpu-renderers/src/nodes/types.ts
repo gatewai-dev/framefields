@@ -1,4 +1,4 @@
-import type { SignalData } from "@gitframes/core";
+import type { SignalData, TextSpan } from "@gitframes/core";
 import type { ChartGPUOptions } from "chartgpu";
 import type { Rect } from "../renderer2d/index.js";
 
@@ -128,7 +128,8 @@ export interface ParagraphNodeProps {
 	opacity?: number;
 	matrix?: DOMMatrix;
 	lineHeight?: number;
-	align?: TextAlign;
+	/** "start"/"end" follow the line direction (left/right for LTR text) */
+	align?: TextAlign | "start" | "end";
 	fontWeight?: number | string;
 	fontStyle?: "normal" | "italic";
 	letterSpacing?: number;
@@ -173,6 +174,10 @@ export interface ParagraphNodeProps {
 	durationMs?: number;
 	elapsedMs?: number;
 	isCaption?: boolean;
+	/** Rich-text runs, each with its own font, size or color */
+	spans?: TextSpan[];
+	/** Variable-font axis values, e.g. `{ wght: 650 }` */
+	variableAxes?: Record<string, number>;
 	isVideoMode?: boolean;
 	renderId?: string;
 }

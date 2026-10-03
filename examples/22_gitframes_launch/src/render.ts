@@ -1,11 +1,12 @@
 /**
- * pnpm render                    → output/gitframes-launch.mp4 (with the score)
+ * pnpm render                    → output/gitframes-launch.mp4 (with the score) + QA report; exits 1 if QA fails
  * pnpm render frames 0 80 320    → output/frames/f0000.png … for visual checks
  * pnpm render sheet 0 320 20     → every 20th frame from 0 to 320, plus a contact sheet
+ * pnpm render:src …               → any of the above, run on the engine's source (no package builds)
  */
 import fs from "node:fs/promises";
 import path from "node:path";
-import { HeadlessMediaRenderer } from "gitframes";
+import { formatQaReport, HeadlessMediaRenderer } from "gitframes";
 import { buildFilm } from "./film.js";
 import { OUTPUT } from "./paths.js";
 
@@ -39,10 +40,15 @@ if (mode === "frames" || mode === "sheet") {
 	const result = await film.renderVideo({
 		outputPath: path.join(OUTPUT, "gitframes-launch.mp4"),
 		quality: "high",
+		qa: true,
 	});
 	await result.cleanup?.().catch(() => {});
 	console.log(
 		`${path.join(OUTPUT, "gitframes-launch.mp4")} (${((Date.now() - started) / 1000).toFixed(1)} s)`,
 	);
+	if (result.qa) {
+		console.log(formatQaReport(result.qa));
+		if (!result.qa.passed) process.exitCode = 1;
+	}
 }
-process.exit(0);
+process.exit(process.exitCode ?? 0);

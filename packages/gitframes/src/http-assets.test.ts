@@ -214,7 +214,7 @@ describe("Web HTTP Asset Loading Pipeline", () => {
 			Layer.text("Cloud Typography", {
 				fontFamily: "CloudInter",
 				fontSize: 48,
-				color: "#ffffff",
+				fill: "#ffffff",
 			}),
 		);
 

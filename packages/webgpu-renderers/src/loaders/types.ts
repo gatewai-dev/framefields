@@ -25,6 +25,11 @@ export interface Material3D {
 	specularColor?: [number, number, number];
 	ambientColor?: [number, number, number];
 	shininess?: number;
+	/**
+	 * Specular strength parsed from the file (e.g. OBJ `Ks`). The mesh pass
+	 * lights with the layer's `specularIntensity`; this is not applied yet.
+	 */
+	specularIntensity?: number;
 	roughness?: number;
 	metallic?: number;
 	opacity?: number;

@@ -3,13 +3,13 @@ import type {
 	LayoutNode,
 	MaterialType,
 	Model3DNode,
-	TextNode,
 } from "@gitframes/compositions/program";
 import {
 	generateExtrudedTextGeometry,
 	type Model3DData,
 	SlugFontCache,
 } from "@gitframes/webgpu-renderers";
+import { autoId } from "./ids.js";
 import { type AnimatableNode, Layer } from "./index.js";
 
 export interface CubeFaceConfig {
@@ -169,6 +169,10 @@ export interface Text3DOptions {
 	rotateX?: number;
 	rotateY?: number;
 	rotateZ?: number;
+	scale?: number;
+	scaleX?: number;
+	scaleY?: number;
+	scaleZ?: number;
 	align?: "start" | "center" | "end" | "left" | "right";
 	verticalAlign?: "top" | "middle" | "bottom";
 	letterSpacing?: number;
@@ -193,14 +197,23 @@ export interface Text3DOptions {
 	stroke?: string;
 	strokeWidth?: number;
 	extrusionDepth?: number;
+	/** @deprecated No effect: extruded text is one solid mesh, not a stack of slices. */
 	extrusionSteps?: number;
+	/**
+	 * Extruded text only: color of the side walls. `fill` colors the letter
+	 * faces (front and back). Defaults to `fill`.
+	 */
 	bevelColor?: string;
 }
 
 export interface ExtrudedText3DOptions extends Text3DOptions {
 	depth: number;
+	/** @deprecated No effect: extruded text is one solid mesh, not a stack of slices. */
 	slices?: number;
+	/** Fixed straight segments per curve; by default curves split as finely as their on-screen size needs. */
 	curveSegments?: number;
+	/** Most a flattened curve strays from the outline, in on-screen px at scale 1 (default 0.1). */
+	curveTolerance?: number;
 }
 
 export type Shape3DContainer = AnimatableNode<BoxNode> & {
@@ -208,6 +221,16 @@ export type Shape3DContainer = AnimatableNode<BoxNode> & {
 	items?: LayoutNode[];
 	[Symbol.iterator](): Iterator<LayoutNode>;
 };
+
+/** Largest initial scale of an extruded text node along its outline's axes. */
+function extrudedTextScale(options: ExtrudedText3DOptions): number {
+	const scale = options.scale ?? 1;
+	const s = Math.max(
+		Math.abs(scale * (options.scaleX ?? 1)),
+		Math.abs(scale * (options.scaleY ?? 1)),
+	);
+	return s > 0 ? s : 1;
+}
 
 export const Layer3D = {
 	/**
@@ -345,7 +368,7 @@ export const Layer3D = {
 		];
 
 		const container = Layer.box({
-			id: options.id ?? "cube-" + Math.random().toString(36).slice(2, 9),
+			id: options.id ?? autoId("cube"),
 			position: "absolute",
 			x: options.x ?? 0,
 			y: options.y ?? 0,
@@ -401,7 +424,7 @@ export const Layer3D = {
 		});
 
 		const container = Layer.box({
-			id: options.id ?? "carousel-" + Math.random().toString(36).slice(2, 9),
+			id: options.id ?? autoId("carousel"),
 			position: "absolute",
 			x: options.x ?? 0,
 			y: options.y ?? 0,
@@ -445,7 +468,8 @@ export const Layer3D = {
 			const color =
 				typeof cfg === "string"
 					? cfg
-					: (cfg?.background ?? `hsl(${(i * 360) / n}, 70%, 50%)`);
+					: ((cfg as { background?: string } | undefined)?.background ??
+						`hsl(${(i * 360) / n}, 70%, 50%)`);
 
 			panels.push(
 				Layer.box({
@@ -465,7 +489,7 @@ export const Layer3D = {
 		}
 
 		const container = Layer.box({
-			id: options.id ?? "prism-" + Math.random().toString(36).slice(2, 9),
+			id: options.id ?? autoId("prism"),
 			position: "absolute",
 			x: options.x ?? 0,
 			y: options.y ?? 0,
@@ -495,7 +519,7 @@ export const Layer3D = {
 	 */
 	plane(options: Plane3DOptions): AnimatableNode<BoxNode> {
 		return Layer.box({
-			id: options.id ?? "plane-" + Math.random().toString(36).slice(2, 9),
+			id: options.id ?? autoId("plane"),
 			position: "absolute",
 			width: options.width,
 			height: options.height,
@@ -520,7 +544,7 @@ export const Layer3D = {
 	 */
 	grid(options: Grid3DOptions): AnimatableNode<BoxNode> {
 		const { width, height } = options;
-		const id = options.id ?? "grid-" + Math.random().toString(36).slice(2, 9);
+		const id = options.id ?? autoId("grid");
 		const divisions = Math.max(1, Math.round(options.divisions ?? 10));
 		const lineWidth = options.lineWidth ?? 2;
 		const color = options.color ?? "rgba(59, 130, 246, 0.5)";
@@ -583,19 +607,18 @@ export const Layer3D = {
 	},
 
 	/**
-	 * Creates a standalone planar 3D text node or multi-slice extruded 3D text.
+	 * Creates a standalone planar 3D text node, or solid extruded 3D text when `extrusionDepth` is set.
 	 */
 	text(options: Text3DOptions): AnimatableNode<LayoutNode> {
 		if (options.extrusionDepth && options.extrusionDepth > 0) {
 			return Layer3D.extrudedText({
 				...options,
 				depth: options.extrusionDepth,
-				slices: options.extrusionSteps,
 			});
 		}
 
 		return Layer.text(options.text, {
-			id: options.id ?? "text3d-" + Math.random().toString(36).slice(2, 9),
+			id: options.id ?? autoId("text3d"),
 			position: "absolute",
 			x: options.x ?? 0,
 			y: options.y ?? 0,
@@ -630,12 +653,16 @@ export const Layer3D = {
 	},
 
 	/**
-	 * Creates multi-slice volumetric extruded 3D typography with depth shading.
+	 * Creates solid extruded 3D typography: `fill` colors the letter faces,
+	 * `bevelColor` the side walls; curves are tessellated to `curveTolerance`.
 	 */
 	extrudedText(options: ExtrudedText3DOptions): Shape3DContainer {
 		const { depth, text, fill = "#ffffff", bevelColor } = options;
 
 		let modelData: Model3DData | undefined;
+		// Tolerance is in on-screen px: a node scaled up 3x needs 3x finer geometry.
+		const curveTolerance =
+			(options.curveTolerance ?? 0.1) / extrudedTextScale(options);
 		const parsedFont =
 			(options.fontFamily
 				? SlugFontCache.getParsed(options.fontFamily)
@@ -647,28 +674,36 @@ export const Layer3D = {
 		if (parsedFont) {
 			const res = generateExtrudedTextGeometry({
 				text,
-				font: parsedFont,
+				// SlugFontCache holds fontkit fonts under a narrower type.
+				font: parsedFont as unknown as Parameters<
+					typeof generateExtrudedTextGeometry
+				>[0]["font"],
 				fontSize: options.fontSize ?? 48,
 				depth,
 				fill,
 				bevelColor,
-				curveSegments: options.curveSegments ?? 5,
+				curveSegments: options.curveSegments,
+				curveTolerance,
 				align: options.align,
 				verticalAlign: options.verticalAlign,
 				letterSpacing: options.letterSpacing,
-				material: options.material,
+				// The mesh's own shading only knows these; glass and the like are
+				// layer materials, applied by the model node below.
+				material:
+					options.material === "lit" ||
+					options.material === "unlit" ||
+					options.material === "toon"
+						? options.material
+						: undefined,
 				shininess: options.shininess,
 				roughness: options.roughness,
-				specularIntensity: options.specularIntensity,
-				ambientIntensity: options.ambientIntensity,
 				metallic: options.metallic,
 			});
 			modelData = res.modelData;
 		}
 
 		const modelNode = Layer.model({
-			id:
-				options.id ?? `extruded-text-${Math.random().toString(36).slice(2, 9)}`,
+			id: options.id ?? autoId("extruded-text"),
 			modelData,
 			is3D: true,
 			x: options.x ?? 0,
@@ -689,11 +724,13 @@ export const Layer3D = {
 			ambientIntensity: options.ambientIntensity ?? 1.0,
 			metallic: options.metallic,
 			twoSided: options.twoSided ?? true,
-			text3dOptions: options,
+			// What the compositor rebuilds the mesh from when modelData did not
+			// survive (a spec sent as JSON): the same tolerance as here.
+			text3dOptions: { ...options, curveTolerance },
 		});
 
 		return Object.assign(modelNode, {
-			faces: [modelNode] as AnimatableNode<BoxNode>[],
+			faces: [modelNode] as unknown as AnimatableNode<BoxNode>[],
 			items: [modelNode],
 			[Symbol.iterator]: function* () {
 				yield modelNode;

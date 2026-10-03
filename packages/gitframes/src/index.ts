@@ -20,6 +20,7 @@ import {
 	type RegisteredFont,
 	type RegisterFontOptions,
 } from "./fonts/index.js";
+import { autoId } from "./ids.js";
 import { normalizeTextSpans, type TextSpan } from "./rich-text.js";
 
 export {
@@ -149,6 +150,7 @@ import {
 import {
 	analyzeSequence as analyzeVisionFrames,
 	type LandmarkCoordinateSignals,
+	type MaskTrackSignals,
 	type ObjectTrackSignals,
 	type PinToLandmarkOptions,
 	type PinToObjectOptions,
@@ -227,6 +229,8 @@ import {
 	type FrameGridOptions,
 	HeadlessMediaRenderer,
 	renderFrameGrid,
+	type VideoQaOptions,
+	type VideoQaReport,
 } from "./renderer/index.js";
 import {
 	type Carousel3DOptions,
@@ -260,13 +264,30 @@ export interface SectionOptions {
 
 export type SectionNode = AnimatableNode<BoxNode> & {
 	readonly innerMedia: AnimatableNode<MediaNode>;
-	readonly effects: Effect[];
-	addEffect(effect: Effect): SectionNode;
-	withEffect(effect: Effect): SectionNode;
-	withEffects(effects: Effect[]): SectionNode;
+	// Any effect, whatever its config shape (Blur, FilmGrain, …).
+	readonly effects: Effect<object>[];
+	addEffect(effect: Effect<object>): SectionNode;
+	withEffect(effect: Effect<object>): SectionNode;
+	withEffects(effects: Effect<object>[]): SectionNode;
 };
 
 export type TrackedRegionOptions = SectionOptions;
+
+/** Editing helpers attached to every tracked object (see decorateTrackSignals). */
+export interface TrackEditing {
+	/** A section of the source that follows this track */
+	section(
+		sourceOrOptions?: string | MediaNode | SectionOptions,
+		options?: SectionOptions,
+	): SectionNode;
+	/** A blur confined to this track's region */
+	blurEffect(options?: Partial<BlurProps>): Blur;
+	/** The tracked region of `source`, cut out as a section */
+	isolate(source: string | MediaNode, options?: TrackedRegionOptions): SectionNode;
+}
+
+/** A tracked object with its editing helpers, as vision hands it out. */
+export type EditableObjectTrack = ObjectTrackSignals & TrackEditing;
 
 function decorateTrackSignals<T extends ObjectTrackSignals>(
 	track: T,
@@ -471,6 +492,7 @@ export {
 	getScramblePool,
 	getShuffledOrder,
 	type Keyframe,
+	type KeyframeTuple,
 	type KineticMarqueeConfig,
 	KineticMarqueeConfigSchema,
 	LayerAnimation,
@@ -703,6 +725,11 @@ export interface CompositionOptions {
 	backgroundColor?: string;
 	fonts?: string[];
 	signals?: Record<string, unknown>;
+	/**
+	 * Smooth the edges of 3D meshes (extruded text, models) with 4x MSAA.
+	 * Default true; set false to save ~60-125 MB of GPU memory at 1080p.
+	 */
+	antialias3d?: boolean;
 }
 
 /**
@@ -819,25 +846,9 @@ export class Media {
 	 * Renders this media pipeline into an MP4/WebM video file with audio.
 	 */
 	public async renderVideo(
-		outputPathOrOptions:
-			| string
-			| {
-					codec?: string;
-					audioCodec?: string;
-					quality?: string;
-					concurrency?: number;
-					outputPath?: string;
-					renderer?: HeadlessMediaRenderer;
-			  } = {},
-		options: {
-			codec?: string;
-			audioCodec?: string;
-			quality?: string;
-			concurrency?: number;
-			outputPath?: string;
-			renderer?: HeadlessMediaRenderer;
-		} = {},
-	): Promise<{ filePath: string; cleanup: () => Promise<void> }> {
+		outputPathOrOptions: string | RenderVideoOptions = {},
+		options: RenderVideoOptions = {},
+	): Promise<RenderVideoResult> {
 		const opts =
 			typeof outputPathOrOptions === "string"
 				? { ...options, outputPath: outputPathOrOptions }
@@ -850,6 +861,29 @@ export class Media {
 		}
 		return result;
 	}
+}
+
+export interface RenderVideoOptions {
+	codec?: string;
+	audioCodec?: string;
+	quality?: string;
+	concurrency?: number;
+	outputPath?: string;
+	renderer?: HeadlessMediaRenderer;
+	/**
+	 * Check the output while it renders and return the findings as `qa`:
+	 * dropped, black or frozen frames, loudness (LUFS), clipping, silence and
+	 * document warnings such as truncated animations. `true` uses defaults;
+	 * pass thresholds (e.g. `{ targetLufs: -14 }`) to tighten them.
+	 */
+	qa?: boolean | VideoQaOptions;
+}
+
+export interface RenderVideoResult {
+	filePath: string;
+	cleanup: () => Promise<void>;
+	/** Present when rendered with `qa`; print it with `formatQaReport` */
+	qa?: VideoQaReport;
 }
 
 export interface SubjectSandwichOptions {
@@ -898,6 +932,7 @@ export class Composition {
 	public fps: number;
 	public durationMs?: number;
 	public backgroundColor: string;
+	public antialias3d?: boolean;
 	public fonts: string[];
 	public children: LayoutNode[] = [];
 	public audioTracks: MediaNode[] = [];
@@ -1046,6 +1081,7 @@ export class Composition {
 				? (options.durationFrames / this.fps) * 1000
 				: undefined);
 		this.backgroundColor = options.backgroundColor ?? "#000000";
+		this.antialias3d = options.antialias3d;
 		this.fonts = options.fonts ?? [];
 		this.signals = options.signals ?? {};
 	}
@@ -1148,7 +1184,7 @@ export class Composition {
 		const src =
 			typeof options.source === "string"
 				? options.source
-				: (options.source.src ?? "");
+				: (options.source.inputHandleId ?? "");
 		const fit = options.fit ?? "cover";
 		const feather = options.feather ?? 4;
 		const featherVal = feather > 1 ? feather / 100 : feather;
@@ -1205,7 +1241,7 @@ export class Composition {
 		const src =
 			typeof options.source === "string"
 				? options.source
-				: (options.source.src ?? "");
+				: (options.source.inputHandleId ?? "");
 		const damping = Math.max(0, Math.min(0.99, options.damping ?? 0.8));
 		const headroom = options.leadHeadroom ?? 0.18;
 		const compW = this.width;
@@ -1325,7 +1361,7 @@ export class Composition {
 			volume: options.muted ? 0 : (options.volume ?? 1),
 		});
 
-		container.children.push(videoPlate);
+		(container.children ??= []).push(videoPlate);
 		this.add(container);
 		return this;
 	}
@@ -1353,7 +1389,7 @@ export class Composition {
 		const src =
 			typeof options.source === "string"
 				? options.source
-				: (options.source?.src ?? "");
+				: (options.source?.inputHandleId ?? "");
 
 		const outlineLayer = Layer.box({
 			width: compW,
@@ -1378,7 +1414,7 @@ export class Composition {
 				mode: "mask",
 				enableSegmentation: true,
 			});
-			outlineLayer.children.push(maskVideo);
+			(outlineLayer.children ??= []).push(maskVideo);
 		}
 
 		outlineLayer.apply(
@@ -1547,6 +1583,7 @@ export class Composition {
 			fps: this.fps,
 			mode: "Video",
 			backgroundColor: this.backgroundColor,
+			...(this.antialias3d !== undefined && { antialias3d: this.antialias3d }),
 			layout: layoutItems,
 			fonts: mergedFonts,
 			signals: this.signals,
@@ -1652,25 +1689,9 @@ export class Composition {
 	 * Renders this composition into an MP4/WebM video file with audio.
 	 */
 	public async renderVideo(
-		outputPathOrOptions:
-			| string
-			| {
-					codec?: string;
-					audioCodec?: string;
-					quality?: string;
-					concurrency?: number;
-					outputPath?: string;
-					renderer?: HeadlessMediaRenderer;
-			  } = {},
-		options: {
-			codec?: string;
-			audioCodec?: string;
-			quality?: string;
-			concurrency?: number;
-			outputPath?: string;
-			renderer?: HeadlessMediaRenderer;
-		} = {},
-	): Promise<{ filePath: string; cleanup: () => Promise<void> }> {
+		outputPathOrOptions: string | RenderVideoOptions = {},
+		options: RenderVideoOptions = {},
+	): Promise<RenderVideoResult> {
 		const opts =
 			typeof outputPathOrOptions === "string"
 				? { ...options, outputPath: outputPathOrOptions }
@@ -2039,7 +2060,7 @@ export const Layer = {
 		options: Partial<MediaNode> = {},
 	): AnimatableNode<MediaNode> =>
 		withAnimation({
-			id: options.id ?? "video-" + Math.random().toString(36).slice(2, 9),
+			id: options.id ?? autoId("video"),
 			kind: "media",
 			inputHandleId: src,
 			dataType: "Video",
@@ -2051,7 +2072,7 @@ export const Layer = {
 		options: Partial<MediaNode> = {},
 	): AnimatableNode<MediaNode> =>
 		withAnimation({
-			id: options.id ?? "img-" + Math.random().toString(36).slice(2, 9),
+			id: options.id ?? autoId("img"),
 			kind: "media",
 			inputHandleId: src,
 			dataType: "Image",
@@ -2063,7 +2084,7 @@ export const Layer = {
 		options: Partial<MediaNode> = {},
 	): AnimatableNode<MediaNode> =>
 		withAnimation({
-			id: options.id ?? "svg-" + Math.random().toString(36).slice(2, 9),
+			id: options.id ?? autoId("svg"),
 			kind: "media",
 			inputHandleId: src,
 			dataType: "SVG",
@@ -2075,7 +2096,7 @@ export const Layer = {
 		options: Partial<MediaNode> = {},
 	): AnimatableNode<MediaNode> =>
 		withAnimation({
-			id: options.id ?? "lottie-" + Math.random().toString(36).slice(2, 9),
+			id: options.id ?? autoId("lottie"),
 			kind: "media",
 			inputHandleId: src,
 			dataType: "Lottie",
@@ -2087,7 +2108,7 @@ export const Layer = {
 		options: Partial<MediaNode> = {},
 	): AnimatableNode<MediaNode> =>
 		withAnimation({
-			id: options.id ?? "audio-" + Math.random().toString(36).slice(2, 9),
+			id: options.id ?? autoId("audio"),
 			kind: "media",
 			inputHandleId: src,
 			dataType: "Audio",
@@ -2135,7 +2156,7 @@ export const Layer = {
 		}
 
 		return withAnimation({
-			id: options.id ?? "text-" + Math.random().toString(36).slice(2, 9),
+			id: options.id ?? autoId("text"),
 			kind: "text",
 			fontFamily:
 				options.fontFamily ?? FontManager.getAll()[0]?.family ?? "Inter",
@@ -2151,7 +2172,7 @@ export const Layer = {
 		options: Partial<MediaNode> = {},
 	): AnimatableNode<MediaNode> =>
 		withAnimation({
-			id: options.id ?? "caption-" + Math.random().toString(36).slice(2, 9),
+			id: options.id ?? autoId("caption"),
 			kind: "media",
 			inputHandleId: src,
 			dataType: options.dataType ?? "Caption",
@@ -2173,7 +2194,7 @@ export const Layer = {
 		options: Partial<ShapeNode> = {},
 	): AnimatableNode<ShapeNode> =>
 		withAnimation({
-			id: options.id ?? "shape-" + Math.random().toString(36).slice(2, 9),
+			id: options.id ?? autoId("shape"),
 			kind: "shape",
 			shapeType: options.shapeType ?? shapeType,
 			fillColor: options.fillColor ?? "#3b82f6",
@@ -2181,7 +2202,7 @@ export const Layer = {
 		}),
 	flex: (options: Partial<FlexNode> = {}): AnimatableNode<FlexNode> =>
 		withAnimation({
-			id: options.id ?? "flex-" + Math.random().toString(36).slice(2, 9),
+			id: options.id ?? autoId("flex"),
 			kind: "flex",
 			dir: options.dir ?? "column",
 			children: options.children ?? [],
@@ -2189,7 +2210,7 @@ export const Layer = {
 		}),
 	box: (options: Partial<BoxNode> = {}): AnimatableNode<BoxNode> =>
 		withAnimation({
-			id: options.id ?? "box-" + Math.random().toString(36).slice(2, 9),
+			id: options.id ?? autoId("box"),
 			kind: "box",
 			background: options.background ?? "transparent",
 			children: options.children ?? [],
@@ -2312,9 +2333,7 @@ export const Layer = {
 
 		const boxId =
 			opts.id ??
-			(target
-				? `section-track-${target.trackId}-${Math.random().toString(36).slice(2, 8)}`
-				: `section-${Math.random().toString(36).slice(2, 8)}`);
+			(target ? autoId(`section-track-${target.trackId}`) : autoId("section"));
 
 		let box = Layer.box({
 			id: boxId,
@@ -2417,14 +2436,14 @@ export const Layer = {
 		props: Partial<ChartNode> = {},
 	): AnimatableNode<ChartNode> =>
 		withAnimation({
-			id: props.id ?? "chart-" + Math.random().toString(36).slice(2, 9),
+			id: props.id ?? autoId("chart"),
 			kind: "chart",
 			chartOptions: options,
 			...props,
 		}),
 	camera: (options: Partial<CameraNode> = {}): AnimatableNode<CameraNode> =>
 		withAnimation<CameraNode>({
-			id: options.id ?? "camera-" + Math.random().toString(36).slice(2, 9),
+			id: options.id ?? autoId("camera"),
 			kind: "camera",
 			mode: options.mode ?? "lookAt",
 			pitch: options.pitch ?? 0,
@@ -2434,7 +2453,7 @@ export const Layer = {
 		}),
 	light: (options: Partial<LightNode> = {}): AnimatableNode<LightNode> =>
 		withAnimation<LightNode>({
-			id: options.id ?? "light-" + Math.random().toString(36).slice(2, 9),
+			id: options.id ?? autoId("light"),
 			kind: "light",
 			lightType: options.lightType ?? "point",
 			color: options.color ?? "#ffffff",
@@ -2463,7 +2482,7 @@ export const Layer = {
 		Layer3D.prism(options),
 	model: (options: Partial<Model3DNode> = {}): AnimatableNode<Model3DNode> =>
 		withAnimation({
-			id: options.id ?? "model3d-" + Math.random().toString(36).slice(2, 9),
+			id: options.id ?? autoId("model3d"),
 			kind: "model3d",
 			is3D: options.is3D ?? true,
 			modelFormat: options.modelFormat ?? "auto",
@@ -2567,8 +2586,7 @@ export const Light = {
 		options: Partial<LightNode> = {},
 	): AnimatableNode<LightNode> =>
 		withAnimation({
-			id:
-				options.id ?? "light-ambient-" + Math.random().toString(36).slice(2, 9),
+			id: options.id ?? autoId("light-ambient"),
 			kind: "light",
 			lightType: "ambient",
 			color,
@@ -2577,9 +2595,7 @@ export const Light = {
 		}),
 	directional: (options: Partial<LightNode> = {}): AnimatableNode<LightNode> =>
 		withAnimation({
-			id:
-				options.id ??
-				"light-directional-" + Math.random().toString(36).slice(2, 9),
+			id: options.id ?? autoId("light-directional"),
 			kind: "light",
 			lightType: "directional",
 			color: options.color ?? "#ffffff",
@@ -2594,7 +2610,7 @@ export const Light = {
 		}),
 	point: (options: Partial<LightNode> = {}): AnimatableNode<LightNode> =>
 		withAnimation({
-			id: options.id ?? "light-point-" + Math.random().toString(36).slice(2, 9),
+			id: options.id ?? autoId("light-point"),
 			kind: "light",
 			lightType: "point",
 			color: options.color ?? "#ffffff",
@@ -2608,7 +2624,7 @@ export const Light = {
 		}),
 	spot: (options: Partial<LightNode> = {}): AnimatableNode<LightNode> =>
 		withAnimation({
-			id: options.id ?? "light-spot-" + Math.random().toString(36).slice(2, 9),
+			id: options.id ?? autoId("light-spot"),
 			kind: "light",
 			lightType: "spot",
 			color: options.color ?? "#ffffff",
@@ -2632,11 +2648,18 @@ export {
 	type FrameGridOptions,
 	type FrameGridRenderable,
 	type FrameSamplePoint,
+	formatQaReport,
 	HeadlessMediaRenderer,
 	HeadlessWebGPURenderer,
+	type QaIssue,
+	type QaSegment,
 	renderFrameGrid,
 	renderSemaphore,
 	resolveSamplePoints,
+	type AudioQaStats,
+	type VideoQaOptions,
+	type VideoQaReport,
+	type VideoQaStats,
 } from "./renderer/index.js";
 
 export function section(

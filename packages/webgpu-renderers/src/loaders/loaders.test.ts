@@ -34,7 +34,7 @@ vt 1.0 1.0
 vt 0.0 1.0
 f 1/1/1 2/2/1 3/3/1 4/4/1
 `;
-		const model = parseOBJ(objText, { mtlText });
+		const model = parseOBJ(objText, mtlText);
 		expect(model.meshes.length).toBe(1);
 		const mesh = model.meshes[0];
 		expect(mesh.materialName).toBe("GoldMaterial");

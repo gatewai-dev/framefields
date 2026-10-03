@@ -1,7 +1,9 @@
 import { Canvas as SkiaCanvas } from "skia-canvas";
 
-let GL: any = null;
-function getGL() { return null; }
+// No WebGL backend is bundled; the WebGL paths below stay inert.
+function getGL(): any {
+	return null;
+}
 
 // Only polyfill WebGLRenderingContext if not provided by the runtime (e.g. standard Node without Electron)
 if (typeof globalThis.WebGLRenderingContext === "undefined") {

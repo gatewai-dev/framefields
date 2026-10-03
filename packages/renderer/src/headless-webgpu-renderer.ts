@@ -47,9 +47,15 @@ import {
 	drawCompositionTree,
 	mixAudioTracks,
 } from "@gitframes/compositions";
-import { getMediaType, updateClockSignals, type VirtualMediaData } from "@gitframes/core";
+import {
+	getMediaType,
+	takeRenderDiagnostics,
+	updateClockSignals,
+	type VirtualMediaData,
+} from "@gitframes/core";
 import { rendererLogger } from "@gitframes/server-utils";
 import {
+	clearAllVideoCache,
 	ensureDevice,
 	getRenderer2D,
 	initHeadlessWebGPU,
@@ -82,6 +88,15 @@ import sharp from "sharp";
 import { Canvas as SkiaCanvas, Image as SkiaImage } from "skia-canvas";
 import { preloadFonts } from "./asset-preloader.js";
 import { discoverAndRegisterNodeRenderers } from "./dynamic-node-discovery.js";
+import {
+	type AudioQaStats,
+	analyzeAudio,
+	buildQaReport,
+	FrameInspector,
+	type VideoQaOptions,
+	type VideoQaReport,
+	type VideoQaStats,
+} from "./video-qa.js";
 import { ZeroCopyWebCodecsPipeline } from "./zero-copy-webcodecs-pipeline.js";
 
 // ─── Bootstrap ─────────────────────────────────────────────────────────────────
@@ -471,7 +486,11 @@ export class HeadlessWebGPURenderer {
 			surface = new NodeSurfaceProvider(device, width, height);
 			renderer = getRenderer2D(device, surface.colorFormat);
 			const ctx: RenderContextValue = { device, renderer, surface };
-			updateClockSignals(frame, fps, virtualMedia.metadata.durationMs);
+			updateClockSignals(
+				frame,
+				fps,
+				virtualMedia.metadata.durationMs ?? undefined,
+			);
 
 			const needsPrePass =
 				frame === 0 ||
@@ -604,7 +623,9 @@ export class HeadlessWebGPURenderer {
 		options: { atMs?: number; frame?: number; fps?: number } = {},
 	): Promise<Buffer> {
 		const vm =
-			typeof source === "object" && source !== null && "toVirtualMedia" in source
+			typeof source === "object" &&
+			source !== null &&
+			"toVirtualMedia" in source
 				? (source as { toVirtualMedia(): VirtualMediaData }).toVirtualMedia()
 				: (source as VirtualMediaData);
 		const fps = options.fps ?? (vm.metadata?.fps || 30);
@@ -828,8 +849,18 @@ export class HeadlessWebGPURenderer {
 			audioCodec?: string;
 			quality?: string;
 			concurrency?: number;
+			/**
+			 * Measure the output while it renders (black and frozen frames,
+			 * dropped frames, loudness, clipping, silence, document warnings)
+			 * and return the findings as `qa`. `true` uses default thresholds.
+			 */
+			qa?: boolean | VideoQaOptions;
 		},
-	): Promise<{ filePath: string; cleanup: () => Promise<void> }> {
+	): Promise<{
+		filePath: string;
+		cleanup: () => Promise<void>;
+		qa?: VideoQaReport;
+	}> {
 		await HeadlessWebGPURenderer.initialize();
 
 		const codecOption = options?.codec ?? "h264";
@@ -876,6 +907,11 @@ export class HeadlessWebGPURenderer {
 		const totalFrames = Math.max(1, Math.round((durationMs / 1000) * fps));
 
 		const renderId = `vid-${randomUUID()}`;
+		const qaOptions: VideoQaOptions | undefined =
+			options?.qa === true ? {} : options?.qa ? options.qa : undefined;
+		const inspector = qaOptions ? new FrameInspector(qaOptions) : undefined;
+		let videoQa: VideoQaStats | undefined;
+		let audioQa: AudioQaStats | undefined;
 		const videoCodec: "avc" | "vp9" | "vp8" =
 			codecOption === "vp9" ? "vp9" : codecOption === "vp8" ? "vp8" : "avc";
 		const audioCodec: "aac" | "opus" | "mp3" =
@@ -1014,6 +1050,9 @@ export class HeadlessWebGPURenderer {
 					fps,
 					videoSource,
 					ringCapacity: 2,
+					onFrame: inspector
+						? (rgba) => inspector.inspect(rgba, width, height)
+						: undefined,
 				});
 
 				const ctx: RenderContextValue | null =
@@ -1114,6 +1153,16 @@ export class HeadlessWebGPURenderer {
 				if (pipeline) {
 					await pipeline.drain();
 					const pipelineStats = pipeline.getStats();
+					if (inspector && qaOptions) {
+						videoQa = inspector.stats(
+							totalFrames,
+							pipelineStats.totalFramesEncoded,
+							fps,
+							width,
+							height,
+							qaOptions,
+						);
+					}
 					rendererLogger.debug(
 						{ renderId, totalFrames, ...pipelineStats },
 						`[HeadlessWebGPURenderer] All frames rendered and encoded (avg cycle: ${pipelineStats.averageCycleTimeMs.toFixed(2)}ms, throughput: ${pipelineStats.throughputFps.toFixed(1)} fps)`,
@@ -1133,6 +1182,8 @@ export class HeadlessWebGPURenderer {
 			const numChannels = channels.length;
 			if (numChannels === 0)
 				throw new Error("mixAudioTracks returned no channels");
+
+			if (qaOptions) audioQa = analyzeAudio(channels, sampleRate, qaOptions);
 
 			const totalSamples = channels[0].length;
 			const chunkSize = Math.round(0.1 * sampleRate);
@@ -1167,6 +1218,15 @@ export class HeadlessWebGPURenderer {
 			await output.finalize();
 			outputFinalized = true;
 
+			const qa = qaOptions
+				? buildQaReport({
+						video: videoQa,
+						audio: audioQa,
+						diagnostics: takeRenderDiagnostics(renderId),
+						options: qaOptions,
+					})
+				: undefined;
+
 			const cleanup = async () => {
 				try {
 					await fs.unlink(tempFilePath).catch(() => {});
@@ -1181,10 +1241,10 @@ export class HeadlessWebGPURenderer {
 					"[HeadlessWebGPURenderer] Converting rendered MP4 to high-quality GIF...",
 				);
 				await convertMp4ToGif(tempFilePath, tempGifPath);
-				return { filePath: tempGifPath, cleanup };
+				return { filePath: tempGifPath, cleanup, ...(qa && { qa }) };
 			}
 
-			return { filePath: tempFilePath, cleanup };
+			return { filePath: tempFilePath, cleanup, ...(qa && { qa }) };
 		} catch (error) {
 			if (outputStarted && !outputFinalized) {
 				try {
@@ -1227,6 +1287,8 @@ export class HeadlessWebGPURenderer {
 			try {
 				shaderStore.clear(renderId);
 			} catch {}
+			// Drop anything reported for this render that QA did not collect.
+			takeRenderDiagnostics(renderId);
 			renderSemaphore.release();
 			rendererLogger.debug(
 				{ renderId, ...renderSemaphore.stats },

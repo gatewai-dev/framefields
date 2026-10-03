@@ -82,9 +82,7 @@ export function keys(
 	list: Key[],
 	anim: Anim = LayerAnimation.create(),
 ): Anim {
-	for (const [frame, value, ease] of list)
-		anim.keyframe(prop, Math.round(frame), value, ease);
-	return anim;
+	return anim.keys(prop, list);
 }
 
 export interface SceneOptions {
@@ -280,6 +278,8 @@ export interface SungLineOptions {
 	justify?: "start" | "center" | "end";
 	/** Frame (scene-local) the whole line leaves. */
 	outAt?: number;
+	/** Frame (relative to `from`) the line's clip ends: entrances are shortened to finish by then. */
+	until?: number;
 	enter?: "pop" | "rise";
 	/** Stand the line in the 3D scene at this depth. */
 	z?: number;
@@ -302,18 +302,27 @@ export function sungLine(o: SungLineOptions): Node {
 		const at = Math.max(0, w.at - o.from);
 		const text = o.upper === false ? bare(w) : bare(w).toUpperCase();
 		const anim = LayerAnimation.create();
+		// A word sung just before the cut still lands at rest on its last frame.
+		const fit = (frames: number) =>
+			o.until === undefined
+				? frames
+				: Math.max(1, Math.min(frames, o.until - 1 - at));
 		if ((o.enter ?? "pop") === "pop") {
 			anim
-				.fromTo("scale", 1.35, 1, { start: at, end: at + 8, ease: EASE_OUT })
-				.fromTo("opacity", 0, 1, { start: at, end: at + 2, ease: "none" });
+				.fromTo("scale", 1.35, 1, {
+					start: at,
+					end: at + fit(8),
+					ease: EASE_OUT,
+				})
+				.fromTo("opacity", 0, 1, { start: at, end: at + fit(2), ease: "none" });
 		} else {
 			anim
 				.fromTo("y", size * 0.45, 0, {
 					start: at,
-					end: at + 10,
+					end: at + fit(10),
 					ease: EASE_OUT,
 				})
-				.fromTo("opacity", 0, 1, { start: at, end: at + 3, ease: "none" });
+				.fromTo("opacity", 0, 1, { start: at, end: at + fit(3), ease: "none" });
 		}
 		return Layer.text(text, {
 			id: `${o.id}-${i}`,

@@ -127,7 +127,7 @@ export class ThreeDSLoader {
 		startOffset: number,
 		endOffset: number,
 		mesh: Raw3DSMesh,
-		materials: Record<string, Material3D>,
+		_materials: Record<string, Material3D>,
 	): void {
 		let offset = startOffset;
 

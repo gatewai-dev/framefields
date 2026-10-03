@@ -99,7 +99,7 @@ function resolveParsedFont(font: SlugFont): FontkitFont | null {
 		const parsed = SlugFontCache.getParsed(font.fontFamily);
 		if (parsed) return parsed;
 	}
-	const globalParsed = (globalThis as Record<string, unknown>)[
+	const globalParsed = (globalThis as Record<symbol, unknown>)[
 		Symbol.for("gatewai.slugFontCache.parsed")
 	] as Map<string, FontkitFont> | undefined;
 	if (globalParsed) {
@@ -124,13 +124,14 @@ export function getKernOffset(font: SlugFont, a: number, b: number): number {
 	if (src) {
 		try {
 			const s = String.fromCodePoint(a) + String.fromCodePoint(b);
-			const laid = src.layout(s);
+			const laid = src.layout?.(s);
+			if (!laid) throw new Error("font cannot shape text");
 			const total = laid.positions.reduce(
 				(acc: number, p: { xAdvance: number }) => acc + p.xAdvance,
 				0,
 			);
-			const advA = src.glyphForCodePoint(a)?.advanceWidth ?? 0;
-			const advB = src.glyphForCodePoint(b)?.advanceWidth ?? 0;
+			const advA = src.glyphForCodePoint?.(a)?.advanceWidth ?? 0;
+			const advB = src.glyphForCodePoint?.(b)?.advanceWidth ?? 0;
 			v = laid.glyphs.length === 2 ? total - (advA + advB) : 0;
 		} catch {
 			v = 0;

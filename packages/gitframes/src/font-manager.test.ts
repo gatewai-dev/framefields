@@ -1,38 +1,77 @@
+import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { Composition, FontManager, Layer } from "./index.js";
 
+// Fonts are kept on disk, not in git (.gitignore: *.ttf). Every test that
+// needs a real font uses the repo's Inter and is skipped where it is absent.
+const INTER = "assets/fonts/Inter.ttf";
+const hasInter = existsSync(
+	path.resolve(import.meta.dirname, "../../..", INTER),
+);
+if (!hasInter) {
+	console.warn(
+		`[font-manager.test] ${INTER} not found at the repo root; skipping tests that need a font file.`,
+	);
+}
+
 describe("FontManager Singleton & Typography Binding", () => {
+	// A second, distinct font file: a copy of Inter registered under its own family.
+	let secondFont = "";
+
+	beforeAll(async () => {
+		if (!hasInter) return;
+		const dir = await fs.mkdtemp(path.join(os.tmpdir(), "font-manager-"));
+		secondFont = path.join(dir, "SecondFace.ttf");
+		await fs.copyFile(
+			path.resolve(import.meta.dirname, "../../..", INTER),
+			secondFont,
+		);
+	});
+
+	afterAll(async () => {
+		if (secondFont) {
+			await fs.rm(path.dirname(secondFont), { recursive: true, force: true });
+		}
+	});
+
 	beforeEach(() => {
 		FontManager.clear();
 	});
 
-	it("1. registers a valid TTF font and parses metadata", async () => {
-		const font = await FontManager.register("assets/fonts/Inter.ttf");
-		expect(font).toBeDefined();
-		expect(font.family).toBe("Inter");
-		expect(font.format).toBe("truetype");
-		expect(font.unitsPerEm).toBe(2048);
-		expect(font.filePath).toBeDefined();
+	it.skipIf(!hasInter)(
+		"1. registers a valid TTF font and parses metadata",
+		async () => {
+			const font = await FontManager.register(INTER);
+			expect(font).toBeDefined();
+			expect(font.family).toBe("Inter");
+			expect(font.format).toBe("truetype");
+			expect(font.unitsPerEm).toBe(2048);
+			expect(font.filePath).toBeDefined();
 
-		expect(FontManager.has("Inter")).toBe(true);
-		expect(FontManager.get("Inter")?.family).toBe("Inter");
-	});
+			expect(FontManager.has("Inter")).toBe(true);
+			expect(FontManager.get("Inter")?.family).toBe("Inter");
+		},
+	);
 
-	it("2. registers a font with custom family name and options object", async () => {
-		const font = await FontManager.register({
-			family: "CinzelDisplay",
-			source: "assets/fonts/Cinzel.ttf",
-			weight: 700,
-			style: "normal",
-		});
+	it.skipIf(!hasInter)(
+		"2. registers a font with custom family name and options object",
+		async () => {
+			const font = await FontManager.register({
+				family: "InterDisplay",
+				source: INTER,
+				weight: 700,
+				style: "normal",
+			});
 
-		expect(font.family).toBe("CinzelDisplay");
-		expect(font.format).toBe("truetype");
-		expect(font.weight).toBe(700);
-		expect(FontManager.has("CinzelDisplay")).toBe(true);
-	});
+			expect(font.family).toBe("InterDisplay");
+			expect(font.format).toBe("truetype");
+			expect(font.weight).toBe(700);
+			expect(FontManager.has("InterDisplay")).toBe(true);
+		},
+	);
 
 	it("3. validates font binary and rejects non-font files", async () => {
 		const tmpBadFile = path.resolve(process.cwd(), "scratch_not_a_font.txt");
@@ -56,51 +95,65 @@ describe("FontManager Singleton & Typography Binding", () => {
 		);
 	});
 
-	it("5. automatically provides registered font paths to Composition specs", async () => {
-		await FontManager.register("assets/fonts/Inter.ttf");
-		await FontManager.register("assets/fonts/SpaceGrotesk.ttf");
+	it.skipIf(!hasInter)(
+		"5. automatically provides registered font paths to Composition specs",
+		async () => {
+			await FontManager.register(INTER);
+			await FontManager.register({ family: "SecondFace", source: secondFont });
 
-		const comp = new Composition({
-			width: 640,
-			height: 360,
-			fps: 30,
-		});
+			const comp = new Composition({
+				width: 640,
+				height: 360,
+				fps: 30,
+			});
 
-		comp.add(Layer.text("Hello World", { fontFamily: "Inter", fontSize: 32 }));
-		comp.add(
-			Layer.caption("captions.vtt", {
-				fontFamily: "SpaceGrotesk",
-				fontSize: 24,
-			}),
-		);
+			comp.add(
+				Layer.text("Hello World", { fontFamily: "Inter", fontSize: 32 }),
+			);
+			comp.add(
+				Layer.caption("captions.vtt", {
+					fontFamily: "SecondFace",
+					fontSize: 24,
+				}),
+			);
 
-		const spec = comp.toSpec();
-		expect(spec.fonts).toBeDefined();
-		expect(spec.fonts?.length).toBeGreaterThanOrEqual(2);
-		expect(spec.fonts?.some((p) => p.includes("Inter.ttf"))).toBe(true);
-		expect(spec.fonts?.some((p) => p.includes("SpaceGrotesk.ttf"))).toBe(true);
-	});
+			const spec = comp.toSpec();
+			expect(spec.fonts).toBeDefined();
+			expect(spec.fonts?.length).toBeGreaterThanOrEqual(2);
+			expect(spec.fonts?.some((p) => p.includes("Inter.ttf"))).toBe(true);
+			expect(spec.fonts?.some((p) => p.includes("SecondFace.ttf"))).toBe(true);
+		},
+	);
 
-	it("6. comp.registerFont delegates directly to FontManager", async () => {
-		const comp = new Composition({
-			width: 640,
-			height: 360,
-		});
+	it.skipIf(!hasInter)(
+		"6. comp.registerFont delegates directly to FontManager",
+		async () => {
+			const comp = new Composition({
+				width: 640,
+				height: 360,
+			});
 
-		await comp.registerFont("MontserratCustom", "assets/fonts/Montserrat.ttf");
-		expect(FontManager.has("MontserratCustom")).toBe(true);
+			await comp.registerFont("InterCustom", INTER);
+			expect(FontManager.has("InterCustom")).toBe(true);
 
-		const spec = comp.toSpec();
-		expect(spec.fonts?.some((p) => p.includes("Montserrat.ttf"))).toBe(true);
-	});
+			const spec = comp.toSpec();
+			expect(spec.fonts?.some((p) => p.includes("Inter.ttf"))).toBe(true);
+		},
+	);
 
-	it("7. Layer.text and Layer.caption automatically use registered font family when omitted", async () => {
-		const font = await FontManager.register("assets/fonts/SpaceGrotesk.ttf");
+	it.skipIf(!hasInter)(
+		"7. Layer.text and Layer.caption automatically use registered font family when omitted",
+		async () => {
+			const font = await FontManager.register({
+				family: "SecondFace",
+				source: secondFont,
+			});
 
-		const textLayer = Layer.text("Auto Font Text");
-		const captionLayer = Layer.caption("subtitles.vtt");
+			const textLayer = Layer.text("Auto Font Text");
+			const captionLayer = Layer.caption("subtitles.vtt");
 
-		expect(textLayer.fontFamily).toBe(font.family);
-		expect(captionLayer.fontFamily).toBe(font.family);
-	});
+			expect(textLayer.fontFamily).toBe(font.family);
+			expect(captionLayer.fontFamily).toBe(font.family);
+		},
+	);
 });

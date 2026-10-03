@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
 	CompositorProgramSchema,
 	EaseRefSchema,
+	type FlexNode,
 	type LayoutNode,
 } from "./schema.js";
 import {
@@ -87,7 +88,7 @@ describe("CompositorProgramSchema (document v2)", () => {
 		const doc = parsed.data;
 		expect(doc.width).toBe(1920);
 		expect(doc.layout).toHaveLength(1);
-		const hero = doc.layout[0];
+		const hero = doc.layout[0] as FlexNode;
 		expect(hero.kind).toBe("flex");
 		expect(hero.position).toBe("relative"); // default
 		expect(hero.zIndex).toBe(0);

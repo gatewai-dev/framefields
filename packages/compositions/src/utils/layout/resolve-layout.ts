@@ -25,7 +25,18 @@ import type { Yoga, Node as YogaNode } from "yoga-layout/load";
 export type { Yoga };
 
 import { loadYoga } from "yoga-layout/load";
-import type { LayoutNode, SizeSpec } from "../../program/schema.js";
+import type {
+	CompositionNodeBase,
+	LayoutNode,
+	SizeSpec,
+} from "../../program/schema.js";
+
+/**
+ * A node as layout reads it. Camera, light and model nodes carry only some
+ * of the base layout fields; the rest read as undefined, which layout handles.
+ */
+type LaidOutNode = LayoutNode & Partial<CompositionNodeBase>;
+type YogaPosition = number | `${number}%`;
 
 export interface Rect {
 	x: number;
@@ -222,7 +233,8 @@ function containerStyle(node: LayoutNode): {
 	};
 }
 
-function isAbsolutePositioned(node: LayoutNode): boolean {
+function isAbsolutePositioned(layoutNode: LayoutNode): boolean {
+	const node = layoutNode as LaidOutNode;
 	return (
 		node.position === "absolute" ||
 		(node.position === undefined &&
@@ -259,11 +271,12 @@ interface NodeMapping {
 
 function buildYogaNode(
 	yoga: Yoga,
-	node: LayoutNode,
+	layoutNode: LayoutNode,
 	parentExtent: { width?: number; height?: number } | undefined,
 	measure: MeasureFn | undefined,
 	parentDir: "row" | "column" | null,
 ): NodeMapping {
+	const node = layoutNode as LaidOutNode;
 	const yn = yoga.Node.create();
 	const dir = dirOf(node);
 	const isContainer = dir !== null;
@@ -276,8 +289,9 @@ function buildYogaNode(
 		yn.setPositionType(yoga.POSITION_TYPE_ABSOLUTE);
 		const posX = toYogaValue(node.x);
 		const posY = toYogaValue(node.y);
-		if (posX !== undefined) yn.setPosition(yoga.EDGE_LEFT, posX);
-		if (posY !== undefined) yn.setPosition(yoga.EDGE_TOP, posY);
+		if (posX !== undefined)
+			yn.setPosition(yoga.EDGE_LEFT, posX as YogaPosition);
+		if (posY !== undefined) yn.setPosition(yoga.EDGE_TOP, posY as YogaPosition);
 	} else {
 		yn.setPositionType(yoga.POSITION_TYPE_RELATIVE);
 		// Do not set EDGE_LEFT/EDGE_TOP offsets on the Yoga node itself;
@@ -572,8 +586,8 @@ export function computeLayoutSync(
 
 		const rootLayout = mapping.yogaNode.getComputedLayout();
 		const isRootAbsolute =
-			root.position === "absolute" ||
-			(root.position === undefined &&
+			(root as LaidOutNode).position === "absolute" ||
+			((root as LaidOutNode).position === undefined &&
 				(root.x !== undefined || root.y !== undefined));
 		const rootX = isRootAbsolute ? rootLayout.left : Number(root.x ?? 0);
 		const rootY = isRootAbsolute ? rootLayout.top : Number(root.y ?? 0);

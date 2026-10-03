@@ -9,9 +9,15 @@ import { AudioSampleSink } from "mediabunny";
 import { computeRenderParams } from "./apply-operations.js";
 import { normalizeTimeline } from "./normalization.js";
 
+// Progress chatter (every decode step) is debug output: shown only with LOG_LEVEL=debug or trace.
+const verbose =
+	typeof process !== "undefined" &&
+	/^(debug|trace)$/i.test(process.env?.LOG_LEVEL ?? "");
+
 // Fallback logger for browser environment. In Node.js environment, we dynamically load @gitframes/server-utils to avoid bundling it on the frontend.
 let mediaLogger = {
 	info: (msg: unknown, ...args: unknown[]) => {
+		if (!verbose) return;
 		if (typeof msg === "object" && msg !== null) {
 			console.info("[AudioExtractor]", msg, ...args);
 		} else {

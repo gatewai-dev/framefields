@@ -127,6 +127,8 @@ const result = await comp.renderVideo({
 await result.cleanup?.();
 ```
 
+Pass `qa: true` to have the engine check the output while it renders (see **Built-in Video QA** below) and return the findings as `result.qa`.
+
 ---
 
 ## Production Render Script Pattern
@@ -169,6 +171,8 @@ if (mode === "frames") {
 process.exit(0);
 ```
 
+To run against the engine's TypeScript source instead of built `dist` (while changing the engine itself), give tsx a `tsconfig.dev.json` that extends the project's tsconfig and adds `"../../packages/**/*"` and `"../../nodes/**/*"` to `include` (tsx only applies compiler options, such as the decorators `server-utils` needs, to included files), then run `tsx --tsconfig tsconfig.dev.json --conditions=development src/render.ts`. `examples/22_gitframes_launch` has it as `pnpm render:src`.
+
 CLI Usage:
 ```bash
 # Render specific keyframes for instant review:
@@ -180,9 +184,39 @@ tsx src/render.ts
 
 ---
 
-## Video QA & Automated Inspection
+## Built-in Video QA (`renderVideo({ qa })`)
 
-After rendering, inspect the output with `ffmpeg`/`ffprobe` to verify audio presence, duration, and absence of black frames:
+The engine measures the video while it renders: every frame as it is read back for the encoder, and the audio as it is mixed. No second decode pass, and the numbers describe exactly what was encoded.
+
+```typescript
+import { formatQaReport } from "gitframes";
+
+const result = await comp.renderVideo({
+  outputPath: "output/final-video.mp4",
+  qa: { targetLufs: -14 }, // or `qa: true` for defaults (no loudness target)
+});
+console.log(formatQaReport(result.qa!));
+if (!result.qa!.passed) process.exitCode = 1; // fail CI / the agent loop
+```
+
+`result.qa` is structured, so branch on it instead of parsing logs:
+
+| `issues[].code` | Severity | Meaning |
+|---|---|---|
+| `frames_missing` | error | Fewer frames encoded than the composition has |
+| `black_frames` | warning | ≥ `minBlackSec` (0.5 s) of black frames; has `startSec`/`endSec` |
+| `audio_clipping` | warning | Samples at or beyond full scale |
+| `loudness_off_target` | warning | Integrated loudness more than `lufsTolerance` (1 LU) from `targetLufs` |
+| `animation_truncated` | warning | Keyframes past a layer's clip window never play; has `layerId` |
+| `frozen_video` | info | Picture unchanged for ≥ `minFrozenSec` (2 s); fine for held title cards |
+| `audio_silence` | info | ≥ `minSilenceSec` (2 s) below `silenceDbfs` (-60) |
+| `audio_silent` | info | The whole track is silent |
+
+`passed` is false when any error or warning is present. `qa.audio.integratedLufs` is ITU-R BS.1770 loudness (streaming platforms normalize to about -14 LUFS); `qa.audio.peakDbfs` is the sample peak.
+
+## Inspecting a Finished File with ffmpeg
+
+For files rendered elsewhere, or to compare against a previous render, inspect with `ffmpeg`/`ffprobe`:
 
 ```bash
 # 1. Check video and audio stream properties

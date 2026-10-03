@@ -4,11 +4,12 @@ import {
 	collectNodeOps,
 	type EaseRef,
 	evaluateTrackAtFrame,
-	type LayerAnimation,
+	type LayerAnimationSpec,
 } from "@gitframes/compositions/program";
 import {
 	DEFAULT_DURATION_MS,
 	getActiveMediaMetadata,
+	reportRenderDiagnostic,
 	type VirtualMediaData,
 } from "@gitframes/core";
 import gsapModule from "gsap";
@@ -462,7 +463,12 @@ export interface TruncationInfo {
 	maxAuthoredFrame: number;
 }
 
-/** Dedupe per compiled cache key — a fresh render of the same broken doc SHOULD re-warn. */
+/**
+ * Dedupe per compiled cache key — a fresh render of the same broken doc SHOULD
+ * re-warn. Single-frame renders are the exception: each `renderFrame` call has
+ * its own `img-` render id, so probing a doc frame by frame would repeat the
+ * warning on every frame; those dedupe per document instead.
+ */
 const truncationWarnedKeys = new Set<string>();
 const TRUNCATION_WARNED_CAP = 100;
 
@@ -789,7 +795,20 @@ export function compileTimeline(
 		}
 	});
 
-	if (truncations.length > 0) warnTruncationOnce(cacheKey, truncations);
+	if (truncations.length > 0) {
+		warnTruncationOnce(
+			renderId.startsWith("img-") ? `frame_${irHash}` : cacheKey,
+			truncations,
+		);
+		for (const t of truncations) {
+			reportRenderDiagnostic(renderId, {
+				severity: "warning",
+				code: "animation_truncated",
+				layerId: t.layerId,
+				message: `'${t.prop}' on '${t.layerId}': ${t.dropped} keyframe(s) past the clip window (last authored frame ${t.maxAuthoredFrame}) never play`,
+			});
+		}
+	}
 
 	tl.seek(1e-6);
 	tl.seek(0);
@@ -818,7 +837,7 @@ const layerTimelineCache = new Map<
 
 export function compileLayerTimeline(
 	layerId: string,
-	animation: LayerAnimation | undefined,
+	animation: LayerAnimationSpec | undefined,
 	baseVolume: number,
 	baseMuted: boolean,
 	fps: number,

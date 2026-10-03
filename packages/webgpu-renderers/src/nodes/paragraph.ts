@@ -4,7 +4,11 @@ import type { RenderContextValue } from "../render-context.js";
 import type { Color } from "../renderer2d/index.js";
 import { signalRegistry } from "../signals/signal-registry.js";
 import { parseFontWeight, SlugFontCache } from "../slug/slug-font-cache.js";
-import { SlugGeometry } from "../slug/slug-geometry.js";
+import {
+	SlugGeometry,
+	type SlugGlyphLayout,
+	type SlugLayoutResult,
+} from "../slug/slug-geometry.js";
 import type { SlugFont } from "../slug/slug-loader.js";
 import {
 	type AdvancedTextAnimator,
@@ -632,7 +636,9 @@ export function applyGlyphAnimators(
 	for (const animator of animators) {
 		if ("selectors" in animator && Array.isArray(animator.selectors)) {
 			const aeAnim = animator as AETextAnimator | AdvancedTextAnimator;
-			const p = aeAnim.props ?? {};
+			// Basic and advanced animators share one props bag; read it as both.
+			const p = (aeAnim.props ?? {}) as ExtendedGlyphProperties &
+				NonNullable<AETextAnimator["props"]>;
 			const selectorWeight = evaluateAEAnimatorWeight(
 				aeAnim,
 				glyph,
@@ -897,14 +903,15 @@ export function drawParagraphNode(
 		const strokeWidthInFontUnits =
 			effectiveStrokeWidth * (slugFont.unitsPerEm / fontSize);
 
-		strokeFont = SlugFontCache.getFont(
-			fontFamily,
-			props.fontWeight,
-			ctx.device,
-			strokeWidthInFontUnits,
-			fontSize,
-			props.variableAxes,
-		);
+		strokeFont =
+			SlugFontCache.getFont(
+				fontFamily,
+				props.fontWeight,
+				ctx.device,
+				strokeWidthInFontUnits,
+				fontSize,
+				props.variableAxes,
+			) ?? null;
 	}
 
 	if (!slugFont?.curvesTex || (hasStroke && !strokeFont?.curvesTex)) {
@@ -1075,7 +1082,6 @@ export function drawParagraphNode(
 			}
 		}
 	}
-	const passes = 1;
 	const instanceCount = layout.glyphs.length;
 
 	const elapsed =

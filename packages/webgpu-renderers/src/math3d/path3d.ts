@@ -160,7 +160,7 @@ export class Path3D {
 	/**
 	 * Extracts pitch, yaw, roll Euler angles in degrees from the orthonormal frame.
 	 */
-	private eulerFromFrame(tangent: Vec3, normal: Vec3, binormal: Vec3): Vec3 {
+	private eulerFromFrame(tangent: Vec3, normal: Vec3, _binormal: Vec3): Vec3 {
 		// Tangent is the forward viewing axis Z_fwd or X_fwd
 		const pitch = Math.asin(Math.max(-1, Math.min(1, -tangent[1]))) * (180 / Math.PI);
 		const yaw = Math.atan2(tangent[0], tangent[2]) * (180 / Math.PI);

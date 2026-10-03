@@ -40,6 +40,8 @@ export class Slug3DPipeline {
 		depthFormat: GPUTextureFormat,
 		cameraLayout: GPUBindGroupLayout,
 		lightsLayout: GPUBindGroupLayout,
+		/** Samples per pixel of the pass this draws into (MSAA). */
+		sampleCount = 1,
 	) {
 		this.device = device;
 		this.modelPool = new BufferPool(
@@ -132,6 +134,7 @@ export class Slug3DPipeline {
 			topology: "triangle-list",
 			cullMode: "none",
 		};
+		const multisample: GPUMultisampleState = { count: sampleCount };
 
 		this.pipelineSingle = device.createRenderPipeline({
 			label: "Slug3DPipelineSingle",
@@ -144,6 +147,7 @@ export class Slug3DPipeline {
 			},
 			depthStencil,
 			primitive,
+			multisample,
 		});
 
 		this.pipelineMrt = device.createRenderPipeline({
@@ -157,6 +161,7 @@ export class Slug3DPipeline {
 			},
 			depthStencil,
 			primitive,
+			multisample,
 		});
 	}
 

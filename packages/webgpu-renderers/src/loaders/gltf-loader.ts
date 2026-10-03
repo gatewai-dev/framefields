@@ -59,12 +59,6 @@ function componentReader(
 	}
 }
 
-interface GltfHeader {
-	magic: number;
-	version: number;
-	length: number;
-}
-
 interface GltfAccessor {
 	bufferView?: number;
 	byteOffset?: number;
@@ -278,7 +272,6 @@ export class GltfLoader {
 	private static unpackGlb(bytes: Uint8Array): { doc: GltfDocument; binBuffer?: Uint8Array } {
 		const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
 		const magic = view.getUint32(0, true);
-		const version = view.getUint32(4, true);
 		const totalLength = view.getUint32(8, true);
 
 		if (magic !== GLB_MAGIC) {

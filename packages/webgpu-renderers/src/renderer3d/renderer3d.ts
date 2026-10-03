@@ -17,15 +17,13 @@ import {
 	GltfLoader,
 	load3DS,
 	loadFBX,
+	loadGLB,
 	loadGLTF,
 	loadOBJ,
 	loadOFF,
 	loadPLY,
 	loadSTL,
 	loadVOX,
-	ObjLoader,
-	OffLoader,
-	PlyLoader,
 	StlLoader,
 	ThreeDSLoader,
 	VoxLoader,
@@ -37,11 +35,7 @@ import type {
 	Model3DData,
 } from "../loaders/types.js";
 import { type Color, parseColor } from "../color.js";
-import {
-	type GPUMeshBuffers,
-	Mesh3DPipeline,
-	type MeshUniformData,
-} from "./mesh3d-pipeline.js";
+import { type GPUMeshBuffers, Mesh3DPipeline } from "./mesh3d-pipeline.js";
 import { Quad3DPipeline } from "./quad3d-pipeline.js";
 import { Slug3DPipeline } from "./slug3d-pipeline.js";
 import type { SlugGlyphBatch } from "../slug/slug-pipeline.js";
@@ -173,6 +167,9 @@ export class Renderer3D {
 	private samplerCache = new SamplerCache();
 	private depthTexture: GPUTexture | null = null;
 	private linearDepthTexture: GPUTexture | null = null;
+	// Multisampled targets the pass draws into; they resolve into the caller's views.
+	private msaaColorTexture: GPUTexture | null = null;
+	private msaaLinearDepthTexture: GPUTexture | null = null;
 	private cameraUniformData = new Float32Array(80); // 320 bytes = 80 floats
 	private meshBuffersCache = new WeakMap<Mesh3DData, GPUMeshBuffers>();
 	private materialTextures = new WeakMap<
@@ -184,16 +181,30 @@ export class Renderer3D {
 	private lastCameraPose: Camera3DPose | null = null;
 	private lastCameraBuffer: GPUBuffer | null = null;
 
-	constructor(device: GPUDevice, format: GPUTextureFormat) {
+	/**
+	 * Samples per pixel in the 3D pass. Mesh silhouettes (extruded text,
+	 * models) are rasterized triangles: without MSAA every edge is a hard
+	 * stair-step. 4 is the count every WebGPU device supports; 1 turns it off.
+	 */
+	public readonly sampleCount: number;
+
+	constructor(device: GPUDevice, format: GPUTextureFormat, sampleCount = 4) {
 		this.device = device;
 		this.format = format;
-		this.quad3dPipeline = new Quad3DPipeline(device, format);
+		this.sampleCount = sampleCount;
+		this.quad3dPipeline = new Quad3DPipeline(
+			device,
+			format,
+			"depth24plus",
+			sampleCount,
+		);
 		this.slug3dPipeline = new Slug3DPipeline(
 			device,
 			format,
 			"depth24plus",
 			this.quad3dPipeline.cameraLayout,
 			this.quad3dPipeline.lightsLayout,
+			sampleCount,
 		);
 		this.mesh3dPipeline = new Mesh3DPipeline(
 			device,
@@ -201,6 +212,7 @@ export class Renderer3D {
 			"depth24plus",
 			this.quad3dPipeline.cameraLayout,
 			this.quad3dPipeline.lightsLayout,
+			sampleCount,
 		);
 		this.audioMeshDeformPipeline = new AudioMeshDeformPipeline(device);
 
@@ -286,10 +298,31 @@ export class Renderer3D {
 				label: "Renderer3DDepthTexture",
 				size: { width, height },
 				format: "depth24plus",
+				sampleCount: this.sampleCount,
 				usage: GPUTextureUsage.RENDER_ATTACHMENT,
 			});
 		}
 		return this.depthTexture;
+	}
+
+	private getOrCreateMsaaTexture(
+		current: GPUTexture | null,
+		label: string,
+		format: GPUTextureFormat,
+		width: number,
+		height: number,
+	): GPUTexture {
+		if (current && current.width === width && current.height === height) {
+			return current;
+		}
+		current?.destroy();
+		return this.device.createTexture({
+			label,
+			size: { width, height },
+			format,
+			sampleCount: this.sampleCount,
+			usage: GPUTextureUsage.RENDER_ATTACHMENT,
+		});
 	}
 
 	getOrCreateLinearDepthTexture(width: number, height: number): GPUTexture {
@@ -430,22 +463,68 @@ export class Renderer3D {
 			lightsBuffer,
 		);
 
+		const msaa = this.sampleCount > 1;
+		if (msaa && loadOp === "load") {
+			// The multisampled target starts empty: it cannot carry the view's contents in.
+			throw new Error(
+				"Renderer3D.beginPass: loadOp 'load' needs a Renderer3D built with sampleCount 1",
+			);
+		}
+
+		// With MSAA each attachment draws into its multisampled twin and
+		// resolves into the caller's view when the pass ends.
+		const attach = (
+			view: GPUTextureView,
+			msaaTex: GPUTexture | null,
+			clearValue: GPUColor,
+			attachmentLoadOp: GPULoadOp,
+		): GPURenderPassColorAttachment =>
+			msaaTex
+				? {
+						view: msaaTex.createView(),
+						resolveTarget: view,
+						loadOp: "clear",
+						storeOp: "discard",
+						clearValue,
+					}
+				: { view, loadOp: attachmentLoadOp, storeOp: "store", clearValue };
+
+		if (msaa) {
+			this.msaaColorTexture = this.getOrCreateMsaaTexture(
+				this.msaaColorTexture,
+				"Renderer3DMsaaColor",
+				this.format,
+				surfaceWidth,
+				surfaceHeight,
+			);
+		}
 		const colorAttachments: GPURenderPassColorAttachment[] = [
-			{
-				view: colorTargetView,
+			attach(
+				colorTargetView,
+				msaa ? this.msaaColorTexture : null,
+				clearColor,
 				loadOp,
-				storeOp: "store",
-				clearValue: clearColor,
-			},
+			),
 		];
 
 		if (linearDepthTargetView) {
-			colorAttachments.push({
-				view: linearDepthTargetView,
-				loadOp: "clear",
-				storeOp: "store",
-				clearValue: { r: camera.far, g: 0, b: 0, a: 1 },
-			});
+			if (msaa) {
+				this.msaaLinearDepthTexture = this.getOrCreateMsaaTexture(
+					this.msaaLinearDepthTexture,
+					"Renderer3DMsaaLinearDepth",
+					"rgba16float",
+					surfaceWidth,
+					surfaceHeight,
+				);
+			}
+			colorAttachments.push(
+				attach(
+					linearDepthTargetView,
+					msaa ? this.msaaLinearDepthTexture : null,
+					{ r: camera.far, g: 0, b: 0, a: 1 },
+					"clear",
+				),
+			);
 		}
 
 		const pass = encoder.beginRenderPass({
@@ -454,7 +533,8 @@ export class Renderer3D {
 				view: depthTex.createView(),
 				depthClearValue: 1.0,
 				depthLoadOp: "clear",
-				depthStoreOp: "store",
+				// Nothing reads depth after the pass; the MSAA copy is never resolved.
+				depthStoreOp: msaa ? "discard" : "store",
 			},
 		});
 
@@ -975,6 +1055,8 @@ export class Renderer3D {
 	destroy(): void {
 		this.depthTexture?.destroy();
 		this.linearDepthTexture?.destroy();
+		this.msaaColorTexture?.destroy();
+		this.msaaLinearDepthTexture?.destroy();
 		this.quad3dPipeline.destroy();
 		this.slug3dPipeline.destroy();
 		this.mesh3dPipeline.destroy();

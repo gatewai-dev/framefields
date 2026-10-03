@@ -72,7 +72,7 @@ describe("Unified Composition & Layer Section Architecture Suite", () => {
 			borderRadius: 16,
 			borderColor: "#38bdf8",
 			borderWidth: 2,
-			effects: [new Blur({ strength: 24 }), new FilmGrain({ intensity: 0.35 })],
+			effects: [new Blur({ strength: 24 }), new FilmGrain({ strength: 35 })],
 		});
 
 		expect(section.kind).toBe("box");
@@ -148,8 +148,8 @@ describe("Unified Composition & Layer Section Architecture Suite", () => {
 			height: 400,
 			borderRadius: 20,
 			effects: [
-				new Vignette({ radius: 0.7, amount: 0.8 }),
-				new FilmGrain({ intensity: 0.4 }),
+				new Vignette({ radius: 0.7, strength: 80 }),
+				new FilmGrain({ strength: 40 }),
 			],
 		});
 
@@ -226,7 +226,7 @@ describe("Unified Composition & Layer Section Architecture Suite", () => {
 
 		// Chain multiple effects
 		section.withEffects([
-			new FilmGrain({ intensity: 0.2 }),
+			new FilmGrain({ strength: 20 }),
 			new Vignette({ radius: 0.9 }),
 		]);
 		expect(section.effects).toHaveLength(3);
@@ -246,7 +246,7 @@ describe("Unified Composition & Layer Section Architecture Suite", () => {
 		comp.add(video);
 
 		const sec = comp.addSection(targetPerson, {
-			effects: [new Blur({ strength: 20 }), new FilmGrain({ intensity: 0.3 })],
+			effects: [new Blur({ strength: 20 }), new FilmGrain({ strength: 30 })],
 		});
 
 		const vm = comp.toVirtualMedia();
@@ -299,7 +299,7 @@ describe("Unified Composition & Layer Section Architecture Suite", () => {
 		});
 		expect(sec).toBeDefined();
 
-		const png = await comp.renderFrame(0);
+		const png = await comp.renderFrame({ frame: 0 });
 		expect(Buffer.isBuffer(png)).toBe(true);
 		expect(png.length).toBeGreaterThan(100);
 		// Validate PNG magic bytes

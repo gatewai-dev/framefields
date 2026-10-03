@@ -3,15 +3,15 @@ import {
 	Blur,
 	Composition,
 	Effect,
+	type EditableObjectTrack,
 	Layer,
-	type ObjectTrackSignals,
 	VisionNode,
 } from "./index.js";
 
 describe("Tracked Section Editing & Blur Engine Suite", () => {
 	function setupVisionWithSyntheticTrack(): {
 		vision: ReturnType<typeof VisionNode.attach>;
-		targetPerson: ObjectTrackSignals;
+		targetPerson: EditableObjectTrack;
 	} {
 		const video = Layer.video("test.mp4");
 		const vision = VisionNode.attach(video, {
@@ -48,7 +48,10 @@ describe("Tracked Section Editing & Blur Engine Suite", () => {
 			},
 		]);
 
-		const targetPerson = vision.objects.byCategory("person");
+		// Vision decorates every track with its editing helpers.
+		const targetPerson = vision.objects.byCategory(
+			"person",
+		) as EditableObjectTrack;
 		return { vision, targetPerson };
 	}
 
@@ -137,7 +140,7 @@ describe("Tracked Section Editing & Blur Engine Suite", () => {
 
 		// Inside the box, a nested video plate counter-offsets by -screenX + padding
 		expect(trackedBox.children).toHaveLength(1);
-		const innerVideo = trackedBox.children[0] as unknown as {
+		const innerVideo = trackedBox.children?.[0] as unknown as {
 			kind: string;
 			x: { get: (ctx: unknown) => number };
 			y: { get: (ctx: unknown) => number };
@@ -254,7 +257,7 @@ describe("Tracked Section Editing & Blur Engine Suite", () => {
 		});
 		comp.add(bgCard);
 
-		const png = await comp.renderFrame(0);
+		const png = await comp.renderFrame({ frame: 0 });
 		expect(Buffer.isBuffer(png)).toBe(true);
 		expect(png.length).toBeGreaterThan(100);
 		// Check PNG signature: 0x89 'P' 'N' 'G'

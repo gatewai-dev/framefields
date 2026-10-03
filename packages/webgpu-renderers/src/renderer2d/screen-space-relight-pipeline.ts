@@ -5,7 +5,6 @@
  * and surface normal maps in real-time.
  */
 
-import type { NormalRelightingOptions } from "@gitframes/core";
 import { screenSpaceRelightWgsl } from "../shaders/screen-space-relight.js";
 import { BufferPool } from "./buffer-pool.js";
 
@@ -205,11 +204,7 @@ export class ScreenSpaceRelightPipeline {
 		matData[14] = 0.0;
 		matData[15] = 0.0;
 
-		const matBuffer = this.materialPool.getBuffer(
-			this.device,
-			matData,
-			"relight_mat_buffer",
-		);
+		const matBuffer = this.materialPool.getBuffer(this.device, matData);
 
 		const matBindGroup = this.device.createBindGroup({
 			layout: this.materialLayout,

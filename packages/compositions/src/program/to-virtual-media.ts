@@ -202,7 +202,8 @@ function nodeToVirtualMedia(
 		// A container without its own timing keeps its parent's clock — its keyframes
 		// are authored parent-relative and its background shows before its first child
 		// arrives — and stays active until its last child ends.
-		if (node.durationFrames === undefined) {
+		// Also when its own durationFrames is unusable (0, NaN): `dur` is unset then.
+		if (dur === undefined) {
 			const childEnds = children.map(
 				(c) =>
 					((c.operation as any)?.startFrame ?? 0) +
@@ -275,6 +276,9 @@ export function compositorToProgram(
 			fps,
 			mode: config.mode ?? "Video",
 			backgroundColor: config.backgroundColor,
+			...(config.antialias3d !== undefined && {
+				antialias3d: config.antialias3d,
+			}),
 			// Master gain — consumed by the compositor's audio processor when
 			// the extractor dispatches the root op (audio-processor.ts).
 			volume: config.volume ?? 1,

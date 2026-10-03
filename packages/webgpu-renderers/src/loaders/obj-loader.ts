@@ -1,12 +1,14 @@
 import fs from "node:fs";
 import path from "node:path";
-import { Matrix4Math, type Vec3, Vector3Math } from "../math3d/index.js";
+import { type Vec3, Vector3Math } from "../math3d/index.js";
 import type {
 	LoadModelOptions,
 	Material3D,
 	Mesh3DData,
 	Model3DData,
 } from "./types.js";
+
+type Vec2 = [number, number];
 
 export class ObjLoader {
 	/**

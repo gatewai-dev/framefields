@@ -88,7 +88,7 @@ export const SceneDefinitionSchema = z
 				carrier: CarrierHandoffConfigSchema.optional(),
 				whipDirection: z.enum(["left", "right", "up", "down"]).default("left"),
 			})
-			.default({ type: "cut", durationFrames: 0 }),
+			.default({ type: "cut", durationFrames: 0, whipDirection: "left" }),
 	})
 	.passthrough();
 

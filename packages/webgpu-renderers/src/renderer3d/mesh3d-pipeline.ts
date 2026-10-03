@@ -1,4 +1,3 @@
-import type { Mat4 } from "../math3d/index.js";
 import { BufferPool } from "../renderer2d/buffer-pool.js";
 import { mesh3dWgsl } from "../shaders/mesh3d.js";
 
@@ -52,6 +51,8 @@ export class Mesh3DPipeline {
 		depthFormat: GPUTextureFormat = "depth24plus",
 		cameraLayout?: GPUBindGroupLayout,
 		lightsLayout?: GPUBindGroupLayout,
+		/** Samples per pixel of the pass this draws into (MSAA). */
+		sampleCount = 1,
 	) {
 		this.device = device;
 		this.modelPool = new BufferPool(
@@ -188,6 +189,7 @@ export class Mesh3DPipeline {
 				topology: "triangle-list",
 				cullMode: "none",
 			},
+			multisample: { count: sampleCount },
 		});
 
 		// MRT pipeline (Color + Linear Depth)
@@ -228,6 +230,7 @@ export class Mesh3DPipeline {
 				topology: "triangle-list",
 				cullMode: "none",
 			},
+			multisample: { count: sampleCount },
 		});
 
 		// 1x1 White dummy texture

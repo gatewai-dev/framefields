@@ -101,22 +101,6 @@ Developers generating video programmatically commonly weigh **Remotion** (React/
 | **Headless Verification** | **FrameGrid contact sheets**, single-frame snapshots, Skia MSE pixel-invariant assertions | Playwright/Puppeteer visual snapshots | Manual frame inspection / canvas diffing |
 | **Docker / Cloud Portability** | **Compact** (~500 MB slim image with native GPU/Vulkan drivers) | **Heavy** (~2–3 GB with Chromium, fonts, X11/Mesa) | Moderate container size |
 
-### Why Gitframes? Deep Architectural Analysis
-
-#### 1. Why not Remotion for high-performance pipelines?
-Remotion pioneered the "video in React" paradigm and is a great fit for marketing templates built from existing web UI. But because it is coupled to **headless Chromium**:
-- **Scalability ceiling** — Chromium is an interactive document browser, not a real-time compositor. Every frame pays DOM style recalculation, layout reflow, paint traversal, and cross-process buffer copies over CDP.
-- **GPU inefficiency** — WebGL inside headless Chromium is sandboxed and cannot use compute shaders, storage buffers, or native WebGPU multi-render targets (MRT) efficiently.
-- **Infrastructure cost** — Scaling in production needs high-memory CPU instances to survive Chromium OOM crashes.
-
-**Gitframes eliminates the browser entirely.** Running directly on the GPU via native WebGPU, it behaves like a game engine or DAW and delivers order-of-magnitude throughput gains.
-
-#### 2. Why not Hyperframes or Canvas2D?
-Canvas engines avoid DOM overhead but:
-- **CPU-bound rasterization** — `ctx.arc` / `ctx.bezierCurveTo` execute largely on the CPU; hundreds of animated type layers stall quickly.
-- **Shallow post-processing** — no multi-pass fragment pipelines, so pro grading (3D LUTs, selective color, bilateral SSAO, bokeh DoF) is effectively impossible.
-- **Disconnected audio** — Canvas frameworks treat audio as an external soundtrack; Gitframes unifies synthesis and animation through frame-accurate signals.
-
 ---
 
 ## Key Features & Capabilities

@@ -6,6 +6,16 @@ import type {
 	TrackSource,
 } from "./schema.js";
 
+/**
+ * One keyframe as a tuple: `[frame, value]` or `[frame, value, ease]`. The
+ * ease shapes the motion arriving at this keyframe from the one before.
+ */
+export type KeyframeTuple = readonly [
+	frame: number,
+	value: number | string | boolean,
+	ease?: string | EaseRef,
+];
+
 export interface FromToOptions {
 	from?: number;
 	to?: number;
@@ -271,6 +281,14 @@ export class LayerAnimation implements LayerAnimationSpec {
 		return new LayerAnimation().fromTo(prop, fromValue, toValue, options);
 	}
 
+	/** A track from a list of `[frame, value, ease?]` keyframes; see {@link LayerAnimation.keys}. */
+	public static keys(
+		prop: AnimatableProp,
+		keyframes: readonly KeyframeTuple[],
+	): LayerAnimation {
+		return new LayerAnimation().keys(prop, keyframes);
+	}
+
 	public static signal(
 		prop: AnimatableProp,
 		signalOrHandleId: unknown,
@@ -496,6 +514,18 @@ export class LayerAnimation implements LayerAnimationSpec {
 		});
 
 		track.keyframes.sort((a, b) => a.frame - b.frame);
+		return this;
+	}
+
+	/**
+	 * Adds several keyframes to prop's track at once:
+	 * `.keys("scale", [[0, 0], [12, 1.1, "back.out"], [20, 1]])`.
+	 * Frames are rounded to whole frames, so beat math can be passed straight in.
+	 */
+	public keys(prop: AnimatableProp, keyframes: readonly KeyframeTuple[]): this {
+		for (const [frame, value, ease] of keyframes) {
+			this.keyframe(prop, Math.round(frame), value, ease);
+		}
 		return this;
 	}
 

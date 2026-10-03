@@ -981,7 +981,8 @@ export const CameraDoFSchema = z
 	})
 	.strict();
 
-export type CameraDoF = z.infer<typeof CameraDoFSchema>;
+/** Depth of field as authored: fields with schema defaults may be left out. */
+export type CameraDoF = z.input<typeof CameraDoFSchema>;
 
 export const CameraShakeSchema = z
 	.object({
@@ -1555,7 +1556,8 @@ export const ChartGPUOptionsSchema = z
 		samples: z.union([z.literal(1), z.literal(4)]).default(4),
 	})
 	.strict();
-export type ChartGPUOptions = z.infer<typeof ChartGPUOptionsSchema>;
+/** Chart options as authored: fields with schema defaults may be left out. */
+export type ChartGPUOptions = z.input<typeof ChartGPUOptionsSchema>;
 
 export const ChartNodeSchema: z.ZodType<ChartNode> = z
 	.object({
@@ -1631,6 +1633,11 @@ export const CompositorProgramSchema = z
 		volume: z.number().min(0).max(1).default(1),
 		fps: z.number().int().min(1).max(120).default(24),
 		mode: z.enum(["Video", "Image"]).default("Video"),
+		/**
+		 * Multisample the 3D pass (4 samples per pixel) so mesh edges are smooth.
+		 * Default true; false saves the extra target memory (~60-125 MB at 1080p).
+		 */
+		antialias3d: z.boolean().optional(),
 		layout: z.array(LayoutNodeSchema).default([]),
 		fonts: z.array(z.string()).optional(),
 		signals: z.record(z.string(), z.unknown()).optional(),

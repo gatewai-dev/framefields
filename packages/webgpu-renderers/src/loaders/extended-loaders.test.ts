@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { parseSTL, StlLoader } from "./stl-loader.js";
-import { parsePLY, PlyLoader } from "./ply-loader.js";
+import { parseSTL } from "./stl-loader.js";
+import { parsePLY } from "./ply-loader.js";
 import { parseGLTF, parseGLB, GltfLoader } from "./gltf-loader.js";
 import { parseVOX, VoxLoader } from "./vox-loader.js";
 import { parse3DS, ThreeDSLoader } from "./3ds-loader.js";
-import { parseOFF, OffLoader } from "./off-loader.js";
+import { parseOFF } from "./off-loader.js";
 import { loadModel3D } from "../renderer3d/renderer3d.js";
 
 describe("Extended 3D Model Loaders (STL, PLY, glTF/GLB, VOX, 3DS, OFF)", () => {

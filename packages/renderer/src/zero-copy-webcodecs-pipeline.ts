@@ -12,6 +12,11 @@ export interface ZeroCopyWebCodecsPipelineOptions {
 	readonly ringCapacity?: number;
 	readonly colorSpace?: VideoColorSpaceConfig;
 	readonly directCanvasSource?: unknown;
+	/**
+	 * Called with each frame's RGBA pixels, in frame order, just before it is
+	 * encoded (staging-ring path only). The buffer is reused: read, don't keep.
+	 */
+	readonly onFrame?: (rgba: Uint8Array, frameIndex: number) => void;
 }
 
 export interface WebCodecsPipelineStats {
@@ -46,6 +51,7 @@ export class ZeroCopyWebCodecsPipeline {
 	private readonly stagingRing: DmaStagingRing;
 	private readonly colorSpace?: VideoColorSpaceConfig;
 	private readonly directCanvasSource?: unknown;
+	private readonly onFrame?: (rgba: Uint8Array, frameIndex: number) => void;
 
 	private readonly inFlightFrames: number[] = [];
 	private readonly cycleStartTimes = new Map<number, number>();
@@ -68,6 +74,7 @@ export class ZeroCopyWebCodecsPipeline {
 		this.ringCapacity = Math.max(2, options.ringCapacity ?? 2);
 		this.colorSpace = options.colorSpace;
 		this.directCanvasSource = options.directCanvasSource;
+		this.onFrame = options.onFrame;
 
 		this.stagingRing = new DmaStagingRing(device, {
 			width: this.width,
@@ -209,13 +216,17 @@ export class ZeroCopyWebCodecsPipeline {
 				sample.close();
 			}
 		} else {
+			const onFrame = this.onFrame;
 			const vf = await this.stagingRing.readFrameToVideoFrame(
 				frameIndex,
 				timestampUs,
 				this.colorSpace,
+				onFrame && ((rgba) => onFrame(rgba, frameIndex)),
 			);
 			try {
-				const sample = new VideoSample(vf, {
+				// bootstrap-mediabunny installs @napi-rs/webcodecs as the global
+				// VideoFrame, so this is the class mediabunny expects at runtime.
+				const sample = new VideoSample(vf as unknown as globalThis.VideoFrame, {
 					duration: 1 / this.fps,
 					timestamp: frameIndex / this.fps,
 				});

@@ -13,6 +13,8 @@ export interface MockBuffer {
 	size: number;
 	usage: number;
 	destroy: any;
+	getMappedRange: any;
+	unmap: any;
 }
 
 export function createMockTexture(

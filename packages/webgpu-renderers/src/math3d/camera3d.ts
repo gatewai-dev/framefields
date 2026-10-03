@@ -51,13 +51,6 @@ export interface FrustumPlanes {
 	far: FrustumPlane;
 }
 
-/** Deterministic pseudo-random gradient noise generator */
-function pseudoNoise(t: number, seed: number): number {
-	const n = Math.sin(t * 12.9898 + seed * 78.233) * 43758.5453123;
-	const frac = n - Math.floor(n);
-	return frac * 2.0 - 1.0;
-}
-
 /** Smooth multi-harmonic procedural continuous noise */
 function smoothHarmonicNoise(t: number, seed: number, octaves = 3): number {
 	let total = 0;

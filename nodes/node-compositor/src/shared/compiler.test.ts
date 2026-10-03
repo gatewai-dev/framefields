@@ -913,6 +913,21 @@ describe("keyframe tail truncation (review M8)", () => {
 		expect(warn).toHaveBeenCalledTimes(2);
 	});
 
+	it("warns once across single-frame renders of the same doc (frame-by-frame probes)", () => {
+		const warn = spyWarn();
+		const input = vmWithTrack(
+			[
+				{ frame: 0, value: 0 },
+				{ frame: 31, value: 100 },
+			],
+			24,
+		);
+		for (const id of ["img-probe-1", "img-probe-2", "img-probe-3"]) {
+			compileTimeline(id, input, { fps: 24, durationSec: 5 });
+		}
+		expect(warn).toHaveBeenCalledTimes(1);
+	});
+
 	it("compiles and evaluates text reveal animation tracks accurately", () => {
 		const virtualMedia = {
 			operation: { op: "Compositor", width: 1920, height: 1080 },

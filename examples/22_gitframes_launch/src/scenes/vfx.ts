@@ -388,6 +388,7 @@ function passShot(p: Pass, sceneFrom: number) {
 			id: `${p.id}-words`,
 			words: p.words,
 			from: p.verb.at,
+			until: len,
 			y: (H - 210) / 2,
 			size: 170,
 			color: p.id === "vfx-loud" ? ACCENT : FG,

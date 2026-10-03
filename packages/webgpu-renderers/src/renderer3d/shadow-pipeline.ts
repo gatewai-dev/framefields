@@ -3,7 +3,7 @@
  * Directional and Point Light Shadow Map Generator with Percentage Closer Filtering (PCF).
  */
 
-import { type Mat4, Matrix4Math, type Vec3, Vector3Math } from "../math3d/index.js";
+import { type Mat4, Matrix4Math, type Vec3 } from "../math3d/index.js";
 
 export interface ShadowMapOptions {
 	resolution?: number;
@@ -14,14 +14,12 @@ export interface ShadowMapOptions {
 }
 
 export class ShadowPipeline {
-	private device: GPUDevice;
 	public shadowDepthTexture: GPUTexture;
 	public shadowDepthView: GPUTextureView;
 	public shadowComparisonSampler: GPUSampler;
 	public lightViewProjMatrix: Mat4;
 
 	constructor(device: GPUDevice, resolution = 2048) {
-		this.device = device;
 		this.lightViewProjMatrix = Matrix4Math.identity();
 
 		this.shadowDepthTexture = device.createTexture({
@@ -52,7 +50,7 @@ export class ShadowPipeline {
 	): Mat4 {
 		const viewMatrix = Matrix4Math.lookAt(lightPos, targetPos, [0, 1, 0]);
 		const half = orthoSize * 0.5;
-		const projMatrix = Matrix4Math.ortho(-half, half, -half, half, near, far);
+		const projMatrix = Matrix4Math.orthographic(-half, half, -half, half, near, far);
 		this.lightViewProjMatrix = Matrix4Math.multiply(projMatrix, viewMatrix);
 		return this.lightViewProjMatrix;
 	}

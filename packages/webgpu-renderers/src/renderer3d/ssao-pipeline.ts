@@ -168,7 +168,11 @@ export class SSAOPipeline {
 		finalAOView: GPUTextureView,
 		options: SSAOPassOptions,
 	): void {
-		const invProj = options.invProjMatrix ?? Matrix4Math.invert(options.projMatrix);
+		// A singular projection has no inverse; identity keeps the pass running.
+		const invProj =
+			options.invProjMatrix ??
+			Matrix4Math.invert(options.projMatrix) ??
+			Matrix4Math.identity();
 
 		// Pack SSAO uniforms
 		const uBuf = new Float32Array(64);

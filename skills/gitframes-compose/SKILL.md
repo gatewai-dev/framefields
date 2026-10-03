@@ -116,6 +116,17 @@ const anim = LayerAnimation.create()
 // Directions: in, out, inOut (e.g. "expo.out", "back.out(1.7)", "power2.inOut")
 ```
 
+For more than two keyframes on one prop, list them with `keys`: each tuple is `[frame, value, ease?]`, where the ease shapes the motion *into* that keyframe. Frames are rounded, so beat math (`at + BEAT / 2`) can go straight in:
+
+```typescript
+const pop = LayerAnimation.create()
+  .keys("scale", [[0, 0], [10, 1.12, "back.out(1.6)"], [16, 1, "power2.out"]])
+  .keys("opacity", [[0, 0], [6, 1]]);
+// Static form: LayerAnimation.keys("rotation", [[0, -8], [20, 0, "expo.out"]])
+```
+
+Keyframes past the layer's `durationFrames` never play; the render warns (`animation_truncated`) and `renderVideo({ qa: true })` reports it.
+
 ### 2. Kinetic Typography (`TextAnimator`)
 Text animators operate at the GPU glyph instancing level, cascading offsets across characters, words, or lines:
 

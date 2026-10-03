@@ -1,4 +1,3 @@
-import fs from "node:fs/promises";
 import type { VirtualMediaData } from "@gitframes/core";
 import { Canvas, loadImage } from "skia-canvas";
 import { describe, expect, it } from "vitest";

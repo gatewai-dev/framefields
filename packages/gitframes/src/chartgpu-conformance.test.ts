@@ -61,7 +61,8 @@ describe("ChartGPU Conformance Test Suite (Headless WebGPU & Compositor Integrat
 			height: 200,
 		});
 
-		const testOptions: ChartGPUOptions = {
+		// The bridge takes chartgpu's own option type, not the document schema's.
+		const testOptions: Parameters<ChartGPUEngineBridge["initialize"]>[0] = {
 			theme: "dark",
 			series: [
 				{

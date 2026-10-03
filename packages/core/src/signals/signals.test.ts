@@ -110,6 +110,8 @@ describe("Signals Reactive Core", () => {
 	});
 
 	it("should support primitive valueOf and arithmetic coercion without NaN", () => {
+		// Frame-driven signals read the global clock; earlier tests leave it advanced.
+		updateClockSignals(0, 24);
 		const stateSig = signal(15);
 		const compSig = computed(() => stateSig.value * 2);
 		const arraySig = frameArraySignal([10, 20, 30], 24);

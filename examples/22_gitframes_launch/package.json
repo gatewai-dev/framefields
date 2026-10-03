@@ -9,6 +9,7 @@
 		"images": "tsx src/generate-images.ts",
 		"precomp": "tsx src/precomp.ts",
 		"render": "tsx src/render.ts",
+		"render:src": "tsx --tsconfig tsconfig.dev.json --conditions=development src/render.ts",
 		"test": "vitest run",
 		"typecheck": "tsc --noEmit -p ."
 	},

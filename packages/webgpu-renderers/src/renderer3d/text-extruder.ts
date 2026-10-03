@@ -15,17 +15,25 @@ export interface ExtrudedTextGeometryOptions {
 	font: fontkit.Font;
 	fontSize?: number;
 	depth?: number;
+	/** Fixed straight segments per curve; overrides `curveTolerance`. */
 	curveSegments?: number;
-	align?: "left" | "center" | "right";
+	/**
+	 * Most a flattened curve may stray from the true outline, in px at
+	 * `fontSize`. Each curve gets as many segments as its bend needs, so big
+	 * text and tight bowls stay round while straight stems stay cheap.
+	 */
+	curveTolerance?: number;
+	/** "start"/"end" read as left/right (the text runs left to right) */
+	align?: "left" | "center" | "right" | "start" | "end";
 	verticalAlign?: "top" | "middle" | "bottom";
 	letterSpacing?: number;
+	/** Letter faces: the front cap (toward a default camera, -z) and the back cap */
 	fill?: string;
+	/** Side walls; defaults to `fill` */
 	bevelColor?: string;
 	material?: "lit" | "unlit" | "toon";
 	shininess?: number;
 	roughness?: number;
-	specularIntensity?: number;
-	ambientIntensity?: number;
 	metallic?: number;
 }
 
@@ -108,13 +116,43 @@ export function isPointInsidePolygon(p: Point2D, poly: Contour): boolean {
 	return inside;
 }
 
+export interface CurveFlattening {
+	/** Fixed segment count per curve, if set */
+	segments?: number;
+	/** Max distance between curve and polyline, in output units */
+	tolerance: number;
+}
+
+const DEFAULT_CURVE_TOLERANCE = 0.1;
+const MAX_CURVE_SEGMENTS = 64;
+
+/**
+ * Segments needed for a polyline through n uniform steps of a curve to stay
+ * within `tolerance`: the chord error is at most max|B''| / (8 n^2).
+ */
+function curveSegmentCount(
+	maxSecondDerivative: number,
+	flattening: CurveFlattening,
+): number {
+	if (flattening.segments !== undefined) return flattening.segments;
+	const n = Math.ceil(
+		Math.sqrt(maxSecondDerivative / (8 * flattening.tolerance)),
+	);
+	return Math.min(MAX_CURVE_SEGMENTS, Math.max(1, n));
+}
+
 function processCurveQuadratic(
 	p0: Point2D,
 	cp: Point2D,
 	end: Point2D,
-	segments: number,
+	flattening: CurveFlattening,
 	out: Contour,
 ): void {
+	// B'' = 2 (p0 - 2 cp + end), constant along the curve.
+	const segments = curveSegmentCount(
+		2 * Math.hypot(p0.x - 2 * cp.x + end.x, p0.y - 2 * cp.y + end.y),
+		flattening,
+	);
 	for (let s = 1; s <= segments; s++) {
 		const t = s / segments;
 		const mt = 1 - t;
@@ -130,9 +168,18 @@ function processCurveCubic(
 	cp1: Point2D,
 	cp2: Point2D,
 	end: Point2D,
-	segments: number,
+	flattening: CurveFlattening,
 	out: Contour,
 ): void {
+	// B'' is linear in t, so its largest magnitude is at an end: 6 x the larger second difference.
+	const segments = curveSegmentCount(
+		6 *
+			Math.max(
+				Math.hypot(p0.x - 2 * cp1.x + cp2.x, p0.y - 2 * cp1.y + cp2.y),
+				Math.hypot(cp1.x - 2 * cp2.x + end.x, cp1.y - 2 * cp2.y + end.y),
+			),
+		flattening,
+	);
 	for (let s = 1; s <= segments; s++) {
 		const t = s / segments;
 		const mt = 1 - t;
@@ -156,7 +203,7 @@ function extractGlyphContours(
 	glyphX: number,
 	glyphY: number,
 	scale: number,
-	curveSegments: number,
+	flattening: CurveFlattening,
 ): Contour[] {
 	const svg = glyph.path?.toSVG();
 	if (!svg) return [];
@@ -189,7 +236,8 @@ function extractGlyphContours(
 
 	for (const edge of edges) {
 		const name = edge[0];
-		const args = edge.slice(1);
+		// skia's edges are [verb, ...coordinates]
+		const args = edge.slice(1) as number[];
 
 		if (name === "moveTo") {
 			finishCurrent();
@@ -213,7 +261,7 @@ function extractGlyphContours(
 				x: (glyphX + args[2]!) * scale,
 				y: -(glyphY + args[3]!) * scale,
 			};
-			processCurveQuadratic(curr, cp, end, curveSegments, current);
+			processCurveQuadratic(curr, cp, end, flattening, current);
 			curr = end;
 		} else if (name === "bezierCurveTo") {
 			const cp1: Point2D = {
@@ -228,7 +276,7 @@ function extractGlyphContours(
 				x: (glyphX + args[4]!) * scale,
 				y: -(glyphY + args[5]!) * scale,
 			};
-			processCurveCubic(curr, cp1, cp2, end, curveSegments, current);
+			processCurveCubic(curr, cp1, cp2, end, flattening, current);
 			curr = end;
 		} else if (name === "closePath") {
 			finishCurrent();
@@ -238,53 +286,103 @@ function extractGlyphContours(
 	return contours;
 }
 
+/** Side-wall segments meeting at more than this angle (30°) keep a hard edge. */
+const SIDE_CREASE_COS = Math.cos((30 * Math.PI) / 180);
+
 interface PolygonHierarchy {
 	outer: Contour;
 	holes: Contour[];
 }
 
+/**
+ * Group a glyph's contours into filled outlines and their holes by nesting
+ * depth: a contour inside an even number of others is an outline (the ring
+ * of "O", or the "R" sitting in the counter of "®"), one inside an odd number
+ * is a hole of the smallest outline around it.
+ */
 function organizeGlyphPolygons(glyphContours: Contour[]): PolygonHierarchy[] {
-	if (glyphContours.length === 0) return [];
+	const contours = glyphContours.map((contour) => ({
+		contour,
+		area: Math.abs(computeContourSignedArea(contour)),
+	}));
+	// Outermost first, so every contour's container is handled before it.
+	contours.sort((a, b) => b.area - a.area);
 
-	const sorted = [...glyphContours].sort(
-		(a, b) =>
-			Math.abs(computeContourSignedArea(b)) -
-			Math.abs(computeContourSignedArea(a)),
-	);
-
-	const outers: PolygonHierarchy[] = [];
-
-	for (const contour of sorted) {
-		const area = Math.abs(computeContourSignedArea(contour));
-		let parent: PolygonHierarchy | null = null;
-
-		for (const out of outers) {
-			const parentArea = Math.abs(computeContourSignedArea(out.outer));
-			if (area < parentArea) {
-				// Check sample point or mid-point
-				const sample = contour[0]!;
-				const mid = {
-					x: (contour[0]!.x + contour[Math.floor(contour.length / 2)]!.x) / 2,
-					y: (contour[0]!.y + contour[Math.floor(contour.length / 2)]!.y) / 2,
-				};
-				if (
-					isPointInsidePolygon(sample, out.outer) ||
-					isPointInsidePolygon(mid, out.outer)
-				) {
-					parent = out;
-					break;
-				}
+	const containers: number[][] = contours.map(() => []);
+	for (let i = 0; i < contours.length; i++) {
+		const inner = contours[i]!.contour;
+		const mid = inner[Math.floor(inner.length / 2)]!;
+		for (let j = 0; j < i; j++) {
+			if (contours[j]!.area <= contours[i]!.area) continue;
+			const outer = contours[j]!.contour;
+			// Contours do not cross (the path is simplified), so a vertex
+			// decides; a second guards a vertex lying on the other outline.
+			if (
+				isPointInsidePolygon(inner[0]!, outer) ||
+				isPointInsidePolygon(mid, outer)
+			) {
+				containers[i]!.push(j);
 			}
-		}
-
-		if (parent) {
-			parent.holes.push(contour);
-		} else {
-			outers.push({ outer: contour, holes: [] });
 		}
 	}
 
-	return outers;
+	const polygons: PolygonHierarchy[] = [];
+	const polygonOf = new Map<number, PolygonHierarchy>();
+	for (let i = 0; i < contours.length; i++) {
+		const around = containers[i]!;
+		if (around.length % 2 === 0) {
+			const poly = { outer: contours[i]!.contour, holes: [] };
+			polygons.push(poly);
+			polygonOf.set(i, poly);
+		} else {
+			// The innermost container is the latest (smallest) one.
+			polygonOf
+				.get(around[around.length - 1]!)
+				?.holes.push(contours[i]!.contour);
+		}
+	}
+	return polygons;
+}
+
+/**
+ * A glyph's outlines are flattened and sorted into outlines and holes once per
+ * font, size and flattening, at the glyph origin; each use gets a translated
+ * copy (callers reorder and move the points they are given).
+ */
+const glyphOutlineCache = new WeakMap<
+	object,
+	Map<string, PolygonHierarchy[]>
+>();
+
+function glyphPolygonsAt(
+	font: fontkit.Font,
+	glyph: fontkit.Glyph,
+	glyphX: number,
+	glyphY: number,
+	scale: number,
+	flattening: CurveFlattening,
+): PolygonHierarchy[] {
+	let byGlyph = glyphOutlineCache.get(font);
+	if (!byGlyph) {
+		byGlyph = new Map();
+		glyphOutlineCache.set(font, byGlyph);
+	}
+	const key = `${glyph.id}|${scale}|${flattening.segments ?? ""}|${flattening.tolerance}`;
+	let atOrigin = byGlyph.get(key);
+	if (!atOrigin) {
+		atOrigin = organizeGlyphPolygons(
+			extractGlyphContours(glyph, 0, 0, scale, flattening),
+		);
+		byGlyph.set(key, atOrigin);
+	}
+	const dx = glyphX * scale;
+	const dy = -glyphY * scale;
+	const moved = (c: Contour): Contour =>
+		c.map((p) => ({ x: p.x + dx, y: p.y + dy }));
+	return atOrigin.map((poly) => ({
+		outer: moved(poly.outer),
+		holes: poly.holes.map(moved),
+	}));
 }
 
 export function generateExtrudedTextGeometry(
@@ -294,7 +392,16 @@ export function generateExtrudedTextGeometry(
 	const fontSize = options.fontSize ?? 48;
 	const depth = options.depth ?? 20;
 	const halfDepth = depth / 2;
-	const curveSegments = Math.max(2, options.curveSegments ?? 5);
+	const flattening: CurveFlattening = {
+		segments:
+			options.curveSegments !== undefined
+				? Math.max(2, options.curveSegments)
+				: undefined,
+		tolerance: Math.max(
+			1e-3,
+			options.curveTolerance ?? DEFAULT_CURVE_TOLERANCE,
+		),
+	};
 	const unitsPerEm = font.unitsPerEm || 1000;
 	const scale = fontSize / unitsPerEm;
 
@@ -308,15 +415,14 @@ export function generateExtrudedTextGeometry(
 		const glyphX = cursorX + (pos.xOffset ?? 0);
 		const glyphY = pos.yOffset ?? 0;
 
-		const glyphContours = extractGlyphContours(
+		const glyphPolys = glyphPolygonsAt(
+			font,
 			glyph,
 			glyphX,
 			glyphY,
 			scale,
-			curveSegments,
+			flattening,
 		);
-
-		const glyphPolys = organizeGlyphPolygons(glyphContours);
 		for (const gp of glyphPolys) {
 			polygons.push(gp);
 		}
@@ -359,8 +465,9 @@ export function generateExtrudedTextGeometry(
 	const h = maxY - minY;
 
 	let alignOffsetX = (minX + maxX) / 2;
-	if (options.align === "left") alignOffsetX = minX;
-	if (options.align === "right") alignOffsetX = maxX;
+	if (options.align === "left" || options.align === "start")
+		alignOffsetX = minX;
+	if (options.align === "right" || options.align === "end") alignOffsetX = maxX;
 
 	let alignOffsetY = (minY + maxY) / 2;
 	if (options.verticalAlign === "top") alignOffsetY = minY;
@@ -378,6 +485,11 @@ export function generateExtrudedTextGeometry(
 			}
 		}
 	}
+	// Bounds (and the UVs built from them) describe the aligned geometry.
+	minX -= alignOffsetX;
+	maxX -= alignOffsetX;
+	minY -= alignOffsetY;
+	maxY -= alignOffsetY;
 
 	const frontPositions: number[] = [];
 	const frontNormals: number[] = [];
@@ -389,35 +501,70 @@ export function generateExtrudedTextGeometry(
 	const sideUvs: number[] = [];
 	const sideIndices: number[] = [];
 
-	const addSideQuad = (p0: Point2D, p1: Point2D): void => {
-		const dx = p1.x - p0.x;
-		const dy = p1.y - p0.y;
-		const len = Math.hypot(dx, dy);
-		if (len < 1e-6) return;
+	// Side walls are columns of vertex pairs (top at +z, bottom at -z) joined
+	// by quads. Along a smooth run neighbouring quads share their column, so
+	// a flattened curve shades as one surface (averaged normals) at half the
+	// vertices; a corner sharper than the crease angle gets one column per
+	// side and stays crisp. u runs along the outline, v front to back.
+	const addColumn = (p: Point2D, n: Point2D, u: number): number => {
+		const index = sidePositions.length / 3;
+		sidePositions.push(p.x, p.y, halfDepth, p.x, p.y, -halfDepth);
+		sideNormals.push(n.x, n.y, 0, n.x, n.y, 0);
+		sideUvs.push(u, 0, u, 1);
+		return index;
+	};
 
-		const nx = dy / len;
-		const ny = -dx / len;
+	const addSideWall = (contour: Contour): void => {
+		const pts = contour.filter((p, k) => {
+			const next = contour[(k + 1) % contour.length]!;
+			return Math.hypot(next.x - p.x, next.y - p.y) >= 1e-6;
+		});
+		const count = pts.length;
+		if (count < 2) return;
+		const edgeLengths: number[] = [];
+		const faceNormals = pts.map((p, k) => {
+			const next = pts[(k + 1) % count]!;
+			const len = Math.hypot(next.x - p.x, next.y - p.y);
+			edgeLengths.push(len);
+			return { x: (next.y - p.y) / len, y: -(next.x - p.x) / len };
+		});
+		const perimeter = edgeLengths.reduce((a, b) => a + b, 0);
 
-		const baseIdx = sidePositions.length / 3;
+		// Column each edge starts from, and column the previous edge ends on.
+		const startColumn: number[] = [];
+		const endColumn: number[] = [];
+		let along = 0;
+		for (let k = 0; k < count; k++) {
+			const incoming = faceNormals[(k - 1 + count) % count]!;
+			const outgoing = faceNormals[k]!;
+			const u = along / perimeter;
+			const sx = incoming.x + outgoing.x;
+			const sy = incoming.y + outgoing.y;
+			const smooth =
+				incoming.x * outgoing.x + incoming.y * outgoing.y >= SIDE_CREASE_COS;
+			const averaged = smooth
+				? { x: sx / Math.hypot(sx, sy), y: sy / Math.hypot(sx, sy) }
+				: null;
+			if (averaged && k > 0) {
+				startColumn[k] = endColumn[k] = addColumn(pts[k]!, averaged, u);
+			} else {
+				// Vertex 0 always splits, smooth or not: its end column closes the outline at u = 1.
+				endColumn[k] = addColumn(
+					pts[k]!,
+					averaged ?? incoming,
+					k === 0 ? 1 : u,
+				);
+				startColumn[k] = addColumn(pts[k]!, averaged ?? outgoing, u);
+			}
+			along += edgeLengths[k]!;
+		}
 
-		sidePositions.push(p0.x, p0.y, halfDepth);
-		sideNormals.push(nx, ny, 0);
-		sideUvs.push(0, 0);
-
-		sidePositions.push(p1.x, p1.y, halfDepth);
-		sideNormals.push(nx, ny, 0);
-		sideUvs.push(1, 0);
-
-		sidePositions.push(p1.x, p1.y, -halfDepth);
-		sideNormals.push(nx, ny, 0);
-		sideUvs.push(1, 1);
-
-		sidePositions.push(p0.x, p0.y, -halfDepth);
-		sideNormals.push(nx, ny, 0);
-		sideUvs.push(0, 1);
-
-		sideIndices.push(baseIdx, baseIdx + 2, baseIdx + 1);
-		sideIndices.push(baseIdx, baseIdx + 3, baseIdx + 2);
+		for (let k = 0; k < count; k++) {
+			const a = startColumn[k]!; // top; a + 1 is its bottom
+			const b = endColumn[(k + 1) % count]!;
+			sideIndices.push(a, b + 1, b);
+			sideIndices.push(a, a + 1, b + 1);
+		}
 	};
 
 	for (const poly of polygons) {
@@ -447,7 +594,27 @@ export function generateExtrudedTextGeometry(
 		const triangles = earcut(earcutCoords, holeIndices, 2);
 		const vertCount = earcutCoords.length / 2;
 
+		// The front cap faces the default camera, which looks along +z (as
+		// planar layers do, normal -z).
 		const frontBaseIdx = frontPositions.length / 3;
+		for (let v = 0; v < vertCount; v++) {
+			const vx = earcutCoords[v * 2]!;
+			const vy = earcutCoords[v * 2 + 1]!;
+			frontPositions.push(vx, vy, -halfDepth);
+			frontNormals.push(0, 0, -1);
+			frontUvs.push((vx - minX) / (w || 1), (vy - minY) / (h || 1));
+		}
+		for (let t = 0; t < triangles.length; t += 3) {
+			frontIndices.push(
+				frontBaseIdx + triangles[t]!,
+				frontBaseIdx + triangles[t + 2]!,
+				frontBaseIdx + triangles[t + 1]!,
+			);
+		}
+
+		// The back cap is a face of the letter like the front: it takes the
+		// fill, so text seen from behind is not painted in the bevel color.
+		const backBaseIdx = frontPositions.length / 3;
 		for (let v = 0; v < vertCount; v++) {
 			const vx = earcutCoords[v * 2]!;
 			const vy = earcutCoords[v * 2 + 1]!;
@@ -457,38 +624,15 @@ export function generateExtrudedTextGeometry(
 		}
 		for (let t = 0; t < triangles.length; t += 3) {
 			frontIndices.push(
-				frontBaseIdx + triangles[t]!,
-				frontBaseIdx + triangles[t + 1]!,
-				frontBaseIdx + triangles[t + 2]!,
-			);
-		}
-
-		const backBaseIdx = sidePositions.length / 3;
-		for (let v = 0; v < vertCount; v++) {
-			const vx = earcutCoords[v * 2]!;
-			const vy = earcutCoords[v * 2 + 1]!;
-			sidePositions.push(vx, vy, -halfDepth);
-			sideNormals.push(0, 0, -1);
-			sideUvs.push((vx - minX) / (w || 1), (vy - minY) / (h || 1));
-		}
-		for (let t = 0; t < triangles.length; t += 3) {
-			sideIndices.push(
 				backBaseIdx + triangles[t]!,
-				backBaseIdx + triangles[t + 2]!,
 				backBaseIdx + triangles[t + 1]!,
+				backBaseIdx + triangles[t + 2]!,
 			);
 		}
 
-		for (let k = 0; k < outer.length; k++) {
-			const next = (k + 1) % outer.length;
-			addSideQuad(outer[k]!, outer[next]!);
-		}
-
+		addSideWall(outer);
 		for (const hole of poly.holes) {
-			for (let k = 0; k < hole.length; k++) {
-				const next = (k + 1) % hole.length;
-				addSideQuad(hole[k]!, hole[next]!);
-			}
+			addSideWall(hole);
 		}
 	}
 
@@ -503,8 +647,6 @@ export function generateExtrudedTextGeometry(
 		shading: options.material ?? "lit",
 		shininess: options.shininess ?? 32,
 		roughness: options.roughness,
-		specularIntensity: options.specularIntensity ?? 0.8,
-		ambientIntensity: options.ambientIntensity ?? 1.0,
 		metallic: options.metallic,
 		twoSided: true,
 	};
@@ -515,8 +657,6 @@ export function generateExtrudedTextGeometry(
 		shading: options.material ?? "lit",
 		shininess: options.shininess ?? 32,
 		roughness: options.roughness,
-		specularIntensity: options.specularIntensity ?? 0.8,
-		ambientIntensity: options.ambientIntensity ?? 1.0,
 		metallic: options.metallic,
 		twoSided: true,
 	};
@@ -561,6 +701,13 @@ export function generateExtrudedTextGeometry(
 			"side-material": sideMaterial,
 		},
 		animations: [],
+		bounds: {
+			min: [minX, minY, -halfDepth],
+			max: [maxX, maxY, halfDepth],
+			center: [(minX + maxX) / 2, (minY + maxY) / 2, 0],
+			size: [w, h, depth],
+			boundingSphereRadius: Math.hypot(w, h, depth) / 2,
+		},
 	};
 
 	return {

@@ -89,7 +89,12 @@ describe("Signal Node", () => {
 			height: 256,
 		};
 
-		await drawSignalNode(mockCtx, mockEncoder, mockPass, props);
+		await drawSignalNode(
+			mockCtx,
+			mockEncoder,
+			mockPass,
+			props as unknown as Parameters<typeof drawSignalNode>[3],
+		);
 
 		expect(signalRegistry.getOrCreate2DTextureView).toHaveBeenCalledWith(
 			mockDevice,
@@ -128,7 +133,12 @@ describe("Signal Node", () => {
 			height: 100,
 		};
 
-		await drawSignalNode(mockCtx, mockEncoder, mockPass, props);
+		await drawSignalNode(
+			mockCtx,
+			mockEncoder,
+			mockPass,
+			props as unknown as Parameters<typeof drawSignalNode>[3],
+		);
 
 		expect(signalRegistry.getOrCreate2DTextureView).not.toHaveBeenCalled();
 		expect(mockPass.draw).not.toHaveBeenCalled();
@@ -155,7 +165,12 @@ describe("Signal Node", () => {
 			height: 256,
 		};
 
-		await drawSignalNode(mockCtx, mockEncoder, mockPass, props);
+		await drawSignalNode(
+			mockCtx,
+			mockEncoder,
+			mockPass,
+			props as unknown as Parameters<typeof drawSignalNode>[3],
+		);
 
 		expect(signalRegistry.extractFromAudioSource).toHaveBeenCalledWith(
 			mockDevice,
@@ -209,7 +224,12 @@ describe("Signal Node", () => {
 			height: 256,
 		};
 
-		await drawSignalNode(mockCtx, mockEncoder, mockPass, math2Props);
+		await drawSignalNode(
+			mockCtx,
+			mockEncoder,
+			mockPass,
+			math2Props as unknown as Parameters<typeof drawSignalNode>[3],
+		);
 
 		// Audio should ONLY be extracted for audio-extractor-root, NEVER for math-node-1 or math-node-2
 		expect(signalRegistry.extractFromAudioSource).toHaveBeenCalledTimes(1);

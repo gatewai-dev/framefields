@@ -340,6 +340,8 @@ export const ExtendedGlyphPropertiesSchema = z.object({
 	rotationX: z.number().optional(),
 	rotationY: z.number().optional(),
 	rotationZ: z.number().optional(),
+	/** Volumetric 3D arrangement (set by `volumetricFormation()`) */
+	formation: VolumetricFormationConfigSchema.optional(),
 	skew: z.number().optional(),
 	skewAxis: z.number().optional(),
 

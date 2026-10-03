@@ -1,7 +1,6 @@
 import { Canvas, loadImage } from "skia-canvas";
 import { describe, expect, it } from "vitest";
 import {
-	CameraAnimation,
 	Composition,
 	Layer,
 	Layer3D,
@@ -289,33 +288,23 @@ describe("WebGPU 3D Shapes & Path Follower Headless Conformance", () => {
 		const img15 = await decodePngPixels(f15Buf);
 		const img30 = await decodePngPixels(f30Buf);
 
-		// Find where orange pixels are in img0
-		let found0: { x: number; y: number } | null = null;
-		for (let y = 0; y < img0.height; y++) {
-			for (let x = 0; x < img0.width; x++) {
-				const pix = getPixel(img0, x, y);
-				if (pix.r > 200 && pix.g > 100 && pix.b < 50) {
-					found0 = { x, y };
-					break;
+		// First orange (follower) pixel in a frame, scanning row by row.
+		const findOrange = (img: typeof img0) => {
+			for (let y = 0; y < img.height; y++) {
+				for (let x = 0; x < img.width; x++) {
+					const pix = getPixel(img, x, y);
+					if (pix.r > 200 && pix.g > 100 && pix.b < 50) return { x, y };
 				}
 			}
-			if (found0) break;
-		}
-
-		// Find where orange pixels are in img30
-		let found30: { x: number; y: number } | null = null;
-		for (let y = 0; y < img30.height; y++) {
-			for (let x = 0; x < img30.width; x++) {
-				const pix = getPixel(img30, x, y);
-				if (pix.r > 200 && pix.g > 100 && pix.b < 50) {
-					found30 = { x, y };
-					break;
-				}
-			}
-			if (found30) break;
-		}
+			return null;
+		};
+		const found0 = findOrange(img0);
+		const found15 = findOrange(img15);
+		const found30 = findOrange(img30);
 
 		expect(found0).not.toBeNull();
+		// Halfway along the path the follower is still on screen.
+		expect(found15).not.toBeNull();
 		expect(found30).not.toBeNull();
 
 		const p0 = getPixel(img0, found0!.x, found0!.y);

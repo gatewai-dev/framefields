@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { Signal, signal } from "@gitframes/core";
+import { Signal } from "@gitframes/core";
 import { Canvas, loadImage } from "skia-canvas";
 import { describe, expect, it } from "vitest";
 import { Composition, Layer, Layer3D, LayerAnimation, Light } from "./index.js";

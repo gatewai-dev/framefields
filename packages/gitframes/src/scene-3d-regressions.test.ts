@@ -3,7 +3,13 @@ import os from "node:os";
 import path from "node:path";
 import { Canvas, loadImage } from "skia-canvas";
 import { describe, expect, it } from "vitest";
-import { Composition, GradientMap, Layer, Layer3D } from "./index.js";
+import {
+	type BoxNode,
+	Composition,
+	GradientMap,
+	Layer,
+	Layer3D,
+} from "./index.js";
 
 const W = 800;
 const H = 600;
@@ -34,7 +40,7 @@ describe("3D scene regressions", () => {
 			divisions: 10,
 			lineWidth: 4,
 		});
-		const lines = grid.children ?? [];
+		const lines = (grid.children ?? []) as BoxNode[];
 		// 11 lines each way; long lines are split into segments of at most 4096 px.
 		expect(lines.length).toBe(
 			11 * Math.ceil(14000 / 4096) + 11 * Math.ceil(9000 / 4096),
@@ -52,7 +58,7 @@ describe("3D scene regressions", () => {
 			Layer.box({ id: `c${i}`, width: 100, height: 60 }),
 		);
 		const ring = Layer3D.carousel({ radius: 500, items });
-		const [front, right, back, left] = ring.items ?? [];
+		const [front, right, back, left] = (ring.items ?? []) as BoxNode[];
 		// The default camera looks down +z from -z: the front item sits at -radius, unrotated.
 		expect(front.z).toBeCloseTo(-500);
 		expect(front.rotateY).toBeCloseTo(0);

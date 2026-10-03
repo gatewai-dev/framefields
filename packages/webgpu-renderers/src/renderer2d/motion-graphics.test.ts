@@ -1,9 +1,8 @@
-import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { Renderer2D } from "./index.js";
 import {
 	createMockCommandEncoder,
 	createMockDevice,
-	createMockRenderPassEncoder,
 	createMockTexture,
 	ensureDOMGlobals,
 } from "./test-helpers.js";

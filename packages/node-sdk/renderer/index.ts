@@ -1,13 +1,10 @@
+/// <reference types="@webgpu/types" />
 import type { VirtualMediaData } from "@gitframes/core";
 import type { RenderContextValue } from "@gitframes/webgpu-renderers";
 
-// @ts-expect-error
 export type GPUCommandEncoder = globalThis.GPUCommandEncoder;
-// @ts-expect-error
 export type GPURenderPassEncoder = globalThis.GPURenderPassEncoder;
-// @ts-expect-error
 export type GPUTextureView = globalThis.GPUTextureView;
-// @ts-expect-error
 export type GPUTexture = globalThis.GPUTexture;
 
 export interface NodeRenderProps {
@@ -33,6 +30,8 @@ export interface NodeRenderProps {
 	isVideoMode?: boolean;
 	isPlaying?: boolean;
 	excludeTextures?: GPUTexture[];
+	/** Signal values that override the node's own (text animators read them). */
+	signals?: Record<string, unknown>;
 	renderChild?: (
 		child: VirtualMediaData,
 		overrides?: Partial<NodeRenderProps>,

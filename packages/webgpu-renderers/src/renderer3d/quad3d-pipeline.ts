@@ -67,6 +67,8 @@ export class Quad3DPipeline {
 		device: GPUDevice,
 		format: GPUTextureFormat,
 		depthFormat: GPUTextureFormat = "depth24plus",
+		/** Samples per pixel of the pass this draws into (MSAA). */
+		sampleCount = 1,
 	) {
 		this.device = device;
 		this.modelPool = new BufferPool(
@@ -187,6 +189,7 @@ export class Quad3DPipeline {
 				topology: "triangle-list",
 				cullMode: "none",
 			},
+			multisample: { count: sampleCount },
 		});
 
 		// 2. MRT pipeline (Color + Linear Depth)
@@ -227,6 +230,7 @@ export class Quad3DPipeline {
 				topology: "triangle-list",
 				cullMode: "none",
 			},
+			multisample: { count: sampleCount },
 		});
 
 		// Unit quad centered at origin: [-0.5, -0.5] to [0.5, 0.5] with normal [0, 0, -1]

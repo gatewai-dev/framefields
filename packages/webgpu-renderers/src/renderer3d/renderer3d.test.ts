@@ -1,4 +1,4 @@
-import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { Camera3D } from "../math3d/index.js";
 import { Renderer3D } from "./renderer3d.js";
 import {
@@ -115,8 +115,8 @@ describe("Renderer3D Subsystem", () => {
 		const { ShadowPipeline } = await import("./shadow-pipeline.js");
 		const { GlassPipeline } = await import("./glass-pipeline.js");
 
-		const motionBlur = new MotionBlurPipeline(mockDevice, "rgba8unorm");
-		const ssao = new SSAOPipeline(mockDevice, "rgba8unorm");
+		const motionBlur = new MotionBlurPipeline(mockDevice);
+		const ssao = new SSAOPipeline(mockDevice);
 		const shadow = new ShadowPipeline(mockDevice, 1024);
 		const glass = new GlassPipeline(mockDevice, "rgba8unorm");
 

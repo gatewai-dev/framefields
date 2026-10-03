@@ -127,3 +127,32 @@ describe("LayerAnimation builder & keyframe anchoring", () => {
 		expect(cf25.perspective).toBe(1200);
 	});
 });
+
+describe("LayerAnimation.keys", () => {
+	it("adds a keyframe per tuple, rounding frames and parsing eases", () => {
+		const anim = LayerAnimation.keys("scale", [
+			[0, 0],
+			[11.6, 1.1, "back.out"],
+			[20, 1],
+		]);
+		expect(anim.tracks).toHaveLength(1);
+		const [a, b, c] = anim.tracks[0]!.keyframes;
+		expect([a!.frame, b!.frame, c!.frame]).toEqual([0, 12, 20]);
+		expect(b!.value).toBe(1.1);
+		expect(b!.ease).toEqual({ name: "back", dir: "out" });
+		expect(a!.ease).toBeUndefined();
+		expect(evaluateAnimationAtFrame(anim, 20).scale).toBe(1);
+	});
+
+	it("chains onto an existing animation and its track for the same prop", () => {
+		const anim = LayerAnimation.create()
+			.keyframe("opacity", 0, 0)
+			.keys("opacity", [[10, 1]])
+			.keys("y", [
+				[0, 40],
+				[10, 0],
+			]);
+		expect(anim.tracks.map((t) => t.prop)).toEqual(["opacity", "y"]);
+		expect(anim.tracks[0]!.keyframes.map((k) => k.frame)).toEqual([0, 10]);
+	});
+});

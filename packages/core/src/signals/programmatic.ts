@@ -35,7 +35,9 @@ export class ProgrammaticSignal implements FrameSignal<number> {
 	private _cachedFrame = -1;
 	private _cachedValue = 0;
 	private _seekedFrame = -1;
-	private _subscribers = new Set<{ markDirty(): void }>();
+	// Holds the computeds that read this signal (registerSignalDependency adds them).
+	private _subscribers: Parameters<typeof registerSignalDependency>[0] =
+		new Set();
 	private _children = new Set<ProgrammaticSignal>();
 
 	public get fps(): number {

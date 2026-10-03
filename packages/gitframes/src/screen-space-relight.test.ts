@@ -165,8 +165,10 @@ describe("Screen-Space 3D Normal Relighting Conformance", () => {
 				z: 50,
 				radius: 200,
 				decay: 1.0,
+				// Sweep across over the first second (30 fps).
 				animation: LayerAnimation.create().fromTo("x", 80, 320, {
-					duration: 1.0,
+					start: 0,
+					end: 30,
 				}),
 			}),
 		);

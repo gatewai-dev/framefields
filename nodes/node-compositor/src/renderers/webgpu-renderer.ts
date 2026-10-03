@@ -18,7 +18,6 @@ import type { WebGPUNodeRenderer } from "@gitframes/node-sdk";
 import { measureText } from "@gitframes/renderers";
 import { TemporalDeflickerPipeline } from "@gitframes/tensor-webgpu";
 import {
-	AudioLatentEngine,
 	AudioLatentTrackCache,
 	type BlendMode,
 	Camera3D,
@@ -204,16 +203,24 @@ function getHomographyResources(
 }
 
 const audioTrackLatentCache = new Map<string, AudioLatentTrackCache>();
-const deviceRenderer3DCache = new WeakMap<GPUDevice, Renderer3D>();
+const deviceRenderer3DCache = new WeakMap<GPUDevice, Map<string, Renderer3D>>();
 
+/** One Renderer3D per device, target format and MSAA sample count. */
 function getRenderer3D(
 	device: GPUDevice,
 	format: GPUTextureFormat,
+	sampleCount: number,
 ): Renderer3D {
-	let r3d = deviceRenderer3DCache.get(device);
-	if (!r3d || r3d.format !== format) {
-		r3d = new Renderer3D(device, format);
-		deviceRenderer3DCache.set(device, r3d);
+	let byConfig = deviceRenderer3DCache.get(device);
+	if (!byConfig) {
+		byConfig = new Map();
+		deviceRenderer3DCache.set(device, byConfig);
+	}
+	const key = `${format}|${sampleCount}`;
+	let r3d = byConfig.get(key);
+	if (!r3d) {
+		r3d = new Renderer3D(device, format, sampleCount);
+		byConfig.set(key, r3d);
 	}
 	return r3d;
 }
@@ -582,6 +589,8 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 
 	if (op.op === "Compositor") {
 		const vop = op as CompositorOperation;
+		// 4x MSAA in the 3D pass unless the document opts out (antialias3d: false).
+		const sampleCount3d = vop.antialias3d === false ? 1 : 4;
 		const containerWidth = props.containerWidth ?? ctx.surface.width;
 		const containerHeight = props.containerHeight ?? ctx.surface.height;
 
@@ -622,7 +631,11 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 		);
 		tl.seek(shiftedFrame / (fps ?? 24));
 
-		const r3d = getRenderer3D(ctx.device, ctx.renderer.format ?? "rgba8unorm");
+		const r3d = getRenderer3D(
+			ctx.device,
+			ctx.renderer.format ?? "rgba8unorm",
+			sampleCount3d,
+		);
 		r3d.resetPools();
 
 		const relightPipe = getScreenSpaceRelightPipeline(
@@ -990,6 +1003,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 			const r3d = getRenderer3D(
 				ctx.device,
 				ctx.renderer.format ?? "rgba8unorm",
+				sampleCount3d,
 			);
 
 			// Execute audio mesh deformation compute passes before beginning render pass
@@ -1253,11 +1267,16 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				const r3d = getRenderer3D(
 					ctx.device,
 					ctx.renderer.format ?? "rgba8unorm",
+					sampleCount3d,
 				);
 				let modelSrc = lop.modelData ?? lop.src;
 
 				if (!modelSrc && lop.text3dOptions) {
-					const tOpts = lop.text3dOptions as ExtrudedTextGeometryOptions;
+					// The node's Layer3D.extrudedText options: geometry options plus a family name.
+					const tOpts = lop.text3dOptions as Omit<
+						ExtrudedTextGeometryOptions,
+						"font"
+					> & { fontFamily?: string };
 					const font =
 						(tOpts.fontFamily
 							? SlugFontCache.getParsed(tOpts.fontFamily)
@@ -1268,7 +1287,8 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					if (font) {
 						const res = generateExtrudedTextGeometry({
 							...tOpts,
-							font,
+							// SlugFontCache holds fontkit fonts under a narrower type.
+							font: font as unknown as ExtrudedTextGeometryOptions["font"],
 						});
 						modelSrc = res.modelData;
 						lop.modelData = modelSrc;
@@ -2628,6 +2648,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					const r3dInstance = getRenderer3D(
 						ctx.device,
 						ctx.renderer.format ?? "rgba8unorm",
+						sampleCount3d,
 					);
 
 					const activeLights = synthesizeRelightLights(
@@ -2635,7 +2656,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 						sceneLights,
 						rect,
 						shiftedFrame,
-						fps,
+						fps ?? 24,
 					);
 
 					const lightsBuffer =
@@ -2668,7 +2689,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 									relightOpts.roughness,
 								0.35,
 								shiftedFrame,
-								fps,
+								fps ?? 24,
 							),
 							specularStrength: resolveVal(
 								target?.specularStrength ??
@@ -2676,7 +2697,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 									relightOpts.specularStrength,
 								0.7,
 								shiftedFrame,
-								fps,
+								fps ?? 24,
 							),
 							metallic: resolveVal(
 								target?.metallic ??
@@ -2684,7 +2705,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 									relightOpts.metallic,
 								0.0,
 								shiftedFrame,
-								fps,
+								fps ?? 24,
 							),
 							ambientIntensity: resolveVal(
 								target?.ambientIntensity ??
@@ -2692,7 +2713,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 									relightOpts.ambientIntensity,
 								0.15,
 								shiftedFrame,
-								fps,
+								fps ?? 24,
 							),
 							depthScale: resolveVal(
 								target?.depthScale ??
@@ -2700,7 +2721,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 									relightOpts.depthScale,
 								1.0,
 								shiftedFrame,
-								fps,
+								fps ?? 24,
 							),
 							opacity: 1.0,
 						},
@@ -3311,13 +3332,14 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				const r3dInstance = getRenderer3D(
 					ctx.device,
 					ctx.renderer.format ?? "rgba8unorm",
+					sampleCount3d,
 				);
 				const activeLights = synthesizeRelightLights(
 					relightOpts as Record<string, unknown>,
 					sceneLights,
 					{ x: sampledX, y: sampledY, width: texW, height: texH },
 					shiftedFrame,
-					fps,
+					fps ?? 24,
 				);
 				const lightsBuffer = r3dInstance.getOrCreateLightsBuffer(activeLights);
 
@@ -3349,7 +3371,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 								relightOpts.roughness,
 							0.35,
 							shiftedFrame,
-							fps,
+							fps ?? 24,
 						),
 						specularStrength: resolveVal(
 							target?.specularStrength ??
@@ -3357,7 +3379,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 								relightOpts.specularStrength,
 							0.7,
 							shiftedFrame,
-							fps,
+							fps ?? 24,
 						),
 						metallic: resolveVal(
 							target?.metallic ??
@@ -3365,7 +3387,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 								relightOpts.metallic,
 							0.0,
 							shiftedFrame,
-							fps,
+							fps ?? 24,
 						),
 						ambientIntensity: resolveVal(
 							target?.ambientIntensity ??
@@ -3373,7 +3395,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 								relightOpts.ambientIntensity,
 							0.15,
 							shiftedFrame,
-							fps,
+							fps ?? 24,
 						),
 						depthScale: resolveVal(
 							target?.depthScale ??
@@ -3381,7 +3403,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 								relightOpts.depthScale,
 							1.0,
 							shiftedFrame,
-							fps,
+							fps ?? 24,
 						),
 						opacity: 1.0,
 					},

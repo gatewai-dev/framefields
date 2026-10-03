@@ -1,3 +1,4 @@
+/// <reference types="@webgpu/types" />
 import type { Signal } from "../signals/index.js";
 import type { NormalizedLandmarkList } from "./vision.js";
 

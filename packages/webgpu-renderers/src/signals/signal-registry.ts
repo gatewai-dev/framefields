@@ -782,7 +782,7 @@ export class SignalRegistry {
 	 */
 	public getOrCreate1DBuffer(
 		device: GPUDevice,
-		_encoder: GPUCommandEncoder,
+		_encoder: GPUCommandEncoder | null,
 		nodeId: string,
 		elapsedTime: number,
 		duration: number,
@@ -1061,7 +1061,7 @@ export class SignalRegistry {
 	 */
 	public getOrCreate2DTextureView(
 		device: GPUDevice,
-		_encoder: GPUCommandEncoder,
+		_encoder: GPUCommandEncoder | null,
 		nodeId: string,
 		elapsedTime: number,
 		duration: number,

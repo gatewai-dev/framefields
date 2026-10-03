@@ -216,6 +216,8 @@ export class DmaStagingRing {
 		frameIndex: number,
 		timestampUs: number,
 		colorSpace?: VideoColorSpaceConfig,
+		/** Sees the tightly packed RGBA pixels while they are mapped; must not keep them. */
+		inspect?: (rgba: Uint8Array) => void,
 	): Promise<VideoFrame> {
 		this.checkDestroyed();
 		const slot = this.slots[frameIndex % this.capacity];
@@ -250,6 +252,8 @@ export class DmaStagingRing {
 				);
 			}
 		}
+
+		inspect?.(pixelData);
 
 		const vf = new VideoFrame(pixelData, {
 			format: "RGBA",

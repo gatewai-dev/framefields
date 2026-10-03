@@ -33,6 +33,11 @@ export interface FontkitFont {
 	unitsPerEm: number;
 	variationAxes?: Record<string, unknown>;
 	getVariation?(settings: Record<string, number>): FontkitFont;
+	/** Shapes a string (kerning, ligatures); fontkit fonts always have it. */
+	layout?(text: string): {
+		glyphs: unknown[];
+		positions: Array<{ xAdvance: number }>;
+	};
 }
 
 const TEXTURE_WIDTH = 4096;

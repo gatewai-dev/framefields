@@ -2,7 +2,6 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { ensureDevice } from "../device.js";
-import { signalRegistry } from "../signals/signal-registry.js";
 import { drawSignalNode } from "./signal.js";
 
 describe("Signal Node Audio Integration", () => {
@@ -84,7 +83,12 @@ describe("Signal Node Audio Integration", () => {
 			height: 256,
 		};
 
-		await drawSignalNode(mockCtx as any, encoder, pass, props);
+		await drawSignalNode(
+			mockCtx as any,
+			encoder,
+			pass,
+			props as unknown as Parameters<typeof drawSignalNode>[3],
+		);
 		pass.end();
 
 		// Copy renderTarget to readback buffer

@@ -1,6 +1,6 @@
 import { Canvas, loadImage } from "skia-canvas";
 import { describe, expect, it } from "vitest";
-import { Composition, Layer, LayerAnimation, Light } from "./index.js";
+import { Composition, Layer, LayerAnimation } from "./index.js";
 
 interface DecodedImage {
 	width: number;

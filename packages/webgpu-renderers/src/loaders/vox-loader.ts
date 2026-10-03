@@ -51,7 +51,6 @@ export class VoxLoader {
 		while (offset + 12 <= bytes.byteLength) {
 			const chunkId = new TextDecoder("ascii").decode(bytes.subarray(offset, offset + 4));
 			const contentSize = view.getUint32(offset + 4, true);
-			const childrenSize = view.getUint32(offset + 8, true);
 			offset += 12;
 
 			const chunkDataOffset = offset;
@@ -95,9 +94,9 @@ export class VoxLoader {
 	private static buildModel(
 		voxels: Voxel[],
 		palette: Array<[number, number, number, number]>,
-		sizeX: number,
-		sizeY: number,
-		sizeZ: number,
+		_sizeX: number,
+		_sizeY: number,
+		_sizeZ: number,
 		options: LoadModelOptions,
 	): Model3DData {
 		const voxelSet = new Set<string>();

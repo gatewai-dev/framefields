@@ -3,6 +3,11 @@ import type { FontkitFont } from "./slug-generator.js";
 import { SlugGenerator } from "./slug-generator.js";
 import type { SlugFont } from "./slug-loader.js";
 
+/** Per-font load timings are debug output: shown only with LOG_LEVEL=debug or trace. */
+const VERBOSE_FONT_LOGS =
+	typeof process !== "undefined" &&
+	/^(debug|trace)$/i.test(process.env?.LOG_LEVEL ?? "");
+
 export type FontLoadListener = (fontFamily: string) => void;
 
 export function parseFontWeight(fontWeight?: string | number): number {
@@ -134,6 +139,11 @@ export class SlugFontCache {
 	}
 	private static get parsedFontCache(): Map<string, FontkitFont> {
 		return g[GLOBAL_PARSED_KEY];
+	}
+
+	/** Register an already parsed font (e.g. by FontManager) under a family name. */
+	public static setParsed(fontFamily: string, font: FontkitFont): void {
+		SlugFontCache.parsedFontCache.set(fontFamily, font);
 	}
 
 	public static getParsed(fontFamily: string): FontkitFont | null {
@@ -700,7 +710,7 @@ export class SlugFontCache {
 								buffer = nodeBuffer.buffer.slice(
 									nodeBuffer.byteOffset,
 									nodeBuffer.byteOffset + nodeBuffer.byteLength,
-								);
+								) as ArrayBuffer;
 							} else {
 								// Browser/Web or remote URL environment
 								const response = await fetch(fontUrl);
@@ -726,12 +736,13 @@ export class SlugFontCache {
 							const generated = generator.generate(device, font);
 							const generateTime = performance.now();
 
-							console.log(
-								`[SlugFontCache] Preloaded and parsed font "${fontFamily}":\n` +
-									`  - fontkit parse: ${(parseTime - startTime).toFixed(2)}ms\n` +
-									`  - slug generation: ${(generateTime - parseTime).toFixed(2)}ms\n` +
-									`  - total: ${(generateTime - startTime).toFixed(2)}ms`,
-							);
+							if (VERBOSE_FONT_LOGS)
+								console.log(
+									`[SlugFontCache] Preloaded and parsed font "${fontFamily}":\n` +
+										`  - fontkit parse: ${(parseTime - startTime).toFixed(2)}ms\n` +
+										`  - slug generation: ${(generateTime - parseTime).toFixed(2)}ms\n` +
+										`  - total: ${(generateTime - startTime).toFixed(2)}ms`,
+								);
 							generated.fontFamily = fontFamily;
 							SlugFontCache.cache.set(fontFamily, generated);
 

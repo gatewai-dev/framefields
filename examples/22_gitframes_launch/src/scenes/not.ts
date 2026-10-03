@@ -53,7 +53,9 @@ function denials(): Denial[] {
 function denial(d: Denial, i: number, from: number) {
 	const at = Math.min(d.no.at, d.thing.at) - from;
 	const until = d.until - from;
-	const strikeAt = d.thing.at - from + BEAT;
+	// The bar lands a beat after the word, but never so late that its 8-frame
+	// sweep would run past the clip (the last word is followed quickly).
+	const strikeAt = Math.min(d.thing.at - from + BEAT, until - 9);
 	const step = until - at;
 	return [
 		word({

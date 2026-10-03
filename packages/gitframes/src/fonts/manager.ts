@@ -302,7 +302,7 @@ export class FontManager {
 		if (filePath) {
 			await registerHeadlessFont(resolvedFamily, filePath);
 		}
-		SlugFontCache.parsedFontCache.set(resolvedFamily, parsedFontkit);
+		SlugFontCache.setParsed(resolvedFamily, parsedFontkit);
 
 		return registered;
 	}

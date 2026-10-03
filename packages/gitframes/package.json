@@ -1,6 +1,6 @@
 {
 	"name": "gitframes",
-	"version": "1.2.35",
+	"version": "1.3.0",
 	"private": false,
 	"description": "High-performance WebGPU rendering SDK for video composition, Photoshop-grade 2D VFX, audio DSP, and reactive signals. Built for AI Agents.",
 	"license": "Apache-2.0",

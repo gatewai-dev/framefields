@@ -1,10 +1,50 @@
 /**
- * Shared vision types (engine-agnostic).
+ * Shared vision types (engine-agnostic — no ONNX imports here).
  *
- * These were historically declared in `mediapipe.ts`; the MediaPipe engine has been removed
- * (see specs/yolov4plan.ts §Phase F), so the neutral object/landmark shapes now live here and
- * are consumed by @gitframes/yolo and @gitframes/gitframes.
+ * Consumed by @gitframes/vision (the inference engine) and @gitframes/gitframes (the SDK).
  */
+
+/**
+ * Vision tasks and the model that serves each:
+ *  - `detect` / `segment` — RTMDet-Ins (COCO 80 boxes + instance masks, one forward pass)
+ *  - `pose` — RTMO (COCO-17 keypoints, multi-person)
+ *  - `matte` — MediaPipe Selfie Segmenter (fast person-vs-background alpha)
+ */
+export type VisionTask = "detect" | "segment" | "pose" | "matte";
+
+/** Model size: `t` (tiny, fastest) · `s` (default) · `m` (most accurate). */
+export type VisionVariant = "t" | "s" | "m";
+
+export interface VisionConfig {
+	readonly enableDetection?: boolean;
+	readonly enableSegmentation?: boolean;
+	readonly enablePose?: boolean;
+	/** Fast person matte (Selfie Segmenter) alongside or instead of instance masks. */
+	readonly enableMatte?: boolean;
+	/** COCO class-name filter (all classes when omitted). */
+	readonly classes?: readonly string[];
+	/** Minimum detection score, 0..1. Default 0.3. */
+	readonly confidence?: number;
+	/** Model size. Default "s". */
+	readonly variant?: VisionVariant;
+	/** Model cache directory. Default `$GITFRAMES_MODELS_DIR` or `~/.cache/gitframes/models`. */
+	readonly modelsDir?: string;
+	/** Mirror origin for model downloads (`<baseUrl>/<filename>`). Default: pinned Hugging Face revisions. */
+	readonly baseUrl?: string;
+	/** Mask probability threshold (lower → fuller masks). Default 0.5. */
+	readonly maskThreshold?: number;
+	/** Soft-edge band around `maskThreshold`, 0..1. Default 0.05. */
+	readonly featherRadius?: number;
+	/** Vertical FOV (degrees) used to project landmarks into camera space. */
+	readonly cameraFov?: number;
+}
+
+export interface VisionNodeSpec {
+	readonly id: string;
+	readonly kind: "vision";
+	readonly source?: unknown;
+	readonly config: VisionConfig;
+}
 
 export interface Landmark3D {
 	readonly x: number;

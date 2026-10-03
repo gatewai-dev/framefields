@@ -204,6 +204,8 @@ ffmpeg -i output/final-video.mp4 -af "volumedetect" -f null -
 | Entire frame renders black | Missing font registration or `NaN` in uniform | Ensure every font used in `Layer.text` is registered via `FontManager.register()` and listed in `comp.fonts`. Verify all signal outputs are finite numbers. |
 | Media layer is invisible / blank | Bad input handle binding or zero opacity | Check that the media path exists and `opacity > 0`. If using an effect or section, ensure `fit: "cover"` and valid container dimensions. |
 | Audio cuts out early | Missing `durationFrames` on audio layer | Explicitly assign `durationFrames: totalFrames` on `Layer.audio()`. |
+| Vision cutout / mask is empty on a single `renderFrame` | Vision reads the previous rendered frame; frame 0 has none | Render two or more consecutive frames with the same `HeadlessMediaRenderer` and keep the last. `renderVideo` handles this automatically. |
+| Ghosted double of the subject in a vision cutout | Frames rendered out of order (frame grid, or jumping from frame 3 to 48), so the cutout uses pixels from another frame | Verify vision layers with sequential frames or the exported MP4, not `renderFrameGrid`. |
 | Script hangs after rendering | Background worker thread pool held open | Always include `process.exit(0)` at the end of render scripts. |
 | Text looks misaligned or truncated | Layout node box smaller than text string | Set explicit wrapping `width` (e.g. `width: 1400`) or use `width: "fill"`. |
 | Colors appear washed out / dark edges | Unpremultiplied alpha blending | The engine operates with premultiplied alpha. Ensure custom shaders use `srcFactor: "one"`. |

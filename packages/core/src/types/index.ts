@@ -8,4 +8,3 @@ export * from "./services.js";
 export * from "./tensor.js";
 export * from "./video/index.js";
 export * from "./vision.js";
-export * from "./yolo.js";

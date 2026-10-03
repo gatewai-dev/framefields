@@ -45,7 +45,8 @@ describe("node manifests (package.json `gitframes` block)", () => {
 			"RefractionCaustics3D",
 		);
 		expect(byDir.get("node-extract-lut")?.type).toBe("ExtractLUT");
-		expect(byDir.get("node-yolo")?.aliases).toEqual(["MediaPipe"]);
+		expect(byDir.get("node-vision")?.type).toBe("Vision");
+		expect(byDir.get("node-vision")?.aliases).toEqual([]);
 		expect(byDir.get("node-deflicker")?.aliases).toEqual(["Deflicker"]);
 	});
 
@@ -156,8 +157,7 @@ describe("discoverAndRegisterNodeRenderers", () => {
 			"Blur",
 			"Vignette",
 			"ColorBalance",
-			"Yolo",
-			"MediaPipe",
+			"Vision",
 			"TemporalDeflicker",
 			"Deflicker",
 			"Relight3D",
@@ -174,6 +174,9 @@ describe("discoverAndRegisterNodeRenderers", () => {
 			"RefractionCaustics",
 			"ExtractLut",
 			"Relight3d",
+			// Removed engines.
+			"Yolo",
+			"MediaPipe",
 		]) {
 			expect(webgpuRegistry.has(op), op).toBe(false);
 		}

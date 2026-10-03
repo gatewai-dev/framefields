@@ -7,7 +7,7 @@ import {
 	Layer,
 	type ObjectTrackSignals,
 	Vignette,
-	YoloNode,
+	VisionNode,
 } from "../index.js";
 
 /**
@@ -51,7 +51,7 @@ function describeEffect(effect: Effect<object>) {
 
 function syntheticTrack(): ObjectTrackSignals {
 	const video = Layer.video("test.mp4");
-	const vision = YoloNode.attach(video, {
+	const vision = VisionNode.attach(video, {
 		enableDetection: true,
 		classes: ["person"],
 	});

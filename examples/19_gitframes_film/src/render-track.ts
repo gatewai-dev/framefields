@@ -41,7 +41,7 @@ async function main(): Promise<void> {
 			{
 				frame: 12,
 				label:
-					"YOLO11 Soft-Alpha Cutout · 3D Ground Contact Rings · Reticle Lock",
+					"Soft-Alpha Cutout · 3D Ground Contact Rings · Reticle Lock",
 			},
 			{
 				frame: 48,

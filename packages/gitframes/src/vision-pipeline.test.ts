@@ -1,15 +1,8 @@
 import { describe, expect, it } from "vitest";
-import {
-	Blur,
-	Composition,
-	Layer,
-	MediaPipe,
-	Vignette,
-	Yolo,
-} from "./index.js";
+import { Blur, Composition, Layer, Vignette } from "./index.js";
 
-describe("WebGPU vision pipeable architecture (YOLO engine)", () => {
-	it("chains Crop -> Blur -> Yolo on a single video layer in one go", () => {
+describe("WebGPU vision pipeable architecture", () => {
+	it("chains Crop -> Blur -> Vision on a single video layer in one go", () => {
 		const videoLayer = Layer.video("test_source.mp4")
 			.withCrop({
 				leftPercentage: 27.8,
@@ -18,7 +11,7 @@ describe("WebGPU vision pipeable architecture (YOLO engine)", () => {
 				heightPercentage: 100,
 			})
 			.apply(new Blur({ strength: 10 }))
-			.withYolo({ mode: "skeleton", enablePose: true });
+			.withVision({ mode: "skeleton", enablePose: true });
 
 		const comp = Composition.create({
 			width: 1080,
@@ -34,12 +27,14 @@ describe("WebGPU vision pipeable architecture (YOLO engine)", () => {
 		const layerNode = vm.children[0];
 		expect(layerNode.operation.op).toBe("CompositorLayer");
 
-		// Layer pipeline: Yolo -> Blur -> Crop -> Video
-		const yoloOp = layerNode.children[0];
-		expect(yoloOp.operation.op).toBe("Yolo");
-		expect((yoloOp.operation as Record<string, unknown>).mode).toBe("skeleton");
+		// Layer pipeline: Vision -> Blur -> Crop -> Video
+		const visionOp = layerNode.children[0];
+		expect(visionOp.operation.op).toBe("Vision");
+		expect((visionOp.operation as Record<string, unknown>).mode).toBe(
+			"skeleton",
+		);
 
-		const blurOp = yoloOp.children[0];
+		const blurOp = visionOp.children[0];
 		expect(blurOp.operation.op).toBe("Blur");
 
 		const cropOp = blurOp.children[0];
@@ -52,16 +47,15 @@ describe("WebGPU vision pipeable architecture (YOLO engine)", () => {
 		);
 	});
 
-	it("withMediaPipe is a deprecated alias that renders through YOLO", () => {
+	it("pins nodes to pose landmarks from a composition-wide vision bundle", () => {
 		const comp = Composition.create({
 			width: 1920,
 			height: 1080,
 			fps: 30,
 			durationFrames: 90,
 		});
-		const vision = comp.withMediaPipe({
-			mode: "passthrough",
-			enablePoseLandmarks: true,
+		const vision = comp.withVision({
+			enablePose: true,
 			enableSegmentation: true,
 		});
 
@@ -73,24 +67,12 @@ describe("WebGPU vision pipeable architecture (YOLO engine)", () => {
 		comp.add(Layer.video("background.mp4"), floatingCard);
 
 		const vm = comp.toVirtualMedia();
-		expect(vm.operation.op).toBe("Yolo");
+		expect(vm.operation.op).toBe("Vision");
 		expect(vm.children[0]?.operation.op).toBe("Compositor");
 		expect(floatingCard.x).toBeDefined();
 		expect(vision.poseLandmarksTensor).toBeDefined();
-		expect(vision.segmentation.humanSilhouette).toBeDefined();
-	});
-
-	it("accepts a `new MediaPipe(...)` effect and normalizes it onto YOLO", () => {
-		const comp = Composition.create({
-			width: 640,
-			height: 480,
-			fps: 24,
-			durationFrames: 24,
-		})
-			.add(Layer.video("clip.mp4"))
-			.apply(new MediaPipe({ enableSegmentation: true, mode: "matte" }));
-		const vm = comp.toVirtualMedia();
-		expect(vm.operation.op).toBe("Yolo");
+		expect(vision.segmentation.subject).toBeDefined();
+		expect(vision.segmentation.matte.coverage).toBeDefined();
 	});
 
 	it("supports whole-composition post-processing effect chaining", () => {
@@ -104,10 +86,5 @@ describe("WebGPU vision pipeable architecture (YOLO engine)", () => {
 		const vignetteNode = vm.children[0];
 		expect(vignetteNode.operation.op).toBe("Vignette");
 		expect(vignetteNode.children[0].operation.op).toBe("Compositor");
-	});
-
-	it("Yolo and MediaPipe effects are distinct classes", () => {
-		expect(new Yolo()).not.toBeInstanceOf(MediaPipe);
-		expect(new MediaPipe()).toBeInstanceOf(Yolo);
 	});
 });

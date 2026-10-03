@@ -1,6 +1,6 @@
 ---
 name: gitframes-effects
-description: Apply, configure, and modulate WebGPU post-processing shaders, cinematic color grading, tone mapping, procedural VFX, and YOLO neural vision conditioning in gitframes. Use when adding blur, grain, LUTs, relighting, curves, greenscreen color keying, or subject segmentation in gitframes compositions.
+description: Apply, configure, and modulate WebGPU post-processing shaders, cinematic color grading, tone mapping, procedural VFX, and on-device vision (object tracking, instance segmentation, pose, person mattes) in gitframes. Use when adding blur, grain, LUTs, relighting, curves, greenscreen color keying, subject cutouts, or tracking-driven effects in gitframes compositions.
 ---
 
 # gitframes-effects
@@ -118,9 +118,61 @@ const pngBuffer = await clip.renderFrame({ atMs: 1500 });
 
 ---
 
-## YOLO11 Neural Vision Conditioning
+## On-Device Vision
 
-`gitframes` integrates native WebGPU YOLO11 neural conditioning directly into the rendering pipeline. Models are downloaded and loaded lazily upon first invocation.
+`gitframes` runs vision models on the rendered frame and exposes the results as reactive signals. Models download lazily on first use and are cached in `$GITFRAMES_MODELS_DIR` (default `~/.cache/gitframes/models`).
+
+| Option | Model | Gives you |
+| --- | --- | --- |
+| `enableDetection` (default) | RTMDet-Ins | COCO-80 boxes, tracked over time → `vision.objects` |
+| `enableSegmentation` | RTMDet-Ins (same pass) | Soft per-instance masks → `vision.masks`, `vision.segmentation` |
+| `enablePose` | RTMO | 17 COCO keypoints per person → `vision.poseLandmarks`, `track.pose` |
+| `enableMatte` | Selfie Segmenter | Fast person alpha → `vision.segmentation.matte` |
+
+`variant: "t" | "s" | "m"` trades speed for accuracy (default `"s"`). `confidence` (default 0.3) and `classes: ["person", ...]` filter detections.
+
+```typescript
+// Whole composition: returns the reactive bundle
+const vision = comp.withVision({ enableSegmentation: true, enablePose: true });
+
+// One layer: renders through a node mode
+Layer.video("assets/dancer.mp4").withVision({ mode: "matte", enableSegmentation: true });
+```
+
+Node modes: `passthrough`, `mask`, `matte`, `crop`, `skeleton`, `boxes`, `tracking`. For `mask` / `matte` / `crop`, `matteSource: "instance"` (default; any COCO class, overlapping parts such as a dress merged into the subject) or `"selfie"` (people only, fastest).
+
+### Choosing settings
+
+Measured per 1280–2048 px frame on CPU (`onnxruntime-node`):
+
+| Task | `t` | `s` (default) | `m` |
+| --- | --- | --- | --- |
+| detect / segment (one shared pass) | 150–300 ms | 200–340 ms | 420–700 ms |
+| pose | ~50 ms | ~120 ms | ~280 ms |
+| matte (Selfie Segmenter) | ~20 ms | ~20 ms | ~20 ms |
+
+- Start with `"s"`. Use `"m"` for hero shots with fast motion blur or busy backgrounds; `"t"` mainly saves time on pose.
+- Enabling both `enableDetection` and `enableSegmentation` costs one inference, not two.
+- **Selfie matte only for close framing.** It is tuned for a person filling much of the frame: it misses distant figures and can report a "person" on close-ups with nobody in them. Keep `matteSource: "instance"` for anything else.
+- Raise `confidence` (e.g. `0.5`) on abstract or stylized footage — at the default `0.3` the model will put loose labels ("teddy bear", "donut") on smoke, eyes and planets.
+- Restrict `classes` when you only care about one thing; it also stops the subject from switching to another object when the person leaves frame.
+
+### How it behaves at render time
+
+- **One-frame delay.** Vision reads the layer's *previous* rendered frame, so the very first frame has no results (a cutout renders transparent) and masks trail the plate by one frame. This is invisible at normal playback speed.
+- **Render vision frames in order.** `renderVideo` does this for you. For stills, render at least two consecutive frames with the same renderer and keep the last one. Jumping straight to a later frame (or using a frame grid) cuts out pixels from whatever frame was rendered before it, which shows up as a ghosted double of the subject.
+- **Subject choice.** `mask` / `matte` / `crop` use the largest person; with no person, the most confident instance. Instances overlapping the subject and no more than twice its size are merged in (a dress, a held instrument) — large containers around it (a tunnel, a window frame) are not.
+- Each vision layer tracks objects independently; track ids from two layers are unrelated.
+
+### Troubleshooting
+
+| Symptom | Fix |
+| --- | --- |
+| Part of a fast-moving garment drops out of the cutout | `variant: "m"`, or `keyBackground: true` to grow the subject into connected foreground |
+| Cutout is the wrong object | Set `classes: ["person"]` (or the class you want) |
+| Faint halo around the cutout on dark backgrounds | Lower `featherRadius`, or raise `maskThreshold` (e.g. `0.6`) |
+| Renders offline / in CI | Pre-download with `runner.preload([...])` into `$GITFRAMES_MODELS_DIR`, or point `GITFRAMES_MODELS_BASE_URL` at a mirror |
+| Check the models themselves | `pnpm --filter @gitframes/vision test:models` (downloads ~380 MB once) |
 
 ### 1. Subject Sandwich ("Text Behind Subject")
 Cuts out the foreground subject from footage and sandwiches typography or graphics directly behind them:
@@ -141,10 +193,12 @@ comp.addSubjectSandwich({
 ```
 
 ### 2. Smart Re-Framing (16:9 to 9:16 Auto-Crop)
-Smoothly reframes landscape video into vertical shorts by tracking the focal subject with virtual camera damping:
+Smoothly reframes landscape video into vertical shorts by following a tracked subject with virtual camera damping:
 ```typescript
+const vision = comp.withVision({ enableDetection: true });
 comp.addSmartFraming({
   source: "assets/action.mp4",
+  target: vision.objects.primary,
   targetAspect: 9 / 16,
   damping: 0.15,
   leadHeadroom: 0.1
@@ -154,7 +208,8 @@ comp.addSmartFraming({
 ### 3. Subject Outline Glow & Neon Pulse
 Strokes the segmented subject boundary with an audio-reactive contour glow:
 ```typescript
-comp.addSubjectOutline({
+const vision = comp.withVision({ enableSegmentation: true });
+comp.addSubjectOutline(vision.segmentation.subject, {
   source: "assets/character.mp4",
   color: "#FF5A1F",
   width: 6,
@@ -163,16 +218,20 @@ comp.addSubjectOutline({
 ```
 
 ### 4. Tracked Region Blur
-Automatically blurs faces, license plates, or specific detected classes:
+Blurs faces, license plates, or any detected class by following a live track:
 ```typescript
-const runner = await comp.analyzeVisionSequence("assets/street.mp4", {
-  tasks: ["detect"],
+const vision = comp.withVision({ classes: ["person"] });
+layer.blurRegion(vision.objects.byCategory("person"), { strength: 30 });
+```
+
+### 5. Analyze Before Authoring
+One-shot, ffmpeg-free report of what is in a clip (tracks, classes, mask coverage):
+```typescript
+const report = await comp.analyzeVisionSequence("assets/street.mp4", {
+  tasks: ["detect", "pose"],
   categories: ["person"]
 });
-
-// Primary detected track automatically blurred
-const primaryTrack = runner.tracks[0];
-layer.blurRegion(primaryTrack, { strength: 30 });
+report.tracks; // [{ trackId, category, frames: [start, end], centerPath, ... }]
 ```
 
 ---

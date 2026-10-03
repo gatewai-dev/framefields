@@ -69,7 +69,7 @@ const NOT_YET_MIGRATED = [
 	"node-stereo-panning",
 	"node-tile-offset",
 	"node-unsharp-mask",
-	"node-yolo",
+	"node-vision",
 ];
 
 const exported = effects as unknown as Record<string, unknown>;

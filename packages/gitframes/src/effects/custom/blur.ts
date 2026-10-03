@@ -1,4 +1,4 @@
-import type { ObjectTrackSignals } from "@gitframes/yolo";
+import type { ObjectTrackSignals } from "@gitframes/vision";
 import { BlurBase, type BlurBaseProps } from "../generated/classes.js";
 
 export interface BlurProps extends BlurBaseProps {

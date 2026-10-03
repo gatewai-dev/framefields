@@ -74,13 +74,15 @@ export {
 	type TensorViewExport,
 } from "@gitframes/tensor-webgpu";
 export {
-	// Shared vision types (engine-agnostic, re-exported by @gitframes/yolo from @gitframes/core)
+	COCO_CLASSES,
+	COCO17_BONES,
+	COCO17_KEYPOINT_NAMES,
+	COCO17_KEYPOINTS,
 	type DetectedObject,
+	type InstanceMask,
 	type Landmark3D,
 	type LandmarkCoordinateSignals,
 	type MaskTrackSignals,
-	// YOLO engine surface
-	MEDIAPIPE_TO_YOLO_POSE_INDEX,
 	type NormalizedLandmarkList,
 	type ObjectAnchorName,
 	type ObjectAnchorsSignals,
@@ -89,29 +91,26 @@ export {
 	type ObjectCollectionSignals,
 	type ObjectKinematicsSignals,
 	type ObjectTrackSignals,
-	type ObjectTrackSignals,
+	type PersonMatte,
 	type PinToLandmarkOptions,
 	type PinToObjectOptions,
-	POSE_LANDMARKS_YOLO,
 	type PoseLandmarkSignals,
+	type PoseResult,
 	PoseSkeletonRenderer,
 	pinNodeToLandmark,
 	pinNodeToObject,
+	type SegmentationResult,
 	SegmentationTexturePool,
 	SpatialLandmarkTransformer,
 	TemporalObjectTracker,
 	type TrackedObject,
-	YOLO_COCO17_BONES,
-	YOLO_POSE_KEYPOINT_NAMES,
-	type YoloConfig,
-	type YoloInstanceMask,
-	YoloNode,
-	type YoloOBBResult,
-	type YoloPoseResult,
-	type YoloSegmentationResult,
-	YoloVisionBundle,
-	YoloVisionRunner,
-} from "@gitframes/yolo";
+	VisionBundle,
+	type VisionConfig,
+	VisionNode,
+	VisionRunner,
+	type VisionTask,
+	type VisionVariant,
+} from "@gitframes/vision";
 
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -148,7 +147,7 @@ import {
 	type VirtualMediaData,
 } from "@gitframes/core";
 import {
-	analyzeSequence as analyzeYoloSequence,
+	analyzeSequence as analyzeVisionFrames,
 	type LandmarkCoordinateSignals,
 	type ObjectTrackSignals,
 	type PinToLandmarkOptions,
@@ -156,15 +155,16 @@ import {
 	pinNodeToLandmark,
 	pinNodeToObject,
 	type VisionAnalysisReport,
-	YoloNode,
-	YoloVisionBundle,
-	YoloVisionRunner,
-} from "@gitframes/yolo";
+	VisionBundle,
+	VisionNode,
+	VisionRunner,
+	type VisionTask,
+} from "@gitframes/vision";
 
 export {
 	analyzeSequence,
 	type VisionAnalysisReport,
-} from "@gitframes/yolo";
+} from "@gitframes/vision";
 
 import {
 	type DeflickerOptions,
@@ -199,8 +199,6 @@ import {
 	type HighPassProps,
 	Levels,
 	type LevelsProps,
-	MediaPipe,
-	type MediaPipeProps,
 	Modulate,
 	type ModulateProps,
 	MotionBlur,
@@ -222,8 +220,8 @@ import {
 	type UnsharpMaskProps,
 	Vignette,
 	type VignetteProps,
-	Yolo,
-	type YoloProps,
+	Vision,
+	type VisionProps,
 } from "./effects/index.js";
 import {
 	type FrameGridOptions,
@@ -341,13 +339,13 @@ function decorateTrackSignals<T extends ObjectTrackSignals>(
 	return track;
 }
 
-const origYoloAttach = YoloNode.attach;
-YoloNode.attach = function (
-	source: Parameters<typeof origYoloAttach>[0],
-	config?: Parameters<typeof origYoloAttach>[1],
-	bundleOptions?: Parameters<typeof origYoloAttach>[2],
-): ReturnType<typeof origYoloAttach> {
-	const bundle = origYoloAttach.call(this, source, config, bundleOptions);
+const origVisionAttach = VisionNode.attach;
+VisionNode.attach = function (
+	source: Parameters<typeof origVisionAttach>[0],
+	config?: Parameters<typeof origVisionAttach>[1],
+	bundleOptions?: Parameters<typeof origVisionAttach>[2],
+): ReturnType<typeof origVisionAttach> {
+	const bundle = origVisionAttach.call(this, source, config, bundleOptions);
 	if (bundle?.objects) {
 		const src = source as string | MediaNode;
 		const origGet = bundle.objects.get.bind(bundle.objects);
@@ -656,8 +654,6 @@ export {
 	type LevelChannel,
 	Levels,
 	type LevelsProps,
-	MediaPipe,
-	type MediaPipeProps,
 	Modulate,
 	type ModulateProps,
 	MotionBlur,
@@ -681,8 +677,8 @@ export {
 	type UnsharpMaskProps,
 	Vignette,
 	type VignetteProps,
-	Yolo,
-	type YoloProps,
+	Vision,
+	type VisionProps,
 } from "./effects/index.js";
 export {
 	type Carousel3DOptions,
@@ -862,7 +858,7 @@ export interface SubjectSandwichOptions {
 	readonly behind: readonly LayoutNode[];
 	readonly feather?: number;
 	readonly fit?: "cover" | "contain" | "fill";
-	readonly variant?: "n" | "s" | "m" | "l" | "x";
+	readonly variant?: VisionProps["variant"];
 	readonly confidence?: number;
 	readonly keyBackground?: boolean;
 	readonly backgroundKeyThreshold?: number;
@@ -878,7 +874,7 @@ export interface SmartFramingOptions {
 	readonly damping?: number;
 	readonly leadHeadroom?: number;
 	readonly fit?: "cover" | "contain" | "fill";
-	readonly variant?: "n" | "s" | "m" | "l" | "x";
+	readonly variant?: VisionProps["variant"];
 	readonly muted?: boolean;
 	readonly volume?: number;
 }
@@ -907,21 +903,16 @@ export class Composition {
 	public audioTracks: MediaNode[] = [];
 	public signals: Record<string, unknown> = {};
 	private _frameHooks: Array<(ctx: FrameContext) => void> = [];
-	private _yoloConfig?: YoloProps | Yolo;
-	private _yoloBundle?: YoloVisionBundle;
+	private _visionConfig?: VisionProps;
+	private _visionBundle?: VisionBundle;
 	private _effects: unknown[] = [];
 
 	/**
 	 * Applies a whole-composition post-processing effect or vision pipeline.
 	 */
 	public apply(effect: unknown): this {
-		if (
-			effect &&
-			typeof effect === "object" &&
-			((effect as { op?: string }).op === "MediaPipe" ||
-				(effect as { op?: string }).op === "Yolo")
-		) {
-			this.withYolo(effect as Yolo);
+		if (effect instanceof Vision) {
+			this.withVision(effect);
 			return this;
 		}
 		this._effects.push(effect);
@@ -929,53 +920,37 @@ export class Composition {
 	}
 
 	/**
-	 * @deprecated Use `withYolo`. Alias that maps the legacy MediaPipe config onto the YOLO
-	 * engine; the legacy option shape (`enablePoseLandmarks`, `enableSegmentation`, …) is accepted.
+	 * Runs vision on the whole composition — the rendered frame (composition, blur, crop,
+	 * anything upstream) is the inference input. Models are LAZY: nothing downloads until
+	 * the first frame actually runs a task.
+	 * Returns the reactive VisionBundle (objects / masks / pose / classes signals).
 	 */
-	public withMediaPipe(
-		config: MediaPipeProps | MediaPipe = {},
-	): YoloVisionBundle {
-		const props =
-			config instanceof MediaPipe ? (config.config as MediaPipeProps) : config;
-		return this.withYolo(new MediaPipe(props));
-	}
-
-	/**
-	 * Attaches YOLO11 on top of the whole composition in one go — the rendered frame
-	 * (composition, blur, modulate, crop — anything upstream) is the inference input.
-	 * Models are LAZY: nothing downloads until the first frame actually runs a task.
-	 * Returns a reactive YoloVisionBundle (objects / masks / pose / classes signals).
-	 */
-	public withYolo(config: YoloProps | Yolo = {}): YoloVisionBundle {
-		if (!this._yoloBundle) {
-			this._yoloBundle = new YoloVisionBundle({
-				width: this.width,
-				height: this.height,
-				fps: this.fps,
-			});
-		}
+	public withVision(config: VisionProps | Vision = {}): VisionBundle {
+		this._visionBundle ??= new VisionBundle({
+			width: this.width,
+			height: this.height,
+			fps: this.fps,
+		});
 		const rawConfig =
-			config instanceof Yolo
-				? (config as unknown as { config: YoloProps }).config
-				: config;
-		this._yoloConfig = {
+			config instanceof Vision ? (config.config as VisionProps) : config;
+		this._visionConfig = {
 			...rawConfig,
-			visionBundle: this._yoloBundle,
+			visionBundle: this._visionBundle,
 		};
-		return this._yoloBundle;
+		return this._visionBundle;
 	}
 
 	/**
-	 * One-shot, ffmpeg-free vision analysis of a media source (specs/yolov4plan.ts §Phase C).
+	 * One-shot, ffmpeg-free vision analysis of a media source.
 	 *
 	 * Decodes frames through the same mediabunny pipeline the renderer uses, runs the requested
-	 * YOLO tasks lazily (only those models download), temporally tracks detections, and returns
-	 * a zod-serializable report. The decoder is released and the runner closed on completion.
+	 * tasks lazily (only those models download), temporally tracks detections, and returns a
+	 * zod-serializable report. The decoder is released and the runner closed on completion.
 	 */
 	public async analyzeVisionSequence(
 		source: string,
 		options: {
-			tasks?: readonly ("detect" | "segment" | "pose" | "obb" | "classify")[];
+			tasks?: readonly VisionTask[];
 			categories?: readonly string[];
 			fps?: number;
 			totalFrames?: number;
@@ -984,6 +959,8 @@ export class Composition {
 			modelsDir?: string;
 			baseUrl?: string;
 			confidence?: number;
+			variant?: VisionProps["variant"];
+			/** Tracker box-association IoU. Default 0.25. */
 			iouThreshold?: number;
 		} = {},
 	): Promise<VisionAnalysisReport> {
@@ -992,17 +969,13 @@ export class Composition {
 		const totalFrames =
 			options.totalFrames ?? Math.max(1, Math.round((durationMs / 1000) * fps));
 
-		const runner = YoloVisionRunner.create({
-			...(options.modelsDir !== undefined
-				? { modelsDir: options.modelsDir }
-				: {}),
-			...(options.baseUrl !== undefined ? { baseUrl: options.baseUrl } : {}),
+		const runner = VisionRunner.create({
+			modelsDir: options.modelsDir,
+			baseUrl: options.baseUrl,
 			...(options.confidence !== undefined
 				? { confidence: options.confidence }
 				: {}),
-			...(options.iouThreshold !== undefined
-				? { iouThreshold: options.iouThreshold }
-				: {}),
+			...(options.variant !== undefined ? { variant: options.variant } : {}),
 		});
 
 		const decoder = mediaDecoderCache.getVideo(source, true);
@@ -1024,7 +997,7 @@ export class Composition {
 		}
 
 		try {
-			return await analyzeYoloSequence(frameSource(), {
+			return await analyzeVisionFrames(frameSource(), {
 				runner,
 				source,
 				fps,
@@ -1091,13 +1064,13 @@ export class Composition {
 			| LayoutNode
 			| LayoutNode[]
 			| TensorPipeline
-			| YoloNode
+			| VisionNode
 			| { node: unknown },
 		...rest: Array<
 			| LayoutNode
 			| LayoutNode[]
 			| TensorPipeline
-			| YoloNode
+			| VisionNode
 			| { node: unknown }
 			| LayerAnimation
 			| { tracks: AnimationTrack[] }
@@ -1105,7 +1078,7 @@ export class Composition {
 	): this {
 		if (layerOrFirst instanceof TensorPipeline) {
 			this.children.push(layerOrFirst.toNode() as unknown as LayoutNode);
-		} else if (layerOrFirst instanceof YoloNode) {
+		} else if (layerOrFirst instanceof VisionNode) {
 			this.children.push(layerOrFirst.toNode() as unknown as LayoutNode);
 		} else if (
 			layerOrFirst &&
@@ -1209,7 +1182,7 @@ export class Composition {
 			fit,
 			muted: true,
 			volume: 0,
-		}).withYolo({
+		}).withVision({
 			mode: "matte",
 			enableSegmentation: true,
 			variant,
@@ -1401,7 +1374,7 @@ export class Composition {
 				fit: "cover",
 				muted: true,
 				volume: 0,
-			}).withYolo({
+			}).withVision({
 				mode: "mask",
 				enableSegmentation: true,
 			});
@@ -1578,7 +1551,7 @@ export class Composition {
 			fonts: mergedFonts,
 			signals: this.signals,
 			...(this._effects.length > 0 && { effects: this._effects }),
-			...(this._yoloConfig && { yolo: this._yoloConfig }),
+			...(this._visionConfig && { vision: this._visionConfig }),
 			...(this._frameHooks.length > 0 && {
 				onRequestFrame: (ctx: FrameContext) => this.notifyFrame(ctx),
 			}),
@@ -1597,7 +1570,7 @@ export class Composition {
 			durationMs: options.durationMs ?? this.durationMs,
 			signals: options.signals ?? this.signals,
 			...(this._effects.length > 0 && { effects: this._effects }),
-			...(this._yoloConfig && { yolo: this._yoloConfig }),
+			...(this._visionConfig && { vision: this._visionConfig }),
 			...options,
 		});
 	}
@@ -1617,7 +1590,7 @@ export class Composition {
 			durationMs,
 			signals: options.signals ?? this.signals,
 			...(this._effects.length > 0 && { effects: this._effects }),
-			...(this._yoloConfig && { yolo: this._yoloConfig }),
+			...(this._visionConfig && { vision: this._visionConfig }),
 			...options,
 		});
 	}
@@ -1717,13 +1690,11 @@ export class Composition {
  */
 
 export type AnimatableNode<T extends LayoutNode> = T & {
-	blendshapes?: Record<string, unknown>;
-	hasBlendshapes?: boolean;
 	mask?: unknown;
 	glass?: Record<string, unknown>;
 	audioDeform?: MeshAudioDeformConfig | Record<string, unknown>;
 	crop?: CropProps | Crop;
-	yolo?: YoloProps | Yolo;
+	vision?: Vision;
 	relighting?: NormalRelightingOptions;
 	deflicker?: DeflickerOptions;
 	effects?: unknown[];
@@ -1761,16 +1732,14 @@ export type AnimatableNode<T extends LayoutNode> = T & {
 			  },
 		options?: PinToObjectOptions,
 	): AnimatableNode<T>;
-	/** @deprecated Face blendshapes were removed with MediaPipe; accepted but a no-op. */
-	driveBlendshapes(blendshapes: Record<string, unknown>): AnimatableNode<T>;
 	withMask(mask: unknown): AnimatableNode<T>;
 	withPbrGlass(options?: Record<string, unknown>): AnimatableNode<T>;
 	deformWithAudio(
 		config?: MeshAudioDeformConfig | Record<string, unknown>,
 	): AnimatableNode<T>;
 	withCrop(cropConfig: CropProps | Crop): AnimatableNode<T>;
-	withMediaPipe(config?: MediaPipeProps | MediaPipe): AnimatableNode<T>;
-	withYolo(config?: YoloProps | Yolo): AnimatableNode<T>;
+	/** Runs vision on this node's rendered output (see `Vision` for options and modes). */
+	withVision(config?: VisionProps | Vision): AnimatableNode<T>;
 	withRelighting(options?: NormalRelightingOptions): AnimatableNode<T>;
 	relight(options?: NormalRelightingOptions): AnimatableNode<T>;
 	withDeflicker(options?: DeflickerOptions): AnimatableNode<T>;
@@ -1880,17 +1849,6 @@ function withAnimation<T extends LayoutNode>(node: T): AnimatableNode<T> {
 		configurable: true,
 	});
 
-	Object.defineProperty(target, "driveBlendshapes", {
-		value: (blendshapes: Record<string, unknown>) => {
-			target.blendshapes = blendshapes;
-			target.hasBlendshapes = true;
-			return target;
-		},
-		enumerable: false,
-		writable: true,
-		configurable: true,
-	});
-
 	Object.defineProperty(target, "withMask", {
 		value: (mask: unknown) => {
 			target.mask = mask;
@@ -1932,21 +1890,9 @@ function withAnimation<T extends LayoutNode>(node: T): AnimatableNode<T> {
 		configurable: true,
 	});
 
-	Object.defineProperty(target, "withMediaPipe", {
-		value: (config?: MediaPipeProps | MediaPipe) => {
-			// Deprecated alias — routes through the YOLO engine (`target.yolo`).
-			target.yolo =
-				config instanceof MediaPipe ? config : new MediaPipe(config);
-			return target;
-		},
-		enumerable: false,
-		writable: true,
-		configurable: true,
-	});
-
-	Object.defineProperty(target, "withYolo", {
-		value: (config?: YoloProps | Yolo) => {
-			target.yolo = config instanceof Yolo ? config : new Yolo(config);
+	Object.defineProperty(target, "withVision", {
+		value: (config?: VisionProps | Vision) => {
+			target.vision = config instanceof Vision ? config : new Vision(config);
 			return target;
 		},
 		enumerable: false,
@@ -2750,8 +2696,7 @@ export const Effect = Object.assign(CoreEffect, {
 	pbrGlass: (config?: PBRGlassProps) => new PBRGlass(config),
 	depthOfField: (config?: DepthOfFieldProps) => new DepthOfField(config),
 	crop: (config?: CropProps) => new Crop(config),
-	mediaPipe: (config?: MediaPipeProps) => new MediaPipe(config),
-	yolo: (config?: YoloProps) => new Yolo(config),
+	vision: (config?: VisionProps) => new Vision(config),
 	relight3d: (config?: Relight3DProps) => new Relight3D(config),
 	modulate: (config?: ModulateProps) => new Modulate(config),
 	deflicker: (config?: DeflickerProps) => new TemporalDeflicker(config),

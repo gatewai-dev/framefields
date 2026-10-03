@@ -9,7 +9,7 @@
 [![node](https://img.shields.io/badge/node-%E2%89%A522-3c873a?logo=node.js&logoColor=white)](https://nodejs.org)
 [![engine](https://img.shields.io/badge/engine-WebGPU%20%C2%B7%20WGSL-6366f1)](https://www.w3.org/TR/webgpu/)
 [![gpu](https://img.shields.io/badge/GPU-Dawn%20%C2%B7%20Metal%20%C2%B7%20Vulkan-8b5cf6)](#monorepo-architecture)
-[![vision](https://img.shields.io/badge/vision-YOLO11%20ONNX-ff5a1f)](#6-yolo11-neural-vision--tracking)
+[![vision](https://img.shields.io/badge/vision-RTMDet%20%C2%B7%20RTMO%20%C2%B7%20ONNX-ff5a1f)](#6-on-device-vision--tracking)
 
 **Code-first video as pure software engineering** — no headless browser, no DOM reflow, no screenshot pipeline.
 Renders directly on GPU hardware via Dawn / WebGPU / Metal / Vulkan in Node.js and modern WebGPU browsers.
@@ -17,7 +17,20 @@ Renders directly on GPU hardware via Dawn / WebGPU / Metal / Vulkan in Node.js a
 </div>
 
 > [!NOTE]
-> **Using an AI coding agent?** Install the gitframes skills in **Claude Code** with `/plugin marketplace add gatewai-dev/gitframes` → `/plugin install gitframes@gitframes-plugins`, or in **Codex** with `codex plugin marketplace add gatewai-dev/gitframes`. See [Agent Skills & Plugins](#agent-skills--plugins).
+> **Using an AI coding agent?** Install the gitframes skills straight from the marketplace.
+>
+> **Claude Code**
+> ```text
+> /plugin marketplace add gatewai-dev/gitframes
+> /plugin install gitframes@gitframes-plugins
+> ```
+>
+> **Codex**
+> ```bash
+> codex plugin marketplace add gatewai-dev/gitframes
+> ```
+>
+> See [Agent Skills & Plugins](#agent-skills--plugins) for other agents.
 
 ---
 
@@ -31,7 +44,7 @@ Renders directly on GPU hardware via Dawn / WebGPU / Metal / Vulkan in Node.js a
   - [3. Unified 3D Scene Graph, Camera & Mesh Shading](#3-unified-3d-scene-graph-camera--mesh-shading)
   - [4. Audio Layers, Procedural SFX & Reactive Signals](#4-audio-layers-procedural-sfx--reactive-signals)
   - [5. WebGPU ChartGPU Bridge](#5-webgpu-chartgpu-bridge)
-  - [6. YOLO11 Neural Vision & Tracking](#6-yolo11-neural-vision--tracking)
+  - [6. On-Device Vision & Tracking](#6-on-device-vision--tracking)
   - [7. Headless Conformance & FrameGrid Testing](#7-headless-conformance--framegrid-testing)
 - [Monorepo Architecture](#monorepo-architecture)
 - [Quickstart Guide](#quickstart-guide)
@@ -39,7 +52,7 @@ Renders directly on GPU hardware via Dawn / WebGPU / Metal / Vulkan in Node.js a
   - [2. Unified 3D Scene with Camera & 3D Model](#2-unified-3d-scene-with-camera--3d-model)
   - [3. Audio Soundtrack, Procedural SFX & Reactive Signals](#3-audio-soundtrack-procedural-sfx--reactive-signals)
   - [4. Chained WebGPU Post-Processing VFX](#4-chained-webgpu-post-processing-vfx)
-  - [5. YOLO11 Vision: Pin, Matte & Reframe](#5-yolo11-vision-pin-matte--reframe)
+  - [5. Vision: Pin, Matte & Reframe](#5-vision-pin-matte--reframe)
   - [6. Headless Video & FrameGrid Rendering](#6-headless-video--framegrid-rendering)
 - [Engineering Doctrines & Best Practices](#engineering-doctrines--best-practices)
 - [Agent Skills & Plugins](#agent-skills--plugins)
@@ -61,7 +74,7 @@ Modern automated video generation is usually constrained by the architectures of
 | 🎨 | **Photoshop-Grade Tonal & Spatial VFX** | 50+ modular GPU shaders: Curves, Levels, Selective Color, 3D LUTs, Halftone, Film Grain, Unsharp Mask, Mesh Warp, and Screen-Space Relighting. |
 | 🧊 | **Unified 3D & 2D Depth Compositing** | Nest 2D flex/box trees inside 3D homography planes, multiplane rigs, and meshes (OBJ, FBX, glTF/GLB, STL, PLY, VOX, 3DS, OFF), with PBR glass and SSAO. |
 | 🔊 | **Built-in Procedural Audio DSP** | Multi-track soundtracks, deterministic procedural transition SFX (whoosh, impact, riser), and reactive signals that drive visuals from audio. |
-| 👁️ | **On-Device Neural Vision** | Native YOLO11 ONNX inference for detection, instance segmentation, pose, OBB, classification, and open-vocabulary prompting — feeding reactive signals without a round trip to disk. |
+| 👁️ | **On-Device Neural Vision** | Object tracking, instance segmentation, multi-person pose, and person mattes from Apache-2.0 ONNX models — feeding reactive signals without a round trip to disk. |
 | ☁️ | **Cloud-Native & CI/CD Ready** | ~200–400 MB RAM per worker (vs. 2–4 GB for Chromium), ideal for serverless GPU render clusters (AWS G4/G5, Modal, RunPod, Kubernetes). |
 
 ---
@@ -84,7 +97,7 @@ Developers generating video programmatically commonly weigh **Remotion** (React/
 | **Motion Blur & Physics** | Physical 180° shutter velocity buffers in MRT + closed-form spring kinematics | CSS transitions / JS interpolation; synthetic blur hacks | Frame interpolation or manual multipass |
 | **Audio Engine & DSP** | Native audio DSP & procedural SFX (multi-track mixing, beat grids, reactive signals) | `<Audio>` playback; basic volume curves | Basic static audio playback |
 | **Live Charting & Telemetry** | **ChartGPU bridge** — GPU-rendered line, bar, OHLC, area charts into GPU textures | DOM chart libraries (Recharts, Chart.js) | Custom canvas draw operations |
-| **AI & Computer Vision** | **YOLO11 ONNX** — detect, instance segmentation, COCO-17 pose, OBB, classify, and open-vocabulary YOLO-World; WebGPU tensor conditioning (Canny, depth-to-normals, optical flow, deflicker) | External pre-rendered assets; no native GPU tensor conditioning | External pre-rendered assets |
+| **AI & Computer Vision** | **On-device ONNX vision** — COCO-80 detection + instance masks (RTMDet-Ins), COCO-17 pose (RTMO), person mattes (Selfie Segmenter); WebGPU tensor conditioning (Canny, depth-to-normals, optical flow, deflicker) | External pre-rendered assets; no native GPU tensor conditioning | External pre-rendered assets |
 | **Headless Verification** | **FrameGrid contact sheets**, single-frame snapshots, Skia MSE pixel-invariant assertions | Playwright/Puppeteer visual snapshots | Manual frame inspection / canvas diffing |
 | **Docker / Cloud Portability** | **Compact** (~500 MB slim image with native GPU/Vulkan drivers) | **Heavy** (~2–3 GB with Chromium, fonts, X11/Mesa) | Moderate container size |
 
@@ -141,38 +154,38 @@ Through native [`ChartGPU`](packages/webgpu-renderers/src/chartgpu/chartgpu-brid
 - Render real-time financial, scientific, and metric charts (line, bar, OHLC/candlestick, area, scatter) directly onto offscreen GPU textures.
 - Composite live charts into 3D perspective cards, flex layouts, or HUD overlays — no canvas DOM elements.
 
-### 6. YOLO11 Neural Vision & Tracking
-The MediaPipe engine has been **replaced by a first-class YOLO11 pipeline** ([`@gitframes/yolo`](packages/yolo)). It runs ONNX models via `onnxruntime-node` (CPU EP) or `onnxruntime-web` (WebGPU), and wires every result into the same reactive signal surface the rest of Gitframes consumes.
+### 6. On-Device Vision & Tracking
+[`@gitframes/vision`](packages/vision) runs ONNX models via `onnxruntime-node` (CPU) or `onnxruntime-web` (WebGPU) and wires every result into the same reactive signal surface the rest of Gitframes consumes.
 
 > [!TIP]
-> **Lazy by construction.** `YoloVisionRunner.create()` and `new YoloNode(...)` perform **zero I/O** — no downloads, no sessions, no file probes. A model is fetched the first time a task actually runs. Call `await vision.ready()` to warm up ahead of time.
+> **Lazy by construction.** `VisionRunner.create()`, `comp.withVision(...)` and `VisionNode.attach(...)` perform **zero I/O** — no downloads, no sessions, no file probes. A model is fetched the first time a task actually runs. To warm up ahead of time, call `await runner.preload(["detect", "pose"])` (or `await vision.ready()` on an attached node).
 
-#### Six task heads from one engine
+#### Tasks and models
 
-| Task | Default model | Classes | Output |
+Every model is **Apache-2.0**, pinned to an immutable Hugging Face revision, and verified by SHA-256 after download.
+
+| Task | Option | Model | Output |
 |---|---|---|---|
-| **Detect** | `yolo11{n,s,m,l,x}` | COCO 80 | Axis-aligned boxes + scores |
-| **Segment** | `yolo11{n,s,m}-seg` | COCO 80 | Per-instance masks (frame-aligned alpha) |
-| **Pose** | `yolo11{n,s,m,l}-pose` | COCO-17 | 17 keypoints + visibility per person |
-| **OBB** | `yolo11{n,s,m,l}-obb` | DOTA-15 | Rotated boxes + 4 corners + angle |
-| **Classify** | `yolo11{n,s}-cls` | ImageNet-1k | Top-1 / Top-5 |
-| **World** | `yolov8{s,m}-worldv2` | Open vocabulary | Prompt-driven detection |
+| **Detect** | `enableDetection` | RTMDet-Ins `t/s/m` (OpenMMLab) | COCO-80 boxes + scores, tracked over time |
+| **Segment** | `enableSegmentation` | RTMDet-Ins (same forward pass as detect) | Soft per-instance masks, frame-aligned |
+| **Pose** | `enablePose` | RTMO `t/s/m` (OpenMMLab) | 17 COCO keypoints + visibility per person |
+| **Matte** | `enableMatte` | MediaPipe Selfie Segmenter (Google) | Fast person-vs-background alpha for portrait / webcam framing |
 
-- **Variants `n/s/m/l/x`** and **imgsz 320–1280** (640 default; OBB 1024; classify 224). Tune `confidence`, `iouThreshold`, and a COCO `classes` filter per composition.
-- **Custom models** — point `customModel` at a local `path` or `url` with a `task` and `classes` array to run your own ONNX export.
-- **Configurable asset origin** — override `baseUrl` per run or via `GITFRAMES_YOLO_BASE_URL`; models are cached atomically (temp + rename) and evicted if corrupt.
+- **Variants** — `variant: "t" | "s" | "m"` (default `"s"`; ~24 / 43 / 116 MB for RTMDet-Ins). Tune `confidence` and a COCO `classes` filter per composition. On CPU, a 2K frame takes roughly 200–340 ms to detect + segment, ~120 ms for pose and ~20 ms for the matte with `"s"`.
+- **One pass, two tasks** — detection and segmentation share a single RTMDet-Ins inference per frame.
+- **Picking a matte** — the Selfie Segmenter is tuned for a person filling much of the frame: it misses distant figures and can report "person" on close-ups with nobody in them. For anything else, cut out with instance masks (`matteSource: "instance"`, the default).
+- **Whole-subject cutouts** — `mask` / `matte` / `crop` modes merge every comparably sized instance that overlaps the main subject, so a flowing dress or a held instrument stays attached to the person, while a tunnel or window framing them does not.
+- **One-frame delay** — vision reads each layer's previous rendered frame, so results trail the plate by one frame and frame 0 has none. Verify vision layers with the exported video or consecutive frames, not frame grids.
+- **Model cache & mirrors** — models are cached atomically (temp + rename) in `$GITFRAMES_MODELS_DIR` (default `~/.cache/gitframes/models`). Point `baseUrl` or `GITFRAMES_MODELS_BASE_URL` at your own mirror for air-gapped or CI renders.
 
-#### Hardware-accelerated vision (WebGPU T2)
-- **GPU letterbox resize** — WGSL compute letterboxing straight into the inference tensor ([`YoloGpuPipeline`](packages/yolo/src/gpu/yolo-gpu-pipeline.ts)).
-- **GPU mask upscaling** — prototype-coefficient mask assembly with threshold + feather in compute ([`mask-upscale.wgsl`](packages/yolo/src/gpu/mask-upscale.wgsl.ts)).
-- **OpenPose-style skeleton textures** — rasterize COCO-17 keypoints into a VRAM conditioning texture ([`PoseSkeletonRenderer`](packages/yolo/src/gpu/pose-skeleton-renderer.ts)).
-- **GPU segmentation texture pool** — reusable `r8unorm`/`rgba8unorm` silhouette textures ([`SegmentationTexturePool`](packages/yolo/src/gpu/segmentation-texture-pool.ts)).
-- **Optical-flow forward warping** — advect detections and masks between inference calls for up to ~4× effective throughput ([`optical-flow-warper`](packages/yolo/src/gpu/optical-flow-warper.ts)).
+#### GPU helpers
+- **OpenPose-style skeleton textures** — rasterize COCO-17 keypoints into a VRAM conditioning texture ([`PoseSkeletonRenderer`](packages/vision/src/gpu/pose-skeleton-renderer.ts)).
+- **GPU segmentation texture pool** — reusable silhouette textures ([`SegmentationTexturePool`](packages/vision/src/gpu/segmentation-texture-pool.ts)).
 
 #### Temporal tracking & analysis
-- **Multi-object tracker** ([`TemporalObjectTracker`](packages/yolo/src/tracking/temporal-object-tracker.ts)) assigns stable `trackId`s via IoU association, with configurable `minHits`, `positionSmoothing`, and velocity-based **coasting** for up to `maxMissedFrames` (default 15) so a transient miss holds the track instead of flashing.
-- **Pose↔track matching** ([`pose-track-matcher`](packages/yolo/src/tracking/pose-track-matcher.ts)) binds keypoints to the right track by id, then by spatial IoU fallback.
-- **One-shot sequence analysis** — `comp.analyzeVisionSequence(src, { tasks, categories })` decodes frames through the mediabunny pipeline, tracks them, and returns a **zod-serializable** report (per-track frame ranges, mean speed, sampled center paths, per-class presence/confidence, mean mask coverage, model download bytes/timing) ([`analyzeSequence`](packages/yolo/src/analysis/analyze-sequence.ts)).
+- **Multi-object tracker** ([`TemporalObjectTracker`](packages/vision/src/tracking/temporal-object-tracker.ts)) assigns stable `trackId`s via IoU association, with configurable `minHits`, `positionSmoothing`, and velocity-based **coasting** for up to `maxMissedFrames` (default 15) so a transient miss holds the track instead of flashing.
+- **Pose↔track matching** ([`pose-track-matcher`](packages/vision/src/tracking/pose-track-matcher.ts)) binds keypoints to the right track by id, then by spatial IoU fallback.
+- **One-shot sequence analysis** — `comp.analyzeVisionSequence(src, { tasks, categories })` decodes frames through the mediabunny pipeline, tracks them, and returns a **zod-serializable** report (per-track frame ranges, mean speed, sampled center paths, per-class presence/confidence, mean mask coverage, model download bytes/timing) ([`analyzeSequence`](packages/vision/src/analysis/analyze-sequence.ts)).
 
 #### Reactive vision signals
 Every tracked entity is exposed as reactive `ProgrammaticSignal`s that animate layers and shader uniforms:
@@ -180,35 +193,32 @@ Every tracked entity is exposed as reactive `ProgrammaticSignal`s that animate l
 | Group | Highlights |
 |---|---|
 | `objects` | `get(trackId)`, `byCategory(cat, rank)`, `primary`, `count`, `hasCategory`, `detectedCategories` |
-| `objects.*.bounds` | `x/y/width/height`, `screenX/screenY/screenWidth/screenHeight`, `aspectRatio`, `area`, `angle` |
+| `objects.*.bounds` | `x/y/width/height`, `screenX/screenY/screenWidth/screenHeight`, `aspectRatio`, `area` |
 | `objects.*.anchors` | 9 anchors (corners, edges, center) ready for pinning |
 | `objects.*.kinematics` | `vx`, `vy`, `speed`, `acceleration`, `headingRad/Deg` |
 | `objects.*.pose` | All 17 COCO keypoints, plus `hasPose`, `wristSpeed`, `handRaised`, `bodyTiltAngle` |
 | `masks` | `get(trackId)`, `subject`, `count`; per-mask `area`, `coverage`, `solidity`, `bboxFill` |
-| `segmentation` | `subject`, `humanSilhouette`, `instanceMasks`, GPU `stencilTexture` |
+| `segmentation` | `subject`, `humanSilhouette`, `instanceMasks`, `matte.coverage`, GPU `stencilTexture` |
 | `classes` | Per-class `count`, `maxConfidence`, `present`, `primary`, plus a detection `histogram` |
-| `classification` | `top1`, `top1Confidence`, `top5`, `top5At(frame)` |
 | Tensors | `poseLandmarksTensor [17,3]`, `objectsTensor [16,8]`, `masksTensor [16,2]`, `histogramTensor [80]` |
 
 #### Spatial pinning
-Project normalized landmarks to screen space with a configurable camera FOV, then bind any node to a track or landmark ([`SpatialLandmarkTransformer`](packages/yolo/src/spatial/camera-space-transformer.ts), [`spatial-pin`](packages/yolo/src/spatial/spatial-pin.ts)):
+Project normalized landmarks to screen space with a configurable camera FOV, then bind any node to a track or landmark ([`SpatialLandmarkTransformer`](packages/vision/src/spatial/camera-space-transformer.ts), [`spatial-pin`](packages/vision/src/spatial/spatial-pin.ts)):
 - `pinToObject(track, { anchor, offsetX/Y/Z, matchWidth, matchHeight, smoothFrames, hideWhenLost })`
 - `pinToLandmark(coord, { offsetX/Y/Z })`
 
 #### High-level composition helpers
 - **Subject Sandwich** — `comp.addSubjectSandwich({ source, behind, feather, fit })` cuts the foreground subject out and places typography/graphics behind them.
-- **Smart Reframing** — `comp.addSmartFraming({ source, targetAspect, damping, leadHeadroom })` auto-crops 16:9 → 9:16 while tracking the focal subject.
-- **Subject Outline** — `comp.addSubjectOutline({ source, color, width, blur })` strokes the segmented boundary as an audio-reactive contour glow.
+- **Smart Reframing** — `comp.addSmartFraming({ source, target, targetAspect, damping, leadHeadroom })` auto-crops 16:9 → 9:16 while tracking `target`.
+- **Subject Outline** — `comp.addSubjectOutline(vision.segmentation.subject, { source, color, width, blur })` strokes the segmented boundary as an audio-reactive contour glow.
 - **Tracked Region Blur** — `layer.blurRegion(track, { strength })` blurs faces, plates, or any detected class.
-- **Node modes** — `passthrough`, `mask`, `matte`, `crop`, `skeleton`, `boxes`, `tracking`, `obb`, plus optional `keyBackground`/`backgroundKeyThreshold` to grow a person mask into connected foreground (e.g. a dress).
+- **Node modes** — `passthrough`, `mask`, `matte`, `crop`, `skeleton`, `boxes`, `tracking`; pick the cutout alpha with `matteSource: "instance" | "selfie"`, and optionally `keyBackground` to grow the subject into connected foreground.
 
 #### Agent-first DX
-- **Runtime config is zod-validated** and available from a **zod-only entry** (`@gitframes/yolo/schemas`) so the hot path stays zod-free.
+- **Runtime config is zod-validated** and available from a **zod-only entry** (`@gitframes/vision/schemas`) so the hot path stays zod-free. Unknown or removed options are rejected, not silently ignored.
 - **`vision.summary(frame)`** returns a deterministic, serializable snapshot (objects, classes, masks) safe to call inside a frame hook.
-- **Browser entry** — `@gitframes/yolo/web` re-exports the engine plus `createWebGPUProvider()` / `hasWebGPU()`; `onnxruntime-web` is an optional lazy peer.
-
-#### Migration from MediaPipe
-The `MediaPipe` effect class and `comp.withMediaPipe(...)` remain as **deprecated, source-compatible aliases** that normalize legacy options (`enablePoseLandmarks`, `enableSegmentation`, `mode: "skeleton"`, `objectScoreThreshold`, …) onto the YOLO engine. Prefer [`Yolo`](packages/gitframes/src/effects/classes.ts) and `comp.withYolo(...)`. Face blendshape signals were removed with the old engine; `driveBlendshapes` is accepted as a no-op.
+- **Clear failures** — a model that is the wrong size, fails its checksum, or lacks an expected output raises an error naming the model and its source.
+- **Browser entry** — `@gitframes/vision/web` re-exports the engine plus `createWebGPUProvider()` / `hasWebGPU()`; `onnxruntime-web` is an optional lazy peer.
 
 ### 7. Headless Conformance & FrameGrid Testing
 - **Pixel-sampling invariant assertions** — test compositions in Vitest with `skia-canvas` to verify shader math, font coverage, and Mean Squared Error (MSE) temporal deltas.
@@ -228,14 +238,14 @@ gitframes/
 │   ├── compositions/           # Layout engine, Flex/Box AST compiler, timeline evaluator
 │   ├── webgpu-renderers/       # WGSL shaders, Slug text engine, 3D renderer, camera, lights, materials
 │   ├── tensor-webgpu/          # WebGPU compute pipelines (Canny, depth-to-normals, flow, deflicker, landmarks)
-│   ├── yolo/                   # YOLO11 ONNX engine: tasks, decode, tracking, GPU accel, signals
+│   ├── vision/                 # ONNX vision engine: detect, segment, pose, matte, tracking, signals
 │   ├── renderer/               # Headless Node.js WebGPU renderer via Dawn, WebCodecs, skia-canvas
 │   ├── renderers/              # Higher-level render orchestration
 │   ├── media/                  # Media decoding / encoding adapters
 │   ├── node-sdk/               # Node renderer contracts and result schemas
 │   ├── server-utils/           # Server infrastructure, storage, asset caches
 │   └── client-utils/           # Shared browser utilities
-├── nodes/                      # 58+ specialized domain nodes (VFX, audio, layout, node-yolo)
+├── nodes/                      # 58+ specialized domain nodes (VFX, audio, layout, node-vision)
 ├── apps/
 │   └── renderer-service/       # Production HTTP / gRPC rendering microservice container
 ├── examples/                   # Reference compositions and films
@@ -418,15 +428,15 @@ comp.apply(new ColorBalance({ shadows: [0, 2, 6], highlights: [4, 1, -2] }));
 
 ---
 
-### 5. YOLO11 Vision: Pin, Matte & Reframe
+### 5. Vision: Pin, Matte & Reframe
 
 ```typescript
 import { Composition, Layer, Vignette } from "gitframes";
 
 const comp = new Composition({ width: 1920, height: 1080, fps: 30 });
 
-// Attach YOLO11 to the whole composition. Models download lazily on first use.
-const vision = comp.withYolo({
+// Run vision on the whole composition. Models download lazily on first use.
+const vision = comp.withVision({
   enableDetection: true,
   enableSegmentation: true,
   enablePose: true,
@@ -451,8 +461,8 @@ comp.add(
 
 // Or use the one-liners for the common editorial moves:
 // comp.addSubjectSandwich({ source: "assets/dancer.mp4", behind: [headline], feather: 4 });
-// comp.addSmartFraming({ source: "assets/action.mp4", targetAspect: 9 / 16, damping: 0.15 });
-// comp.addSubjectOutline({ source: "assets/character.mp4", color: "#FF5A1F", width: 6, blur: 12 });
+// comp.addSmartFraming({ source: "assets/action.mp4", target: vision.objects.primary, targetAspect: 9 / 16 });
+// comp.addSubjectOutline(vision.segmentation.subject, { source: "assets/character.mp4", color: "#FF5A1F", width: 6 });
 
 // Inspect a source before authoring: one-shot, ffmpeg-free, zod-serializable report
 const report = await comp.analyzeVisionSequence("assets/street.mp4", {
@@ -465,20 +475,23 @@ console.log(report.tracks.map((t) => `${t.category}#${t.trackId} ${t.frames.join
 **Standalone runner (no composition):**
 
 ```typescript
-import { YoloVisionRunner } from "@gitframes/yolo";
+import { VisionRunner } from "@gitframes/vision";
 
-const runner = YoloVisionRunner.create({ variant: "n", confidence: 0.25 }); // zero I/O
-const boxes = await runner.detect({ data: rgba, width: 1920, height: 1080 });
+const runner = VisionRunner.create({ variant: "s", confidence: 0.3 }); // zero I/O
+const frame = { data: rgba, width: 1920, height: 1080 };
+const boxes = await runner.detect(frame); // downloads RTMDet-Ins on first call
+const { masks } = await runner.segment(frame); // same forward pass, no second inference
+const { people } = await runner.pose(frame); // RTMO, COCO-17 keypoints
 runner.close();
 ```
 
 **In the browser (WebGPU EP):**
 
 ```typescript
-import { YoloVisionRunner, createWebGPUProvider, hasWebGPU } from "@gitframes/yolo/web";
+import { VisionRunner, createWebGPUProvider, hasWebGPU } from "@gitframes/vision/web";
 
 if (hasWebGPU()) {
-  const runner = YoloVisionRunner.create({ provider: createWebGPUProvider() });
+  const runner = VisionRunner.create({ provider: createWebGPUProvider() });
 }
 ```
 
@@ -532,7 +545,7 @@ Gitframes ships agent skills that teach Claude, Codex, and other coding agents h
 | Skill | Use it for |
 | --- | --- |
 | `gitframes-compose` | Compositions, layer trees, layout, animation and easing, beat grids, film structure |
-| `gitframes-effects` | Effect classes, the unified section architecture, premultiplied-alpha invariants, YOLO vision conditioning |
+| `gitframes-effects` | Effect classes, the unified section architecture, premultiplied-alpha invariants, vision conditioning |
 | `gitframes-render` | Headless rendering, FrameGrid inspection, pixel probes, MP4 delivery checks |
 
 Once installed, skills load automatically when a task matches (e.g. *"add a film-grain pass to this scene"* or *"render a frame grid of intro.ts"*).
@@ -627,6 +640,9 @@ pnpm build
 # Run conformance tests
 pnpm test
 
+# Check the vision models end to end (downloads ~380 MB of weights once)
+pnpm --filter @gitframes/vision test:models
+
 # Render a specific showcase example
 pnpm --filter @gitframes/example-21-full-circle render
 
@@ -646,4 +662,4 @@ docker build -t gitframes-renderer -f Dockerfile.renderer .
 
 ## License
 
-Gitframes is open-source software licensed under [Apache-2.0](LICENCE). Downloaded YOLO model weights follow their upstream Ultralytics licensing.
+Gitframes is open-source software licensed under [Apache-2.0](LICENCE). The vision models it downloads on demand — RTMDet-Ins and RTMO (OpenMMLab) and the Selfie Segmenter (Google) — are also Apache-2.0; see [`registry.ts`](packages/vision/src/model/registry.ts) for exact sources and checksums.

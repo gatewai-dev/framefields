@@ -575,8 +575,8 @@ const BaseNodeFields = {
 	envIntensity: z.number().min(0).max(10.0).optional(),
 	/** Per-node motion: tracks keyed by node id. */
 	animation: LayerAnimationSchema.default({ tracks: [] }),
-	/** YOLO vision configuration or effect attached directly to the node. */
-	yolo: z.unknown().optional(),
+	/** Vision configuration or effect attached directly to the node. */
+	vision: z.unknown().optional(),
 	/** Relighting configuration attached directly to the node. */
 	relighting: z.unknown().optional(),
 } as const;
@@ -630,7 +630,7 @@ export interface CompositionNodeBase {
 	durationFrames?: number;
 	motionBlurShutter?: number;
 	animation?: LayerAnimationSpec;
-	yolo?: unknown;
+	vision?: unknown;
 	relighting?: unknown;
 }
 
@@ -1636,8 +1636,8 @@ export const CompositorProgramSchema = z
 		signals: z.record(z.string(), z.unknown()).optional(),
 		/** Composition-wide effect chain (`comp.apply(effect)`); resolved to operations downstream. */
 		effects: z.array(z.unknown()).optional(),
-		/** Composition-wide YOLO vision config or bundle. */
-		yolo: z.unknown().optional(),
+		/** Composition-wide vision config or bundle. */
+		vision: z.unknown().optional(),
 		/** Per-frame notification hook. */
 		onRequestFrame: z.custom<unknown>().optional(),
 	})

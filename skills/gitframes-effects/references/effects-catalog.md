@@ -42,7 +42,7 @@ Set `GITFRAMES_STRICT_PROPS=1` to make an unknown prop or an out-of-range value 
 | `PBRGlass` | `PBRGlass` | `ior`, `roughness`, `transmission`, `dispersion`, `fresnelPower`, `tintColor` |
 | `DepthOfField` | `DepthOfField` | `focusDistance`, `focalLength`, `aperture`, `maxBlur`, `quality` |
 | `Crop` | `Crop` | `cropType`, `leftPercentage`, `topPercentage`, `widthPercentage`, `heightPercentage`, `roundness`, `pathPoints`, `mode` |
-| `Yolo` | `Yolo` | `enableDetection`, `enableSegmentation`, `enablePose`, `enableClassification`, `enableObb`, `enableWorld`, `prompts`, `customModel`, `classes`, `confidence`, `iouThreshold`, `variant`, `imgsz`, `mode`, `delegate`, `modelsDir`, `baseUrl`, `maskThreshold`, `featherRadius`, `keyBackground`, `backgroundKeyThreshold`, `visionBundle` |
+| `Vision` | `Vision` | `enableDetection`, `enableSegmentation`, `enablePose`, `enableMatte`, `classes`, `confidence`, `variant`, `mode`, `matteSource`, `maxMissedFrames`, `modelsDir`, `baseUrl`, `maskThreshold`, `featherRadius`, `keyBackground`, `backgroundKeyThreshold`, `visionBundle` |
 | `Relight3D` | `Relight3D` | `lightType`, `intensity`, `lightPosX`, `lightPosY`, `lightPosZ`, `lightRadius`, `spotConeAngle`, `specularRoughness`, `specularStrength`, `metallic`, `ambientIntensity`, `volumetricDensity`, `depthScale`, `depthInvert`, `lightColor`, `ambientColor`, `normalMap` |
 | `TemporalDeflicker` | `TemporalDeflicker` | `blendWeight`, `disocclusionThreshold`, `maxMotionPixels`, `scale`, `windowSize` |
 | `Modulate` | `Modulate` | `hue`, `brightness`, `contrast`, `exposure`, `saturation`, `sepia` |
@@ -418,12 +418,12 @@ new Crop({ cropType: "rect", leftPercentage: 0, topPercentage: 0 });
 | `pathPoints` | `{ x: number; y: number }[]` | — |
 | `mode` | `"cropped" \| "rest"` | — |
 
-### Yolo
+### Vision
 
 ```ts
-import { Yolo } from "gitframes/effects";
+import { Vision } from "gitframes/effects";
 
-new Yolo({ confidence: 0.25, iouThreshold: 0.45, variant: "n" });
+new Vision({ confidence: 0.3, variant: "s", mode: "passthrough" });
 ```
 
 | Prop | Type | Default |
@@ -431,18 +431,13 @@ new Yolo({ confidence: 0.25, iouThreshold: 0.45, variant: "n" });
 | `enableDetection` | `boolean` | — |
 | `enableSegmentation` | `boolean` | — |
 | `enablePose` | `boolean` | — |
-| `enableClassification` | `boolean` | — |
-| `enableObb` | `boolean` | — |
-| `enableWorld` | `boolean` | — |
-| `prompts` | `readonly string[]` | — |
-| `customModel` | `CustomModelConfig` | — |
+| `enableMatte` | `boolean` | — |
 | `classes` | `readonly string[]` | — |
-| `confidence` | `number` | `0.25` |
-| `iouThreshold` | `number` | `0.45` |
-| `variant` | `"n" \| "s" \| "m" \| "l" \| "x"` | `"n"` |
-| `imgsz` | `number` | `640` |
-| `mode` | `\| "passthrough" \| "mask" \| "matte" \| "crop" \| "skeleton" \| "boxes" \| "tracking" \| "obb"` | `"passthrough"` |
-| `delegate` | `"CPU" \| "GPU"` | `"CPU"` |
+| `confidence` | `number` | `0.3` |
+| `variant` | `"t" \| "s" \| "m"` | `"s"` |
+| `mode` | `\| "passthrough" \| "mask" \| "matte" \| "crop" \| "skeleton" \| "boxes" \| "tracking"` | `"passthrough"` |
+| `matteSource` | `"instance" \| "selfie"` | `"instance"` |
+| `maxMissedFrames` | `number` | — |
 | `modelsDir` | `string` | — |
 | `baseUrl` | `string` | — |
 | `maskThreshold` | `number` | — |
@@ -517,4 +512,4 @@ new Modulate({ hue: 0, brightness: 1.0, contrast: 1.0 });
 Beyond these classes, the engine ships node plugins under `nodes/` (audio DSP, generators,
 signal maths, vision). Each is a package named `@gitframes/node-<name>`:
 
-`node-apply-lut`, `node-audio-compressor`, `node-audio-delay`, `node-audio-fade`, `node-audio-noise-gate`, `node-audio-parametric-eq`, `node-audio-reverb`, `node-audio-signal-extractor`, `node-blur`, `node-camera-parallax-3d`, `node-canvas-generator`, `node-caption-editor`, `node-caption-generator`, `node-channel-merger`, `node-channel-splitter`, `node-color-balance`, `node-colorkey`, `node-compositor`, `node-corner-pin`, `node-crop`, `node-curves`, `node-deflicker`, `node-displacement-map`, `node-extract-frame`, `node-extract-lut`, `node-film-grain`, `node-flip`, `node-gradient-map`, `node-halftone-screen`, `node-high-pass`, `node-kenburns`, `node-layer-style`, `node-levels`, `node-liquify`, `node-lottie`, `node-mask-math`, `node-mesh-warp`, `node-modulate`, `node-noise-generator`, `node-paint`, `node-patch-heal`, `node-procedural-vfx`, `node-refine-edge`, `node-refraction-caustics`, `node-relight-3d`, `node-resizer-scaler`, `node-selective-color`, `node-shadows-highlights`, `node-shape-generator`, `node-signal-gate`, `node-signal-math`, `node-signal`, `node-stereo-panning`, `node-svg`, `node-text`, `node-tile-offset`, `node-unsharp-mask`, `node-vignette`, `node-yolo`
+`node-apply-lut`, `node-audio-compressor`, `node-audio-delay`, `node-audio-fade`, `node-audio-noise-gate`, `node-audio-parametric-eq`, `node-audio-reverb`, `node-audio-signal-extractor`, `node-blur`, `node-camera-parallax-3d`, `node-canvas-generator`, `node-caption-editor`, `node-caption-generator`, `node-channel-merger`, `node-channel-splitter`, `node-color-balance`, `node-colorkey`, `node-compositor`, `node-corner-pin`, `node-crop`, `node-curves`, `node-deflicker`, `node-displacement-map`, `node-extract-frame`, `node-extract-lut`, `node-film-grain`, `node-flip`, `node-gradient-map`, `node-halftone-screen`, `node-high-pass`, `node-kenburns`, `node-layer-style`, `node-levels`, `node-liquify`, `node-lottie`, `node-mask-math`, `node-mesh-warp`, `node-modulate`, `node-noise-generator`, `node-paint`, `node-patch-heal`, `node-procedural-vfx`, `node-refine-edge`, `node-refraction-caustics`, `node-relight-3d`, `node-resizer-scaler`, `node-selective-color`, `node-shadows-highlights`, `node-shape-generator`, `node-signal-gate`, `node-signal-math`, `node-signal`, `node-stereo-panning`, `node-svg`, `node-text`, `node-tile-offset`, `node-unsharp-mask`, `node-vignette`, `node-vision`

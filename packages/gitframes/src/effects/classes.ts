@@ -1,5 +1,4 @@
 import { Effect } from "@gitframes/core";
-import type { CustomModelConfig } from "@gitframes/yolo";
 import {
 	AudioSignal,
 	type AudioSignalOptions,
@@ -689,35 +688,21 @@ export class Crop extends Effect<CropProps> {
 	}
 }
 
-/**
- * @deprecated The MediaPipe engine was removed (specs/yolov4plan.ts §Phase F).
- * Legacy option shape, mapped onto YOLO by the `MediaPipe` alias class below.
- */
-export interface MediaPipeProps {
-	enablePoseLandmarks?: boolean;
-	enableFaceLandmarks?: boolean;
-	enableFaceBlendshapes?: boolean;
-	enableSegmentation?: boolean;
-	mode?: "passthrough" | "mask" | "matte" | "skeleton";
-	delegate?: "CPU" | "GPU";
-	modelsDir?: string;
-	visionBundle?: unknown;
-}
-
-export interface YoloProps {
+export interface VisionProps {
+	/** Track COCO-80 objects (RTMDet-Ins boxes). Default true. */
 	enableDetection?: boolean;
+	/** Per-instance masks (RTMDet-Ins). Shares the detection pass. */
 	enableSegmentation?: boolean;
+	/** COCO-17 keypoints per person (RTMO). */
 	enablePose?: boolean;
-	enableClassification?: boolean;
-	enableObb?: boolean;
-	enableWorld?: boolean;
-	prompts?: readonly string[];
-	customModel?: CustomModelConfig;
+	/** Fast person-vs-background alpha (Selfie Segmenter). */
+	enableMatte?: boolean;
+	/** COCO class-name filter (all classes when omitted). */
 	classes?: readonly string[];
+	/** Minimum detection score, 0..1. Default 0.3. */
 	confidence?: number;
-	iouThreshold?: number;
-	variant?: "n" | "s" | "m" | "l" | "x";
-	imgsz?: number;
+	/** Model size: `t` fastest · `s` default · `m` most accurate. */
+	variant?: "t" | "s" | "m";
 	mode?:
 		| "passthrough"
 		| "mask"
@@ -725,38 +710,42 @@ export interface YoloProps {
 		| "crop"
 		| "skeleton"
 		| "boxes"
-		| "tracking"
-		| "obb";
-	delegate?: "CPU" | "GPU";
+		| "tracking";
+	/**
+	 * Subject alpha for mask/matte/crop: instance masks (default; any COCO class) or the
+	 * selfie matte (fastest, but only reliable when a person fills much of the frame).
+	 */
+	matteSource?: "instance" | "selfie";
+	/** Frames a track may go unseen before it is dropped. Default 15. */
+	maxMissedFrames?: number;
 	modelsDir?: string;
 	baseUrl?: string;
 	maskThreshold?: number;
 	featherRadius?: number;
-	/** Grow the person mask into connected colourful/dark foreground (e.g. a dress). */
+	/** Grow the subject into connected pixels that stand out from the backdrop. */
 	keyBackground?: boolean;
 	/** Colour-distance threshold for the background key (lower → more growth). Default 70. */
 	backgroundKeyThreshold?: number;
 	visionBundle?: unknown;
 }
 
-export class Yolo extends Effect<YoloProps> {
-	public readonly op = "Yolo";
+/**
+ * On-device vision: tracks objects, segments instances, estimates pose and mattes people on
+ * the rendered frame, feeding reactive signals. Models download lazily on first use.
+ */
+export class Vision extends Effect<VisionProps> {
+	public readonly op = "Vision";
 
 	public declare enableDetection?: boolean;
 	public declare enableSegmentation?: boolean;
 	public declare enablePose?: boolean;
-	public declare enableClassification?: boolean;
-	public declare enableObb?: boolean;
-	public declare enableWorld?: boolean;
-	public declare prompts?: readonly string[];
-	public declare customModel?: CustomModelConfig;
+	public declare enableMatte?: boolean;
 	public declare classes?: readonly string[];
 	public declare confidence?: number;
-	public declare iouThreshold?: number;
-	public declare variant?: "n" | "s" | "m" | "l" | "x";
-	public declare imgsz?: number;
-	public declare mode?: YoloProps["mode"];
-	public declare delegate?: "CPU" | "GPU";
+	public declare variant?: VisionProps["variant"];
+	public declare mode?: VisionProps["mode"];
+	public declare matteSource?: VisionProps["matteSource"];
+	public declare maxMissedFrames?: number;
 	public declare modelsDir?: string;
 	public declare baseUrl?: string;
 	public declare maskThreshold?: number;
@@ -765,45 +754,17 @@ export class Yolo extends Effect<YoloProps> {
 	public declare backgroundKeyThreshold?: number;
 	public declare visionBundle?: unknown;
 
-	constructor(config: YoloProps = {}) {
+	constructor(config: VisionProps = {}) {
 		super({
 			enableDetection: config.enableDetection !== false,
 			enableSegmentation: config.enableSegmentation === true,
 			enablePose: config.enablePose === true,
-			enableClassification: config.enableClassification === true,
-			enableObb: config.enableObb === true,
-			confidence: config.confidence ?? 0.25,
-			iouThreshold: config.iouThreshold ?? 0.45,
-			variant: config.variant ?? "n",
-			imgsz: config.imgsz ?? 640,
+			enableMatte: config.enableMatte === true,
+			confidence: config.confidence ?? 0.3,
+			variant: config.variant ?? "s",
 			mode: config.mode ?? "passthrough",
-			delegate: config.delegate ?? "CPU",
+			matteSource: config.matteSource ?? "instance",
 			...config,
-		});
-	}
-}
-
-/**
- * @deprecated Use `Yolo`. Kept as a source-compatible alias that maps the legacy MediaPipe
- * option shape onto the YOLO engine (`op` is `"Yolo"`).
- */
-export class MediaPipe extends Yolo {
-	constructor(config: MediaPipeProps = {}) {
-		super({
-			enableDetection: true,
-			enablePose: config.enablePoseLandmarks !== false,
-			enableSegmentation: config.enableSegmentation === true,
-			mode:
-				config.mode === "skeleton"
-					? "skeleton"
-					: (config.mode ?? "passthrough"),
-			...(config.delegate !== undefined ? { delegate: config.delegate } : {}),
-			...(config.modelsDir !== undefined
-				? { modelsDir: config.modelsDir }
-				: {}),
-			...(config.visionBundle !== undefined
-				? { visionBundle: config.visionBundle }
-				: {}),
 		});
 	}
 }

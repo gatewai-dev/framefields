@@ -104,19 +104,19 @@ function nodeToVirtualMedia(
 				} as unknown as VirtualMediaData;
 			}
 		}
-		if (media && (node as any).yolo) {
-			const yoloRaw = (node as any).yolo;
-			const yoloOp =
-				typeof yoloRaw.toOperation === "function"
-					? yoloRaw.toOperation()
-					: yoloRaw;
+		if (media && (node as any).vision) {
+			const visionRaw = (node as any).vision;
+			const visionOp =
+				typeof visionRaw.toOperation === "function"
+					? visionRaw.toOperation()
+					: visionRaw;
 			media = {
 				metadata: { ...media.metadata },
 				operation: {
-					op: "Yolo",
+					op: "Vision",
 					id: (node as any).id,
-					effect: yoloRaw,
-					...yoloOp,
+					effect: visionRaw,
+					...visionOp,
 					dataType: media.operation.dataType,
 				},
 				children: [media],
@@ -314,17 +314,17 @@ export function compositorToProgram(
 		} as unknown as VirtualMediaData;
 	}
 
-	const yoloRaw = (config as any).yolo ?? (options as any).yolo;
-	if (yoloRaw) {
-		const yoloOp =
-			typeof yoloRaw.toOperation === "function"
-				? yoloRaw.toOperation()
-				: yoloRaw;
+	const visionRaw = (config as any).vision ?? (options as any).vision;
+	if (visionRaw) {
+		const visionOp =
+			typeof visionRaw.toOperation === "function"
+				? visionRaw.toOperation()
+				: visionRaw;
 		rootMedia = {
 			metadata: { ...rootMedia.metadata },
 			operation: {
-				op: "Yolo",
-				...yoloOp,
+				op: "Vision",
+				...visionOp,
 				dataType: rootMedia.operation.dataType,
 			},
 			children: [rootMedia],

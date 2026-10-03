@@ -34,5 +34,5 @@ export { default as shadowsHighlightsRenderer } from "@gitframes/node-shadows-hi
 export { default as tileOffsetRenderer } from "@gitframes/node-tile-offset/renderer";
 export { default as unsharpMaskRenderer } from "@gitframes/node-unsharp-mask/renderer";
 export { default as vignetteRenderer } from "@gitframes/node-vignette/renderer";
-export { default as yoloRenderer } from "@gitframes/node-yolo/renderer";
+export { default as visionRenderer } from "@gitframes/node-vision/renderer";
 export * from "./classes.js";

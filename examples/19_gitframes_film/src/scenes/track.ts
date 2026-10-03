@@ -1,8 +1,8 @@
 /**
  * Chapter 05: Vision — "Track it."
  *
- * Demonstrates Gitframes's latest YOLO11 vision updates with unmistakable visual punch:
- * 1. YOLO11 temporal object tracking (`vision.objects.byCategory("person")`)
+ * Demonstrates Gitframes's on-device vision with unmistakable visual punch:
+ * 1. Temporal object tracking (`vision.objects.byCategory("person")`)
  *    anchoring precision spatial telemetry and bounding reticles.
  * 2. High-energy 2.5D perspective homography section (`Layer.section`) with 3D banking,
  *    rapid 5Hz shutter strobe (`fastStrobe`), harmonic spectral hue cycling (`fastHue`),
@@ -19,7 +19,7 @@ import {
 	LayerAnimation,
 	type ObjectTrackSignals,
 	type TrackedObject,
-	YoloVisionBundle,
+	VisionBundle,
 } from "gitframes";
 import {
 	asset,
@@ -249,8 +249,8 @@ export function trackScene(options: TrackSceneOptions = {}) {
 	const to = options.to ?? TRACK_TO;
 	const len = to - from;
 
-	// 1. Initialize YOLO Vision Bundle populated with temporal object tracking
-	const vision = new YoloVisionBundle({
+	// 1. Initialize the vision bundle populated with temporal object tracking
+	const vision = new VisionBundle({
 		width: W,
 		height: H,
 		fps: FPS,
@@ -279,8 +279,8 @@ export function trackScene(options: TrackSceneOptions = {}) {
 
 	// 2. Neural Isolated Smoke Dancer ("Smoke Dancing"):
 	// Her entire body (head, arms, torso, spinning dress) is converted into billowing ember smoke
-	// via YOLO11 instance segmentation and background keying:
-	// - Layer A (Silhouette Base): Full body & dress matte via background-keyed YOLO segmentation.
+	// via instance segmentation and background keying:
+	// - Layer A (Silhouette Base): Full body & dress matte via background-keyed instance segmentation.
 	// - Layer B (Smoke Fill): Billowing ember smoke video composited in source-in mode,
 	//   strictly confined to her entire silhouette.
 	// Seamlessly isolated inside a transparent container box without rectangular framing cards.
@@ -293,7 +293,7 @@ export function trackScene(options: TrackSceneOptions = {}) {
 		height: H,
 		fit: "cover",
 		muted: true,
-	}).withYolo({
+	}).withVision({
 		mode: "matte",
 		enableSegmentation: true,
 		variant: "s",
@@ -431,7 +431,7 @@ export function trackScene(options: TrackSceneOptions = {}) {
 			}),
 			label({
 				id: "track-caption",
-				text: "YOLO11 Neural Tracking · Full Smoke Silhouette Blend · 35mm Spatial Analysis",
+				text: "Neural Tracking · Full Smoke Silhouette Blend · 35mm Spatial Analysis",
 				x: W - 96 - 920,
 				y: H - BAR / 2 - 11,
 				width: 920,

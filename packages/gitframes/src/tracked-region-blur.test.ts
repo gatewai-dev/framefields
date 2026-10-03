@@ -5,16 +5,16 @@ import {
 	Effect,
 	Layer,
 	type ObjectTrackSignals,
-	YoloNode,
+	VisionNode,
 } from "./index.js";
 
 describe("Tracked Section Editing & Blur Engine Suite", () => {
 	function setupVisionWithSyntheticTrack(): {
-		vision: ReturnType<typeof YoloNode.attach>;
+		vision: ReturnType<typeof VisionNode.attach>;
 		targetPerson: ObjectTrackSignals;
 	} {
 		const video = Layer.video("test.mp4");
-		const vision = YoloNode.attach(video, {
+		const vision = VisionNode.attach(video, {
 			enableDetection: true,
 			classes: ["person"],
 		});

@@ -28,7 +28,7 @@ Gitframes is a code-first video engine on native WebGPU (Dawn) in Node, with no 
 - `packages/compositions`: layout (Yoga, `utils/layout/resolve-layout.ts`), program schema (`program/schema.ts`), animation and evaluator, `to-virtual-media`.
 - `packages/webgpu-renderers`: WGSL shaders, 2D/3D pipelines, Slug text, audio DSP, ChartGPU bridge.
 - `packages/renderer`: headless Node renderer (Dawn, WebCodecs/mediabunny, `HeadlessMediaRenderer`).
-- `packages/core`: shared types, `Effect` base, signals. Other packages: `renderers`, `media`, `node-sdk` (node authoring: `shared/` + `renderer/`), `server-utils`, `client-utils`, `tensor-webgpu`, `yolo`, `tsconfig`.
+- `packages/core`: shared types, `Effect` base, signals. Other packages: `renderers`, `media`, `node-sdk` (node authoring: `shared/` + `renderer/`), `server-utils`, `client-utils`, `tensor-webgpu`, `vision`, `tsconfig`.
 - `nodes/node-*` (59): one VFX/audio/layout node each. Layout: `src/shared/` (config and schema), `src/renderers/` (WebGPU), `src/index.ts`. Only `node-compositor` has a `SKILL.md`; update it when Compositor behavior changes (`packages/compositions/src/program/skillmd-check.test.ts` guards it).
 - `apps/renderer-service`: HTTP render service (Docker, RunPod worker).
 - `examples/NN_*`: reference films/ads that import `gitframes` via workspace. Study `19_gitframes_film` (best structure), `22_gitframes_launch` before writing a new film.

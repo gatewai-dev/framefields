@@ -1,0 +1,61 @@
+{
+	"name": "@gitframes/renderer",
+	"version": "1.2.35",
+	"private": false,
+	"type": "module",
+	"sideEffects": false,
+	"license": "APGL-3.0",
+	"module": "./dist/index.mjs",
+	"types": "./dist/index.d.mts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.mts",
+			"development": "./src/index.ts",
+			"import": "./dist/index.mjs",
+			"default": "./dist/index.mjs"
+		},
+		"./offscreen-gl-polyfill": {
+			"types": "./dist/offscreen-canvas.d.mts",
+			"development": "./src/offscreen-canvas.ts",
+			"import": "./dist/offscreen-canvas.mjs",
+			"default": "./dist/offscreen-canvas.mjs"
+		}
+	},
+	"files": [
+		"dist/**"
+	],
+	"scripts": {
+		"build": "tsdown",
+		"dev": "tsdown --watch",
+		"test": "node dist/test-runner.mjs",
+		"test:benchmark": "vitest run src/tests/benchmark.test.ts",
+		"test:vitest": "vitest run",
+		"clean": "rm -rf .turbo && rm -rf node_modules && rm -rf dist"
+	},
+	"devDependencies": {
+		"@gitframes/tsconfig": "workspace:*",
+		"@types/node": "^24.1.0",
+		"tsdown": "^0.19.0",
+		"tsx": "^4.20.3",
+		"typescript": "^5.8.3",
+		"vitest": "4.1.5"
+	},
+	"dependencies": {
+		"@gitframes/client-utils": "workspace:*",
+		"@gitframes/compositions": "workspace:*",
+		"@gitframes/core": "workspace:*",
+		"@gitframes/renderers": "workspace:*",
+		"@gitframes/server-utils": "workspace:*",
+		"@gitframes/webgpu-renderers": "workspace:*",
+		"@mediabunny/server": "^1.51.0",
+		"@napi-rs/webcodecs": "^1.3.1",
+		"mediabunny": "^1.51.0",
+		"sharp": "^0.33.5",
+		"skia-canvas": "^3.0.8",
+		"webgpu": "^0.4.0",
+		"@gitframes/node-sdk": "workspace:*"
+	},
+	"publishConfig": {
+		"access": "public"
+	}
+}

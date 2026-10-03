@@ -1,0 +1,14 @@
+{
+	"extends": "@gitframes/tsconfig/react-library.json",
+	"compilerOptions": {
+		"baseUrl": ".",
+		"esModuleInterop": true,
+		"lib": ["DOM", "ES2020"],
+		"paths": {
+			"@/*": ["./src/*"]
+		},
+		"experimentalDecorators": true,
+		"emitDecoratorMetadata": true
+	},
+	"include": ["src"]
+}

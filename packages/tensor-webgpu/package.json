@@ -1,0 +1,42 @@
+{
+	"name": "@gitframes/tensor-webgpu",
+	"version": "1.2.35",
+	"private": false,
+	"publishConfig": {
+		"access": "public"
+	},
+	"type": "module",
+	"sideEffects": false,
+	"license": "AGPL-3.0",
+	"module": "./dist/index.mjs",
+	"types": "./dist/index.d.mts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.mts",
+			"development": "./src/index.ts",
+			"import": "./dist/index.mjs",
+			"default": "./dist/index.mjs"
+		}
+	},
+	"files": [
+		"dist/**"
+	],
+	"scripts": {
+		"build": "tsdown",
+		"dev": "tsdown --watch",
+		"clean": "rm -rf .turbo && rm -rf node_modules && rm -rf dist",
+		"test": "vitest run"
+	},
+	"dependencies": {
+		"@gitframes/core": "workspace:*",
+		"@gitframes/webgpu-renderers": "workspace:*",
+		"webgpu": "^0.4.0"
+	},
+	"devDependencies": {
+		"@gitframes/tsconfig": "workspace:*",
+		"skia-canvas": "^3.0.8",
+		"tsdown": "^0.19.0",
+		"typescript": "^5.8.3",
+		"vitest": "^4.1.5"
+	}
+}

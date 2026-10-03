@@ -1,0 +1,21 @@
+{
+	"name": "gitframes-plugins",
+	"owner": {
+		"name": "Gitframes",
+		"url": "https://github.com/gatewai-dev/gitframes"
+	},
+	"description": "Agent skills for the gitframes WebGPU video SDK.",
+	"plugins": [
+		{
+			"name": "gitframes",
+			"source": "./",
+			"skills": [
+				"./skills/gitframes-compose",
+				"./skills/gitframes-effects",
+				"./skills/gitframes-render"
+			],
+			"description": "Author, render and verify video compositions with the gitframes WebGPU SDK.",
+			"category": "design"
+		}
+	]
+}

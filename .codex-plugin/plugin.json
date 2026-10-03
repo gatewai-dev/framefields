@@ -1,0 +1,6 @@
+{
+	"name": "gitframes",
+	"version": "0.1.0",
+	"description": "Author, render and verify video compositions with the gitframes WebGPU SDK.",
+	"skills": "./skills/"
+}

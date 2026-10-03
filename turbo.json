@@ -1,0 +1,30 @@
+{
+	"$schema": "https://turbo.build/schema.json",
+	"tasks": {
+		"build": {
+			"dependsOn": ["^build"],
+			"outputs": ["dist/**"],
+			"inputs": ["$TURBO_DEFAULT$", ".env"]
+		},
+		"dev": {
+			"persistent": true,
+			"inputs": ["$TURBO_DEFAULT$", ".env.development"]
+		},
+		"start-cli": {
+			"inputs": ["$TURBO_DEFAULT$", ".env"]
+		},
+		"test": {
+			"dependsOn": ["^build"],
+			"cache": false
+		},
+		"@gitframes/renderer#test": {
+			"dependsOn": ["^build", "build"],
+			"cache": false
+		},
+		"typecheck": {
+			"dependsOn": ["^typecheck"],
+			"cache": true,
+			"inputs": ["$TURBO_DEFAULT$"]
+		}
+	}
+}

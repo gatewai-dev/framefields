@@ -1,0 +1,14 @@
+{
+	"extends": "@gitframes/tsconfig/base.json",
+	"compilerOptions": {
+		"target": "ES2022",
+		"module": "ESNext",
+		"moduleResolution": "bundler"
+	},
+	"include": [
+		"src/**/*",
+		"../compositions/src/**/*",
+		"../../node_modules/@gitframes/**/*",
+		"../../packages/*/src/**/*"
+	]
+}

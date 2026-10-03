@@ -1,0 +1,11 @@
+{
+	"extends": "@gitframes/tsconfig/base.json",
+	"compilerOptions": {
+		"experimentalDecorators": true,
+		"emitDecoratorMetadata": true,
+		"jsx": "react-jsx",
+		"lib": ["ES2022", "ESNext", "DOM", "DOM.Iterable"]
+	},
+	"include": ["."],
+	"exclude": ["dist", "build", "node_modules"]
+}

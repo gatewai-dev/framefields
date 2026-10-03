@@ -1,0 +1,84 @@
+# Dependencies & Package Managers
+node_modules/
+.pnpm-store/
+
+# Build & Output
+dist/
+dist-ssr/
+release/
+.next/
+.turbo/
+.cache/
+*.tsbuildinfo
+*/**/.tsbuild
+coverage/
+*.log
+
+# Environment & Local Secrets
+.env*
+*.local
+gatewai-466716-6a4cc3da9bc4.json
+
+# Operating System
+.DS_Store
+Thumbs.db
+
+# Fonts (Kept locally on disk, ignored from git)
+*.ttf
+*.otf
+*.woff
+*.woff2
+*.eot
+assets/fonts/
+
+# Soundfonts
+*.sf2
+assets/soundfonts/
+
+# Heavy Media, Video, Audio & Images
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.webm
+*.wav
+*.mp3
+*.m4a
+*.flac
+*.ogg
+*.png
+*.jpg
+*.jpeg
+
+# Vision Tracking Caches
+*tracking.json
+*_tracking.json
+
+# Showcase Output & References
+**/dist-showcase/*
+!**/dist-showcase/.gitkeep
+**/reference/*
+!**/reference/.gitkeep
+
+# Scratch, Debug & Temporary Renders
+scratch/
+**/scratch/**
+scratch*/
+**/scratch*/**
+scratch-renders/
+**/.render-test/**
+debug/
+*/**/debug_images/**
+*/**/debug_media/
+examples/output/
+examples/**/output/
+**/output/
+
+# Lazy-downloaded vision model weights (never source — see specs/yolov4plan.ts §Phase F)
+*.onnx
+*.tflite
+*.task
+packages/**/models/
+
+# Local agent workspace (Hermes plans, scratch probes)
+.hermes/

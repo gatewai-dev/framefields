@@ -1,0 +1,12 @@
+{
+	"$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+	"name": "gitframes",
+	"displayName": "Gitframes",
+	"version": "0.1.0",
+	"description": "Author, render and verify video compositions with the gitframes WebGPU SDK.",
+	"author": {
+		"name": "Gitframes"
+	},
+	"license": "Apache-2.0",
+	"keywords": ["gitframes", "webgpu", "video", "motion-graphics"]
+}

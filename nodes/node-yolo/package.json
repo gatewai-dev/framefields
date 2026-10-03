@@ -1,0 +1,50 @@
+{
+	"name": "@gitframes/node-yolo",
+	"version": "1.2.35",
+	"private": false,
+	"gitframes": {
+		"type": "Yolo",
+		"kind": "effect",
+		"aliases": [
+			"MediaPipe"
+		]
+	},
+	"type": "module",
+	"module": "./dist/index.mjs",
+	"types": "./dist/index.d.mts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.mts",
+			"development": "./src/index.ts",
+			"import": "./dist/index.mjs",
+			"default": "./dist/index.mjs"
+		},
+		"./renderer": {
+			"types": "./dist/renderer.d.mts",
+			"development": "./src/renderers/index.ts",
+			"import": "./dist/renderer.mjs",
+			"default": "./dist/renderer.mjs"
+		}
+	},
+	"scripts": {
+		"build": "tsdown",
+		"dev": "tsdown --watch",
+		"clean": "rm -rf dist"
+	},
+	"dependencies": {
+		"@gitframes/core": "workspace:*",
+		"@gitframes/node-sdk": "workspace:*",
+		"@gitframes/yolo": "workspace:*",
+		"zod": "^4.3.6"
+	},
+	"devDependencies": {
+		"@gitframes/tsconfig": "workspace:*",
+		"@types/node": "^24.1.0",
+		"tsdown": "^0.19.0",
+		"typescript": "^5.8.3",
+		"webgpu": "^0.4.0"
+	},
+	"publishConfig": {
+		"access": "public"
+	}
+}

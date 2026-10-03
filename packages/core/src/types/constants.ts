@@ -1,0 +1,13 @@
+export const COMPOSITOR_DEFAULTS = {
+	FONT_FAMILY: "Inter",
+	FONT_SIZE: 64,
+	FILL: "#ffffff",
+	LINE_HEIGHT: 1.1,
+	ALIGN: "left",
+	VERTICAL_ALIGN: "top",
+	LETTER_SPACING: 0,
+	STROKE_WIDTH: 0,
+	STROKE: "#000000",
+	CORNER_RADIUS: 0,
+	PADDING: 0,
+};

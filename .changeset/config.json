@@ -1,0 +1,10 @@
+{
+	"$schema": "https://unpkg.com/@changesets/config@2.3.0/schema.json",
+	"changelog": ["../scripts/custom-changelog.js", null],
+	"baseBranch": "main",
+	"commit": false,
+	"fixed": [["gitframes", "@gitframes/*"]],
+	"linked": [],
+	"access": "public",
+	"updateInternalDependencies": "patch"
+}

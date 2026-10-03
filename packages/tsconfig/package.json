@@ -1,0 +1,9 @@
+{
+	"name": "@gitframes/tsconfig",
+	"version": "1.2.35",
+	"private": false,
+	"license": "APGL-3.0",
+	"publishConfig": {
+		"access": "public"
+	}
+}

@@ -1,0 +1,301 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`effect golden snapshots > Blur: custom values 1`] = `
+{
+  "op": "Blur",
+  "payload": {
+    "angle": "signal",
+    "blurType": "string",
+    "centerX": "signal",
+    "centerY": "signal",
+    "partialBlur": "boolean",
+    "radius": "signal",
+    "radiusY": "signal",
+    "shape": "string",
+    "sigmaColor": "signal",
+    "strength": "signal",
+  },
+  "props": [
+    "angle",
+    "blurType",
+    "centerX",
+    "centerY",
+    "partialBlur",
+    "radius",
+    "radiusY",
+    "shape",
+    "sigmaColor",
+    "strength",
+  ],
+  "uniforms": {
+    "angle": 45,
+    "blurType": "Motion",
+    "centerX": 0.5,
+    "centerY": 0.5,
+    "partialBlur": true,
+    "radius": 0.4,
+    "radiusY": 0.2,
+    "shape": "rect",
+    "sigmaColor": 0.1,
+    "strength": 12,
+  },
+}
+`;
+
+exports[`effect golden snapshots > Blur: defaults 1`] = `
+{
+  "op": "Blur",
+  "payload": {
+    "angle": "signal",
+    "blurType": "string",
+    "centerX": "signal",
+    "centerY": "signal",
+    "partialBlur": "boolean",
+    "radius": "signal",
+    "radiusY": "signal",
+    "shape": "string",
+    "sigmaColor": "signal",
+    "strength": "signal",
+  },
+  "props": [
+    "angle",
+    "blurType",
+    "centerX",
+    "centerY",
+    "partialBlur",
+    "radius",
+    "radiusY",
+    "shape",
+    "sigmaColor",
+    "strength",
+  ],
+  "uniforms": {
+    "angle": 0,
+    "blurType": "Gaussian",
+    "centerX": 0.5,
+    "centerY": 0.5,
+    "partialBlur": false,
+    "radius": 0.3,
+    "radiusY": 0,
+    "shape": "circle",
+    "sigmaColor": 0.1,
+    "strength": 5,
+  },
+}
+`;
+
+exports[`effect golden snapshots > Blur: driven by a track 1`] = `
+{
+  "op": "Blur",
+  "payload": {
+    "angle": "signal",
+    "blurType": "string",
+    "centerX": "signal",
+    "centerY": "signal",
+    "partialBlur": "boolean",
+    "radius": "signal",
+    "radiusY": "signal",
+    "shape": "string",
+    "sigmaColor": "signal",
+    "strength": "signal",
+  },
+  "props": [
+    "angle",
+    "blurType",
+    "centerX",
+    "centerY",
+    "partialBlur",
+    "radius",
+    "radiusY",
+    "shape",
+    "sigmaColor",
+    "strength",
+  ],
+  "uniforms": {
+    "angle": 0,
+    "blurType": "Gaussian",
+    "centerX": 0.260417,
+    "centerY": 0.509259,
+    "partialBlur": true,
+    "radius": 0.057292,
+    "radiusY": 0.25463,
+    "shape": "ellipse",
+    "sigmaColor": 0.1,
+    "strength": 25,
+  },
+}
+`;
+
+exports[`effect golden snapshots > Blur: track with overrides 1`] = `
+{
+  "op": "Blur",
+  "payload": {
+    "angle": "signal",
+    "blurType": "string",
+    "centerX": "signal",
+    "centerY": "signal",
+    "partialBlur": "boolean",
+    "radius": "signal",
+    "radiusY": "signal",
+    "shape": "string",
+    "sigmaColor": "signal",
+    "strength": "signal",
+  },
+  "props": [
+    "angle",
+    "blurType",
+    "centerX",
+    "centerY",
+    "partialBlur",
+    "radius",
+    "radiusY",
+    "shape",
+    "sigmaColor",
+    "strength",
+  ],
+  "uniforms": {
+    "angle": 0,
+    "blurType": "Gaussian",
+    "centerX": 0.260417,
+    "centerY": 0.509259,
+    "partialBlur": true,
+    "radius": 0.057292,
+    "radiusY": 0.25463,
+    "shape": "ellipse",
+    "sigmaColor": 0.1,
+    "strength": 25,
+  },
+}
+`;
+
+exports[`effect golden snapshots > ColorBalance: defaults 1`] = `
+{
+  "op": "ColorBalance",
+  "payload": {
+    "highlights": "signal",
+    "midtones": "signal",
+    "preserveLuminosity": "boolean",
+    "shadows": "signal",
+  },
+  "props": [
+    "highlights",
+    "midtones",
+    "preserveLuminosity",
+    "shadows",
+  ],
+  "uniforms": {
+    "highlights": {
+      "cyanRed": 0,
+      "magentaGreen": 0,
+      "yellowBlue": 0,
+    },
+    "midtones": {
+      "cyanRed": 0,
+      "magentaGreen": 0,
+      "yellowBlue": 0,
+    },
+    "preserveLuminosity": true,
+    "shadows": {
+      "cyanRed": 0,
+      "magentaGreen": 0,
+      "yellowBlue": 0,
+    },
+  },
+}
+`;
+
+exports[`effect golden snapshots > ColorBalance: partial nested values 1`] = `
+{
+  "op": "ColorBalance",
+  "payload": {
+    "highlights": "signal",
+    "midtones": "signal",
+    "preserveLuminosity": "boolean",
+    "shadows": "signal",
+  },
+  "props": [
+    "highlights",
+    "midtones",
+    "preserveLuminosity",
+    "shadows",
+  ],
+  "uniforms": {
+    "highlights": {
+      "cyanRed": 0,
+      "magentaGreen": 5,
+      "yellowBlue": -20,
+    },
+    "midtones": {
+      "cyanRed": 0,
+      "magentaGreen": 0,
+      "yellowBlue": 0,
+    },
+    "preserveLuminosity": false,
+    "shadows": {
+      "cyanRed": 10,
+      "magentaGreen": 0,
+      "yellowBlue": 0,
+    },
+  },
+}
+`;
+
+exports[`effect golden snapshots > Vignette: custom values and a signal 1`] = `
+{
+  "op": "Vignette",
+  "payload": {
+    "centerX": "signal",
+    "centerY": "signal",
+    "radius": "signal",
+    "roundness": "signal",
+    "softness": "signal",
+    "strength": "signal",
+  },
+  "props": [
+    "centerX",
+    "centerY",
+    "radius",
+    "roundness",
+    "softness",
+    "strength",
+  ],
+  "uniforms": {
+    "centerX": 0.25,
+    "centerY": 0.5,
+    "radius": 0.7,
+    "roundness": 0.5,
+    "softness": 0.5,
+    "strength": 80,
+  },
+}
+`;
+
+exports[`effect golden snapshots > Vignette: defaults 1`] = `
+{
+  "op": "Vignette",
+  "payload": {
+    "centerX": "signal",
+    "centerY": "signal",
+    "radius": "signal",
+    "roundness": "signal",
+    "softness": "signal",
+    "strength": "signal",
+  },
+  "props": [
+    "centerX",
+    "centerY",
+    "radius",
+    "roundness",
+    "softness",
+    "strength",
+  ],
+  "uniforms": {
+    "centerX": 0.5,
+    "centerY": 0.5,
+    "radius": 1,
+    "roundness": 0.5,
+    "softness": 0.5,
+    "strength": 50,
+  },
+}
+`;

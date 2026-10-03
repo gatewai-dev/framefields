@@ -1,0 +1,67 @@
+{
+	"name": "@gitframes/compositions",
+	"version": "1.2.35",
+	"private": false,
+	"type": "module",
+	"sideEffects": false,
+	"license": "APGL-3.0",
+	"module": "./dist/index.mjs",
+	"types": "./dist/index.d.mts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.mts",
+			"development": "./src/index.ts",
+			"import": "./dist/index.mjs",
+			"default": "./dist/index.mjs"
+		},
+		"./program": {
+			"types": "./dist/program/index.d.mts",
+			"development": "./src/program/index.ts",
+			"import": "./dist/program/index.mjs",
+			"default": "./dist/program/index.mjs"
+		},
+		"./server": {
+			"types": "./dist/server.d.mts",
+			"development": "./src/server.ts",
+			"import": "./dist/server.mjs",
+			"default": "./dist/server.mjs"
+		}
+	},
+	"files": [
+		"dist/**"
+	],
+	"scripts": {
+		"build": "tsdown",
+		"dev": "tsdown --watch",
+		"test": "vitest run",
+		"clean": "rm -rf .turbo && rm -rf node_modules && rm -rf dist"
+	},
+	"devDependencies": {
+		"@gitframes/client-utils": "workspace:*",
+		"@gitframes/core": "workspace:*",
+		"@gitframes/server-utils": "workspace:*",
+		"@gitframes/tsconfig": "workspace:*",
+		"@types/react": "^19.2.4",
+		"dotenv": "^16.4.5",
+		"tsdown": "^0.19.0",
+		"tsx": "^4.20.3",
+		"typescript": "^5.8.3",
+		"vitest": "^4.1.5",
+		"webgpu": "^0.4.0"
+	},
+	"peerDependencies": {
+		"mediabunny": "*",
+		"react": "^19.2.4",
+		"zod": "^4.3.6"
+	},
+	"dependencies": {
+		"@gitframes/renderers": "workspace:*",
+		"@gitframes/webgpu-renderers": "workspace:*",
+		"@mediabunny/mp3-encoder": "^1.51.0",
+		"yoga-layout": "^3.2.1",
+		"@gitframes/node-sdk": "workspace:*"
+	},
+	"publishConfig": {
+		"access": "public"
+	}
+}

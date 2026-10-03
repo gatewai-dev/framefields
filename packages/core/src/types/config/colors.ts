@@ -1,0 +1,90 @@
+export const dataTypeColors: Record<
+	string,
+	{ bg: string; stroke: string; hex: string; text: string; border: string }
+> = {
+	Text: {
+		bg: "bg-blue-500",
+		stroke: "stroke-blue-500",
+		hex: "#3b82f6",
+		text: "text-blue-500",
+		border: "border-blue-500",
+	},
+	Image: {
+		bg: "bg-purple-500",
+		stroke: "stroke-purple-500",
+		hex: "#a855f7",
+		text: "text-purple-500",
+		border: "border-purple-500",
+	},
+	Video: {
+		bg: "bg-teal-500",
+		stroke: "stroke-teal-500",
+		hex: "oklch(60% 0.118 184.704)",
+		text: "text-teal-500",
+		border: "border-teal-500",
+	},
+	Audio: {
+		bg: "bg-orange-500",
+		stroke: "stroke-orange-500",
+		hex: "#f97316",
+		text: "text-orange-500",
+		border: "border-orange-500",
+	},
+	Number: {
+		bg: "bg-green-600",
+		stroke: "stroke-green-600",
+		hex: "#16a34a",
+		text: "text-green-600",
+		border: "border-green-600",
+	},
+	Boolean: {
+		bg: "bg-amber-600",
+		stroke: "stroke-amber-600",
+		hex: "#d97706",
+		text: "text-amber-600",
+		border: "border-amber-600",
+	},
+	SVG: {
+		bg: "bg-lime-600",
+		stroke: "stroke-lime-600",
+		hex: "#65a30d",
+		text: "text-lime-600",
+		border: "border-lime-600",
+	},
+	Caption: {
+		bg: "bg-rose-500",
+		stroke: "stroke-rose-500",
+		hex: "#f43f5e",
+		text: "text-rose-500",
+		border: "border-rose-500",
+	},
+	GIF: {
+		bg: "bg-pink-500",
+		stroke: "stroke-pink-500",
+		hex: "#ec4899",
+		text: "text-pink-500",
+		border: "border-pink-500",
+	},
+	Lottie: {
+		bg: "bg-indigo-500",
+		stroke: "stroke-indigo-500",
+		hex: "#6366f1",
+		text: "text-indigo-500",
+		border: "border-indigo-500",
+	},
+	Signal: {
+		bg: "bg-fuchsia-500",
+		stroke: "stroke-fuchsia-500",
+		hex: "#d946ef",
+		text: "text-fuchsia-500",
+		border: "border-fuchsia-500",
+	},
+
+	LUT: {
+		bg: "bg-cyan-600",
+		stroke: "stroke-cyan-600",
+		hex: "#0891b2",
+		text: "text-cyan-600",
+		border: "border-cyan-600",
+	},
+};

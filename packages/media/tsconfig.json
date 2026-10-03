@@ -1,0 +1,9 @@
+{
+	"extends": "@gitframes/tsconfig/base.json",
+	"compilerOptions": {
+		"lib": ["ES2022", "DOM", "WebWorker"],
+		"jsx": "react-jsx"
+	},
+	"include": ["shared", "browser", "server"],
+	"exclude": ["dist", "build", "node_modules"]
+}

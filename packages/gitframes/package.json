@@ -1,0 +1,158 @@
+{
+	"name": "gitframes",
+	"version": "1.2.35",
+	"private": false,
+	"description": "High-performance WebGPU rendering SDK for video composition, Photoshop-grade 2D VFX, audio DSP, and reactive signals.",
+	"license": "Apache-2.0",
+	"homepage": "https://gitframes.com",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/gitframes/gitframes.git"
+	},
+	"bugs": {
+		"url": "https://github.com/gitframes/gitframes/issues"
+	},
+	"keywords": [
+		"video",
+		"webgpu",
+		"motion-graphics",
+		"composition",
+		"vfx",
+		"audio-dsp",
+		"signals",
+		"headless-rendering"
+	],
+	"publishConfig": {
+		"access": "public"
+	},
+	"type": "module",
+	"sideEffects": false,
+	"main": "./dist/index.mjs",
+	"types": "./dist/index.d.mts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.mts",
+			"development": "./src/index.ts",
+			"import": "./dist/index.mjs",
+			"default": "./dist/index.mjs"
+		},
+		"./effects": {
+			"types": "./dist/effects/index.d.mts",
+			"development": "./src/effects/index.ts",
+			"import": "./dist/effects/index.mjs",
+			"default": "./dist/effects/index.mjs"
+		},
+		"./audio": {
+			"types": "./dist/audio/index.d.mts",
+			"development": "./src/audio/index.ts",
+			"import": "./dist/audio/index.mjs",
+			"default": "./dist/audio/index.mjs"
+		},
+		"./signals": {
+			"types": "./dist/signals/index.d.mts",
+			"development": "./src/signals/index.ts",
+			"import": "./dist/signals/index.mjs",
+			"default": "./dist/signals/index.mjs"
+		},
+		"./react": {
+			"types": "./dist/react/index.d.mts",
+			"development": "./src/react/index.ts",
+			"import": "./dist/react/index.mjs",
+			"default": "./dist/react/index.mjs"
+		},
+		"./renderer": {
+			"types": "./dist/renderer/index.d.mts",
+			"development": "./src/renderer/index.ts",
+			"import": "./dist/renderer/index.mjs",
+			"default": "./dist/renderer/index.mjs"
+		},
+		"./fonts": {
+			"types": "./dist/fonts/index.d.mts",
+			"development": "./src/fonts/index.ts",
+			"import": "./dist/fonts/index.mjs",
+			"default": "./dist/fonts/index.mjs"
+		}
+	},
+	"files": [
+		"dist/**"
+	],
+	"scripts": {
+		"build": "tsdown",
+		"dev": "tsdown --watch",
+		"clean": "rm -rf dist .turbo",
+		"test": "vitest run --passWithNoTests"
+	},
+	"dependencies": {
+		"@gitframes/compositions": "workspace:*",
+		"@gitframes/core": "workspace:*",
+		"@gitframes/node-audio-compressor": "workspace:*",
+		"@gitframes/node-audio-delay": "workspace:*",
+		"@gitframes/node-audio-fade": "workspace:*",
+		"@gitframes/node-audio-noise-gate": "workspace:*",
+		"@gitframes/node-audio-parametric-eq": "workspace:*",
+		"@gitframes/node-audio-reverb": "workspace:*",
+		"@gitframes/node-audio-signal-extractor": "workspace:*",
+		"@gitframes/node-blur": "workspace:*",
+		"@gitframes/node-color-balance": "workspace:*",
+		"@gitframes/node-colorkey": "workspace:*",
+		"@gitframes/node-corner-pin": "workspace:*",
+		"@gitframes/node-crop": "workspace:*",
+		"@gitframes/node-curves": "workspace:*",
+		"@gitframes/node-deflicker": "workspace:*",
+		"@gitframes/node-displacement-map": "workspace:*",
+		"@gitframes/node-film-grain": "workspace:*",
+		"@gitframes/node-flip": "workspace:*",
+		"@gitframes/node-gradient-map": "workspace:*",
+		"@gitframes/node-halftone-screen": "workspace:*",
+		"@gitframes/node-high-pass": "workspace:*",
+		"@gitframes/node-kenburns": "workspace:*",
+		"@gitframes/node-layer-style": "workspace:*",
+		"@gitframes/node-levels": "workspace:*",
+		"@gitframes/node-liquify": "workspace:*",
+		"@gitframes/node-lut": "workspace:*",
+		"@gitframes/node-mask-math": "workspace:*",
+		"@gitframes/node-mesh-warp": "workspace:*",
+		"@gitframes/node-modulate": "workspace:*",
+		"@gitframes/node-paint": "workspace:*",
+		"@gitframes/node-patch-heal": "workspace:*",
+		"@gitframes/node-refine-edge": "workspace:*",
+		"@gitframes/node-refraction-caustics": "workspace:*",
+		"@gitframes/node-relight-3d": "workspace:*",
+		"@gitframes/node-selective-color": "workspace:*",
+		"@gitframes/node-shadows-highlights": "workspace:*",
+		"@gitframes/node-signal": "workspace:*",
+		"@gitframes/node-signal-gate": "workspace:*",
+		"@gitframes/node-signal-math": "workspace:*",
+		"@gitframes/node-stereo-panning": "workspace:*",
+		"@gitframes/node-tile-offset": "workspace:*",
+		"@gitframes/node-unsharp-mask": "workspace:*",
+		"@gitframes/node-vignette": "workspace:*",
+		"@gitframes/node-yolo": "workspace:*",
+		"@gitframes/renderer": "workspace:*",
+		"@gitframes/renderers": "workspace:*",
+		"@gitframes/tensor-webgpu": "workspace:*",
+		"@gitframes/webgpu-renderers": "workspace:*",
+		"@gitframes/yolo": "workspace:*",
+		"chartgpu": "^0.4.0",
+		"fontkit": "^2.0.4",
+		"skia-canvas": "^3.0.8"
+	},
+	"devDependencies": {
+		"@gitframes/tsconfig": "workspace:*",
+		"@types/fontkit": "^2.0.9",
+		"@types/node": "^24.1.0",
+		"@types/react": "^19.2.4",
+		"react": "^19.2.4",
+		"tsdown": "^0.19.0",
+		"typescript": "^5.8.3",
+		"vitest": "4.1.5"
+	},
+	"peerDependencies": {
+		"react": ">=18"
+	},
+	"peerDependenciesMeta": {
+		"react": {
+			"optional": true
+		}
+	}
+}

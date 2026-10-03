@@ -1,0 +1,10 @@
+{
+	"extends": "@gitframes/tsconfig/base.json",
+	"compilerOptions": {
+		"lib": ["ES2022", "ESNext", "DOM", "DOM.Iterable"],
+		"jsx": "react-jsx",
+		"types": ["@webgpu/types"]
+	},
+	"include": ["."],
+	"exclude": ["dist", "build", "node_modules"]
+}

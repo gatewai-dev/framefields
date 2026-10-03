@@ -1,0 +1,17 @@
+minimumReleaseAge: 2480
+
+packages:
+  - packages/*
+  - apps/*
+  - nodes/*
+  - examples/*
+
+onlyBuiltDependencies:
+  - '@swc/core'
+  - esbuild
+  - lefthook
+  - protobufjs
+  - sharp
+
+  - skia-canvas
+  - webgpu

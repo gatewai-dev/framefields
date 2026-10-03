@@ -1,0 +1,13 @@
+{
+	"$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+	"name": "gitframes",
+	"version": "0.1.0",
+	"description": "Author, render and verify video compositions with the gitframes WebGPU SDK.",
+	"author": {
+		"name": "Gitframes"
+	},
+	"homepage": "https://github.com/gatewai-dev/gitframes",
+	"repository": "https://github.com/gatewai-dev/gitframes",
+	"license": "Apache-2.0",
+	"keywords": ["gitframes", "webgpu", "video", "composition", "motion-graphics"]
+}

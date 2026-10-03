@@ -1,0 +1,9 @@
+{
+	"extends": "@gitframes/tsconfig/base.json",
+	"compilerOptions": {
+		"lib": ["ES2022", "ESNext", "DOM", "DOM.Iterable"],
+		"target": "esnext"
+	},
+	"include": ["src/**/*"],
+	"exclude": ["dist", "build", "node_modules"]
+}

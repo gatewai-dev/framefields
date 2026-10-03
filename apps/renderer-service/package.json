@@ -1,0 +1,40 @@
+{
+	"name": "@gitframes/renderer-service",
+	"private": true,
+	"version": "1.2.35",
+	"type": "module",
+	"types": "./dist/src/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/src/index.d.ts",
+			"default": "./dist/src/index.js"
+		}
+	},
+	"scripts": {
+		"dev": "tsx watch --tsconfig tsconfig.dev.json --conditions=development src/index.ts",
+		"typecheck": "tsc -b tsconfig.json",
+		"build": "tsc -b tsconfig.json",
+		"start-cli": "node dist/src/cli.js",
+		"test": "vitest run"
+	},
+	"dependencies": {
+		"@gitframes/client-utils": "workspace:*",
+		"@gitframes/core": "workspace:*",
+		"@gitframes/renderer": "workspace:*",
+		"@gitframes/media": "workspace:*",
+		"@gitframes/server-utils": "workspace:*",
+		"@hono/node-server": "^1.19.11",
+		"dotenv": "^17.0.1",
+		"hono": "^4.12.5",
+		"inversify": "^7.11.0",
+		"reflect-metadata": "^0.2.2",
+		"zod": "^4.3.6"
+	},
+	"devDependencies": {
+		"@types/node": "^24.1.0",
+		"tsx": "^4.20.3",
+		"typescript": "^5.8.3",
+		"vitest": "^4.1.5",
+		"@gitframes/tsconfig": "workspace:*"
+	}
+}

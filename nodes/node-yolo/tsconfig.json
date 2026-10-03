@@ -1,0 +1,11 @@
+{
+	"extends": "@gitframes/tsconfig/base.json",
+	"compilerOptions": {
+		"lib": ["ES2022", "ESNext", "DOM", "DOM.Iterable"],
+		"types": ["webgpu"],
+		"target": "esnext",
+		"noEmit": true
+	},
+	"include": ["src/**/*"],
+	"exclude": ["dist", "build", "node_modules"]
+}

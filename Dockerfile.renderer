@@ -1,0 +1,104 @@
+# Stage 0: Base setup
+FROM node:24-bookworm-slim AS base
+WORKDIR /app
+ENV NODE_ENV=production
+
+# Install basic dynamic loading and SSL requirements
+RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
+ENV GRPC_POLL_STRATEGY=epoll1
+
+# Stage 1: Pruner
+FROM base AS pruner
+RUN npm install -g turbo
+COPY turbo.json package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+COPY packages/ packages/
+COPY apps/ apps/
+COPY nodes/ nodes/
+# Prune `@gitframes/renderer-service` and all dynamically discovered node packages
+RUN NODE_PACKAGES=$(node -e "const fs = require('fs'); const dirs = fs.readdirSync('nodes'); const names = dirs.filter(d => fs.statSync('nodes/'+d).isDirectory()).map(d => { try { return require('./nodes/'+d+'/package.json').name; } catch(e) { return null; } }).filter(Boolean); console.log(names.join(' '));") && \
+    turbo prune @gitframes/renderer-service $NODE_PACKAGES --docker
+
+# Stage 2: Builder
+FROM base AS builder
+
+# Install build dependencies for native Node modules (headless-gl, sharp, skia-canvas, webgpu)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential git ca-certificates pkg-config python3 \
+    libxi-dev libglu1-mesa-dev libglew-dev libgl1-mesa-dev \
+    libvulkan-dev libfontconfig1-dev \
+    && ln -s /usr/bin/python3 /usr/bin/python \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=pruner /app/out/json/ .
+COPY --from=pruner /app/out/pnpm-lock.yaml ./pnpm-lock.yaml
+
+RUN corepack enable && \
+    pnpm config set package-import-method copy && \
+    pnpm install --frozen-lockfile
+
+COPY --from=pruner /app/out/full/ .
+
+ENV NODE_OPTIONS="--max-old-space-size=6144"
+
+# Build all packages, services and nodes
+RUN pnpm exec turbo run build
+
+# Prune development dependencies
+RUN pnpm config set package-import-method copy && \
+    pnpm install --prod --frozen-lockfile
+
+# Install target-specific Linux native bindings for @napi-rs/webcodecs directly inside the container
+RUN pnpm --filter=@gitframes/renderer add @napi-rs/webcodecs-linux-x64-gnu @napi-rs/webcodecs-linux-arm64-gnu
+
+# Native module rebuilds for target Linux architecture across all workspace packages
+RUN pnpm rebuild -r sharp skia-canvas webgpu gl @napi-rs/webcodecs mediabunny
+
+# Explicitly ensure skia.node prebuilt native binary is downloaded for skia-canvas
+RUN find /app/node_modules -name "prebuild.mjs" -path "*/skia-canvas/*" -exec sh -c 'cd "$(dirname {})/.." && node lib/prebuild.mjs download --or-compile' \;
+
+# Assert skia.node exists in node_modules to fail build early if missing
+RUN find /app/node_modules -name "skia.node" | grep skia.node || (echo "ERROR: skia.node missing!" && exit 1)
+
+# Clean up build caches and temporary files to minimize image layer size
+RUN find /app -type d \( -name ".turbo" -o -name ".cache" \) -exec rm -rf {} + 2>/dev/null || true && \
+    find /app -name "*.tsbuildinfo" -delete 2>/dev/null || true && \
+    rm -rf /root/.local /root/.cache /root/.npm /tmp/*
+
+# Stage 3: Runner
+FROM base AS runner
+
+# Install runtime dependencies for canvas/rendering, OpenGL/Vulkan, xvfb, ffmpeg, and Python
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
+    libxkbcommon0 libxcomposite1 libxdamage1 libxrandr2 \
+    libgbm1 libpango-1.0-0 libcairo2 libasound2 \
+    ffmpeg xvfb xauth \
+    libgl1-mesa-dri libglapi-mesa libegl1 libvulkan1 libfontconfig1 \
+    python3 python3-pip python3-venv \
+    && mkdir -p /tmp/.X11-unix && chmod 1777 /tmp/.X11-unix \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install runpod Python SDK
+RUN pip3 install --no-cache-dir runpod --break-system-packages
+
+# Enable NVIDIA GPU container runtime features inside Docker for Vulkan / hardware acceleration
+ENV NVIDIA_VISIBLE_DEVICES=all
+ENV NVIDIA_DRIVER_CAPABILITIES=graphics,utility,video,compute
+
+RUN groupadd --system --gid 1001 nodejs && \
+    useradd --system --uid 1001 -m -g nodejs gatewai
+
+ENV COREPACK_HOME=/home/gatewai/.cache/corepack
+
+WORKDIR /app
+COPY --from=builder --chown=gatewai:nodejs /app .
+COPY --chown=gatewai:nodejs renderer-entrypoint.sh ./
+
+RUN corepack enable && \
+    mkdir -p /home/gatewai/.cache/corepack && \
+    chown -R gatewai:nodejs /home/gatewai
+
+USER gatewai
+EXPOSE 8082
+
+ENTRYPOINT ["./renderer-entrypoint.sh"]

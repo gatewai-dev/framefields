@@ -1,0 +1,23 @@
+{
+	"extends": "@gitframes/tsconfig/base.json",
+	"compilerOptions": {
+		"composite": true,
+		"target": "esnext",
+		"lib": ["esnext"],
+		"experimentalDecorators": true,
+		"emitDecoratorMetadata": true,
+		"module": "nodenext",
+		"skipLibCheck": true,
+		"moduleResolution": "nodenext",
+		"jsx": "react-jsx",
+		"moduleDetection": "force",
+		"outDir": "dist",
+		"noEmit": false,
+		"rootDir": ".",
+		"strict": true,
+		"noUnusedLocals": true,
+		"noUnusedParameters": true,
+		"noFallthroughCasesInSwitch": true
+	},
+	"include": ["src/**/*"]
+}

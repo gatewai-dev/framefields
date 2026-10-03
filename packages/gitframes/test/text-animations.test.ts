@@ -9,14 +9,13 @@ import {
 	deterministicWigglyNoise,
 	distanceToCurveParameter,
 	EnhancedTextNodeSchema,
-	evaluateCubicBezier,
 	evaluateTypewriterState,
 	generateArcLengthLUT,
 	sampleCurveGeometry,
 	TextAnimatorBuilder,
 	TextPathBuilder,
 	TextPathOptionsSchema,
-} from "../../../specs/text-animations.js";
+} from "../src/index.js";
 
 describe("Text Animations Specification Conformance", () => {
 	describe("1. Path-Following Geometry & Arc-Length Parameterization", () => {

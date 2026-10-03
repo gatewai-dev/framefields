@@ -1,15 +1,13 @@
 import fs from "node:fs";
 import { inflateSync } from "node:zlib";
-import { type Mat4, Matrix4Math, type Vec3, Vector3Math } from "../math3d/index.js";
+import { type Vec3, Vector3Math } from "../math3d/index.js";
 import type {
 	AnimationClip3D,
-	Bone3D,
 	LoadModelOptions,
 	Material3D,
 	Mesh3DData,
 	Model3DData,
 	NodeAnimationTrack3D,
-	Skeleton3D,
 } from "./types.js";
 
 interface FBXNode {
@@ -67,21 +65,18 @@ export class FbxLoader {
 
 			let endOffset: number;
 			let numProperties: number;
-			let propertyListLen: number;
 			let nameLen: number;
 
 			if (is64Bit) {
 				if (offset + 25 > u8.byteLength) return null;
 				endOffset = Number(view.getBigUint64(offset, true));
 				numProperties = Number(view.getBigUint64(offset + 8, true));
-				propertyListLen = Number(view.getBigUint64(offset + 16, true));
 				nameLen = view.getUint8(offset + 24);
 				offset += 25;
 			} else {
 				if (offset + 13 > u8.byteLength) return null;
 				endOffset = view.getUint32(offset, true);
 				numProperties = view.getUint32(offset + 4, true);
-				propertyListLen = view.getUint32(offset + 8, true);
 				nameLen = view.getUint8(offset + 12);
 				offset += 13;
 			}
@@ -396,9 +391,6 @@ export class FbxLoader {
 				const uvLayer = geomNode.children.find(
 					(c) => c.name === "LayerElementUV",
 				);
-				const materialLayer = geomNode.children.find(
-					(c) => c.name === "LayerElementMaterial",
-				);
 
 				if (!verticesNode || !indicesNode) continue;
 
@@ -574,7 +566,6 @@ export class FbxLoader {
 							const cWeights = extractArrayProp(weightsNode);
 
 							for (let k = 0; k < cIndexes.length; k++) {
-								const originalVert = cIndexes[k]!;
 								const weight = cWeights[k] ?? 0;
 
 								// Apply weight to all duplicated vertices referencing originalVert
@@ -611,7 +602,7 @@ export class FbxLoader {
 		}
 
 		// 2. Parse Materials
-		for (const [id, entry] of objects) {
+		for (const [, entry] of objects) {
 			if (entry.node.name === "Material") {
 				const matNode = entry.node;
 				const props70 = matNode.children.find((c) => c.name === "Properties70");
@@ -670,11 +661,23 @@ export class FbxLoader {
 							objects.get(c.childId)?.node.name === "AnimationCurveNode",
 					);
 
+					// One entry per (model, transform); its X/Y/Z curves merge into one track.
+					const groups = new Map<
+						string,
+						{
+							nodeName: string;
+							model: FBXNode | undefined;
+							kind: TransformKind;
+							defaults: Vec3;
+							channels: Array<FbxCurve | undefined>;
+						}
+					>();
+
 					for (const cnc of curveNodeConns) {
 						const curveNodeObj = objects.get(cnc.childId);
 						if (!curveNodeObj) continue;
 
-						// Find connected Model/Bone
+						// Find connected Model/Bone; the OP connection names the property.
 						const modelConn = connections.find(
 							(c) =>
 								c.childId === curveNodeObj.id &&
@@ -682,50 +685,54 @@ export class FbxLoader {
 						);
 						const targetModel = modelConn
 							? objects.get(modelConn.parentId)
-							: null;
-						const nodeName = targetModel?.name ?? curveNodeObj.name;
-						const propType = (modelConn?.property ?? curveNodeObj.name).toLowerCase();
+							: undefined;
+						const kind =
+							transformKindFromProperty(modelConn?.propName) ??
+							transformKindFromProperty(curveNodeObj.name);
+						if (!kind) continue;
 
-						// Find connected AnimationCurves (X, Y, Z channels)
-						const animCurves = connections.filter(
+						const key = `${targetModel?.id ?? curveNodeObj.id}|${kind}`;
+						let group = groups.get(key);
+						if (!group) {
+							const model = targetModel?.node;
+							group = {
+								nodeName: targetModel?.name ?? curveNodeObj.name,
+								model,
+								kind,
+								defaults: staticTransform(model, curveNodeObj.node, kind),
+								channels: [undefined, undefined, undefined],
+							};
+							groups.set(key, group);
+						}
+
+						// Find connected AnimationCurves; "d|X" / "d|Y" / "d|Z" pick the channel.
+						const curveConns = connections.filter(
 							(c) =>
 								c.parentId === curveNodeObj.id &&
 								objects.get(c.childId)?.node.name === "AnimationCurve",
 						);
-
-						for (const ac of animCurves) {
-							const curveObj = objects.get(ac.childId)?.node;
-							const keyTimeNode = curveObj?.children.find(
-								(c) => c.name === "KeyTime",
+						curveConns.forEach((cc, order) => {
+							const axis = axisFromProperty(cc.propName) ?? order;
+							if (axis > 2) return;
+							const curveObj = objects.get(cc.childId)?.node;
+							const times = extractArrayProp(
+								curveObj?.children.find((c) => c.name === "KeyTime"),
 							);
-							const keyValueNode = curveObj?.children.find(
-								(c) => c.name === "KeyValueFloat",
+							const values = extractArrayProp(
+								curveObj?.children.find((c) => c.name === "KeyValueFloat"),
 							);
+							const n = Math.min(times.length, values.length);
+							if (n === 0) return;
+							group.channels[axis] = {
+								times: Array.from(times.slice(0, n), (t) => Number(t)),
+								values: Array.from(values.slice(0, n), (v) => Number(v)),
+							};
+						});
+					}
 
-							if (keyTimeNode && keyValueNode) {
-								const rawTimes = extractArrayProp(keyTimeNode);
-								const rawValues = extractArrayProp(keyValueNode);
-
-								const times = new Float32Array(rawTimes.length);
-								const values = new Float32Array(rawValues.length);
-
-								for (let k = 0; k < rawTimes.length; k++) {
-									times[k] = (rawTimes[k] ?? 0) / FbxLoader.FBX_KTIME;
-									values[k] = rawValues[k] ?? 0;
-								}
-
-								const isRotation = propType.includes("rot") || propType.includes("r");
-								const isScaling = propType.includes("sc") || propType.includes("s");
-
-								tracks.push({
-									nodeName,
-									times,
-									translations: !isRotation && !isScaling ? values : undefined,
-									rotations: isRotation ? values : undefined,
-									scalings: isScaling ? values : undefined,
-								});
-							}
-						}
+					for (const group of groups.values()) {
+						const track = buildTransformTrack(group);
+						if (track) tracks.push(track);
 					}
 				}
 
@@ -798,6 +805,180 @@ export class FbxLoader {
 			},
 		};
 	}
+}
+
+/** Which local transform an AnimationCurveNode drives. */
+type TransformKind = "T" | "R" | "S";
+
+/** One AnimationCurve channel; times stay in FBX KTime ticks. */
+interface FbxCurve {
+	times: number[];
+	values: number[];
+}
+
+/**
+ * Classifies a curve node from its OP connection property ("Lcl Translation",
+ * "Lcl Rotation", "Lcl Scaling") or, failing that, its short name ("T", "R", "S").
+ */
+function transformKindFromProperty(name: string | undefined): TransformKind | undefined {
+	switch (name) {
+		case "Lcl Translation":
+		case "T":
+			return "T";
+		case "Lcl Rotation":
+		case "R":
+			return "R";
+		case "Lcl Scaling":
+		case "S":
+			return "S";
+		default:
+			return undefined;
+	}
+}
+
+/** Channel index of a curve from its curve-node connection property ("d|X" → 0). */
+function axisFromProperty(name: string | undefined): number | undefined {
+	switch (name) {
+		case "d|X":
+			return 0;
+		case "d|Y":
+			return 1;
+		case "d|Z":
+			return 2;
+		default:
+			return undefined;
+	}
+}
+
+/** Numeric values of a Properties70 `P` entry (they start at props[4]). */
+function readProperty70(node: FBXNode | undefined, name: string): number[] | undefined {
+	const props70 = node?.children.find((c) => c.name === "Properties70");
+	const p = props70?.children.find((c) => c.name === "P" && c.props[0] === name);
+	if (!p) return undefined;
+	return p.props.slice(4).map((v) => Number(v));
+}
+
+/** A model's rest value for one transform, used where a channel has no curve. */
+function staticTransform(
+	model: FBXNode | undefined,
+	curveNode: FBXNode,
+	kind: TransformKind,
+): Vec3 {
+	const fallback = kind === "S" ? 1 : 0;
+	const modelProp = readProperty70(
+		model,
+		kind === "T" ? "Lcl Translation" : kind === "R" ? "Lcl Rotation" : "Lcl Scaling",
+	);
+	const out: Vec3 = [fallback, fallback, fallback];
+	for (let axis = 0; axis < 3; axis++) {
+		const fromModel = modelProp?.[axis];
+		const fromCurveNode = readProperty70(curveNode, `d|${"XYZ"[axis]}`)?.[0];
+		const value = fromModel ?? fromCurveNode;
+		if (value !== undefined && Number.isFinite(value)) out[axis] = value;
+	}
+	return out;
+}
+
+/** FBX EOrder enum (Model "RotationOrder"): axes in the order they are applied. */
+const FBX_ROTATION_ORDERS = ["XYZ", "XZY", "YZX", "YXZ", "ZXY", "ZYX"] as const;
+
+function rotationOrder(model: FBXNode | undefined): string {
+	const order = readProperty70(model, "RotationOrder")?.[0] ?? 0;
+	// 6 (eSphericXYZ) and anything unknown fall back to XYZ.
+	return FBX_ROTATION_ORDERS[order] ?? "XYZ";
+}
+
+/**
+ * Euler degrees → [x, y, z, w] quaternion. FBX applies the axes in `order`
+ * (XYZ: X first, so R = Rz·Ry·Rx).
+ */
+export function fbxEulerToQuat(
+	degrees: Vec3,
+	order = "XYZ",
+): [number, number, number, number] {
+	let q: [number, number, number, number] = [0, 0, 0, 1];
+	for (const axisName of order) {
+		const axis = "XYZ".indexOf(axisName);
+		const half = ((degrees[axis] ?? 0) * Math.PI) / 360;
+		const s = Math.sin(half);
+		const a: [number, number, number, number] = [0, 0, 0, Math.cos(half)];
+		a[axis] = s;
+		// q = a · q: each later axis is applied after the ones before it.
+		q = [
+			a[3] * q[0] + a[0] * q[3] + a[1] * q[2] - a[2] * q[1],
+			a[3] * q[1] - a[0] * q[2] + a[1] * q[3] + a[2] * q[0],
+			a[3] * q[2] + a[0] * q[1] - a[1] * q[0] + a[2] * q[3],
+			a[3] * q[3] - a[0] * q[0] - a[1] * q[1] - a[2] * q[2],
+		];
+	}
+	return q;
+}
+
+/** Linear sample of a curve at `t` (KTime ticks), clamped to its ends. */
+function sampleCurve(curve: FbxCurve, t: number): number {
+	const { times, values } = curve;
+	const last = times.length - 1;
+	if (t <= times[0]!) return values[0]!;
+	if (t >= times[last]!) return values[last]!;
+	let k = 0;
+	while (k < last - 1 && times[k + 1]! <= t) k++;
+	const t0 = times[k]!;
+	const t1 = times[k + 1]!;
+	const u = t1 > t0 ? (t - t0) / (t1 - t0) : 0;
+	return values[k]! + (values[k + 1]! - values[k]!) * u;
+}
+
+/**
+ * Merges a transform's X/Y/Z curves onto one sorted key set: channels without
+ * a key at some time are interpolated, channels without a curve keep the
+ * static value. Rotations become quaternions in the model's RotationOrder.
+ */
+function buildTransformTrack(group: {
+	nodeName: string;
+	model: FBXNode | undefined;
+	kind: TransformKind;
+	defaults: Vec3;
+	channels: Array<FbxCurve | undefined>;
+}): NodeAnimationTrack3D | undefined {
+	const keySet = new Set<number>();
+	for (const channel of group.channels) {
+		for (const t of channel?.times ?? []) keySet.add(t);
+	}
+	if (keySet.size === 0) return undefined;
+	const keys = [...keySet].sort((a, b) => a - b);
+
+	const times = new Float32Array(keys.length);
+	const isRotation = group.kind === "R";
+	const values = new Float32Array(keys.length * (isRotation ? 4 : 3));
+	const order = isRotation ? rotationOrder(group.model) : "XYZ";
+	let prev: [number, number, number, number] | undefined;
+
+	keys.forEach((key, k) => {
+		times[k] = key / FbxLoader.FBX_KTIME;
+		const v: Vec3 = [0, 1, 2].map((axis) => {
+			const channel = group.channels[axis];
+			return channel ? sampleCurve(channel, key) : group.defaults[axis]!;
+		}) as Vec3;
+		if (!isRotation) {
+			values.set(v, k * 3);
+			return;
+		}
+		const q = fbxEulerToQuat(v, order);
+		// Keep neighbours in the same hemisphere so slerp takes the short way.
+		if (prev && prev[0] * q[0] + prev[1] * q[1] + prev[2] * q[2] + prev[3] * q[3] < 0) {
+			for (let i = 0; i < 4; i++) q[i] = -q[i]!;
+		}
+		prev = q;
+		values.set(q, k * 4);
+	});
+
+	return {
+		nodeName: group.nodeName,
+		times,
+		translations: group.kind === "T" ? values : undefined,
+		rotations: isRotation ? values : undefined,
+		scales: group.kind === "S" ? values : undefined,
+	};
 }
 
 export function parseFBX(

@@ -1,3 +1,4 @@
+import { debugLog } from "../debug-log.js";
 import { HeadlessDOMMatrix } from "./dom-matrix.js";
 
 export async function initHeadlessWebGPU(): Promise<void> {
@@ -19,7 +20,7 @@ export async function initHeadlessWebGPU(): Promise<void> {
 
 	if (!(globalThis as any).navigator?.gpu) {
 		const gpu = create([]);
-		console.log("WebGPU created", gpu);
+		debugLog("[webgpu] Created headless GPU");
 		if (!(globalThis as any).navigator) {
 			try {
 				(globalThis as any).navigator = { gpu };

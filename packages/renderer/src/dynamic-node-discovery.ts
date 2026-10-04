@@ -6,6 +6,7 @@ import {
 	type NodeRendererPlugin,
 	registerWebGPURenderer,
 } from "@gitframes/node-sdk";
+import { rendererLogger } from "@gitframes/server-utils";
 import { BUILTIN_NODE_RENDERERS } from "./generated/node-renderers.js";
 import {
 	loadNodeManifests,
@@ -146,7 +147,7 @@ export async function discoverAndRegisterNodeRenderers(): Promise<void> {
 		return;
 	}
 
-	console.log(
+	rendererLogger.debug(
 		`[HeadlessWebGPURenderer] Discovering node renderers in: ${nodesDir}`,
 	);
 

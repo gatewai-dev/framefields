@@ -1,3 +1,5 @@
+import { debugLog } from "../debug-log.js";
+
 const SLUGGISH_HEADER_DATA = "SLUGGISH";
 const TEXTURE_WIDTH = 4096;
 
@@ -158,7 +160,7 @@ export class SlugLoader {
 		);
 
 		const elapsed = performance.now() - startTime;
-		console.log(
+		debugLog(
 			`[SlugLoader] Parsed slug binary (${codePoints.size} glyphs) in ${elapsed.toFixed(2)}ms`,
 		);
 

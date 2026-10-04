@@ -1,4 +1,5 @@
 import { BASE_URL } from "@gitframes/client-utils";
+import { debugLog } from "./debug-log.js";
 
 let tempDir: string | null = null;
 const fontPathCache = new Map<string, string>();
@@ -96,8 +97,10 @@ export async function registerHeadlessFont(
 	try {
 		const fontPath = await getLocalFontPath(family, url);
 		fontPaths.set(family, fontPath);
-		console.log(
-			`[registerHeadlessFont] Headless font registered: "${family}" from URL: ${url} -> saved to local path: ${fontPath}`,
+		debugLog(
+			fontPath === url
+				? `[registerHeadlessFont] Registered "${family}" from ${fontPath}`
+				: `[registerHeadlessFont] Registered "${family}" from ${url} (cached at ${fontPath})`,
 		);
 
 		try {
@@ -146,7 +149,7 @@ export async function getHeadlessFontData(
 			// because Node.js Buffer instances can share an internal global pool.
 			const uint8 = new Uint8Array(buf.length);
 			uint8.set(buf);
-			console.log(
+			debugLog(
 				`[getHeadlessFontData] Read local font binary for "${family}" from: ${path} (${uint8.length} bytes)`,
 			);
 			fontDataCache.set(family, uint8);

@@ -26,14 +26,42 @@ This skill takes a project from nothing to a verified first render. For anything
 
 ## 2. Install
 
-Use the package manager the project already uses (look for `pnpm-lock.yaml`, `yarn.lock`, `bun.lock`, or `package-lock.json`):
+Use the package manager the project already uses (look for `pnpm-lock.yaml`, `yarn.lock`, `bun.lock`, or `package-lock.json`).
+
+**Write `package.json` before installing.** npm 11, pnpm 10, and bun block dependency install scripts unless the project approves them, and gitframes needs exactly one: `skia-canvas` downloads its native binary in its install script. Without it, `import "gitframes"` fails with `Cannot find module '.../skia.node'`. The other packages that ship install scripts work without them, so deny them to keep installs quiet and skip downloads gitframes never uses.
+
+For a new project, create `package.json` with all three blocks. In an existing project, merge them into its `package.json`, keeping any entries it already has:
+
+```json
+{
+  "name": "my-film",
+  "private": true,
+  "type": "module",
+  "allowScripts": {
+    "skia-canvas": true,
+    "sharp": false,
+    "webgpu": false,
+    "onnxruntime-node": false,
+    "node-av": false
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["skia-canvas"],
+    "ignoredBuiltDependencies": ["sharp", "webgpu", "onnxruntime-node", "node-av"]
+  },
+  "trustedDependencies": ["skia-canvas"]
+}
+```
+
+`allowScripts` is read by npm, `pnpm` by pnpm, and `trustedDependencies` by bun; each tool ignores the others' fields. Yarn runs install scripts by default and needs none of them. Then install:
 
 ```bash
 npm install gitframes
 npm install --save-dev tsx typescript @types/node
 ```
 
-For a new project, run `npm init -y` first and set `"type": "module"` in `package.json`. A minimal `tsconfig.json`:
+The install must finish without an `install-scripts` warning. If gitframes was installed before the approval was in place, add it and rerun the skipped script with `npm rebuild skia-canvas` (`pnpm rebuild skia-canvas`). Never approve every script wholesale (`npm install-scripts approve --all`).
+
+A minimal `tsconfig.json`:
 
 ```json
 {

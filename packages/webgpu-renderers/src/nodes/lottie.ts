@@ -18,6 +18,7 @@ function resolveUrl(url: string): string {
 	return url;
 }
 
+import { debugLog } from "../debug-log.js";
 import type { RenderContextValue } from "../render-context.js";
 import { textureCache } from "../texture-cache.js";
 import type { LottieNodeProps } from "./types.js";
@@ -104,7 +105,7 @@ async function registerLottieFont(family: string): Promise<void> {
 	const baseFamily = getBaseFontFamily(family);
 	let fontUrl = GetFontAssetUrl(baseFamily);
 
-	console.log(
+	debugLog(
 		`[LottieRenderer] Registering font: "${family}" (base: "${baseFamily}") from URL: ${fontUrl}`,
 	);
 

@@ -1,12 +1,8 @@
 import * as fontkit from "fontkit";
+import { debugLog } from "../debug-log.js";
 import type { FontkitFont } from "./slug-generator.js";
 import { SlugGenerator } from "./slug-generator.js";
 import type { SlugFont } from "./slug-loader.js";
-
-/** Per-font load timings are debug output: shown only with LOG_LEVEL=debug or trace. */
-const VERBOSE_FONT_LOGS =
-	typeof process !== "undefined" &&
-	/^(debug|trace)$/i.test(process.env?.LOG_LEVEL ?? "");
 
 export type FontLoadListener = (fontFamily: string) => void;
 
@@ -736,13 +732,12 @@ export class SlugFontCache {
 							const generated = generator.generate(device, font);
 							const generateTime = performance.now();
 
-							if (VERBOSE_FONT_LOGS)
-								console.log(
-									`[SlugFontCache] Preloaded and parsed font "${fontFamily}":\n` +
-										`  - fontkit parse: ${(parseTime - startTime).toFixed(2)}ms\n` +
-										`  - slug generation: ${(generateTime - parseTime).toFixed(2)}ms\n` +
-										`  - total: ${(generateTime - startTime).toFixed(2)}ms`,
-								);
+							debugLog(
+								`[SlugFontCache] Preloaded and parsed font "${fontFamily}":\n` +
+									`  - fontkit parse: ${(parseTime - startTime).toFixed(2)}ms\n` +
+									`  - slug generation: ${(generateTime - parseTime).toFixed(2)}ms\n` +
+									`  - total: ${(generateTime - startTime).toFixed(2)}ms`,
+							);
 							generated.fontFamily = fontFamily;
 							SlugFontCache.cache.set(fontFamily, generated);
 
@@ -846,7 +841,7 @@ export class SlugFontCache {
 				document.fonts.add(loadedFace);
 				await document.fonts.ready;
 
-				console.log(
+				debugLog(
 					"[SlugFontCache] Emoji font preloaded and registered via Cache API.",
 				);
 

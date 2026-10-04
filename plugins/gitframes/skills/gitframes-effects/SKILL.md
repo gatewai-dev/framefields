@@ -5,6 +5,9 @@ description: Apply, configure, and modulate WebGPU post-processing shaders, cine
 
 # gitframes-effects
 
+## Setup
+These skills drive the [`gitframes`](https://www.npmjs.com/package/gitframes) npm package. If the project doesn't depend on it yet, add it with the project's package manager (`npm install gitframes`, or the `pnpm`/`yarn`/`bun` equivalent) and import from `"gitframes"`. It needs Node.js 22 or later and a WebGPU-capable GPU (Metal or Vulkan).
+
 ## Overview
 `gitframes` features a native WebGPU shader execution pipeline for 2D VFX, tonal grading, cinematic lens simulation, spatial relighting, and real-time neural vision conditioning.
 
@@ -172,7 +175,7 @@ Measured per 1280–2048 px frame on CPU (`onnxruntime-node`):
 | Cutout is the wrong object | Set `classes: ["person"]` (or the class you want) |
 | Faint halo around the cutout on dark backgrounds | Lower `featherRadius`, or raise `maskThreshold` (e.g. `0.6`) |
 | Renders offline / in CI | Pre-download with `runner.preload([...])` into `$GITFRAMES_MODELS_DIR`, or point `GITFRAMES_MODELS_BASE_URL` at a mirror |
-| Check the models themselves | `pnpm --filter @gitframes/vision test:models` (downloads ~380 MB once) |
+| Check the models themselves | `await runner.preload([...])` on a fresh models directory; it downloads each model and verifies its SHA-256 (about 380 MB for all of them) |
 
 ### 1. Subject Sandwich ("Text Behind Subject")
 Cuts out the foreground subject from footage and sandwiches typography or graphics directly behind them:

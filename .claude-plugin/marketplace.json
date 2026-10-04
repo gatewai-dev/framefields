@@ -8,12 +8,7 @@
 	"plugins": [
 		{
 			"name": "gitframes",
-			"source": "./",
-			"skills": [
-				"./skills/gitframes-compose",
-				"./skills/gitframes-effects",
-				"./skills/gitframes-render"
-			],
+			"source": "./plugins/gitframes",
 			"description": "Author, render and verify video compositions with the gitframes WebGPU SDK.",
 			"category": "design"
 		}

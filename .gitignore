@@ -49,8 +49,9 @@ assets/soundfonts/
 *.png
 *.jpg
 *.jpeg
-# ...except the brand assets the README links to
+# ...except the brand assets the README links to and the plugin icon
 !assets/brand/*.png
+!plugins/gitframes/assets/*.png
 
 # Vision Tracking Caches
 *tracking.json

@@ -2,13 +2,16 @@
 	"$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
 	"name": "gitframes",
 	"displayName": "Gitframes",
-	"version": "0.1.0",
+	"version": "1.3.1",
 	"description": "Author, render and verify video compositions with the gitframes WebGPU SDK.",
 	"author": {
 		"name": "Gitframes",
 		"url": "https://github.com/gatewai-dev"
 	},
 	"license": "Apache-2.0",
+	"icon": "./assets/logo.png",
+	"documentationUrl": "https://github.com/gatewai-dev/gitframes#agent-skills--plugins",
+	"supportUrl": "https://github.com/gatewai-dev/gitframes/issues",
 	"keywords": [
 		"gitframes",
 		"webgpu",

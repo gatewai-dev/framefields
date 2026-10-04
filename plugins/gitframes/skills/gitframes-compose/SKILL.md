@@ -5,6 +5,9 @@ description: Design, structure, and animate code-first video compositions using 
 
 # gitframes-compose
 
+## Setup
+These skills drive the [`gitframes`](https://www.npmjs.com/package/gitframes) npm package. If the project doesn't depend on it yet, add it with the project's package manager (`npm install gitframes`, or the `pnpm`/`yarn`/`bun` equivalent) and import from `"gitframes"`. It needs Node.js 22 or later and a WebGPU-capable GPU (Metal or Vulkan).
+
 ## Overview
 `gitframes` is a code-first, deterministic video composition SDK executing natively on WebGPU (Dawn) in Node.js. It replaces browser-based rendering (Puppeteer/Chromium) with high-performance GPU pipelines, Yoga flexbox layout, Slug vector typography, 3D camera transforms, and reactive audio/signal drivers.
 

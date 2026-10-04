@@ -5,7 +5,7 @@
 			"name": "gitframes",
 			"source": {
 				"source": "local",
-				"path": "./"
+				"path": "./plugins/gitframes"
 			},
 			"policy": {
 				"installation": "AVAILABLE",

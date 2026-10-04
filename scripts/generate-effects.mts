@@ -11,7 +11,7 @@
 // Output (never edit by hand):
 //   packages/gitframes/src/effects/generated/{classes,meta,registry,index}.ts
 //   packages/gitframes/src/effects/generated/catalog.json
-//   skills/gitframes-effects/references/effects-catalog.md (via sync-effects-catalog.mjs)
+//   plugins/gitframes/skills/gitframes-effects/references/effects-catalog.md (via sync-effects-catalog.mjs)
 //
 // A node takes part once its package.json names a `schema`. Nodes without one
 // are not migrated yet and keep their hand-written class in effects/classes.ts.

@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 // Structural validator for the gitframes agent plugin.
 //
-// The repository root *is* the plugin root, so every client discovers the same skills:
+// The plugin lives in plugins/gitframes/ so installs ship only the skills, not the engine
+// (users get the engine from npm). Every client discovers the same skills from there:
 //   plugin.json                 portable Agent Plugins 1.0 manifest (closed field set)
 //   .claude-plugin/plugin.json  Claude Code manifest
 //   .codex-plugin/plugin.json   OpenAI Codex manifest (declares skills: "./skills/")
 //   skills/<name>/SKILL.md      the skills themselves
+//   README.md, LICENSE          required by Anthropic's plugin directory
 //
 // Enforces the rules we depend on from:
 //   - Agent Plugins 1.0.0 (portable manifest, fixed component locations, path containment)
@@ -26,7 +28,7 @@ import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const PLUGIN_DIR = repoRoot;
+const PLUGIN_DIR = join(repoRoot, "plugins", "gitframes");
 const PLUGIN_NAME = "gitframes";
 const MARKETPLACE_NAME = "gitframes-plugins";
 const AGENT_PLUGINS_SCHEMA =
@@ -157,9 +159,19 @@ function checkManifests() {
 		ok(
 			`version pinned consistently at ${portable.version} across all three manifests`,
 		);
-	// NOTE: no lockfile check here. The plugin root is the repository root, so the monorepo's
-	// own pnpm-lock.yaml is expected; the "plugin must not ship a lockfile" rule only applies
-	// to a standalone plugin directory.
+	if (claude.icon && !existsSync(join(PLUGIN_DIR, claude.icon)))
+		fail(`.claude-plugin/plugin.json: icon ${claude.icon} does not exist`);
+	for (const file of ["README.md", "LICENSE"]) {
+		if (!existsSync(join(PLUGIN_DIR, file)))
+			fail(
+				`${rel(join(PLUGIN_DIR, file))} is missing (the plugin directory requires it)`,
+			);
+	}
+	// The plugin ships to users as-is: no lockfile or package.json, or installs run npm.
+	for (const file of ["package.json", "package-lock.json", "pnpm-lock.yaml"]) {
+		if (existsSync(join(PLUGIN_DIR, file)))
+			fail(`${rel(join(PLUGIN_DIR, file))} must not ship with the plugin`);
+	}
 }
 
 function checkSkills() {
@@ -248,10 +260,8 @@ function checkMarketplace(file, kind) {
 			);
 			continue;
 		}
-		// "./" resolves to the repo root, which is a legal marketplace-root source (the plugin
-		// root *is* the repo root); anything deeper must stay inside the repo.
 		const dir = resolve(repoRoot, source);
-		if (dir !== repoRoot && !insideRepo(source)) {
+		if (!insideRepo(source)) {
 			fail(`${rel(file)}: entry "${entry.name}" escapes the repo root`);
 			continue;
 		}
@@ -270,7 +280,7 @@ function checkMarketplace(file, kind) {
 				`${rel(file)}: entry "${entry.name}" is not a ${kind} plugin (${rel(manifest)} missing)`,
 			);
 		for (const skillPath of entry.skills ?? []) {
-			if (!existsSync(resolve(repoRoot, skillPath)))
+			if (!existsSync(resolve(dir, skillPath)))
 				fail(
 					`${rel(file)}: entry "${entry.name}" lists missing skill ${skillPath}`,
 				);
@@ -311,14 +321,14 @@ function checkSymlinks() {
 				continue;
 			}
 			const target = realpathSync(path);
-			const expected = join(repoRoot, "skills", name);
+			const expected = join(PLUGIN_DIR, "skills", name);
 			if (!statSync(target).isDirectory())
 				fail(`${link}: must point at a directory`);
 			else if (!existsSync(join(target, "SKILL.md")))
 				fail(`${link}: target has no SKILL.md`);
 			else if (target !== expected)
-				fail(`${link}: must point at skills/${name} (found ${rel(target)})`);
-			else ok(`${link} -> skills/${name}`);
+				fail(`${link}: must point at ${rel(expected)} (found ${rel(target)})`);
+			else ok(`${link} -> ${rel(expected)}`);
 		}
 	}
 }

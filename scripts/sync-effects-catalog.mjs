@@ -35,6 +35,8 @@ const GENERATED_CATALOG = join(EFFECTS_DIR, "generated", "catalog.json");
 const NODES_DIR = join(repoRoot, "nodes");
 const OUTPUT = join(
 	repoRoot,
+	"plugins",
+	"gitframes",
 	"skills",
 	"gitframes-effects",
 	"references",

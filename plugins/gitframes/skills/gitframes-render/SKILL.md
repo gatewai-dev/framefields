@@ -5,6 +5,9 @@ description: Render, inspect, test, and export high-performance WebGPU video and
 
 # gitframes-render
 
+## Setup
+These skills drive the [`gitframes`](https://www.npmjs.com/package/gitframes) npm package. If the project doesn't depend on it yet, add it with the project's package manager (`npm install gitframes`, or the `pnpm`/`yarn`/`bun` equivalent) and import from `"gitframes"`. It needs Node.js 22 or later and a WebGPU-capable GPU (Metal or Vulkan).
+
 ## Overview
 `gitframes` renders headlessly in Node.js on top of native WebGPU (Dawn) and mediabunny WebCodecs hardware encoders. It does not run a browser, Puppeteer, or Chromium.
 
@@ -20,7 +23,7 @@ Always proceed through the ladder in order. Catching a layout or timing bug at s
 Before touching the GPU, verify TypeScript types and parse the composition against the strict runtime schema:
 
 ```typescript
-import { CompositorProgramSchema } from "@gitframes/compositions/program";
+import { CompositorProgramSchema } from "gitframes";
 
 // 1. Compile spec
 const spec = comp.toSpec();
@@ -33,9 +36,9 @@ if (!parsed.success) {
 }
 ```
 
-Run package typechecking:
+Typecheck the project:
 ```bash
-pnpm --filter <example-or-package> typecheck
+npx tsc --noEmit -p .
 ```
 
 ---
@@ -170,8 +173,6 @@ if (mode === "frames") {
 // CRITICAL: Always explicitly exit process to prevent native WebGPU/mediabunny thread hangs
 process.exit(0);
 ```
-
-To run against the engine's TypeScript source instead of built `dist` (while changing the engine itself), give tsx a `tsconfig.dev.json` that extends the project's tsconfig and adds `"../../packages/**/*"` and `"../../nodes/**/*"` to `include` (tsx only applies compiler options, such as the decorators `server-utils` needs, to included files), then run `tsx --tsconfig tsconfig.dev.json --conditions=development src/render.ts`. `examples/22_gitframes_launch` has it as `pnpm render:src`.
 
 CLI Usage:
 ```bash

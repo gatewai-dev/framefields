@@ -1,7 +1,13 @@
 /**
  * The 30-second film, assembled. Scenes overlap where a transition carries one
- * into the next; the score sets the grid (100 BPM, hits at 10.2 s, 19.8 s and
- * 26.4 s — see theme.ts and shots.ts).
+ * into the next; the score is the only audio and sets the grid (100 BPM):
+ *
+ *   0.0–10.2  open → film → grade      (piano, strings)
+ *  10.2–19.8  motion → code            (the drop at 10.2)
+ *  19.8–26.4  effects → track          (second drop at 19.8)
+ *  26.4–30.0  resolve                  (final chord at 26.4, rings out)
+ *
+ * Every clip is muted; only `score.mp3` reaches the mix.
  */
 import { Composition, FilmGrain, Layer } from "gitframes";
 import { codeScene } from "./scenes/code.js";

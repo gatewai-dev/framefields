@@ -1,7 +1,8 @@
 /**
  * The end. On "Gitframes." the logo and the name, extruded in 3D, whips in under an
  * orbiting camera; "Motion, compiled." builds word by word beneath it, and
- * on the final hit the install line lands, held through the ring-out.
+ * on the final hit the install line lands with the Claude Code and Codex plugin
+ * installs beneath it, held through the ring-out.
  */
 import { CameraAnimation, Layer, Layer3D, LayerAnimation } from "gitframes";
 import { BEAT, bar } from "../grid.js";
@@ -19,6 +20,7 @@ import {
 	label,
 	logoMark,
 	MONO,
+	MUTED,
 	plane,
 	SNAP,
 	scene,
@@ -27,6 +29,12 @@ import {
 	window3D,
 } from "../theme.js";
 import { CH, DURATION } from "../timeline.js";
+
+/** Agent plugin installs: Claude Code (official directory, bare name), then Codex. */
+const PLUGIN_INSTALL = [
+	"/plugin install gitframes",
+	"codex plugin marketplace add gatewai-dev/gitframes",
+];
 
 const CX = W / 2;
 const CY = H / 2;
@@ -146,10 +154,32 @@ function lockup() {
 						ease: EASE_OUT,
 					}),
 			),
+			...PLUGIN_INSTALL.map((text, i) =>
+				Layer.text(text, {
+					id: `final-plugin-${i}`,
+					position: "absolute",
+					x: 0,
+					y: CY + 400 + i * 38,
+					width: W,
+					align: "center",
+					fontFamily: MONO,
+					fontSize: 24,
+					fontWeight: 500,
+					fill: i === 0 ? FG : MUTED,
+				}).animate(
+					LayerAnimation.create()
+						.fadeIn(hit + 8 + i * 4, hit + 16 + i * 4)
+						.fromTo("y", CY + 412 + i * 38, CY + 400 + i * 38, {
+							start: hit + 8 + i * 4,
+							end: hit + 22 + i * 4,
+							ease: EASE_OUT,
+						}),
+				),
+			),
 			label({
 				id: "final-url",
 				text: "WebGPU motion engine",
-				y: H - 90,
+				y: 52,
 				inAt: hit + 16,
 				color: FG,
 				size: 20,

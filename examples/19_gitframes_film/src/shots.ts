@@ -61,7 +61,7 @@ const section = (name: string, ms: number, styles: string[], avoid: string[] = [
 
 /**
  * Section durations mirror the film's scene cuts (see timeline in film.ts), so
- * musical changes land exactly on picture changes.
+ * musical changes land exactly on picture changes. They sum to 30 s, the film's length.
  */
 export const SCORE = {
 	positive_global_styles: [
@@ -87,12 +87,13 @@ export const SCORE = {
 		"guitar solo",
 	],
 	sections: [
-		section("Open", 3000, ["solo felt piano", "three sparse notes", "intimate", "lots of silence", "soft room reverb"], ["drums", "bass"]),
-		section("Film", 5400, ["warm string pad and deep sub swell enter on the downbeat", "slow cinematic chords", "felt piano melody continues"], ["drums", "kick"]),
-		section("Grade", 5400, ["plucked synth ostinato in eighth notes", "soft shaker", "gently building tension", "short riser in the last bar"], ["kick"]),
+		section("Open", 2200, ["solo felt piano", "three sparse notes", "intimate", "lots of silence", "soft room reverb"], ["drums", "bass"]),
+		section("Film", 4400, ["warm string pad and deep sub swell enter on the downbeat", "slow cinematic chords", "felt piano melody continues"], ["drums", "kick"]),
+		section("Grade", 3600, ["plucked synth ostinato in eighth notes", "soft shaker", "gently building tension", "short riser in the last bar"], ["kick"]),
 		section("Motion", 4800, ["the drop: punchy kick and tight snare land on the first downbeat", "driving bass", "plucked arpeggio", "confident groove"]),
-		section("Effects", 4200, ["full groove continues", "extra percussion fills", "short rhythmic stabs", "energetic"]),
-		section("Code", 3600, ["sudden low-pass filtered breakdown", "ticking clock-like hi-hat", "muted pulse", "suspense"]),
+		section("Code", 4800, ["low-pass filtered groove", "ticking clock-like hi-hat", "muted pulse", "suspense", "riser into the next drop"]),
+		section("Effects", 3600, ["second drop: full groove returns on the downbeat", "extra percussion fills", "short rhythmic stabs", "energetic"]),
+		section("Vision", 3000, ["full groove continues", "shimmering arpeggio on top", "builds into the final hit"]),
 		section("Resolve", 3600, ["one huge warm major chord hit on the downbeat with piano and strings", "long natural reverb tail ringing out through the entire section"], ["abrupt ending", "drums"]),
 	],
 };

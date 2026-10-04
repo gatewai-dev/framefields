@@ -1,25 +1,38 @@
 /**
  * bar 17 – end — The moon. The title rises beneath it, the name orbits the
- * moon one last time, the credit settles, and the picture and score fade out
- * together.
+ * moon one last time, the credit settles, the plugin install lines land at the
+ * foot of the frame, and the picture and score fade out together.
  */
-import { LayerAnimation } from "gitframes";
+import { Layer, LayerAnimation } from "gitframes";
 import { EDIT, ringAt } from "../edit.js";
 import { bar, DROP, DURATION } from "../grid.js";
 import {
+	BONE,
 	caption,
 	DISPLAY,
+	EASE_OUT,
+	H,
 	INK,
 	line,
+	MARGIN,
+	MONO,
 	orbit,
 	plane,
 	STONE,
 	scene,
+	W,
 } from "../theme.js";
 
 export const FADE = 24;
 const TITLE = 132;
 const TITLE_Y = 630;
+
+/** Agent plugin installs: Claude Code (official directory, bare name), then Codex. */
+const INSTALL = [
+	"/plugin install gitframes",
+	"codex plugin marketplace add gatewai-dev/gitframes",
+];
+const INSTALL_Y = H - MARGIN - 22;
 
 export function finaleScene() {
 	const from = bar(DROP + 6);
@@ -57,6 +70,32 @@ export function finaleScene() {
 			inAt: 30,
 			color: STONE,
 		}),
+		// Either side of the lone figure, on the caption margin, so neither line crosses him.
+		...INSTALL.map((text, i) =>
+			Layer.text(text, {
+				id: `finale-install-${i}`,
+				position: "absolute",
+				x: i === 0 ? MARGIN : W / 2 + 80,
+				y: INSTALL_Y,
+				width: W / 2 - 80 - MARGIN,
+				align: i === 0 ? "start" : "end",
+				fontFamily: MONO,
+				fontSize: 22,
+				fill: BONE,
+			}).animate(
+				LayerAnimation.create()
+					.fromTo("opacity", 0, 0.8, {
+						start: 42 + i * 6,
+						end: 52 + i * 6,
+						ease: "power2.out",
+					})
+					.fromTo("y", INSTALL_Y + 12, INSTALL_Y, {
+						start: 42 + i * 6,
+						end: 58 + i * 6,
+						ease: EASE_OUT,
+					}),
+			),
+		),
 		plane("finale-black", INK).animate(
 			LayerAnimation.create().fromTo("opacity", 0, 1, {
 				start: len - FADE,

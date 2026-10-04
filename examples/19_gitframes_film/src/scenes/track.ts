@@ -21,8 +21,10 @@ import {
 	type TrackedObject,
 	VisionBundle,
 } from "gitframes";
+import { EFFECTS_TO } from "./effects.js";
 import {
 	asset,
+	beats,
 	chapter,
 	EASE_OUT,
 	EMBER,
@@ -37,8 +39,9 @@ import {
 	W,
 } from "../theme.js";
 
-export const TRACK_FROM = 792;
-export const TRACK_TO = 936; // 8 beats @ 100 BPM (4.8 seconds)
+/** 23.4–26.4 s: the back half of the drop, ending on the score's final chord. */
+export const TRACK_FROM = EFFECTS_TO;
+export const TRACK_TO = TRACK_FROM + beats(5);
 
 /** 2.39:1 anamorphic letterbox bars */
 const BAR = Math.round((H - W / 2.39) / 2);
@@ -325,8 +328,8 @@ export function trackScene(options: TrackSceneOptions = {}) {
 		children: [dancerFullSilhouette, smokePlume],
 	}).animate(
 		LayerAnimation.create()
-			.fadeIn(4, 18, "power2.out")
-			.fadeOut(len - 18, len - 6, "power2.in"),
+			.fadeIn(0, 10, "power2.out")
+			.fadeOut(len - 14, len - 4, "power2.in"),
 	);
 
 	// 5. Subtle studio horizon guide
@@ -417,7 +420,7 @@ export function trackScene(options: TrackSceneOptions = {}) {
 				width: 800,
 				size: 112,
 				color: PAPER,
-				inAt: 8,
+				inAt: 4,
 				outAt: len - 16,
 			}),
 			...chapter({
@@ -425,19 +428,19 @@ export function trackScene(options: TrackSceneOptions = {}) {
 				index: "05",
 				name: "Vision",
 				color: PAPER,
-				inAt: 16,
+				inAt: 10,
 				outAt: len - 12,
 				y: H - BAR / 2 - 11,
 			}),
 			label({
 				id: "track-caption",
-				text: "Neural Tracking · Full Smoke Silhouette Blend · 35mm Spatial Analysis",
-				x: W - 96 - 920,
+				text: "Tracking  ·  Segmentation  ·  Mattes",
+				x: W - 96 - 700,
 				y: H - BAR / 2 - 11,
-				width: 920,
+				width: 700,
 				align: "end",
 				color: SAND,
-				inAt: 22,
+				inAt: 14,
 				outAt: len - 12,
 			}),
 		],

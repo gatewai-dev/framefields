@@ -13,6 +13,7 @@
 		"changeset": "changeset",
 		"version:packages": "changeset version && node scripts/sync-plugin-version.mjs",
 		"sync:plugin-version": "node scripts/sync-plugin-version.mjs",
+		"pack:plugin": "rm -f gitframes-plugin.zip && cd plugins/gitframes && zip -qrX ../../gitframes-plugin.zip . -x '*.DS_Store'",
 		"release:local": "turbo run build && pnpm -r publish --access public --no-git-checks",
 		"release:local:dry-run": "turbo run build && pnpm -r publish --dry-run --access public --no-git-checks",
 		"release:gitframes": "turbo run build && pnpm --filter gitframes publish --access public --no-git-checks",

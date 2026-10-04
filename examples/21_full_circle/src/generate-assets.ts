@@ -37,6 +37,8 @@ const FONTS: Record<string, string> = {
 		"https://github.com/google/fonts/raw/main/ofl/inter/Inter%5Bopsz%2Cwght%5D.ttf",
 	"InstrumentSerif-Italic.ttf":
 		"https://github.com/google/fonts/raw/main/ofl/instrumentserif/InstrumentSerif-Italic.ttf",
+	"JetBrainsMono.ttf":
+		"https://github.com/google/fonts/raw/main/ofl/jetbrainsmono/JetBrainsMono%5Bwght%5D.ttf",
 };
 
 /** z-image wants multiples of 16; h3 keeps the still's aspect. */

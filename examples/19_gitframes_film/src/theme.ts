@@ -14,7 +14,8 @@ export const asset = (file: string) => path.join(ASSETS, file);
 export const W = 1920;
 export const H = 1080;
 export const FPS = 30;
-export const DURATION_FRAMES = 1044;
+/** The score's length: 30 s. Picture and music end together. */
+export const DURATION_FRAMES = 900;
 
 /** 100 BPM → one beat every 0.6 s = 18 frames. Every cut lands on this grid. */
 export const BEAT = 18;

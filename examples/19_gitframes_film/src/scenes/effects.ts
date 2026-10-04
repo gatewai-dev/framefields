@@ -1,10 +1,9 @@
 /**
- * 19.8–26.4 s — The drop. The preview that just rendered is now the frame;
- * then a cut every half-bar, each one a different GPU effect, a 2×2 wall of
- * four passes over one clip, and two flash cuts into the title.
+ * 19.8–23.4 s — The drop. The preview that just rendered is now the frame,
+ * ember smoke blooms out of it, then a 2×2 wall of four passes over one clip
+ * lands an eighth note at a time. Six beats, then Vision takes the rest of the bar.
  */
 import {
-	Blur,
 	ColorBalance,
 	Curves,
 	FilmGrain,
@@ -12,14 +11,13 @@ import {
 	HalftoneScreen,
 	Layer,
 	LayerAnimation,
-	Signal,
 	Vignette,
 } from "gitframes";
 import { CODE_FROM, CODE_TO, DANCER_TRIM_SEC, EMBER_STOPS, HALFTONE, PREVIEW_CLIP_START } from "./code.js";
-import { EASE_OUT, EMBER, FPS, H, INK, PAPER, SANS, W, asset, headline, keys, scene } from "../theme.js";
+import { EASE_OUT, EMBER, FPS, H, INK, PAPER, SANS, W, asset, beats, headline, scene } from "../theme.js";
 
 export const EFFECTS_FROM = CODE_TO;
-export const EFFECTS_TO = 792;
+export const EFFECTS_TO = EFFECTS_FROM + beats(6);
 
 type Clip = ReturnType<typeof Layer.video>;
 
@@ -102,39 +100,25 @@ function chip(id: string, name: string, from: number, to: number, at = { x: 96, 
 	}).animate(anim);
 }
 
-/** Scene-local ramp for effect params (effects are clocked in source frames). */
-function decay(from: number, to: number, trimSec: number, frames: number) {
-	const t0 = Math.round(trimSec * FPS);
-	return Signal.builder({
-		type: "custom",
-		fn: (ctx) => {
-			const p = Math.min(1, Math.max(0, (ctx.frame - t0) / frames));
-			return to + (from - to) * (1 - p) ** 2;
-		},
-	});
-}
-
 export function effectsScene() {
 	// Continue the code preview exactly where it was when it hit full frame.
 	const dancerIn = DANCER_TRIM_SEC + (CODE_TO - CODE_FROM - PREVIEW_CLIP_START) / FPS;
 
-	const A = shot("fx-a", 0, 56, [
+	// One beat per idea: halftone (0..45), pure smoke (36..72), the wall (63..108).
+	const A = shot("fx-a", 0, 45, [
 		clip("fx-a-clip", "dancer.mp4", dancerIn).apply(new HalftoneScreen(HALFTONE)).apply(new GradientMap({ stops: EMBER_STOPS })),
-		headline({ id: "fx-title", text: "Transform it.", x: 96, y: 96, width: 1200, size: 124, color: INK, inAt: 4, outAt: 38 }),
-	]).animate(LayerAnimation.create().fadeOut(46, 54, "power2.inOut"));
+		headline({ id: "fx-title", text: "Transform it.", x: 96, y: 96, width: 1200, size: 124, color: INK, inAt: 4, outAt: 28 }),
+	]).animate(LayerAnimation.create().fadeOut(36, 44, "power2.inOut"));
 
-	// Continuous smoke layer: blooms over the spinning dancer (46..54),
-	// stands pure and voluminous for the gradient map showcase (54..81),
-	// and floats as glowing atmospheric tendrils over the salt flat desert (81..97).
-	const SMOKE_START = 46;
-	const SMOKE_END = 97;
+	// Smoke blooms out of the fading dancer, stands alone for the gradient map,
+	// then burns off as the wall drops in underneath it.
+	const SMOKE_START = 36;
+	const SMOKE_END = 72;
 	const smokeDur = SMOKE_END - SMOKE_START;
-	const smokeFadeIn = 8;
-	const smokeFadeOutStart = 81 - SMOKE_START;
 
 	const smokeAnim = LayerAnimation.create()
-		.fromTo("opacity", 0, 1, { start: 0, end: smokeFadeIn, ease: "power2.inOut" })
-		.fromTo("opacity", 1, 0, { start: smokeFadeOutStart, end: smokeDur, ease: "sine.out" })
+		.fromTo("opacity", 0, 1, { start: 0, end: 8, ease: "power2.inOut" })
+		.fromTo("opacity", 1, 0, { start: 27, end: smokeDur, ease: "sine.out" })
 		.fromTo("scale", 1.14, 0.98, { start: 0, end: smokeDur, ease: "sine.out" });
 
 	const B = Layer.box({
@@ -153,21 +137,6 @@ export function effectsScene() {
 				.apply(new GradientMap({ stops: FIRE_STOPS })),
 		],
 	}).animate(smokeAnim);
-
-	const C = shot("fx-c", 81, 108, [
-		warm(
-			clip("fx-c-clip", "frame.mp4", 1.2).apply(
-				new Blur({ blurType: "Zoom", centerX: 0.5, centerY: 0.46, strength: decay(100, 0, 1.2, 26) as never }),
-			),
-		).animate(keys("scale", [[0, 1.18], [27, 1.0, EASE_OUT]])),
-	]);
-
-	// Engraved line screen: ink rules on paper, no process colours.
-	const D = shot("fx-d", 108, 135, [
-		clip("fx-d-clip", "portrait.mp4", 0.6).apply(
-			new HalftoneScreen({ dotShape: "Line", frequency: 96, angle: 30, dotColor: INK, paperColor: PAPER, contrast: 1.25 }),
-		),
-	]);
 
 	// Four passes over one clip, tiled; each cell drops in on an eighth note.
 	const GAP = 12;
@@ -189,8 +158,8 @@ export function effectsScene() {
 	];
 	const E = shot(
 		"fx-e",
-		135,
-		180,
+		63,
+		108,
 		cells.map(({ name, title, fx }, i) => {
 			const x = GAP + (i % 2) * (cw + GAP);
 			const y = GAP + Math.floor(i / 2) * (ch + GAP);
@@ -214,9 +183,6 @@ export function effectsScene() {
 		}),
 	);
 
-	const F1 = shot("fx-f1", 180, 189, [warm(clip("fx-f1-clip", "ink.mp4", 5.2))]);
-	const F2 = shot("fx-f2", 189, 198, [warm(clip("fx-f2-clip", "portrait.mp4", 4.5))]);
-
 	return scene({
 		id: "effects",
 		from: EFFECTS_FROM,
@@ -224,16 +190,10 @@ export function effectsScene() {
 		background: INK,
 		children: [
 			A,
-			C,
-			D,
 			E,
-			F1,
-			F2,
 			B,
-			chip("fx-chip-a", "Halftone", 6, 52),
-			chip("fx-chip-b", "Gradient map", 56, 81),
-			chip("fx-chip-c", "Zoom blur  ·  Curves", 83, 108),
-			chip("fx-chip-d", "Line screen", 110, 135),
+			chip("fx-chip-a", "Halftone", 6, 40),
+			chip("fx-chip-b", "Gradient map", 44, 66),
 		],
 	});
 }

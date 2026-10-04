@@ -4,10 +4,49 @@
 	"version": "1.3.2",
 	"description": "Author, render and verify video compositions with the gitframes WebGPU SDK.",
 	"author": {
-		"name": "Gitframes"
+		"name": "Gitframes",
+		"url": "https://github.com/gatewai-dev"
 	},
 	"homepage": "https://github.com/gatewai-dev/gitframes",
 	"repository": "https://github.com/gatewai-dev/gitframes",
 	"license": "Apache-2.0",
-	"keywords": ["gitframes", "webgpu", "video", "composition", "motion-graphics"]
+	"keywords": [
+		"gitframes",
+		"webgpu",
+		"video",
+		"composition",
+		"motion-graphics"
+	],
+	"extensions": {
+		"com.openai": {
+			"interface": {
+				"displayName": "Gitframes",
+				"shortDescription": "Code-first video on WebGPU",
+				"longDescription": "Gitframes teaches your coding agent to make videos with code. The skills cover setting up a project with the gitframes npm package, building compositions (layout, typography, keyframed animation, 3D scenes, audio), applying effects and color grading, on-device vision such as subject cutouts and tracking, and rendering: single frames, contact sheets, and MP4 export with built-in QA. Everything renders natively on WebGPU in Node.js, without a browser or desktop creative suite.\n\nIntended for developers and agents producing motion graphics, product videos, and programmatic films. Limitations: the plugin contains skills only; rendering needs Node.js 22 or later and a WebGPU-capable GPU (Metal or Vulkan), and the vision features download open model weights from Hugging Face on first use. gitframes is in beta, so APIs may change.",
+				"developerName": "Gitframes",
+				"category": "Design",
+				"capabilities": [
+					"Set up a gitframes project",
+					"Compose and animate video",
+					"Apply effects and color grading",
+					"Render frames, grids, and MP4"
+				],
+				"websiteURL": "https://github.com/gatewai-dev/gitframes",
+				"supportURL": "https://github.com/gatewai-dev/gitframes/issues",
+				"defaultPrompt": [
+					"Set up gitframes in this project and render a 3-second title card.",
+					"Add film grain and a vignette to my gitframes composition.",
+					"Render a frame grid of my intro so I can check the motion."
+				],
+				"brandColor": "#3B82F6",
+				"brandColorDark": "#7DD3FC",
+				"composerIcon": "./assets/logo.png",
+				"logo": "./assets/logo.png"
+			},
+			"onboardingSkill": "./skills/gitframes/SKILL.md",
+			"publication": {
+				"release_notes": "Adds the gitframes onboarding skill for setting up a project and a first verified render, and fixes the frame-grid example in gitframes-render."
+			}
+		}
+	}
 }

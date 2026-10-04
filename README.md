@@ -21,15 +21,37 @@ Renders directly on GPU hardware via Dawn / WebGPU / Metal / Vulkan in Node.js a
 
 </div>
 
+### Made with gitframes
+
+Every frame of these films is rendered by gitframes from TypeScript in [`examples/`](examples). Click a still to watch it on YouTube.
+
+<table>
+  <tr>
+    <td width="33%" align="center">
+      <a href="https://youtu.be/caJJ7ucwyQk"><img src="assets/showcase/gitframes-launch.jpg" alt="Gitframes launch film" width="100%"></a>
+      <br><a href="https://youtu.be/caJJ7ucwyQk"><b>Gitframes launch</b></a>
+      <br><sub><a href="examples/22_gitframes_launch"><code>22_gitframes_launch</code></a></sub>
+    </td>
+    <td width="33%" align="center">
+      <a href="https://youtu.be/F-_gzQxGbho"><img src="assets/showcase/full-circle.jpg" alt="Full Circle film" width="100%"></a>
+      <br><a href="https://youtu.be/F-_gzQxGbho"><b>Full Circle</b></a>
+      <br><sub><a href="examples/21_full_circle"><code>21_full_circle</code></a></sub>
+    </td>
+    <td width="33%" align="center">
+      <a href="https://youtu.be/HdFjXB4eKxc"><img src="assets/showcase/dancer.jpg" alt="Dancer showcase film" width="100%"></a>
+      <br><a href="https://youtu.be/HdFjXB4eKxc"><b>Dancer showcase</b></a>
+      <br><sub><a href="examples/19_gitframes_film"><code>19_gitframes_film</code></a></sub>
+    </td>
+  </tr>
+</table>
+
 > [!NOTE]
 > **Using an AI coding agent?** Install the gitframes skills straight from the marketplace.
 >
 > **Claude Code**
 > ```text
-> /plugin marketplace add gatewai-dev/gitframes
-> /plugin install gitframes@gitframes-plugins
+> /plugin install gitframes
 > ```
-> Run these in a `claude` terminal session (not the desktop app's Code tab), then restart or run `/reload-plugins`.
 >
 > **Codex**
 > ```bash
@@ -530,7 +552,7 @@ console.log(`Video rendered successfully to: ${filePath}`);
 
 ## Agent Skills & Plugins
 
-Gitframes ships agent skills that teach Claude, Codex, and other coding agents how to write, render, and check compositions. The repository is a plugin marketplace (`gitframes-plugins`) with a single plugin (`gitframes`) that contains **only skills** — no MCP servers, hooks, or commands.
+Gitframes ships agent skills that teach Claude, Codex, and other coding agents how to write, render, and check compositions. The plugin (`gitframes`) is listed in Anthropic's official plugin directory and contains **only skills** — no MCP servers, hooks, or commands. This repository is also a plugin marketplace (`gitframes-plugins`) for Codex and for installing straight from GitHub.
 
 | Skill | Use it for |
 | --- | --- |
@@ -548,37 +570,35 @@ The plugin is instructions only. It bundles no executables, MCP servers, hooks, 
 ### Claude Code
 
 ```text
-/plugin marketplace add gatewai-dev/gitframes
-/plugin install gitframes@gitframes-plugins
+/plugin install gitframes
 ```
 
 Or from your shell:
 
 ```bash
-claude plugin marketplace add gatewai-dev/gitframes
-claude plugin install gitframes@gitframes-plugins
+claude plugin install gitframes@claude-plugins-official
 ```
 
-Adding the marketplace only registers the catalog; the `install` step is what enables the skills. Afterwards, restart Claude Code or run `/reload-plugins`. `/plugin` commands need an interactive `claude` terminal — they don't work in the desktop app's Code tab, so use the shell form there.
+It installs from Anthropic's official marketplace, which Claude Code adds for you, so there is no marketplace step, and plugins from it update automatically. Afterwards, restart Claude Code or run `/reload-plugins`. `/plugin` commands need an interactive `claude` terminal; in the desktop app's Code tab, use the shell form or **+ > Plugins > Add plugin** and pick **Gitframes**.
 
-Add `--scope project` to record the plugin in `.claude/settings.json` for the whole team. Update later with `/plugin marketplace update gitframes-plugins`.
+Add `--scope project` to the shell form to record the plugin in `.claude/settings.json` for the whole team.
 
 **Enable it for everyone in your repo.** Commit this to `.claude/settings.json`; Claude Code prompts teammates to install it when they trust the folder:
 
 ```json
 {
-  "extraKnownMarketplaces": {
-    "gitframes-plugins": {
-      "source": { "source": "github", "repo": "gatewai-dev/gitframes" }
-    }
-  },
   "enabledPlugins": {
-    "gitframes@gitframes-plugins": true
+    "gitframes@claude-plugins-official": true
   }
 }
 ```
 
-**Claude desktop app (Code tab):** open plugin settings, add the marketplace `gatewai-dev/gitframes`, then install **Gitframes**.
+**Straight from this repository** (tracks `main` instead of the directory release):
+
+```text
+/plugin marketplace add gatewai-dev/gitframes
+/plugin install gitframes@gitframes-plugins
+```
 
 ### Codex
 

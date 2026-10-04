@@ -25,6 +25,7 @@ export const EMBER = "#6E3B12";
 export const DISPLAY = "Syne";
 export const SERIF = "Instrument Serif Italic";
 export const SANS = "Inter";
+export const MONO = "JetBrains Mono";
 
 export async function registerFonts(): Promise<void> {
 	await FontManager.register({ family: DISPLAY, source: font("Syne.ttf") });
@@ -33,6 +34,7 @@ export async function registerFonts(): Promise<void> {
 		source: font("InstrumentSerif-Italic.ttf"),
 	});
 	await FontManager.register({ family: SANS, source: font("Inter.ttf") });
+	await FontManager.register({ family: MONO, source: font("JetBrainsMono.ttf") });
 }
 
 export const EASE_OUT = "expo.out";

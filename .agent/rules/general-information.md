@@ -32,7 +32,7 @@ Gitframes is a code-first video engine on native WebGPU (Dawn) in Node, with no 
 - `nodes/node-*` (59): one VFX/audio/layout node each. Layout: `src/shared/` (config and schema), `src/renderers/` (WebGPU), `src/index.ts`. Only `node-compositor` has a `SKILL.md`; update it when Compositor behavior changes (`packages/compositions/src/program/skillmd-check.test.ts` guards it).
 - `apps/renderer-service`: HTTP render service (Docker, RunPod worker).
 - `examples/NN_*`: reference films/ads that import `gitframes` via workspace. Study `19_gitframes_film` (best structure), `22_gitframes_launch` before writing a new film.
-- `plugins/gitframes/skills/gitframes-{compose,effects,render}`: agent skills, symlinked from `.agents/skills` and `.claude/skills`.
+- `plugins/gitframes/skills/gitframes{,-compose,-effects,-render}`: agent skills, symlinked from `.agents/skills` and `.claude/skills`.
 - `examples/22_gitframes_launch`: reference for a lyric-driven launch film.
 - Package `exports` have a `development` condition pointing at `src/`. Otherwise consumers resolve `dist/`, so run `pnpm build` after changing a dependency.
 

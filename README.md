@@ -237,7 +237,7 @@ gitframes/
 ├── apps/
 │   └── renderer-service/       # Production HTTP / gRPC rendering microservice container
 ├── examples/                   # Reference compositions and films
-├── plugins/gitframes/          # Agent plugin: skills only (compose, effects, render)
+├── plugins/gitframes/          # Agent plugin: skills only (setup, compose, effects, render)
 └── scripts/                    # Build, release, and plugin validation tooling
 ```
 
@@ -532,6 +532,7 @@ Gitframes ships agent skills that teach Claude, Codex, and other coding agents h
 
 | Skill | Use it for |
 | --- | --- |
+| `gitframes` | Starting a project: install from npm, scaffold a composition and render script, first verified render |
 | `gitframes-compose` | Compositions, layer trees, layout, animation and easing, beat grids, film structure |
 | `gitframes-effects` | Effect classes, the unified section architecture, premultiplied-alpha invariants, vision conditioning |
 | `gitframes-render` | Headless rendering, FrameGrid inspection, pixel probes, MP4 delivery checks |

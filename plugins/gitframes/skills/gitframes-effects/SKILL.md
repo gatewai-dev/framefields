@@ -6,7 +6,7 @@ description: Apply, configure, and modulate WebGPU post-processing shaders, cine
 # gitframes-effects
 
 ## Setup
-These skills drive the [`gitframes`](https://www.npmjs.com/package/gitframes) npm package. If the project doesn't depend on it yet, add it with the project's package manager (`npm install gitframes`, or the `pnpm`/`yarn`/`bun` equivalent) and import from `"gitframes"`. It needs Node.js 22 or later and a WebGPU-capable GPU (Metal or Vulkan).
+Import everything from the [`gitframes`](https://www.npmjs.com/package/gitframes) npm package. If the project doesn't have gitframes set up yet, follow the `gitframes` skill first (install, project scaffold, first render).
 
 ## Overview
 `gitframes` features a native WebGPU shader execution pipeline for 2D VFX, tonal grading, cinematic lens simulation, spatial relighting, and real-time neural vision conditioning.

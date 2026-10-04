@@ -4,6 +4,7 @@ Agent skills for [gitframes](https://github.com/gatewai-dev/gitframes), a code-f
 
 | Skill | Use it for |
 | --- | --- |
+| `gitframes` | Starting a project: install from npm, scaffold a composition and render script, first verified render |
 | `gitframes-compose` | Compositions, layer trees, layout, animation and easing, beat grids, film structure |
 | `gitframes-effects` | Post-processing effects, color grading, VFX, and on-device vision (tracking, segmentation, pose) |
 | `gitframes-render` | Headless rendering, frame-grid inspection, pixel probes, MP4 delivery checks |

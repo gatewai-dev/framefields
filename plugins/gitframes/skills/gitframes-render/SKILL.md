@@ -6,7 +6,7 @@ description: Render, inspect, test, and export high-performance WebGPU video and
 # gitframes-render
 
 ## Setup
-These skills drive the [`gitframes`](https://www.npmjs.com/package/gitframes) npm package. If the project doesn't depend on it yet, add it with the project's package manager (`npm install gitframes`, or the `pnpm`/`yarn`/`bun` equivalent) and import from `"gitframes"`. It needs Node.js 22 or later and a WebGPU-capable GPU (Metal or Vulkan).
+Import everything from the [`gitframes`](https://www.npmjs.com/package/gitframes) npm package. If the project doesn't have gitframes set up yet, follow the `gitframes` skill first (install, project scaffold, first render).
 
 ## Overview
 `gitframes` renders headlessly in Node.js on top of native WebGPU (Dawn) and mediabunny WebCodecs hardware encoders. It does not run a browser, Puppeteer, or Chromium.
@@ -76,8 +76,7 @@ const gridPng = await comp.renderFrameGrid({
   frames: [0, 6, 12, 18, 24, 30, 36, 42, 48, 54, 60],
   columns: 4,
   cellWidth: 480, // Downscaled thumbnail size for rapid visual scanning
-  showFrameNumbers: true,
-  showTimestamps: true,
+  showLabels: true, // frame number and timestamp under each cell
 });
 
 await fs.writeFile("output/intro-grid.png", gridPng);

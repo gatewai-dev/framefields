@@ -1,6 +1,6 @@
 {
 	"name": "@gitframes/node-camera-parallax-3d",
-	"version": "1.4.2",
+	"version": "1.4.3",
 	"private": false,
 	"gitframes": {
 		"type": "CameraParallax3D",

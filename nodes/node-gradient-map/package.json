@@ -1,6 +1,6 @@
 {
 	"name": "@gitframes/node-gradient-map",
-	"version": "1.4.2",
+	"version": "1.4.3",
 	"private": false,
 	"gitframes": {
 		"type": "GradientMap",

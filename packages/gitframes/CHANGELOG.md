@@ -1,5 +1,11 @@
 # gitframes
 
+## 1.4.3
+
+### Patch Changes
+
+- Quieter renders: headless GPU, font, and node-discovery messages now log only with `LOG_LEVEL=debug`, and a local font no longer logs as if it were downloaded. The setup skill now writes `package.json` with the `skia-canvas` install-script approval (npm `allowScripts`, pnpm `onlyBuiltDependencies`, bun `trustedDependencies`) before installing, so installs work on package managers that block dependency scripts.
+
 ## 1.4.2
 
 ### Patch Changes

@@ -1,5 +1,7 @@
 # @gitframes/node-caption-editor
 
+## 1.4.3
+
 ## 1.4.2
 
 ## 1.4.1

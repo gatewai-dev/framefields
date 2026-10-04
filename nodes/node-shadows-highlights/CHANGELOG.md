@@ -1,5 +1,7 @@
 # @gitframes/node-shadows-highlights
 
+## 1.4.3
+
 ## 1.4.2
 
 ## 1.4.1

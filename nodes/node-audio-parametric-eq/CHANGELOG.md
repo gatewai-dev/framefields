@@ -1,5 +1,7 @@
 # @gitframes/node-audio-parametric-eq
 
+## 1.4.3
+
 ## 1.4.2
 
 ## 1.4.1

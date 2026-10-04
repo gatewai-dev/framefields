@@ -1,5 +1,7 @@
 # @gitframes/node-audio-reverb
 
+## 1.4.3
+
 ## 1.4.2
 
 ## 1.4.1

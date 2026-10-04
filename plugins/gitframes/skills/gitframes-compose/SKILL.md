@@ -211,10 +211,22 @@ const floatAnim = LayerAnimation.create()
 const springAnim = LayerAnimation.create()
   .spring("scale", { damping: 14, stiffness: 190, mass: 1 });
 
-// Audio reactivity via Signal
+// Audio reactivity: pass the signal object straight in…
+const kick = Signal.fromArray(kickEnvelope, fps); // or Signal.builder({ type: "custom", fn })
 const beatAnim = LayerAnimation.create()
-  .signal("scale", "drum_stem_signal", { multiplier: 0.12, offset: 1.0, smoothing: 2 });
+  .signal("scale", kick, { multiplier: 0.12, offset: 1.0, smoothing: 2 });
+
+// …or register it once by name and bind the name (handy when many layers share it)
+comp.addSignal("drum_stem_signal", kick);
+const beatAnim2 = LayerAnimation.create()
+  .signal("opacity", "drum_stem_signal", { multiplier: 0.5, offset: 0.5 });
 ```
+
+`.signal()` / `.colorSignal()` drive the prop with `value × multiplier + offset` every frame. A signal
+object is carried on its track and registered with the program automatically (under a generated
+`inline_signal_N` id, so the spec stays plain JSON); a string is looked up in `comp.addSignal` names.
+Anything else (a number, `undefined`) throws. Signals are sampled at the **composition** frame
+(`ctx.frame`), not the layer's local frame.
 
 ---
 

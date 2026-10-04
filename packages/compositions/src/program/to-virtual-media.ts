@@ -17,6 +17,7 @@ import {
 	getActiveMediaMetadata,
 	type VirtualMediaData,
 } from "@gitframes/core";
+import { collectInlineSignals } from "./inline-signals.js";
 import type { CompositorProgramConfig, LayoutNode } from "./schema.js";
 
 import { computeStaggerDelay } from "./stagger.js";
@@ -288,7 +289,12 @@ export function compositorToProgram(
 			// is NOT read by the renderer — do not treat it as the source of
 			// truth (the config is).
 			layout: config.layout,
-			signals: signals ?? (config as any).signals ?? {},
+			// Signal objects passed straight to `LayerAnimation.signal` ride on
+			// their tracks; fold them in under their generated handle ids.
+			signals: {
+				...collectInlineSignals(config.layout),
+				...(signals ?? (config as any).signals ?? {}),
+			},
 			...(((config as any).onRequestFrame ||
 				(options as any).onRequestFrame) && {
 				onRequestFrame:

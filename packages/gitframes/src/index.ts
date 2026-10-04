@@ -283,7 +283,10 @@ export interface TrackEditing {
 	/** A blur confined to this track's region */
 	blurEffect(options?: Partial<BlurProps>): Blur;
 	/** The tracked region of `source`, cut out as a section */
-	isolate(source: string | MediaNode, options?: TrackedRegionOptions): SectionNode;
+	isolate(
+		source: string | MediaNode,
+		options?: TrackedRegionOptions,
+	): SectionNode;
 }
 
 /** A tracked object with its editing helpers, as vision hands it out. */
@@ -855,12 +858,24 @@ export class Media {
 				: outputPathOrOptions;
 		const renderer = opts.renderer ?? new HeadlessMediaRenderer();
 		const result = await renderer.renderVideo(this.virtualMedia, opts);
-		if (opts.outputPath) {
-			await fs.mkdir(path.dirname(opts.outputPath), { recursive: true });
-			await fs.copyFile(result.filePath, opts.outputPath);
-		}
-		return result;
+		return deliverToOutputPath(result, opts.outputPath);
 	}
+}
+
+/**
+ * Copies a rendered temp file to `outputPath` and drops the temp, so the
+ * returned `filePath` is where the video actually lives.
+ */
+async function deliverToOutputPath(
+	result: RenderVideoResult,
+	outputPath: string | undefined,
+): Promise<RenderVideoResult> {
+	if (!outputPath) return result;
+	const target = path.resolve(outputPath);
+	await fs.mkdir(path.dirname(target), { recursive: true });
+	await fs.copyFile(result.filePath, target);
+	await result.cleanup();
+	return { ...result, filePath: target, cleanup: async () => {} };
 }
 
 export interface RenderVideoOptions {
@@ -1698,11 +1713,7 @@ export class Composition {
 				: outputPathOrOptions;
 		const renderer = opts.renderer ?? new HeadlessMediaRenderer();
 		const result = await renderer.renderVideo(this.toVirtualMedia(), opts);
-		if (opts.outputPath) {
-			await fs.mkdir(path.dirname(opts.outputPath), { recursive: true });
-			await fs.copyFile(result.filePath, opts.outputPath);
-		}
-		return result;
+		return deliverToOutputPath(result, opts.outputPath);
 	}
 }
 
@@ -2644,6 +2655,7 @@ export const Light = {
 };
 
 export {
+	type AudioQaStats,
 	computeGridLayout,
 	type FrameGridOptions,
 	type FrameGridRenderable,
@@ -2656,7 +2668,6 @@ export {
 	renderFrameGrid,
 	renderSemaphore,
 	resolveSamplePoints,
-	type AudioQaStats,
 	type VideoQaOptions,
 	type VideoQaReport,
 	type VideoQaStats,

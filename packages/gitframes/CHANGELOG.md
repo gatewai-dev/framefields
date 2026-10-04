@@ -1,5 +1,22 @@
 # gitframes
 
+## 1.4.2
+
+### Patch Changes
+
+- Render logs now report the released version: the monorepo root version is synced on every release, so the logger no longer shows a stale `1.3.0`.
+
+## 1.4.1
+
+### Patch Changes
+
+- Fix issues from the 1.4.0 friction report:
+
+  - Published types no longer import unpublished `@gitframes/*` packages, so signal APIs, `frameSignal`/`timeSignal`/`progressSignal` and layer option types are fully typed instead of `any`. A build check now guards against regressions.
+  - `Layer.cube`, `carousel3d`, `prism3d` and `extrudedText` no longer leak `faces`/`items` into the spec, so `CompositorProgramSchema` accepts them.
+  - `scale` (and `scaleX`/`scaleY`/`scaleZ`) now applies to preserve-3d containers such as `Layer.cube`.
+  - `renderVideo({ outputPath })` returns `outputPath` as `filePath` and removes the temp file.
+
 ## 1.4.0
 
 ### Minor Changes

@@ -27,10 +27,10 @@ export const FADE = 24;
 const TITLE = 132;
 const TITLE_Y = 630;
 
-/** Agent plugin installs: Claude Code (official directory, bare name), then Codex. */
+/** Agent plugin installs: Claude Code (official directory, bare name), then every other agent via the skills CLI. */
 const INSTALL = [
 	"/plugin install gitframes",
-	"codex plugin marketplace add gatewai-dev/gitframes",
+	"npx skills add gatewai-dev/gitframes",
 ];
 const INSTALL_Y = H - MARGIN - 22;
 

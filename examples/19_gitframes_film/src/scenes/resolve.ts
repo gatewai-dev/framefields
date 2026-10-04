@@ -4,16 +4,32 @@
  * and the plugin install lines settle at the foot of the frame.
  */
 import { Layer, LayerAnimation } from "gitframes";
+import {
+	EASE_IN_OUT,
+	EASE_OUT,
+	EMBER,
+	headline,
+	INK,
+	keys,
+	MONO,
+	PAPER,
+	SERIF_ITALIC,
+	STONE,
+	scene,
+	W,
+} from "../theme.js";
 import { TRACK_TO } from "./track.js";
-import { EASE_IN_OUT, EASE_OUT, EMBER, INK, MONO, PAPER, SERIF_ITALIC, STONE, W, headline, keys, scene } from "../theme.js";
 
 export const RESOLVE_FROM = TRACK_TO;
 export const RESOLVE_TO = RESOLVE_FROM + 108;
 
 const LINE_Y = 624;
 
-/** Agent plugin installs: Claude Code (official directory, bare name), then Codex. */
-const INSTALL = ["/plugin install gitframes", "codex plugin marketplace add gatewai-dev/gitframes"];
+/** Agent plugin installs: Claude Code (official directory, bare name), then every other agent via the skills CLI. */
+const INSTALL = [
+	"/plugin install gitframes",
+	"npx skills add gatewai-dev/gitframes",
+];
 const LINE_W = 760;
 
 export function resolveScene() {
@@ -49,8 +65,16 @@ export function resolveScene() {
 						strokeLineCap: "butt",
 					}).animate(
 						LayerAnimation.create()
-							.fromTo("trimStart", 0.5, 0, { start: 0, end: 22, ease: EASE_IN_OUT })
-							.fromTo("trimEnd", 0.5, 1, { start: 0, end: 22, ease: EASE_IN_OUT }),
+							.fromTo("trimStart", 0.5, 0, {
+								start: 0,
+								end: 22,
+								ease: EASE_IN_OUT,
+							})
+							.fromTo("trimEnd", 0.5, 1, {
+								start: 0,
+								end: 22,
+								ease: EASE_IN_OUT,
+							}),
 					),
 					headline({
 						id: "resolve-mark",
@@ -91,12 +115,23 @@ export function resolveScene() {
 						}).animate(
 							LayerAnimation.create()
 								.fadeIn(28 + i * 6, 38 + i * 6, "power2.out")
-								.fromTo("y", 924 + i * 44, 912 + i * 44, { start: 28 + i * 6, end: 44 + i * 6, ease: EASE_OUT }),
+								.fromTo("y", 924 + i * 44, 912 + i * 44, {
+									start: 28 + i * 6,
+									end: 44 + i * 6,
+									ease: EASE_OUT,
+								}),
 						),
 					),
 				],
 			}).animate(
-				keys("scale", [[0, 1.0], [len, 1.035, "sine.inOut"]], LayerAnimation.create().fadeOut(len - 20, len - 4, "power2.inOut")),
+				keys(
+					"scale",
+					[
+						[0, 1.0],
+						[len, 1.035, "sine.inOut"],
+					],
+					LayerAnimation.create().fadeOut(len - 20, len - 4, "power2.inOut"),
+				),
 			),
 		],
 	});

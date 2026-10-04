@@ -1,6 +1,6 @@
 {
 	"name": "@gitframes/renderers",
-	"version": "1.4.0",
+	"version": "1.4.2",
 	"private": false,
 	"type": "module",
 	"sideEffects": false,
@@ -26,6 +26,7 @@
 	},
 	"dependencies": {
 		"@gitframes/client-utils": "workspace:*",
+		"@gitframes/core": "workspace:*",
 		"@gitframes/webgpu-renderers": "workspace:*"
 	},
 	"devDependencies": {

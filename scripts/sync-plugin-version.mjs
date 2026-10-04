@@ -1,9 +1,11 @@
 #!/usr/bin/env node
-// Keeps the agent plugin version in lockstep with the released `gitframes` package.
+// Keeps the agent plugin and monorepo root versions in lockstep with the released
+// `gitframes` package.
 //
 // Runs after `changeset version` (see `version:packages`), so every release bumps the
-// version in all three plugin manifests. Clients compare that version to decide when
-// to update, so a stale one leaves users on old skills.
+// version in both plugin manifests and the root package.json. Clients compare the
+// plugin version to decide when to update, so a stale one leaves users on old skills.
+// The root version is what the server-utils logger reports.
 //
 // Dependency-free on purpose, like validate-agent-plugin.mjs.
 import { readFileSync, writeFileSync } from "node:fs";
@@ -12,9 +14,9 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const MANIFESTS = [
+	"package.json",
 	"plugins/gitframes/plugin.json",
 	"plugins/gitframes/.claude-plugin/plugin.json",
-	"plugins/gitframes/.codex-plugin/plugin.json",
 ];
 
 const { version } = JSON.parse(

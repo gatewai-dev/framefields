@@ -293,6 +293,9 @@ importers:
 
   nodes/node-apply-lut:
     dependencies:
+      '@gitframes/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@gitframes/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
@@ -603,6 +606,9 @@ importers:
 
   nodes/node-canvas-generator:
     dependencies:
+      '@gitframes/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@gitframes/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
@@ -1078,6 +1084,9 @@ importers:
 
   nodes/node-flip:
     dependencies:
+      '@gitframes/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@gitframes/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
@@ -1255,6 +1264,9 @@ importers:
 
   nodes/node-levels:
     dependencies:
+      '@gitframes/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@gitframes/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
@@ -1280,6 +1292,9 @@ importers:
 
   nodes/node-liquify:
     dependencies:
+      '@gitframes/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@gitframes/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
@@ -1305,6 +1320,9 @@ importers:
 
   nodes/node-lottie:
     dependencies:
+      '@gitframes/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       zod:
         specifier: ^4.3.6
         version: 4.3.6
@@ -1386,6 +1404,9 @@ importers:
 
   nodes/node-modulate:
     dependencies:
+      '@gitframes/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@gitframes/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
@@ -1442,6 +1463,9 @@ importers:
 
   nodes/node-paint:
     dependencies:
+      '@gitframes/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@gitframes/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
@@ -1653,6 +1677,9 @@ importers:
 
   nodes/node-selective-color:
     dependencies:
+      '@gitframes/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@gitframes/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
@@ -1715,6 +1742,9 @@ importers:
 
   nodes/node-shape-generator:
     dependencies:
+      '@gitframes/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@gitframes/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
@@ -1799,6 +1829,9 @@ importers:
 
   nodes/node-signal-math:
     dependencies:
+      '@gitframes/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@gitframes/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
@@ -1855,6 +1888,9 @@ importers:
 
   nodes/node-svg:
     dependencies:
+      '@gitframes/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       zod:
         specifier: ^4.3.6
         version: 4.3.6
@@ -2648,6 +2684,9 @@ importers:
       '@gitframes/client-utils':
         specifier: workspace:*
         version: link:../client-utils
+      '@gitframes/core':
+        specifier: workspace:*
+        version: link:../core
       '@gitframes/webgpu-renderers':
         specifier: workspace:*
         version: link:../webgpu-renderers

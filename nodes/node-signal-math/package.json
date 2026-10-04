@@ -1,6 +1,6 @@
 {
 	"name": "@gitframes/node-signal-math",
-	"version": "1.4.0",
+	"version": "1.4.2",
 	"private": false,
 	"gitframes": {
 		"type": "SignalMath",
@@ -23,8 +23,9 @@
 		"test": "vitest run --passWithNoTests"
 	},
 	"dependencies": {
-		"zod": "^4.3.6",
-		"@gitframes/node-sdk": "workspace:*"
+		"@gitframes/core": "workspace:*",
+		"@gitframes/node-sdk": "workspace:*",
+		"zod": "^4.3.6"
 	},
 	"devDependencies": {
 		"@gitframes/tsconfig": "workspace:*",

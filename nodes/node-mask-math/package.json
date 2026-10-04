@@ -1,6 +1,6 @@
 {
 	"name": "@gitframes/node-mask-math",
-	"version": "1.4.0",
+	"version": "1.4.2",
 	"private": false,
 	"gitframes": {
 		"type": "MaskMath",

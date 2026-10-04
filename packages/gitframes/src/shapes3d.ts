@@ -222,6 +222,32 @@ export type Shape3DContainer = AnimatableNode<BoxNode> & {
 	[Symbol.iterator](): Iterator<LayoutNode>;
 };
 
+/**
+ * Attaches the faces/items handles as non-enumerable properties, like
+ * `animate`, so they stay out of `toSpec()` and schema validation.
+ */
+function withParts<T extends object>(
+	node: T,
+	parts: { faces?: LayoutNode[]; items?: LayoutNode[] },
+): T & Shape3DContainer {
+	const list = (parts.faces ?? parts.items ?? []) as LayoutNode[];
+	for (const [key, value] of Object.entries(parts)) {
+		Object.defineProperty(node, key, {
+			value,
+			enumerable: false,
+			configurable: true,
+		});
+	}
+	Object.defineProperty(node, Symbol.iterator, {
+		value: function* () {
+			yield* list;
+		},
+		enumerable: false,
+		configurable: true,
+	});
+	return node as T & Shape3DContainer;
+}
+
 /** Largest initial scale of an extruded text node along its outline's axes. */
 function extrudedTextScale(options: ExtrudedText3DOptions): number {
 	const scale = options.scale ?? 1;
@@ -385,12 +411,7 @@ export const Layer3D = {
 			children: faces,
 		});
 
-		return Object.assign(container, {
-			faces,
-			[Symbol.iterator]: function* () {
-				yield* faces;
-			},
-		});
+		return withParts(container, { faces });
 	},
 
 	/**
@@ -441,12 +462,7 @@ export const Layer3D = {
 			children: transformedItems,
 		});
 
-		return Object.assign(container, {
-			items: transformedItems,
-			[Symbol.iterator]: function* () {
-				yield* transformedItems;
-			},
-		});
+		return withParts(container, { items: transformedItems });
 	},
 
 	/**
@@ -506,12 +522,7 @@ export const Layer3D = {
 			children: panels,
 		});
 
-		return Object.assign(container, {
-			faces: panels,
-			[Symbol.iterator]: function* () {
-				yield* panels;
-			},
-		});
+		return withParts(container, { faces: panels });
 	},
 
 	/**
@@ -729,12 +740,9 @@ export const Layer3D = {
 			text3dOptions: { ...options, curveTolerance },
 		});
 
-		return Object.assign(modelNode, {
-			faces: [modelNode] as unknown as AnimatableNode<BoxNode>[],
+		return withParts(modelNode, {
+			faces: [modelNode],
 			items: [modelNode],
-			[Symbol.iterator]: function* () {
-				yield modelNode;
-			},
 		}) as unknown as Shape3DContainer;
 	},
 

@@ -7,6 +7,8 @@
 [![npm](https://img.shields.io/badge/npm-gitframes-cb3837?logo=npm&logoColor=white)](https://www.npmjs.com/package/gitframes)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENCE)
 [![status](https://img.shields.io/badge/status-beta-orange.svg)](#)
+[![discord](https://img.shields.io/badge/Discord-join-5865F2?logo=discord&logoColor=white)](https://discord.gg/cbqMGGme5)
+[![youtube](https://img.shields.io/badge/YouTube-@gatewai.studio-FF0000?logo=youtube&logoColor=white)](https://www.youtube.com/@gatewai.studio)
 [![node](https://img.shields.io/badge/node-%E2%89%A522-3c873a?logo=node.js&logoColor=white)](https://nodejs.org)
 [![engine](https://img.shields.io/badge/engine-WebGPU%20%C2%B7%20WGSL-6366f1)](https://www.w3.org/TR/webgpu/)
 [![gpu](https://img.shields.io/badge/GPU-Dawn%20%C2%B7%20Metal%20%C2%B7%20Vulkan-8b5cf6)](#monorepo-architecture)
@@ -28,37 +30,37 @@ Every frame of these films is rendered by gitframes from TypeScript in [`example
 <table>
   <tr>
     <td width="33%" align="center">
-      <a href="https://youtu.be/caJJ7ucwyQk"><img src="assets/showcase/gitframes-launch.jpg" alt="Gitframes launch film" width="100%"></a>
-      <br><a href="https://youtu.be/caJJ7ucwyQk"><b>Gitframes launch</b></a>
+      <a href="https://youtu.be/w6IQNrhJJek"><img src="assets/showcase/gitframes-launch.jpg" alt="Gitframes launch film" width="100%"></a>
+      <br><a href="https://youtu.be/w6IQNrhJJek"><b>Gitframes launch</b></a>
       <br><sub><a href="examples/22_gitframes_launch"><code>22_gitframes_launch</code></a></sub>
     </td>
     <td width="33%" align="center">
-      <a href="https://youtu.be/F-_gzQxGbho"><img src="assets/showcase/full-circle.jpg" alt="Full Circle film" width="100%"></a>
-      <br><a href="https://youtu.be/F-_gzQxGbho"><b>Full Circle</b></a>
+      <a href="https://youtu.be/YeIpp4xf_j8"><img src="assets/showcase/full-circle.jpg" alt="Full Circle film" width="100%"></a>
+      <br><a href="https://youtu.be/YeIpp4xf_j8"><b>Full Circle</b></a>
       <br><sub><a href="examples/21_full_circle"><code>21_full_circle</code></a></sub>
     </td>
     <td width="33%" align="center">
-      <a href="https://youtu.be/HdFjXB4eKxc"><img src="assets/showcase/dancer.jpg" alt="Dancer showcase film" width="100%"></a>
-      <br><a href="https://youtu.be/HdFjXB4eKxc"><b>Dancer showcase</b></a>
+      <a href="https://youtu.be/R5Zug49FTTQ"><img src="assets/showcase/dancer.jpg" alt="Dancer showcase film" width="100%"></a>
+      <br><a href="https://youtu.be/R5Zug49FTTQ"><b>Dancer showcase</b></a>
       <br><sub><a href="examples/19_gitframes_film"><code>19_gitframes_film</code></a></sub>
     </td>
   </tr>
 </table>
 
 > [!NOTE]
-> **Using an AI coding agent?** Install the gitframes skills straight from the marketplace.
+> **Using an AI coding agent?** Install the gitframes skills in one line.
 >
 > **Claude Code**
 > ```text
 > /plugin install gitframes
 > ```
 >
-> **Codex**
+> **Any other agent** (Codex, Cursor, Hermes, Gemini CLI, Copilot, and more)
 > ```bash
-> codex plugin marketplace add gatewai-dev/gitframes
+> npx skills add gatewai-dev/gitframes
 > ```
 >
-> See [Agent Skills & Plugins](#agent-skills--plugins) for other agents.
+> See [Agent Skills & Plugins](#agent-skills--plugins) for details.
 
 ---
 
@@ -86,6 +88,7 @@ Every frame of these films is rendered by gitframes from TypeScript in [`example
 - [Agent Skills & Plugins](#agent-skills--plugins)
 - [Reference Showcase Examples](#reference-showcase-examples)
 - [Development & Building](#development--building)
+- [Community](#community)
 - [License](#license)
 
 ---
@@ -552,7 +555,7 @@ console.log(`Video rendered successfully to: ${filePath}`);
 
 ## Agent Skills & Plugins
 
-Gitframes ships agent skills that teach Claude, Codex, and other coding agents how to write, render, and check compositions. The plugin (`gitframes`) is listed in Anthropic's official plugin directory and contains **only skills** — no MCP servers, hooks, or commands. This repository is also a plugin marketplace (`gitframes-plugins`) for Codex and for installing straight from GitHub.
+Gitframes ships agent skills that teach Claude, Codex, and other coding agents how to write, render, and check compositions. The plugin (`gitframes`) is listed in Anthropic's official plugin directory and contains **only skills** — no MCP servers, hooks, or commands. Every other agent gets the same skills through the [`skills`](https://skills.sh) CLI.
 
 | Skill | Use it for |
 | --- | --- |
@@ -600,34 +603,29 @@ Add `--scope project` to the shell form to record the plugin in `.claude/setting
 /plugin install gitframes@gitframes-plugins
 ```
 
-### Codex
+### Codex, Cursor, Hermes, and other agents
 
-```bash
-codex plugin marketplace add gatewai-dev/gitframes
-```
-
-Then install **gitframes** from `/plugins` in the TUI, or enable it in `~/.codex/config.toml` (or a project's `.codex/config.toml`):
-
-```toml
-[plugins."gitframes@gitframes-plugins"]
-enabled = true
-```
-
-### Any other agent (skills only)
-
-With the [`skills`](https://skills.sh) CLI, which supports Claude Code, Codex, Cursor, Copilot, and others:
+The [`skills`](https://skills.sh) CLI installs the skills into any of 70+ agents, including Codex, Cursor, Hermes, Gemini CLI, GitHub Copilot, Windsurf, OpenCode, and Goose:
 
 ```bash
 npx skills add gatewai-dev/gitframes
 ```
 
+It detects the agents on your machine and asks where to install. To choose them yourself, pass `-a` once per agent, add `-g` to install for your user instead of this project, and `-y` to skip the prompts:
+
+```bash
+npx skills add gatewai-dev/gitframes -a codex -a cursor -a hermes-agent -g -y
+```
+
+Keep them current with `npx skills update`, and remove them with `npx skills remove`.
+
 Or copy the folders by hand: put `plugins/gitframes/skills/<name>/` into `.claude/skills/`, `.agents/skills/`, or `~/.agents/skills/`. VS Code / Copilot / Cursor / Kiro can load the portable [`plugin.json`](plugins/gitframes/plugin.json) through their plugin UI.
 
 ### Maintaining the plugin
 
-The plugin lives in [`plugins/gitframes/`](plugins/gitframes) so installs carry only the skills; users get the engine from npm. Three manifests there describe it: [`plugin.json`](plugins/gitframes/plugin.json) (portable [Agent Plugins 1.0](https://agent-plugins.org)), [`.claude-plugin/plugin.json`](plugins/gitframes/.claude-plugin/plugin.json), and [`.codex-plugin/plugin.json`](plugins/gitframes/.codex-plugin/plugin.json). The marketplace catalogs are [`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json) and [`.agents/plugins/marketplace.json`](.agents/plugins/marketplace.json). The portable field set is closed — client-specific fields go in that client's manifest, not in `plugin.json`. The `version` in all three follows the `gitframes` package: `pnpm run version:packages` syncs it after `changeset version` (or run `pnpm run sync:plugin-version` on its own), since clients use it to decide when to update.
+The plugin lives in [`plugins/gitframes/`](plugins/gitframes) so installs carry only the skills; users get the engine from npm. Two manifests there describe it: [`plugin.json`](plugins/gitframes/plugin.json) (portable [Agent Plugins 1.0](https://agent-plugins.org), which also carries the OpenAI listing metadata) and [`.claude-plugin/plugin.json`](plugins/gitframes/.claude-plugin/plugin.json). The marketplace catalog is [`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json). The portable field set is closed — client-specific fields go in that client's manifest, not in `plugin.json`. The `version` in both follows the `gitframes` package: `pnpm run version:packages` syncs it after `changeset version` (or run `pnpm run sync:plugin-version` on its own), since clients use it to decide when to update.
 
-Inside this repository, Codex and Claude pick up skills through the symlinks in `.agents/skills/` and `.claude/skills/`. Skills live only under `plugins/gitframes/skills/`; never copy them elsewhere. `pnpm run check:plugins` validates manifests, skill frontmatter, marketplace catalogs, symlinks, and the generated effects catalog. `pnpm run sync:effects-catalog` regenerates the `gitframes-effects` catalog after any `Effect` class change.
+Inside this repository, Claude Code and other agents pick up skills through the symlinks in `.agents/skills/` and `.claude/skills/`. Skills live only under `plugins/gitframes/skills/`; never copy them elsewhere. `pnpm run check:plugins` validates manifests, skill frontmatter, marketplace catalogs, symlinks, and the generated effects catalog. `pnpm run sync:effects-catalog` regenerates the `gitframes-effects` catalog after any `Effect` class change.
 
 ---
 
@@ -674,6 +672,13 @@ An optimized [`Dockerfile.renderer`](Dockerfile.renderer) deploys the renderer s
 ```bash
 docker build -t gitframes-renderer -f Dockerfile.renderer .
 ```
+
+---
+
+## Community
+
+- **Discord:** ask questions, share renders, and follow development at [discord.gg/cbqMGGme5](https://discord.gg/cbqMGGme5).
+- **YouTube:** watch films made with gitframes on [@gatewai.studio](https://www.youtube.com/@gatewai.studio).
 
 ---
 

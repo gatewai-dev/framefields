@@ -1,6 +1,6 @@
 {
 	"name": "@gitframes/node-selective-color",
-	"version": "1.4.0",
+	"version": "1.4.2",
 	"private": false,
 	"gitframes": {
 		"type": "SelectiveColor",
@@ -29,8 +29,9 @@
 		"clean": "rm -rf dist .turbo"
 	},
 	"dependencies": {
-		"zod": "^4.3.6",
-		"@gitframes/node-sdk": "workspace:*"
+		"@gitframes/core": "workspace:*",
+		"@gitframes/node-sdk": "workspace:*",
+		"zod": "^4.3.6"
 	},
 	"devDependencies": {
 		"@gitframes/tsconfig": "workspace:*",

@@ -1,6 +1,6 @@
 {
 	"name": "@gitframes/node-lut",
-	"version": "1.4.0",
+	"version": "1.4.2",
 	"private": false,
 	"gitframes": {
 		"type": "ApplyLUT",
@@ -28,9 +28,10 @@
 		"clean": "rm -rf dist .turbo"
 	},
 	"dependencies": {
+		"@gitframes/core": "workspace:*",
+		"@gitframes/node-sdk": "workspace:*",
 		"@gitframes/webgpu-renderers": "workspace:*",
-		"zod": "^4.3.6",
-		"@gitframes/node-sdk": "workspace:*"
+		"zod": "^4.3.6"
 	},
 	"devDependencies": {
 		"@gitframes/tsconfig": "workspace:*",

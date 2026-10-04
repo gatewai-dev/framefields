@@ -1,7 +1,7 @@
 {
 	"$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
 	"name": "gitframes",
-	"version": "1.4.0",
+	"version": "1.4.2",
 	"description": "Author, render and verify video compositions with the gitframes WebGPU SDK.",
 	"author": {
 		"name": "Gitframes",

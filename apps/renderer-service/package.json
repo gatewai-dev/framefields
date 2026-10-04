@@ -1,7 +1,7 @@
 {
 	"name": "@gitframes/renderer-service",
 	"private": true,
-	"version": "1.4.0",
+	"version": "1.4.2",
 	"type": "module",
 	"types": "./dist/src/index.d.ts",
 	"exports": {

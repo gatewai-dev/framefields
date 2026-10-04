@@ -5,7 +5,6 @@
 // (users get the engine from npm). Every client discovers the same skills from there:
 //   plugin.json                 portable Agent Plugins 1.0 manifest (closed field set)
 //   .claude-plugin/plugin.json  Claude Code manifest
-//   .codex-plugin/plugin.json   OpenAI Codex manifest (declares skills: "./skills/")
 //   skills/<name>/SKILL.md      the skills themselves
 //   README.md, LICENSE          required by Anthropic's plugin directory
 //
@@ -13,7 +12,6 @@
 //   - Agent Plugins 1.0.0 (portable manifest, fixed component locations, path containment)
 //   - Agent Skills (SKILL.md frontmatter: name matches directory, description limits)
 //   - Claude Code plugins (overlay manifest, marketplace schema)
-//   - Codex plugins (repo marketplace catalog, .codex/config.toml enablement)
 //
 // Dependency-free on purpose: `node scripts/validate-agent-plugin.mjs` runs from CI without an install.
 import { spawnSync } from "node:child_process";
@@ -125,14 +123,12 @@ function checkManifests() {
 	);
 
 	const claudeFile = join(PLUGIN_DIR, ".claude-plugin", "plugin.json");
-	const codexFile = join(PLUGIN_DIR, ".codex-plugin", "plugin.json");
-	for (const file of [claudeFile, codexFile]) {
-		if (!existsSync(file)) fail(`${rel(file)} is missing`);
+	if (!existsSync(claudeFile)) {
+		fail(`${rel(claudeFile)} is missing`);
+		return;
 	}
-	if (!existsSync(claudeFile) || !existsSync(codexFile)) return;
 
 	const claude = readJson(claudeFile);
-	const codex = readJson(codexFile);
 	if (claude.name !== PLUGIN_NAME)
 		fail(`.claude-plugin/plugin.json: name must be "${PLUGIN_NAME}"`);
 	if (!claude.version)
@@ -143,23 +139,13 @@ function checkManifests() {
 		fail(".claude-plugin/plugin.json: description is required");
 	ok("claude overlay manifest");
 
-	if (codex.name !== PLUGIN_NAME)
-		fail(`.codex-plugin/plugin.json: name must be "${PLUGIN_NAME}"`);
-	if (!codex.version) fail(".codex-plugin/plugin.json: version is required");
-	if (codex.skills !== "./skills/")
-		fail('.codex-plugin/plugin.json: skills must be "./skills/"');
-	ok('codex manifest declares skills: "./skills/"');
-
 	// Version drift means one client serves a stale skill set while another is current.
-	const versions = new Set([portable.version, claude.version, codex.version]);
-	if (versions.size !== 1)
+	if (portable.version !== claude.version)
 		fail(
-			`version mismatch across plugin.json / .claude-plugin/plugin.json / .codex-plugin/plugin.json: ${[...versions].join(", ")}`,
+			`version mismatch between plugin.json (${portable.version}) and .claude-plugin/plugin.json (${claude.version})`,
 		);
 	else
-		ok(
-			`version pinned consistently at ${portable.version} across all three manifests`,
-		);
+		ok(`version pinned consistently at ${portable.version} in both manifests`);
 	if (claude.icon && !existsSync(join(PLUGIN_DIR, claude.icon)))
 		fail(`.claude-plugin/plugin.json: icon ${claude.icon} does not exist`);
 	for (const file of ["README.md", "LICENSE"]) {
@@ -235,7 +221,7 @@ function checkSkills() {
 	}
 }
 
-function checkMarketplace(file, kind) {
+function checkMarketplace(file) {
 	if (!existsSync(file)) {
 		fail(`${rel(file)} is missing`);
 		return;
@@ -245,8 +231,7 @@ function checkMarketplace(file, kind) {
 		fail(`${rel(file)}: marketplace name must be "${MARKETPLACE_NAME}"`);
 	if (CLAUDE_RESERVED.has(catalog.name))
 		fail(`${rel(file)}: marketplace name is reserved by Anthropic`);
-	if (kind === "claude" && !catalog.owner?.name)
-		fail(`${rel(file)}: owner.name is required`);
+	if (!catalog.owner?.name) fail(`${rel(file)}: owner.name is required`);
 	if (!Array.isArray(catalog.plugins) || catalog.plugins.length === 0) {
 		fail(`${rel(file)}: plugins[] is empty`);
 		return;
@@ -254,7 +239,7 @@ function checkMarketplace(file, kind) {
 	for (const entry of catalog.plugins) {
 		if (!entry.name || !NAME_RE.test(entry.name))
 			fail(`${rel(file)}: entry name "${entry.name}" is not kebab-case`);
-		const source = kind === "claude" ? entry.source : entry.source?.path;
+		const source = entry.source;
 		if (typeof source !== "string" || !source.startsWith("./")) {
 			fail(
 				`${rel(file)}: entry "${entry.name}" needs a "./"-prefixed path source`,
@@ -272,13 +257,10 @@ function checkMarketplace(file, kind) {
 			);
 			continue;
 		}
-		const manifest =
-			kind === "claude"
-				? join(dir, ".claude-plugin", "plugin.json")
-				: join(dir, "plugin.json");
+		const manifest = join(dir, ".claude-plugin", "plugin.json");
 		if (!existsSync(manifest))
 			fail(
-				`${rel(file)}: entry "${entry.name}" is not a ${kind} plugin (${rel(manifest)} missing)`,
+				`${rel(file)}: entry "${entry.name}" is not a Claude Code plugin (${rel(manifest)} missing)`,
 			);
 		for (const skillPath of entry.skills ?? []) {
 			if (!existsSync(resolve(dir, skillPath)))
@@ -286,27 +268,11 @@ function checkMarketplace(file, kind) {
 					`${rel(file)}: entry "${entry.name}" lists missing skill ${skillPath}`,
 				);
 		}
-		ok(`${kind} marketplace entry ${entry.name} -> ${source}`);
+		ok(`marketplace entry ${entry.name} -> ${source}`);
 	}
 }
 
-function checkCodexConfig() {
-	const config = join(repoRoot, ".codex", "config.toml");
-	if (!existsSync(config)) {
-		fail(".codex/config.toml is missing");
-		return;
-	}
-	const text = readFileSync(config, "utf8");
-	if (!text.includes(`[plugins."${PLUGIN_NAME}@${MARKETPLACE_NAME}"]`)) {
-		fail(
-			`.codex/config.toml must enable [plugins."${PLUGIN_NAME}@${MARKETPLACE_NAME}"]`,
-		);
-		return;
-	}
-	ok(`.codex/config.toml enables ${PLUGIN_NAME}@${MARKETPLACE_NAME}`);
-}
-
-/** Zero-install discovery while working in this repo: Codex reads .agents/skills/, Claude Code reads .claude/skills/. */
+/** Zero-install discovery while working in this repo: Claude Code reads .claude/skills/, other agents .agents/skills/. */
 function checkSymlinks() {
 	for (const root of [join(".agents", "skills"), join(".claude", "skills")]) {
 		const dir = join(repoRoot, root);
@@ -375,17 +341,9 @@ function checkGeneratedEffects() {
 checkManifests();
 checkSkills();
 checkSymlinks();
-checkCodexConfig();
 checkGeneratedEffects();
 checkEffectsCatalog();
-checkMarketplace(
-	join(repoRoot, ".claude-plugin", "marketplace.json"),
-	"claude",
-);
-checkMarketplace(
-	join(repoRoot, ".agents", "plugins", "marketplace.json"),
-	"codex",
-);
+checkMarketplace(join(repoRoot, ".claude-plugin", "marketplace.json"));
 
 for (const line of checks) console.log(`✓ ${line}`);
 for (const line of errors) console.error(`✗ ${line}`);

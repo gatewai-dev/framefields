@@ -1,3 +1,0 @@
-# Enable the gitframes agent plugin (repo marketplace at .agents/plugins/marketplace.json).
-[plugins."gitframes@gitframes-plugins"]
-enabled = true

@@ -128,6 +128,36 @@ describe("WebGPU 3D Shapes & Path Follower Headless Conformance", () => {
 		expect(cornerPix.b).toBeLessThan(30);
 	});
 
+	it("applies an animated scale to a 3D cube", async () => {
+		const comp = new Composition({
+			width: 400,
+			height: 300,
+			fps: 24,
+			durationMs: 2000,
+			backgroundColor: "#000000",
+		});
+		comp.add(
+			Layer.camera({ x: 200, y: 150, z: -800, targetX: 200, targetY: 150 }),
+		);
+		comp.add(
+			Layer3D.cube({
+				size: 160,
+				x: 200,
+				y: 150,
+				rotateX: 20,
+				rotateY: 30,
+				faces: { front: "#ffffff", top: "#ffffff", right: "#ffffff" },
+			}).animate(
+				LayerAnimation.create().fromTo("scale", 0, 1, { start: 0, end: 24 }),
+			),
+		);
+
+		const start = await decodePngPixels(await comp.renderFrame({ frame: 0 }));
+		const end = await decodePngPixels(await comp.renderFrame({ frame: 24 }));
+		expect(getPixel(start, 200, 150).r).toBeLessThan(20);
+		expect(getPixel(end, 200, 150).r).toBeGreaterThan(100);
+	});
+
 	it("renders a 3D rotating cube producing temporal frame variance", async () => {
 		const comp = new Composition({
 			width: 800,

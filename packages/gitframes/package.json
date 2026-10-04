@@ -1,6 +1,6 @@
 {
 	"name": "gitframes",
-	"version": "1.4.0",
+	"version": "1.4.2",
 	"private": false,
 	"description": "High-performance WebGPU rendering SDK for video composition, Photoshop-grade 2D VFX, audio DSP, and reactive signals. Built for AI Agents.",
 	"license": "Apache-2.0",
@@ -71,7 +71,7 @@
 		"dist/**"
 	],
 	"scripts": {
-		"build": "tsdown",
+		"build": "tsdown && node scripts/check-dts-bundle.mjs",
 		"dev": "tsdown --watch",
 		"clean": "rm -rf dist .turbo",
 		"test": "vitest run --passWithNoTests"

@@ -1,5 +1,9 @@
 # @gitframes/node-audio-delay
 
+## 1.4.2
+
+## 1.4.1
+
 ## 1.4.0
 
 ## 1.3.2

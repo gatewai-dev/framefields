@@ -1,6 +1,6 @@
 {
 	"name": "@gitframes/node-canvas-generator",
-	"version": "1.4.0",
+	"version": "1.4.2",
 	"license": "Apache-2.0",
 	"private": false,
 	"gitframes": {
@@ -28,8 +28,9 @@
 		"clean": "rm -rf dist .turbo"
 	},
 	"dependencies": {
-		"zod": "^4.3.6",
-		"@gitframes/node-sdk": "workspace:*"
+		"@gitframes/core": "workspace:*",
+		"@gitframes/node-sdk": "workspace:*",
+		"zod": "^4.3.6"
 	},
 	"devDependencies": {
 		"@gitframes/tsconfig": "workspace:*",

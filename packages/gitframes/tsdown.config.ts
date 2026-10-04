@@ -11,7 +11,7 @@ export default defineConfig({
 	],
 	format: ["esm"],
 	clean: true,
-	dts: true,
+	dts: { resolve: [/^@gitframes\//] },
 	target: "es2022",
 	noExternal: [/^@gitframes\//],
 	external: [

@@ -1939,6 +1939,14 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 							current3DMatrix,
 							Matrix4Math.rotateX(rxRad),
 						);
+					const csX = (target?.scaleX ?? lop.scaleX ?? 1) * scale;
+					const csY = (target?.scaleY ?? lop.scaleY ?? 1) * scale;
+					const csZ = (target?.scaleZ ?? lop.scaleZ ?? 1) * scale;
+					if (csX !== 1 || csY !== 1 || csZ !== 1)
+						current3DMatrix = Matrix4Math.multiply(
+							current3DMatrix,
+							Matrix4Math.scale(csX, csY, csZ),
+						);
 
 					if (parent3DMatrix) {
 						current3DMatrix = Matrix4Math.multiply(

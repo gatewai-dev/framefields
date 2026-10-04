@@ -1,7 +1,7 @@
 /**
  * The end. On "Gitframes." the logo and the name, extruded in 3D, whips in under an
  * orbiting camera; "Motion, compiled." builds word by word beneath it, and
- * on the final hit the install line lands with the Claude Code and Codex plugin
+ * on the final hit the install line lands with the Claude Code plugin and skills CLI
  * installs beneath it, held through the ring-out.
  */
 import { CameraAnimation, Layer, Layer3D, LayerAnimation } from "gitframes";
@@ -30,10 +30,10 @@ import {
 } from "../theme.js";
 import { CH, DURATION } from "../timeline.js";
 
-/** Agent plugin installs: Claude Code (official directory, bare name), then Codex. */
+/** Agent plugin installs: Claude Code (official directory, bare name), then every other agent via the skills CLI. */
 const PLUGIN_INSTALL = [
 	"/plugin install gitframes",
-	"codex plugin marketplace add gatewai-dev/gitframes",
+	"npx skills add gatewai-dev/gitframes",
 ];
 
 const CX = W / 2;

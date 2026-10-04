@@ -1,3 +1,4 @@
+import { attachInlineSignal, resolveSignalArg } from "./inline-signals.js";
 import type {
 	AnimatableProp,
 	AnimationTrack,
@@ -231,30 +232,6 @@ function parseEase(ease?: string | EaseRef): EaseRef | undefined {
 		return { name, dir };
 	}
 	return undefined;
-}
-
-function extractSignalHandleId(signalOrHandleId: unknown): string {
-	if (typeof signalOrHandleId === "string") return signalOrHandleId;
-	if (
-		signalOrHandleId &&
-		typeof signalOrHandleId === "object" &&
-		"inputHandleId" in signalOrHandleId &&
-		typeof (signalOrHandleId as { inputHandleId: unknown }).inputHandleId ===
-			"string"
-	) {
-		return (signalOrHandleId as { inputHandleId: string }).inputHandleId;
-	}
-	if (
-		signalOrHandleId &&
-		typeof signalOrHandleId === "object" &&
-		"gpuBinding" in signalOrHandleId &&
-		(signalOrHandleId as { gpuBinding?: { nodeId?: string } }).gpuBinding
-			?.nodeId
-	) {
-		return (signalOrHandleId as { gpuBinding: { nodeId: string } }).gpuBinding
-			.nodeId;
-	}
-	return String(signalOrHandleId);
 }
 
 /**
@@ -790,13 +767,18 @@ export class LayerAnimation implements LayerAnimationSpec {
 
 	/**
 	 * Binds an animatable property to a reactive continuous Signal (e.g. LFO, speech energy, audio pitch).
+	 *
+	 * `signalOrHandleId` is either a signal object (`Signal.fromArray`,
+	 * `Signal.builder`, an audio channel …) — carried on the track and
+	 * registered with the program automatically — or the name of a signal
+	 * registered with `comp.addSignal(name, signal)`.
 	 */
 	public signal(
 		prop: AnimatableProp,
 		signalOrHandleId: unknown,
 		options: SignalTrackOptions = {},
 	): this {
-		const handleId = extractSignalHandleId(signalOrHandleId);
+		const { handleId, inline } = resolveSignalArg(signalOrHandleId);
 		const id = `${prop}_sig_${handleId}_${this.tracks.length}`;
 
 		const source: TrackSource = {
@@ -811,6 +793,7 @@ export class LayerAnimation implements LayerAnimationSpec {
 			debounceFrames: options.debounceFrames ?? 2,
 			channel: options.channel ?? "primary",
 		};
+		if (inline) attachInlineSignal(source, inline);
 
 		this.tracks.push({
 			id,
@@ -822,14 +805,15 @@ export class LayerAnimation implements LayerAnimationSpec {
 	}
 
 	/**
-	 * Modulates color interpolation based on an active signal.
+	 * Modulates color interpolation based on an active signal (object or
+	 * registered name, as in {@link LayerAnimation.signal}).
 	 */
 	public colorSignal(
 		prop: AnimatableProp,
 		signalOrHandleId: unknown,
 		options: ColorSignalOptions,
 	): this {
-		const handleId = extractSignalHandleId(signalOrHandleId);
+		const { handleId, inline } = resolveSignalArg(signalOrHandleId);
 		const id = `${prop}_colorSig_${handleId}_${this.tracks.length}`;
 
 		const source: TrackSource = {
@@ -844,6 +828,7 @@ export class LayerAnimation implements LayerAnimationSpec {
 			colorThreshold: options.threshold,
 			channel: "primary",
 		};
+		if (inline) attachInlineSignal(source, inline);
 
 		this.tracks.push({
 			id,

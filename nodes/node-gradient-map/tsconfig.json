@@ -1,5 +1,5 @@
 {
-	"extends": "@gitframes/tsconfig/react-library.json",
+	"extends": "@gitframes/tsconfig/node-library.json",
 	"compilerOptions": {
 		"baseUrl": ".",
 		"esModuleInterop": true,

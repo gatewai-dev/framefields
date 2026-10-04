@@ -15,10 +15,6 @@ overrides:
   '@seydx/node-av-win32-arm64-msvc': 6.0.0
   '@seydx/node-av-win32-arm64-mingw': 6.0.0
   mediabunny: ^1.51.0
-  react: ^19.2.4
-  react-dom: ^19.2.4
-  '@types/react': ^19.2.4
-  '@types/react-dom': ^19.2.3
   tar@<=7.5.3: '>=7.5.4'
   tar@<7.5.7: '>=7.5.7'
   tar@<=7.5.2: '>=7.5.3'
@@ -2061,9 +2057,6 @@ importers:
       mediabunny:
         specifier: ^1.51.0
         version: 1.51.0
-      react:
-        specifier: ^19.2.4
-        version: 19.2.4
       yoga-layout:
         specifier: ^3.2.1
         version: 3.2.1
@@ -2083,9 +2076,6 @@ importers:
       '@gitframes/tsconfig':
         specifier: workspace:*
         version: link:../tsconfig
-      '@types/react':
-        specifier: ^19.2.4
-        version: 19.2.14
       '@webgpu/types':
         specifier: ^0.1.70
         version: 0.1.70
@@ -2165,6 +2155,9 @@ importers:
       gifuct-js:
         specifier: ^2.1.2
         version: 2.1.2
+      gsap:
+        specifier: ^3.15.0
+        version: 3.15.0
       mediabunny:
         specifier: ^1.51.0
         version: 1.51.0
@@ -2352,12 +2345,6 @@ importers:
       '@types/node':
         specifier: ^24.1.0
         version: 24.10.14
-      '@types/react':
-        specifier: ^19.2.4
-        version: 19.2.14
-      react:
-        specifier: ^19.2.4
-        version: 19.2.4
       tsdown:
         specifier: ^0.19.0
         version: 0.19.0(oxc-resolver@11.19.1)(typescript@5.9.3)
@@ -2453,9 +2440,162 @@ importers:
       '@gitframes/core':
         specifier: workspace:*
         version: link:../core
+      '@gitframes/node-audio-compressor':
+        specifier: workspace:*
+        version: link:../../nodes/node-audio-compressor
+      '@gitframes/node-audio-delay':
+        specifier: workspace:*
+        version: link:../../nodes/node-audio-delay
+      '@gitframes/node-audio-fade':
+        specifier: workspace:*
+        version: link:../../nodes/node-audio-fade
+      '@gitframes/node-audio-noise-gate':
+        specifier: workspace:*
+        version: link:../../nodes/node-audio-noise-gate
+      '@gitframes/node-audio-parametric-eq':
+        specifier: workspace:*
+        version: link:../../nodes/node-audio-parametric-eq
+      '@gitframes/node-audio-reverb':
+        specifier: workspace:*
+        version: link:../../nodes/node-audio-reverb
+      '@gitframes/node-audio-signal-extractor':
+        specifier: workspace:*
+        version: link:../../nodes/node-audio-signal-extractor
+      '@gitframes/node-blur':
+        specifier: workspace:*
+        version: link:../../nodes/node-blur
+      '@gitframes/node-camera-parallax-3d':
+        specifier: workspace:*
+        version: link:../../nodes/node-camera-parallax-3d
+      '@gitframes/node-canvas-generator':
+        specifier: workspace:*
+        version: link:../../nodes/node-canvas-generator
+      '@gitframes/node-channel-merger':
+        specifier: workspace:*
+        version: link:../../nodes/node-channel-merger
+      '@gitframes/node-channel-splitter':
+        specifier: workspace:*
+        version: link:../../nodes/node-channel-splitter
+      '@gitframes/node-color-balance':
+        specifier: workspace:*
+        version: link:../../nodes/node-color-balance
+      '@gitframes/node-colorkey':
+        specifier: workspace:*
+        version: link:../../nodes/node-colorkey
+      '@gitframes/node-compositor':
+        specifier: workspace:*
+        version: link:../../nodes/node-compositor
+      '@gitframes/node-corner-pin':
+        specifier: workspace:*
+        version: link:../../nodes/node-corner-pin
+      '@gitframes/node-crop':
+        specifier: workspace:*
+        version: link:../../nodes/node-crop
+      '@gitframes/node-curves':
+        specifier: workspace:*
+        version: link:../../nodes/node-curves
+      '@gitframes/node-deflicker':
+        specifier: workspace:*
+        version: link:../../nodes/node-deflicker
+      '@gitframes/node-displacement-map':
+        specifier: workspace:*
+        version: link:../../nodes/node-displacement-map
+      '@gitframes/node-extract-frame':
+        specifier: workspace:*
+        version: link:../../nodes/node-extract-frame
+      '@gitframes/node-extract-lut':
+        specifier: workspace:*
+        version: link:../../nodes/node-extract-lut
+      '@gitframes/node-film-grain':
+        specifier: workspace:*
+        version: link:../../nodes/node-film-grain
+      '@gitframes/node-flip':
+        specifier: workspace:*
+        version: link:../../nodes/node-flip
+      '@gitframes/node-gradient-map':
+        specifier: workspace:*
+        version: link:../../nodes/node-gradient-map
+      '@gitframes/node-halftone-screen':
+        specifier: workspace:*
+        version: link:../../nodes/node-halftone-screen
+      '@gitframes/node-high-pass':
+        specifier: workspace:*
+        version: link:../../nodes/node-high-pass
+      '@gitframes/node-kenburns':
+        specifier: workspace:*
+        version: link:../../nodes/node-kenburns
+      '@gitframes/node-layer-style':
+        specifier: workspace:*
+        version: link:../../nodes/node-layer-style
+      '@gitframes/node-levels':
+        specifier: workspace:*
+        version: link:../../nodes/node-levels
+      '@gitframes/node-liquify':
+        specifier: workspace:*
+        version: link:../../nodes/node-liquify
+      '@gitframes/node-lut':
+        specifier: workspace:*
+        version: link:../../nodes/node-apply-lut
+      '@gitframes/node-mask-math':
+        specifier: workspace:*
+        version: link:../../nodes/node-mask-math
+      '@gitframes/node-mesh-warp':
+        specifier: workspace:*
+        version: link:../../nodes/node-mesh-warp
+      '@gitframes/node-modulate':
+        specifier: workspace:*
+        version: link:../../nodes/node-modulate
+      '@gitframes/node-noise-generator':
+        specifier: workspace:*
+        version: link:../../nodes/node-noise-generator
+      '@gitframes/node-paint':
+        specifier: workspace:*
+        version: link:../../nodes/node-paint
+      '@gitframes/node-patch-heal':
+        specifier: workspace:*
+        version: link:../../nodes/node-patch-heal
+      '@gitframes/node-refine-edge':
+        specifier: workspace:*
+        version: link:../../nodes/node-refine-edge
+      '@gitframes/node-refraction-caustics':
+        specifier: workspace:*
+        version: link:../../nodes/node-refraction-caustics
+      '@gitframes/node-relight-3d':
+        specifier: workspace:*
+        version: link:../../nodes/node-relight-3d
+      '@gitframes/node-resizer-scaler':
+        specifier: workspace:*
+        version: link:../../nodes/node-resizer-scaler
       '@gitframes/node-sdk':
         specifier: workspace:*
         version: link:../node-sdk
+      '@gitframes/node-selective-color':
+        specifier: workspace:*
+        version: link:../../nodes/node-selective-color
+      '@gitframes/node-shadows-highlights':
+        specifier: workspace:*
+        version: link:../../nodes/node-shadows-highlights
+      '@gitframes/node-shape-generator':
+        specifier: workspace:*
+        version: link:../../nodes/node-shape-generator
+      '@gitframes/node-signal-gate':
+        specifier: workspace:*
+        version: link:../../nodes/node-signal-gate
+      '@gitframes/node-stereo-panning':
+        specifier: workspace:*
+        version: link:../../nodes/node-stereo-panning
+      '@gitframes/node-tile-offset':
+        specifier: workspace:*
+        version: link:../../nodes/node-tile-offset
+      '@gitframes/node-unsharp-mask':
+        specifier: workspace:*
+        version: link:../../nodes/node-unsharp-mask
+      '@gitframes/node-vignette':
+        specifier: workspace:*
+        version: link:../../nodes/node-vignette
+      '@gitframes/node-vision':
+        specifier: workspace:*
+        version: link:../../nodes/node-vision
       '@gitframes/renderers':
         specifier: workspace:*
         version: link:../renderers
@@ -2511,16 +2651,10 @@ importers:
       '@gitframes/webgpu-renderers':
         specifier: workspace:*
         version: link:../webgpu-renderers
-      react:
-        specifier: ^19.2.4
-        version: 19.2.4
     devDependencies:
       '@gitframes/tsconfig':
         specifier: workspace:*
         version: link:../tsconfig
-      '@types/react':
-        specifier: ^19.2.4
-        version: 19.2.14
       tsdown:
         specifier: ^0.19.0
         version: 0.19.0(oxc-resolver@11.19.1)(typescript@5.8.3)
@@ -2664,9 +2798,6 @@ importers:
       mediabunny:
         specifier: ^1.51.0
         version: 1.51.0
-      react:
-        specifier: ^19.2.4
-        version: 19.2.4
       sharp:
         specifier: '>=0.35.0'
         version: 0.35.3(@types/node@24.10.14)
@@ -2686,9 +2817,6 @@ importers:
       '@types/fontkit':
         specifier: ^2.0.9
         version: 2.0.9
-      '@types/react':
-        specifier: ^19.2.4
-        version: 19.2.14
       '@vitest/coverage-v8':
         specifier: ^4.1.5
         version: 4.1.5(vitest@4.1.5)
@@ -4632,9 +4760,6 @@ packages:
   '@types/node@24.10.14':
     resolution: {integrity: sha512-OowOUbD1lBCOFIPOZ8xnMIhgqA4sCutMiYOmPHL1PTLt5+y1XA+g2+yC9OOyz8p+deMZqPZLxfMjYIfrKsPeFg==}
 
-  '@types/react@19.2.14':
-    resolution: {integrity: sha512-ilcTH/UniCkMdtexkoCN0bI7pMcJDvmQFPvuPvmEaYA/NSfFTAgdUSLAoVjaRJm7+6PvcM+q1zYOwS4wTYMF9w==}
-
   '@vitest/coverage-v8@4.1.5':
     resolution: {integrity: sha512-38C0/Ddb7HcRG0Z4/DUem8x57d2p9jYgp18mkaYswEOQBGsI1CG4f/hjm0ZCeaJfWhSZ4k7jgs29V1Zom7Ki9A==}
     peerDependencies:
@@ -4874,9 +4999,6 @@ packages:
   css-tree@3.2.1:
     resolution: {integrity: sha512-X7sjQzceUhu1u7Y/ylrRZFU2FS6LRiFVp6rKLPg23y3x3c3DOKAwuXGDp+PAGjh6CSnCjYeAul8pcT8bAl+lSA==}
     engines: {node: ^10 || ^12.20.0 || ^14.13.0 || >=15.0.0}
-
-  csstype@3.2.3:
-    resolution: {integrity: sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ==}
 
   data-urls@7.0.0:
     resolution: {integrity: sha512-23XHcCF+coGYevirZceTVD7NdJOqVn+49IHyxgszm+JIiHLoB2TkmPtsYkNWT1pvRSGkc35L6NHs0yHkN2SumA==}
@@ -5726,10 +5848,6 @@ packages:
   rc@1.2.8:
     resolution: {integrity: sha512-y3bGgqKj3QBdxLbLkomlohkvsA8gdAiUQlSBJnBhfn+BPxg4bc62d8TcBW15wavDfgexCgccckhcZvywyQYPOw==}
     hasBin: true
-
-  react@19.2.4:
-    resolution: {integrity: sha512-9nfp2hYpCwOjAN+8TZFGhtWEwgvWHXqESH8qT89AT/lWklpLON22Lc8pEtnpsZz7VmawabSU0gCjnj8aC0euHQ==}
-    engines: {node: '>=0.10.0'}
 
   read-yaml-file@1.1.0:
     resolution: {integrity: sha512-VIMnQi/Z4HT2Fxuwg5KrY174U1VdUIASQVWXXyqtNRtxSr9IYkn1rsI6Tb6HsrHCmB7gVpNwX6JxPTHcH6IoTA==}
@@ -8436,10 +8554,6 @@ snapshots:
     dependencies:
       undici-types: 7.16.0
 
-  '@types/react@19.2.14':
-    dependencies:
-      csstype: 3.2.3
-
   '@vitest/coverage-v8@4.1.5(vitest@4.1.5)':
     dependencies:
       '@bcoe/v8-coverage': 1.0.2
@@ -8695,8 +8809,6 @@ snapshots:
     dependencies:
       mdn-data: 2.27.1
       source-map-js: 1.2.1
-
-  csstype@3.2.3: {}
 
   data-urls@7.0.0(@noble/hashes@2.0.1):
     dependencies:
@@ -9591,8 +9703,6 @@ snapshots:
       minimist: 1.2.8
       strip-json-comments: 2.0.1
     optional: true
-
-  react@19.2.4: {}
 
   read-yaml-file@1.1.0:
     dependencies:

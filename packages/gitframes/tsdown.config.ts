@@ -6,7 +6,6 @@ export default defineConfig({
 		"src/effects/index.ts",
 		"src/audio/index.ts",
 		"src/signals/index.ts",
-		"src/react/index.ts",
 		"src/renderer/index.ts",
 		"src/fonts/index.ts",
 	],
@@ -38,6 +37,5 @@ export default defineConfig({
 		"pino",
 		"file-type",
 		"dotenv",
-		"react",
 	],
 });

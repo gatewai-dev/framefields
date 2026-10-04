@@ -4,7 +4,7 @@
 	"private": false,
 	"type": "module",
 	"sideEffects": false,
-	"license": "APGL-3.0",
+	"license": "Apache-2.0",
 	"module": "./dist/index.mjs",
 	"types": "./dist/index.d.mts",
 	"exports": {

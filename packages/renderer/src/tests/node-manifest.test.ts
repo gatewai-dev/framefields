@@ -6,6 +6,7 @@ import {
 	discoverAndRegisterNodeRenderers,
 	findNodesDir,
 } from "../dynamic-node-discovery.js";
+import { BUILTIN_NODE_RENDERERS } from "../generated/node-renderers.js";
 import {
 	loadNodeManifests,
 	NODE_KINDS,
@@ -140,6 +141,22 @@ describe("parseNodeManifest", () => {
 		expect(error.message).toContain("a: bad");
 		expect(error.message).toContain("b: bad");
 		expect(error.problems).toHaveLength(2);
+	});
+});
+
+describe("BUILTIN_NODE_RENDERERS", () => {
+	it("matches the node manifests (run `pnpm run generate:node-renderers`)", () => {
+		const expected = loadNodeManifests(nodesDir as string)
+			.filter((m) => m.enabled && m.rendererExports)
+			.map((m) => ({
+				packageName: m.packageName,
+				ops: [m.type, ...m.aliases],
+			}));
+		const actual = BUILTIN_NODE_RENDERERS.map(({ packageName, ops }) => ({
+			packageName,
+			ops: [...ops],
+		}));
+		expect(actual).toEqual(expected);
 	});
 });
 

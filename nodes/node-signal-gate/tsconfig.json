@@ -2,7 +2,6 @@
 	"extends": "@gitframes/tsconfig/base.json",
 	"compilerOptions": {
 		"lib": ["ESNext", "DOM"],
-		"jsx": "react-jsx",
 		"types": ["@types/webgpu"]
 	},
 	"include": ["src/**/*"]

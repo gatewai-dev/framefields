@@ -1,8 +1,7 @@
 {
-	"extends": "@gitframes/tsconfig/react-library.json",
+	"extends": "@gitframes/tsconfig/node-library.json",
 	"compilerOptions": {
 		"baseUrl": ".",
-		"jsx": "react-jsx",
 		"paths": {
 			"@/*": ["./src/*"]
 		},

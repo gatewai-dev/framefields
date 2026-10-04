@@ -3,7 +3,6 @@
 	"compilerOptions": {
 		"module": "NodeNext",
 		"moduleResolution": "NodeNext",
-		"jsx": "react-jsx",
 		"types": ["webgpu", "node", "react", "react-dom"]
 	},
 	"include": ["src/**/*"]

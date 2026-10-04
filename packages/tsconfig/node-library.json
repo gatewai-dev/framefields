@@ -4,7 +4,6 @@
 	"compilerOptions": {
 		"skipLibCheck": true,
 		"emitDeclarationOnly": true,
-		"jsx": "react-jsx",
 		"lib": ["ES2022", "ESNext", "DOM", "DOM.Iterable"]
 	}
 }

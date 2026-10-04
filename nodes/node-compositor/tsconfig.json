@@ -1,5 +1,5 @@
 {
-	"extends": "@gitframes/tsconfig/react-library.json",
+	"extends": "@gitframes/tsconfig/node-library.json",
 	"compilerOptions": {
 		"baseUrl": ".",
 		"lib": ["ES2022", "ESNext", "DOM", "DOM.Iterable"],

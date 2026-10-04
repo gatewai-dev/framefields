@@ -1,4 +1,3 @@
-import { getEnv } from "@gitframes/client-utils";
 import {
 	type ConnectedInput,
 	type FrameContext,
@@ -17,7 +16,6 @@ import {
 	webgpuRegistry,
 } from "@gitframes/node-sdk";
 import {
-	clearVideoNodeState,
 	drawCaptionNode,
 	drawGifNode,
 	drawImageNode,
@@ -26,17 +24,10 @@ import {
 	drawSignalNode,
 	drawSvgNode,
 	drawVideoNode,
-	lutStore,
-	mediaDecoderCache,
 	type RenderContextValue,
-	SlugFontCache,
 	signalRegistry,
-	useRenderContext,
 } from "@gitframes/webgpu-renderers";
-import React, { memo } from "react";
 import { computeRenderParams } from "../utils/apply-operations.js";
-import { normalizeTimeline } from "../utils/normalization.js";
-import { useCompositionState } from "./scene.js";
 
 // Cache segment ranges per (segments reference) to avoid recomputation each frame
 const segmentRangeCache = new WeakMap<
@@ -703,227 +694,3 @@ export async function drawCompositionTree(
 		}
 	}
 }
-
-export const CanvasComposition: React.FC<NodeRenderProps> = memo((props) => {
-	const ctx = useRenderContext();
-	const { renderId, virtualMedia: rawVirtualMedia } = props;
-	const state = useCompositionState(renderId);
-
-	const { virtualMedia, fps } = React.useMemo(() => {
-		const fpsValue = props.fps ?? state.fps;
-		const normalized = normalizeTimeline(rawVirtualMedia, fpsValue);
-		return { virtualMedia: normalized, fps: fpsValue };
-	}, [rawVirtualMedia, state.fps, props.fps]);
-
-	const frame = props.frame ?? state.frame;
-
-	const isMountedRef = React.useRef(false);
-	const latestTaskRef = React.useRef<{
-		ctx: RenderContextValue;
-		virtualMedia: VirtualMediaData;
-		frame: number;
-		fps: number;
-		props: NodeRenderProps;
-	} | null>(null);
-	const isRenderingRef = React.useRef(false);
-
-	const [fontUpdateTick, forceUpdate] = React.useState(0);
-	React.useEffect(() => {
-		const unsubscribe = SlugFontCache.addListener(() => {
-			if (isMountedRef.current) {
-				forceUpdate((t) => t + 1);
-			}
-		});
-		return unsubscribe;
-	}, []);
-
-	React.useEffect(() => {
-		const cdnDomain = getEnv("R2_CUSTOM_DOMAIN") as string;
-		if (!cdnDomain) {
-			console.error("[CanvasComposition] R2_CUSTOM_DOMAIN is not defined.");
-			return;
-		}
-		const url = `https://${cdnDomain}/static/NotoColorEmoji.ttf`;
-		SlugFontCache.preloadEmojiFontFace(url).catch((err) => {
-			console.error("[CanvasComposition] Failed to preload emoji font:", err);
-		});
-	}, []);
-
-	const [lutUpdateTick, setLutUpdateTick] = React.useState(0);
-	React.useEffect(() => {
-		const unsubscribe = lutStore.onChange(() => {
-			if (isMountedRef.current) {
-				setLutUpdateTick((t) => t + 1);
-			}
-		});
-		return unsubscribe;
-	}, []);
-
-	React.useLayoutEffect(() => {
-		isMountedRef.current = true;
-		return () => {
-			isMountedRef.current = false;
-
-			// 1. Clear media decoders associated with this composition
-			mediaDecoderCache.clearNode(renderId);
-
-			// 2. Clear video node state (cached fallback textures)
-			clearVideoNodeState(renderId, ctx?.device);
-
-			// 3. Clear any delay handles associated with this composition
-			if (
-				typeof globalThis !== "undefined" &&
-				(globalThis as any).__GATEWAI_DELAYS__
-			) {
-				const delays = (globalThis as any).__GATEWAI_DELAYS__;
-				if (delays instanceof Set) {
-					for (const handle of delays) {
-						if (typeof handle === "string" && handle.startsWith(renderId)) {
-							delays.delete(handle);
-						}
-					}
-				}
-			}
-
-			if (
-				typeof window !== "undefined" &&
-				(window as any).renderer_delayRenderHandles
-			) {
-				const handles = (window as any).renderer_delayRenderHandles;
-				if (Array.isArray(handles)) {
-					const filtered = handles.filter(
-						(handle) =>
-							!(typeof handle === "string" && handle.startsWith(renderId)),
-					);
-					(window as any).renderer_delayRenderHandles = filtered;
-				}
-			}
-		};
-	}, [renderId, ctx]);
-
-	React.useLayoutEffect(() => {
-		if (!ctx || !virtualMedia) return;
-
-		latestTaskRef.current = {
-			ctx,
-			virtualMedia,
-			frame,
-			fps,
-			props,
-		};
-
-		const triggerRender = async () => {
-			if (isRenderingRef.current) return;
-			isRenderingRef.current = true;
-
-			while (latestTaskRef.current && isMountedRef.current) {
-				const task = latestTaskRef.current;
-				if (task.ctx !== ctx) {
-					// Context changed (e.g. device lost), let the other effect handle it
-					break;
-				}
-				latestTaskRef.current = null;
-
-				try {
-					const { device, surface, renderer } = task.ctx;
-					const targetW = surface.width;
-					const targetH = surface.height;
-					if (targetW === 0 || targetH === 0) continue;
-
-					const encoder = device.createCommandEncoder();
-					const stableTex = renderer.getTemporaryTexture(targetW, targetH);
-					const stableView = stableTex.createView();
-
-					// Initial clear of the stable texture
-					const clearPass = renderer.beginFrame(
-						encoder,
-						stableView,
-						{ r: 0, g: 0, b: 0, a: 0 },
-						targetW,
-						targetH,
-						"clear",
-					);
-					clearPass.end();
-
-					await drawCompositionTree(
-						task.ctx,
-						encoder,
-						stableView,
-						stableTex,
-						targetW,
-						targetH,
-						task.virtualMedia,
-						{
-							...task.props,
-							frame: task.frame,
-							fps: task.fps,
-							isPlaying: task.props.isPlaying ?? state.isPlaying,
-							isVideoMode: task.virtualMedia.operation.dataType === "Video",
-							excludeTextures: [stableTex],
-						},
-					);
-
-					if (latestTaskRef.current !== null) {
-						// A newer task was scheduled while we were awaiting. Discard this stale frame.
-						continue;
-					}
-
-					if (isMountedRef.current && !renderer.isDestroyed) {
-						// Get FRESH canvas view right before submission
-						const blitW = surface.width;
-						const blitH = surface.height;
-						if (blitW > 0 && blitH > 0) {
-							const canvasView = surface.getCurrentTextureView();
-							const blitPass = renderer.beginFrame(
-								encoder,
-								canvasView,
-								{ r: 0, g: 0, b: 0, a: 0 },
-								blitW,
-								blitH,
-								"clear",
-							);
-							renderer.drawTexture(blitPass, stableTex, {
-								x: 0,
-								y: 0,
-								width: blitW,
-								height: blitH,
-							});
-							blitPass.end();
-						}
-
-						device.queue.submit([encoder.finish()]);
-						surface.present();
-
-						// Synchronize with the frame capture process to avoid black frames
-						const key = `${task.props.renderId}-${task.frame}`;
-						if (!(window as any).__frameRenderResolvers) {
-							(window as any).__frameRenderResolvers = new Map();
-						}
-						const status = (window as any).__frameRenderResolvers.get(key);
-						if (status) {
-							status.rendered = true;
-							if (status.resolver) {
-								status.resolver();
-							}
-						} else {
-							(window as any).__frameRenderResolvers.set(key, {
-								rendered: true,
-							});
-						}
-					}
-				} catch (err) {
-					console.error("Error drawing WebGPU composition tree:", err);
-				}
-			}
-
-			isRenderingRef.current = false;
-			if (latestTaskRef.current && isMountedRef.current) {
-				void triggerRender();
-			}
-		};
-
-		void triggerRender();
-	}, [ctx, virtualMedia, frame, fps, props, fontUpdateTick, lutUpdateTick]);
-
-	return null;
-});

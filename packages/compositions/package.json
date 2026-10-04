@@ -4,7 +4,7 @@
 	"private": false,
 	"type": "module",
 	"sideEffects": false,
-	"license": "APGL-3.0",
+	"license": "Apache-2.0",
 	"module": "./dist/index.mjs",
 	"types": "./dist/index.d.mts",
 	"exports": {
@@ -41,7 +41,6 @@
 		"@gitframes/core": "workspace:*",
 		"@gitframes/server-utils": "workspace:*",
 		"@gitframes/tsconfig": "workspace:*",
-		"@types/react": "^19.2.4",
 		"@webgpu/types": "^0.1.70",
 		"dotenv": "^16.4.5",
 		"tsdown": "^0.19.0",
@@ -52,7 +51,6 @@
 	},
 	"peerDependencies": {
 		"mediabunny": "*",
-		"react": "^19.2.4",
 		"zod": "^4.3.6"
 	},
 	"dependencies": {

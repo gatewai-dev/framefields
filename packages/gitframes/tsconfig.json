@@ -2,7 +2,6 @@
 	"extends": "@gitframes/tsconfig/base.json",
 	"compilerOptions": {
 		"moduleResolution": "bundler",
-		"jsx": "react-jsx",
 		"rootDir": "src",
 		"outDir": "dist",
 		"module": "ESNext"

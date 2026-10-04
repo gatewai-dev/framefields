@@ -10,7 +10,7 @@
 		"enabled": false
 	},
 	"type": "module",
-	"license": "APGL-3.0",
+	"license": "Apache-2.0",
 	"exports": {
 		".": {
 			"types": "./dist/index.d.mts",

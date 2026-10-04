@@ -1,11 +1,10 @@
 {
-	"extends": "@gitframes/tsconfig/react-library.json",
+	"extends": "@gitframes/tsconfig/node-library.json",
 	"compilerOptions": {
 		"baseUrl": ".",
 		"paths": {
 			"@/*": ["./src/*"]
 		},
-		"jsx": "react-jsx",
 		"experimentalDecorators": true,
 		"emitDecoratorMetadata": true
 	},

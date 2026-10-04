@@ -2425,8 +2425,8 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				// and composite/blend the group texture onto destTex.
 				const groupExcludes = [activeTex, targetTexture, ...excludes];
 				const groupTex = ctx.renderer.getTemporaryTexture(
-					nativeWidth,
-					nativeHeight,
+					targetW,
+					targetH,
 					groupExcludes,
 				);
 				const groupView = groupTex.createView();
@@ -2435,8 +2435,8 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					encoder,
 					groupView,
 					{ r: 0, g: 0, b: 0, a: 0 },
-					nativeWidth,
-					nativeHeight,
+					targetW,
+					targetH,
 					"clear",
 				);
 				groupClearPass.end();
@@ -2453,8 +2453,8 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 						encoder,
 						groupView,
 						{ r: 0, g: 0, b: 0, a: 0 },
-						nativeWidth,
-						nativeHeight,
+						targetW,
+						targetH,
 						"load",
 					);
 					ctx.renderer.pushTransform(layerMatrix);
@@ -2498,17 +2498,16 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				// overflow: hidden with a border radius: keep only what falls
 				// inside the rounded box (background and children alike).
 				if (clipRadius > 0) {
-					const maskTex = ctx.renderer.getTemporaryTexture(
-						nativeWidth,
-						nativeHeight,
-						[activeGroupTex, ...groupExcludes],
-					);
+					const maskTex = ctx.renderer.getTemporaryTexture(targetW, targetH, [
+						activeGroupTex,
+						...groupExcludes,
+					]);
 					const maskPass = ctx.renderer.beginFrame(
 						encoder,
 						maskTex.createView(),
 						{ r: 0, g: 0, b: 0, a: 0 },
-						nativeWidth,
-						nativeHeight,
+						targetW,
+						targetH,
 						"clear",
 					);
 					ctx.renderer.pushTransform(layerMatrix);
@@ -2550,8 +2549,8 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 						encoder,
 						activeGroupView,
 						{ r: 0, g: 0, b: 0, a: 0 },
-						nativeWidth,
-						nativeHeight,
+						targetW,
+						targetH,
 						"load",
 					);
 					ctx.renderer.pushTransform(layerMatrix);
@@ -2670,11 +2669,12 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					const lightsBuffer =
 						r3dInstance.getOrCreateLightsBuffer(activeLights);
 
-					const relitTex = ctx.renderer.getTemporaryTexture(
-						nativeWidth,
-						nativeHeight,
-						[activeGroupTex, activeTex, targetTexture, ...excludes],
-					);
+					const relitTex = ctx.renderer.getTemporaryTexture(targetW, targetH, [
+						activeGroupTex,
+						activeTex,
+						targetTexture,
+						...excludes,
+					]);
 					const relitView = relitTex.createView();
 
 					const normalTex = relightOpts.normalTexture ?? relightOpts.normalMap;
@@ -2686,8 +2686,8 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 						normalTex,
 						lightsBuffer,
 						{
-							viewportWidth: nativeWidth,
-							viewportHeight: nativeHeight,
+							viewportWidth: targetW,
+							viewportHeight: targetH,
 							layerX: 0,
 							layerY: 0,
 							roughness: resolveVal(

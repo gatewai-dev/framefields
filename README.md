@@ -2,7 +2,7 @@
 
 <img src="assets/brand/banner.png" alt="gitframes — code-first video, rendered natively on WebGPU" width="100%">
 
-**High-Performance WebGPU Rendering Engine & SDK for Programmatic Video, Motion Graphics, Audio DSP, and Neural Vision.**
+**Photoshop-, After Effects-, and Blender-class video tools as one npm package that AI agents drive with code.**
 
 [![npm](https://img.shields.io/badge/npm-gitframes-cb3837?logo=npm&logoColor=white)](https://www.npmjs.com/package/gitframes)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENCE)
@@ -13,6 +13,8 @@
 [![vision](https://img.shields.io/badge/vision-RTMDet%20%C2%B7%20RTMO%20%C2%B7%20ONNX-ff5a1f)](#6-on-device-vision--tracking)
 
 > **⚠️ Beta:** gitframes is under active development. APIs may change between releases and some features may be incomplete or unstable.
+
+Gitframes is built for coding agents. It packs the work people usually split across three desktop apps (Photoshop-grade compositing and VFX, After Effects-style motion, typography and keyframing, and Blender-style 3D scenes, cameras and models) into one npm package whose engine is about 10 MB. Your agent writes a TypeScript composition, checks frames, and renders an MP4, and nobody has to install or license a multi-gigabyte creative suite.
 
 **Code-first video as pure software engineering** — no headless browser, no DOM reflow, no screenshot pipeline.
 Renders directly on GPU hardware via Dawn / WebGPU / Metal / Vulkan in Node.js and modern WebGPU browsers.

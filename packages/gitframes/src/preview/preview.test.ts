@@ -2,9 +2,9 @@ import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { prebuiltEngineDir } from "./bundle.js";
+import { buildEngine, prebuiltEngineDir } from "./bundle.js";
 import { type PreviewSession, startPreview } from "./index.js";
 
 const entry = new URL("./fixtures/comp.ts", import.meta.url);
@@ -129,6 +129,28 @@ describe("startPreview", () => {
 		expect(second.url).toBe(first.url);
 		expect((await fetch(`${second.url}meta`)).status).toBe(200);
 	});
+});
+
+describe("browser engine", () => {
+	it("loads every entry, with no Node built-ins left unshimmed", async () => {
+		const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "gf-engine-"));
+		try {
+			await buildEngine(dir);
+			for (const name of [
+				"gitframes",
+				"effects",
+				"audio",
+				"signals",
+				"fonts",
+				"player",
+			]) {
+				// Importing runs the module's top-level code, as a browser would.
+				await import(pathToFileURL(path.join(dir, `${name}.mjs`)).href);
+			}
+		} finally {
+			await fs.promises.rm(dir, { recursive: true, force: true });
+		}
+	}, 120_000);
 });
 
 describe("prebuiltEngineDir", () => {

@@ -47,6 +47,7 @@ const SHIMS: Record<string, string> = {
 	os: "os",
 	fs: "fs",
 	"fs/promises": "fs-promises",
+	module: "module",
 };
 
 /** Packages that only work in Node; the browser never needs them to draw. */

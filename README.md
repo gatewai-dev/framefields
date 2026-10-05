@@ -30,18 +30,18 @@ Every frame of these films is rendered by framefields from TypeScript in [`examp
 <table>
   <tr>
     <td width="33%" align="center">
-      <a href="https://youtu.be/w6IQNrhJJek"><img src="assets/showcase/framefields-launch.jpg" alt="Framefields launch film" width="100%"></a>
-      <br><a href="https://youtu.be/w6IQNrhJJek"><b>Framefields launch</b></a>
+      <a href="https://youtu.be/FVXTqAozAv8"><img src="assets/showcase/framefields-launch.jpg" alt="Framefields launch film" width="100%"></a>
+      <br><a href="https://youtu.be/FVXTqAozAv8"><b>Framefields launch</b></a>
       <br><sub><a href="examples/22_framefields_launch"><code>22_framefields_launch</code></a></sub>
     </td>
     <td width="33%" align="center">
-      <a href="https://youtu.be/YeIpp4xf_j8"><img src="assets/showcase/full-circle.jpg" alt="Full Circle film" width="100%"></a>
-      <br><a href="https://youtu.be/YeIpp4xf_j8"><b>Full Circle</b></a>
+      <a href="https://youtu.be/9BF1snfmg3o"><img src="assets/showcase/full-circle.jpg" alt="Full Circle film" width="100%"></a>
+      <br><a href="https://youtu.be/9BF1snfmg3o"><b>Full Circle</b></a>
       <br><sub><a href="examples/21_full_circle"><code>21_full_circle</code></a></sub>
     </td>
     <td width="33%" align="center">
-      <a href="https://youtu.be/R5Zug49FTTQ"><img src="assets/showcase/dancer.jpg" alt="Dancer showcase film" width="100%"></a>
-      <br><a href="https://youtu.be/R5Zug49FTTQ"><b>Dancer showcase</b></a>
+      <a href="https://youtu.be/RQ3yi_lzPqI"><img src="assets/showcase/dancer.jpg" alt="Dancer showcase film" width="100%"></a>
+      <br><a href="https://youtu.be/RQ3yi_lzPqI"><b>Dancer showcase</b></a>
       <br><sub><a href="examples/19_framefields_film"><code>19_framefields_film</code></a></sub>
     </td>
   </tr>

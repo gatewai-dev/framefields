@@ -1,347 +1,337 @@
 [
  {
   "text": "What",
-  "start": 0.06,
-  "end": 0.18
+  "start": 0.04,
+  "end": 0.16
  },
  {
   "text": "if",
   "start": 0.24,
-  "end": 0.34
+  "end": 0.3
  },
  {
   "text": "video",
-  "start": 0.4,
-  "end": 0.72
+  "start": 0.36,
+  "end": 0.7
  },
  {
   "text": "was",
-  "start": 0.76,
-  "end": 0.86
+  "start": 0.74,
+  "end": 0.84
  },
  {
   "text": "just",
-  "start": 0.9,
-  "end": 1.02
+  "start": 0.86,
+  "end": 0.98
  },
  {
   "text": "code?",
-  "start": 1.08,
-  "end": 1.36
+  "start": 1.04,
+  "end": 1.26
  },
  {
   "text": "What",
-  "start": 1.42,
-  "end": 1.52
+  "start": 1.34,
+  "end": 1.4
  },
  {
   "text": "if",
-  "start": 1.58,
-  "end": 1.66
+  "start": 1.44,
+  "end": 1.5
  },
  {
   "text": "motion",
-  "start": 1.72,
-  "end": 2
+  "start": 1.54,
+  "end": 1.8
  },
  {
   "text": "shipped",
-  "start": 2.04,
-  "end": 2.24
+  "start": 1.84,
+  "end": 2.02
  },
  {
   "text": "in",
-  "start": 2.3,
-  "end": 2.36
+  "start": 2.06,
+  "end": 2.12
  },
  {
   "text": "a",
-  "start": 2.42,
-  "end": 2.48
+  "start": 2.16,
+  "end": 2.2
  },
  {
   "text": "commit?",
-  "start": 2.52,
-  "end": 2.8
+  "start": 2.24,
+  "end": 2.58
  },
  {
   "text": "No",
-  "start": 2.88,
-  "end": 2.98
+  "start": 2.86,
+  "end": 2.96
  },
  {
   "text": "timeline,",
-  "start": 3.08,
-  "end": 3.48
+  "start": 3.02,
+  "end": 3.46
  },
  {
   "text": "no",
-  "start": 3.54,
-  "end": 3.66
+  "start": 3.52,
+  "end": 3.64
  },
  {
   "text": "render",
-  "start": 3.72,
-  "end": 3.92
+  "start": 3.68,
+  "end": 3.88
  },
  {
   "text": "farm,",
-  "start": 3.98,
-  "end": 4.16
+  "start": 3.94,
+  "end": 4.12
  },
  {
   "text": "just",
-  "start": 4.22,
-  "end": 4.32
+  "start": 4.2,
+  "end": 4.3
  },
  {
   "text": "type",
-  "start": 4.38,
-  "end": 4.56
+  "start": 4.36,
+  "end": 4.52
  },
  {
   "text": "it",
-  "start": 4.6,
-  "end": 4.68
+  "start": 4.56,
+  "end": 4.62
  },
  {
   "text": "and",
-  "start": 4.72,
-  "end": 4.82
+  "start": 4.66,
+  "end": 4.74
  },
  {
   "text": "let",
-  "start": 4.84,
-  "end": 4.94
+  "start": 4.76,
+  "end": 4.86
  },
  {
   "text": "it",
-  "start": 4.98,
-  "end": 5.02
+  "start": 4.9,
+  "end": 4.98
  },
  {
   "text": "hit.",
-  "start": 5.06,
-  "end": 5.36
+  "start": 5.04,
+  "end": 5.22
  },
  {
-  "text": "Framefields.",
-  "start": 5.4,
-  "end": 6.22
+  "text": "Framefields!",
+  "start": 5.38,
+  "end": 6.08
  },
  {
   "text": "No",
-  "start": 6.54,
-  "end": 6.62
+  "start": 6.2,
+  "end": 6.28
  },
  {
   "text": "browser,",
-  "start": 6.76,
-  "end": 7.14
+  "start": 6.36,
+  "end": 6.72
  },
  {
   "text": "no",
-  "start": 7.2,
-  "end": 7.32
+  "start": 6.86,
+  "end": 6.96
  },
  {
   "text": "Chromium,",
-  "start": 7.36,
-  "end": 7.8
+  "start": 7.02,
+  "end": 7.44
  },
  {
   "text": "no",
-  "start": 7.86,
-  "end": 7.96
+  "start": 7.5,
+  "end": 7.6
  },
  {
   "text": "screenshots,",
-  "start": 8,
-  "end": 8.38
+  "start": 7.68,
+  "end": 8.26
  },
  {
   "text": "just",
-  "start": 8.42,
-  "end": 8.54
+  "start": 8.36,
+  "end": 8.48
  },
  {
   "text": "the",
-  "start": 8.58,
-  "end": 8.66
+  "start": 8.52,
+  "end": 8.62
  },
  {
   "text": "GPU.",
-  "start": 8.72,
-  "end": 9.16
+  "start": 8.68,
+  "end": 9.2
  },
  {
   "text": "120",
-  "start": 9.48,
-  "end": 9.96
+  "start": 9.46,
+  "end": 9.88
  },
  {
   "text": "frames",
-  "start": 10.02,
-  "end": 10.2
+  "start": 9.92,
+  "end": 10.18
  },
  {
   "text": "a",
-  "start": 10.26,
-  "end": 10.3
+  "start": 10.24,
+  "end": 10.28
  },
  {
   "text": "second,",
-  "start": 10.38,
-  "end": 10.68
+  "start": 10.36,
+  "end": 10.64
  },
  {
   "text": "every",
-  "start": 10.78,
-  "end": 11
+  "start": 10.74,
+  "end": 10.92
  },
  {
   "text": "pixel",
-  "start": 11.04,
-  "end": 11.34
+  "start": 11,
+  "end": 11.28
  },
  {
   "text": "rendered",
-  "start": 11.4,
-  "end": 11.64
+  "start": 11.36,
+  "end": 11.62
  },
  {
   "text": "true.",
-  "start": 11.72,
-  "end": 12
- },
- {
-  "text": "Woo!",
-  "start": 12.08,
-  "end": 12.34
+  "start": 11.7,
+  "end": 12.02
  },
  {
   "text": "Watch",
-  "start": 12.38,
-  "end": 12.54
+  "start": 12.34,
+  "end": 12.52
  },
  {
   "text": "it",
-  "start": 12.6,
-  "end": 12.68
+  "start": 12.56,
+  "end": 12.64
  },
  {
   "text": "move.",
-  "start": 12.74,
-  "end": 13.04
- },
- {
-  "text": "Yeah.",
-  "start": 13.08,
-  "end": 13.32
+  "start": 12.72,
+  "end": 13.08
  },
  {
   "text": "After",
-  "start": 13.6,
+  "start": 13.58,
   "end": 13.84
  },
  {
   "text": "Effects,",
   "start": 13.9,
-  "end": 14.3
+  "end": 14.26
  },
  {
   "text": "Photoshop,",
-  "start": 14.36,
-  "end": 14.86
+  "start": 14.34,
+  "end": 14.82
  },
  {
   "text": "Premiere,",
-  "start": 14.9,
-  "end": 15.24
+  "start": 14.86,
+  "end": 15.2
  },
  {
   "text": "Cinema",
-  "start": 15.36,
-  "end": 15.66
+  "start": 15.34,
+  "end": 15.62
  },
  {
   "text": "4D,",
-  "start": 15.84,
-  "end": 16.02
+  "start": 15.88,
+  "end": 16.219
  },
  {
   "text": "Blender,",
-  "start": 16.239,
-  "end": 16.52
+  "start": 16.32,
+  "end": 16.62
  },
  {
   "text": "Illustrator,",
-  "start": 16.76,
-  "end": 17.3
+  "start": 16.74,
+  "end": 17.28
  },
  {
   "text": "all",
-  "start": 17.56,
-  "end": 17.64
+  "start": 17.42,
+  "end": 17.54
  },
  {
   "text": "of",
-  "start": 17.68,
-  "end": 17.76
+  "start": 17.6,
+  "end": 17.68
  },
  {
   "text": "it",
-  "start": 17.8,
-  "end": 17.86
+  "start": 17.74,
+  "end": 17.82
  },
  {
   "text": "in",
-  "start": 17.92,
-  "end": 18
+  "start": 17.86,
+  "end": 17.96
  },
  {
   "text": "one",
-  "start": 18.1,
-  "end": 18.2
+  "start": 18.08,
+  "end": 18.18
  },
  {
   "text": "import.",
-  "start": 18.24,
-  "end": 18.62
+  "start": 18.22,
+  "end": 18.64
  },
  {
   "text": "Lightweight,",
-  "start": 18.74,
-  "end": 19.3
+  "start": 18.72,
+  "end": 19.22
  },
  {
-  "text": "tight",
-  "start": 19.38,
-  "end": 19.56
+  "text": "typed",
+  "start": 19.34,
+  "end": 19.52
  },
  {
-  "text": "and",
-  "start": 19.6,
-  "end": 19.7
+  "text": "in",
+  "start": 19.56,
+  "end": 19.66
  },
  {
   "text": "fast.",
-  "start": 19.76,
-  "end": 20.04
+  "start": 19.72,
+  "end": 20
  },
  {
   "text": "All",
-  "start": 20.1,
-  "end": 20.18
+  "start": 20.06,
+  "end": 20.16
  },
  {
   "text": "the",
-  "start": 20.22,
-  "end": 20.3
+  "start": 20.2,
+  "end": 20.28
  },
  {
   "text": "power,",
-  "start": 20.38,
+  "start": 20.36,
   "end": 20.62
  },
  {
@@ -352,7 +342,7 @@
  {
   "text": "of",
   "start": 20.82,
-  "end": 20.88
+  "end": 20.86
  },
  {
   "text": "the",
@@ -361,213 +351,208 @@
  },
  {
   "text": "weight.",
-  "start": 21.06,
+  "start": 21.04,
   "end": 21.26
  },
  {
   "text": "Every",
-  "start": 21.44,
+  "start": 21.42,
   "end": 21.66
  },
  {
   "text": "letter",
-  "start": 21.72,
-  "end": 21.98
+  "start": 21.7,
+  "end": 21.94
  },
  {
-  "text": "razor",
-  "start": 22.04,
-  "end": 22.32
+  "text": "razor-sharp,",
+  "start": 22.02,
+  "end": 22.6
  },
  {
-  "text": "sharp,",
-  "start": 22.38,
-  "end": 22.64
- },
- {
-  "text": "bend",
-  "start": 22.72,
-  "end": 22.86
+  "text": "then",
+  "start": 22.7,
+  "end": 22.84
  },
  {
   "text": "the",
-  "start": 22.9,
-  "end": 23
+  "start": 22.88,
+  "end": 22.98
  },
  {
   "text": "words",
-  "start": 23.04,
-  "end": 23.24
+  "start": 23.02,
+  "end": 23.2
  },
  {
   "text": "around",
-  "start": 23.3,
+  "start": 23.28,
   "end": 23.52
  },
  {
   "text": "the",
-  "start": 23.56,
-  "end": 23.68
+  "start": 23.54,
+  "end": 23.66
  },
  {
-  "text": "arc.",
-  "start": 23.76,
-  "end": 24.02
+  "text": "art.",
+  "start": 23.74,
+  "end": 23.96
  },
  {
   "text": "Type",
-  "start": 24.04,
-  "end": 24.2
+  "start": 24.02,
+  "end": 24.18
  },
  {
   "text": "that",
-  "start": 24.24,
-  "end": 24.32
+  "start": 24.22,
+  "end": 24.3
  },
  {
   "text": "moves",
-  "start": 24.38,
-  "end": 24.56
+  "start": 24.36,
+  "end": 24.52
  },
  {
   "text": "the",
-  "start": 24.6,
-  "end": 24.68
+  "start": 24.56,
+  "end": 24.64
  },
  {
   "text": "way",
-  "start": 24.72,
-  "end": 24.82
+  "start": 24.68,
+  "end": 24.78
  },
  {
   "text": "you",
-  "start": 24.86,
-  "end": 24.94
+  "start": 24.82,
+  "end": 24.92
  },
  {
   "text": "speak.",
-  "start": 25.04,
-  "end": 25.26
+  "start": 25,
+  "end": 25.2
  },
  {
   "text": "Split",
-  "start": 25.36,
-  "end": 25.52
+  "start": 25.32,
+  "end": 25.48
  },
  {
   "text": "it,",
-  "start": 25.56,
-  "end": 25.6
+  "start": 25.52,
+  "end": 25.56
  },
  {
   "text": "stagger",
-  "start": 25.68,
-  "end": 25.88
+  "start": 25.64,
+  "end": 25.86
  },
  {
   "text": "it,",
-  "start": 25.92,
-  "end": 25.96
+  "start": 25.88,
+  "end": 25.92
  },
  {
   "text": "spin",
-  "start": 26.06,
-  "end": 26.18
+  "start": 26.02,
+  "end": 26.14
  },
  {
   "text": "it",
-  "start": 26.22,
-  "end": 26.28
+  "start": 26.18,
+  "end": 26.26
  },
  {
   "text": "sweet.",
-  "start": 26.38,
-  "end": 26.56
+  "start": 26.34,
+  "end": 26.66
  },
  {
   "text": "Every",
-  "start": 26.78,
-  "end": 26.98
+  "start": 26.74,
+  "end": 26.96
  },
  {
   "text": "font",
-  "start": 27.06,
-  "end": 27.2
+  "start": 27.02,
+  "end": 27.18
  },
  {
   "text": "a",
-  "start": 27.28,
-  "end": 27.32
+  "start": 27.24,
+  "end": 27.3
  },
  {
   "text": "different",
-  "start": 27.38,
-  "end": 27.68
+  "start": 27.36,
+  "end": 27.64
  },
  {
   "text": "feel,",
-  "start": 27.76,
-  "end": 27.92
+  "start": 27.72,
+  "end": 27.9
  },
  {
   "text": "kinetic",
-  "start": 28.06,
-  "end": 28.52
+  "start": 28.02,
+  "end": 28.5
  },
  {
   "text": "on",
-  "start": 28.58,
-  "end": 28.7
+  "start": 28.56,
+  "end": 28.68
  },
  {
   "text": "every",
-  "start": 28.76,
-  "end": 28.98
+  "start": 28.74,
+  "end": 28.92
  },
  {
   "text": "beat.",
   "start": 29.04,
-  "end": 29.34
+  "end": 29.26
  },
  {
   "text": "Step",
-  "start": 29.68,
-  "end": 29.88
+  "start": 29.66,
+  "end": 29.84
  },
  {
   "text": "inside",
-  "start": 29.92,
+  "start": 29.88,
   "end": 30.18
  },
  {
   "text": "the",
-  "start": 30.22,
+  "start": 30.2,
   "end": 30.3
  },
  {
   "text": "camera,",
-  "start": 30.38,
-  "end": 30.68
+  "start": 30.36,
+  "end": 30.7
  },
  {
   "text": "fly",
-  "start": 31.02,
-  "end": 31.18
+  "start": 31,
+  "end": 31.16
  },
  {
   "text": "the",
-  "start": 31.22,
-  "end": 31.32
+  "start": 31.2,
+  "end": 31.3
  },
  {
   "text": "third",
-  "start": 31.36,
-  "end": 31.52
+  "start": 31.34,
+  "end": 31.5
  },
  {
   "text": "dimension.",
   "start": 31.56,
-  "end": 32.1
+  "end": 32.06
  },
  {
   "text": "Paths",
@@ -581,168 +566,168 @@
  },
  {
   "text": "planes",
-  "start": 32.7,
-  "end": 32.9
+  "start": 32.68,
+  "end": 32.88
  },
  {
   "text": "in",
   "start": 32.92,
-  "end": 33
+  "end": 32.98
  },
  {
   "text": "motion,",
   "start": 33.04,
-  "end": 33.3
+  "end": 33.32
  },
  {
   "text": "cubes",
-  "start": 33.4,
-  "end": 33.58
- },
- {
-  "text": "in",
-  "start": 33.64,
+  "start": 33.54,
   "end": 33.72
  },
  {
-  "text": "every",
+  "text": "in",
   "start": 33.78,
-  "end": 34.16
+  "end": 33.86
+ },
+ {
+  "text": "every",
+  "start": 33.92,
+  "end": 34.14
  },
  {
   "text": "direction.",
   "start": 34.2,
-  "end": 34.7
+  "end": 34.66
  },
  {
   "text": "Orbit",
-  "start": 34.76,
-  "end": 35
+  "start": 34.74,
+  "end": 34.98
  },
  {
   "text": "round",
   "start": 35.06,
-  "end": 35.22
+  "end": 35.2
  },
  {
-  "text": "then",
+  "text": "and",
   "start": 35.24,
   "end": 35.34
  },
  {
   "text": "dolly",
-  "start": 35.4,
-  "end": 35.64
+  "start": 35.38,
+  "end": 35.6
  },
  {
-  "text": "through.",
+  "text": "through,",
   "start": 35.7,
-  "end": 36.02
+  "end": 35.96
  },
  {
-  "text": "Light",
-  "start": 36.4,
-  "end": 36.54
+  "text": "light",
+  "start": 36.04,
+  "end": 36.2
  },
  {
   "text": "it",
-  "start": 36.58,
-  "end": 36.66
+  "start": 36.26,
+  "end": 36.32
  },
  {
   "text": "up",
-  "start": 36.74,
-  "end": 36.86
+  "start": 36.4,
+  "end": 36.52
  },
  {
   "text": "in",
-  "start": 36.9,
-  "end": 37
+  "start": 36.56,
+  "end": 36.66
  },
  {
   "text": "depth.",
-  "start": 37.08,
-  "end": 37.32
+  "start": 36.72,
+  "end": 37.02
  },
  {
   "text": "Drop",
-  "start": 37.38,
-  "end": 37.56
+  "start": 37.36,
+  "end": 37.54
  },
  {
   "text": "a",
-  "start": 37.62,
-  "end": 37.66
+  "start": 37.6,
+  "end": 37.64
  },
  {
   "text": "mesh",
   "start": 37.7,
-  "end": 37.88
+  "end": 37.86
  },
  {
   "text": "and",
-  "start": 37.92,
+  "start": 37.9,
   "end": 38
  },
  {
   "text": "make",
   "start": 38.04,
-  "end": 38.2
+  "end": 38.18
  },
  {
   "text": "it",
-  "start": 38.24,
+  "start": 38.22,
   "end": 38.34
  },
  {
-  "text": "bend.",
+  "text": "bend,",
   "start": 38.4,
-  "end": 38.66
+  "end": 38.6
  },
  {
-  "text": "Warp",
-  "start": 38.72,
-  "end": 38.88
+  "text": "warp",
+  "start": 38.7,
+  "end": 38.84
  },
  {
   "text": "the",
-  "start": 38.92,
-  "end": 39
+  "start": 38.88,
+  "end": 38.96
  },
  {
   "text": "vertices",
-  "start": 39.06,
-  "end": 39.48
+  "start": 39.04,
+  "end": 39.46
  },
  {
   "text": "to",
-  "start": 39.52,
-  "end": 39.58
+  "start": 39.5,
+  "end": 39.56
  },
  {
   "text": "the",
-  "start": 39.62,
-  "end": 39.7
+  "start": 39.6,
+  "end": 39.68
  },
  {
   "text": "bass.",
-  "start": 39.74,
-  "end": 39.98
+  "start": 39.72,
+  "end": 39.94
  },
  {
   "text": "Ripple,",
-  "start": 40.06,
-  "end": 40.28
+  "start": 40.04,
+  "end": 40.26
  },
  {
   "text": "twist,",
-  "start": 40.36,
+  "start": 40.34,
   "end": 40.52
  },
  {
   "text": "and",
   "start": 40.56,
-  "end": 40.66
+  "end": 40.64
  },
  {
   "text": "fold",
@@ -751,73 +736,73 @@
  },
  {
   "text": "the",
-  "start": 40.88,
-  "end": 40.94
+  "start": 40.86,
+  "end": 40.92
  },
  {
-  "text": "space.",
-  "start": 41.04,
-  "end": 41.32
+  "text": "space,",
+  "start": 41.02,
+  "end": 41.24
  },
  {
-  "text": "Every",
-  "start": 41.44,
-  "end": 41.66
+  "text": "every",
+  "start": 41.4,
+  "end": 41.62
  },
  {
   "text": "frame",
-  "start": 41.72,
-  "end": 41.88
+  "start": 41.68,
+  "end": 41.86
  },
  {
   "text": "a",
-  "start": 41.94,
-  "end": 42.02
+  "start": 41.92,
+  "end": 41.98
  },
  {
   "text": "different",
-  "start": 42.06,
-  "end": 42.32
+  "start": 42.02,
+  "end": 42.3
  },
  {
   "text": "shape.",
-  "start": 42.38,
-  "end": 42.6
+  "start": 42.36,
+  "end": 42.66
  },
  {
-  "text": "It's",
-  "start": 42.74,
-  "end": 42.84
+  "text": "It’s",
+  "start": 42.72,
+  "end": 42.82
  },
  {
   "text": "just",
-  "start": 42.88,
-  "end": 43
+  "start": 42.86,
+  "end": 42.98
  },
  {
   "text": "code,",
-  "start": 43.06,
-  "end": 43.32
+  "start": 43.04,
+  "end": 43.3
  },
  {
   "text": "write",
-  "start": 43.38,
+  "start": 43.36,
   "end": 43.54
  },
  {
   "text": "it",
-  "start": 43.58,
-  "end": 43.68
+  "start": 43.56,
+  "end": 43.66
  },
  {
   "text": "once.",
-  "start": 43.78,
-  "end": 44
+  "start": 43.76,
+  "end": 43.98
  },
  {
   "text": "Key",
-  "start": 44.06,
-  "end": 44.18
+  "start": 44.04,
+  "end": 44.16
  },
  {
   "text": "it,",
@@ -827,206 +812,196 @@
  {
   "text": "mask",
   "start": 44.36,
-  "end": 44.56
+  "end": 44.52
  },
  {
   "text": "it,",
-  "start": 44.6,
-  "end": 44.66
+  "start": 44.58,
+  "end": 44.64
  },
  {
   "text": "blend",
   "start": 44.7,
-  "end": 44.86
+  "end": 44.84
  },
  {
   "text": "the",
-  "start": 44.9,
+  "start": 44.88,
   "end": 44.98
  },
  {
-  "text": "lights.",
-  "start": 45.06,
-  "end": 45.28
+  "text": "light.",
+  "start": 45.04,
+  "end": 45.24
  },
  {
   "text": "Stack",
-  "start": 45.34,
+  "start": 45.32,
   "end": 45.5
  },
  {
   "text": "the",
-  "start": 45.56,
-  "end": 45.64
+  "start": 45.54,
+  "end": 45.62
  },
  {
   "text": "layers,",
   "start": 45.7,
-  "end": 45.96
+  "end": 45.94
  },
  {
   "text": "comp",
-  "start": 46.04,
-  "end": 46.2
+  "start": 46.02,
+  "end": 46.18
  },
  {
   "text": "it",
-  "start": 46.24,
+  "start": 46.22,
   "end": 46.32
  },
  {
   "text": "through.",
-  "start": 46.38,
-  "end": 46.66
+  "start": 46.34,
+  "end": 46.64
  },
  {
   "text": "Render",
-  "start": 46.72,
+  "start": 46.7,
   "end": 46.96
  },
  {
   "text": "true",
-  "start": 47.06,
-  "end": 47.34
+  "start": 47.04,
+  "end": 47.32
  },
  {
   "text": "every",
   "start": 47.42,
-  "end": 47.66
+  "end": 47.64
  },
  {
   "text": "night.",
-  "start": 47.72,
-  "end": 47.92
+  "start": 47.7,
+  "end": 48
  },
  {
   "text": "Frame",
   "start": 48.04,
-  "end": 48.32
+  "end": 48.34
  },
  {
   "text": "by",
-  "start": 48.4,
-  "end": 48.64
+  "start": 48.38,
+  "end": 48.62
  },
  {
-  "text": "frame.",
-  "start": 48.72,
-  "end": 49.04
+  "text": "frame,",
+  "start": 48.7,
+  "end": 49.02
  },
  {
-  "text": "Hey.",
-  "start": 49.08,
-  "end": 49.28
- },
- {
-  "text": "Shader",
+  "text": "shader",
   "start": 49.34,
-  "end": 49.66
+  "end": 49.64
  },
  {
   "text": "by",
-  "start": 49.72,
-  "end": 49.94
+  "start": 49.7,
+  "end": 49.82
  },
  {
   "text": "shader.",
-  "start": 50.02,
-  "end": 50.66
+  "start": 49.88,
+  "end": 50.42
  },
  {
   "text": "Grade",
-  "start": 50.72,
-  "end": 51.06
+  "start": 50.68,
+  "end": 50.9
  },
  {
   "text": "it,",
-  "start": 51.14,
-  "end": 51.3
+  "start": 50.94,
+  "end": 51.02
  },
  {
   "text": "grain",
-  "start": 51.38,
-  "end": 51.72
+  "start": 51.18,
+  "end": 51.4
  },
  {
   "text": "it,",
-  "start": 51.8,
-  "end": 51.94
+  "start": 51.46,
+  "end": 51.54
  },
  {
-  "text": "pitch",
-  "start": 52.02,
-  "end": 52.22
+  "text": "glitch",
+  "start": 51.66,
+  "end": 51.9
  },
  {
   "text": "it,",
-  "start": 52.26,
-  "end": 52.32
+  "start": 51.98,
+  "end": 52.04
  },
  {
   "text": "make",
-  "start": 52.38,
-  "end": 52.54
+  "start": 52.34,
+  "end": 52.5
  },
  {
   "text": "it",
-  "start": 52.58,
-  "end": 52.66
+  "start": 52.56,
+  "end": 52.64
  },
  {
   "text": "louder.",
-  "start": 52.74,
-  "end": 53.32
+  "start": 52.7,
+  "end": 53.06
  },
  {
   "text": "Frame",
-  "start": 53.38,
+  "start": 53.36,
   "end": 53.66
  },
  {
   "text": "by",
   "start": 53.72,
-  "end": 53.96
+  "end": 53.92
  },
  {
-  "text": "frame.",
-  "start": 54.06,
-  "end": 54.38
+  "text": "frame,",
+  "start": 54.02,
+  "end": 54.36
  },
  {
-  "text": "Hey.",
-  "start": 54.42,
-  "end": 54.64
- },
- {
-  "text": "Faster",
-  "start": 54.72,
-  "end": 55.14
+  "text": "faster",
+  "start": 54.68,
+  "end": 55.02
  },
  {
   "text": "and",
-  "start": 55.2,
-  "end": 55.34
+  "start": 55.06,
+  "end": 55.18
  },
  {
   "text": "faster.",
-  "start": 55.4,
-  "end": 55.92
+  "start": 55.24,
+  "end": 55.9
  },
  {
   "text": "Framefields,",
-  "start": 56.4,
-  "end": 57.14
+  "start": 55.98,
+  "end": 56.88
  },
  {
   "text": "motion",
-  "start": 57.38,
-  "end": 57.8
+  "start": 57.36,
+  "end": 57.78
  },
  {
   "text": "compiled.",
-  "start": 57.86,
-  "end": 58.68
+  "start": 57.84,
+  "end": 58.52
  }
 ]

@@ -108,40 +108,28 @@ function writeBoth(name, content, width) {
 }
 
 // ── Logo (mark only, transparent) ───────────────────────────────────────────
-writeBoth(
-	"logo",
-	svg(512, 512, mark({ x: 0, y: 0, size: 512 })),
-	512,
-);
+writeBoth("logo", svg(512, 512, mark({ x: 0, y: 0, size: 512 })), 512);
 
 // ── Logo with wordmark (for light/dark docs) ───────────────────────────────
-for (const [name, fg, gitFill, markPaint] of [
-	["logo-wordmark-dark", WHITE, "#FFFFFF99", WHITE],
-	["logo-wordmark-light", NAVY, AZURE, undefined],
+for (const [name, fg, markPaint] of [
+	["logo-wordmark-dark", WHITE, WHITE],
+	["logo-wordmark-light", NAVY, undefined],
 ]) {
-	const git = textPath(INTER, "git", {
+	const word = textPath(INTER, "framefields", {
 		size: 112,
-		weight: 500,
+		weight: 700,
 		tracking: -0.03,
 		x: 156,
 		y: 112,
 	});
-	const frames = textPath(INTER, "frames", {
-		size: 112,
-		weight: 700,
-		tracking: -0.03,
-		x: 156 + git.width,
-		y: 112,
-	});
-	const width = Math.ceil(156 + git.width + frames.width + 8);
+	const width = Math.ceil(156 + word.width + 8);
 	writeBoth(
 		name,
 		svg(
 			width,
 			150,
 			`${mark({ x: 0, y: 4, size: 140, paint: markPaint })}
-	<path d="${git.d}" fill="${gitFill}"/>
-	<path d="${frames.d}" fill="${fg}"/>`,
+	<path d="${word.d}" fill="${fg}"/>`,
 		),
 		width,
 	);
@@ -153,18 +141,11 @@ for (const [name, fg, gitFill, markPaint] of [
 	const H = 400;
 
 	// Left: lockup.
-	const git = textPath(INTER, "git", {
-		size: 76,
-		weight: 500,
-		tracking: -0.03,
-		x: 196,
-		y: 226,
-	});
-	const frames = textPath(INTER, "frames", {
+	const word = textPath(INTER, "framefields", {
 		size: 76,
 		weight: 700,
 		tracking: -0.03,
-		x: 196 + git.width,
+		x: 196,
 		y: 226,
 	});
 	// Right: a strip of frames — a subject easing along a curve, locked by the reticle at the end.
@@ -235,8 +216,7 @@ for (const [name, fg, gitFill, markPaint] of [
 	<rect width="${W}" height="${H}" rx="24" fill="url(#banner-glow)"/>
 	<rect x="0.5" y="0.5" width="${W - 1}" height="${H - 1}" rx="23.5" fill="none" stroke="${WHITE}" stroke-opacity="0.14"/>
 	${mark({ x: 82, y: 148, size: 104, paint: WHITE })}
-	<path d="${git.d}" fill="${WHITE}" fill-opacity="0.6"/>
-	<path d="${frames.d}" fill="${WHITE}"/>
+	<path d="${word.d}" fill="${WHITE}"/>
 	${timeline}
 	<path d="${pathD}" fill="none" stroke="${SKY}" stroke-width="2" stroke-dasharray="2 7" stroke-linecap="round"/>
 	${strip}

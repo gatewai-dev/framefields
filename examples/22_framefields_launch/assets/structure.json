@@ -1,13 +1,13 @@
 {
  "grid": {
-  "measuredBpm": 180.076320299858,
-  "phaseMs": -32,
+  "measuredBpm": 179.9659654759979,
+  "phaseMs": -20,
   "bars": 45
  },
  "chapters": {
   "intro": 0,
   "logo": 4,
-  "not": 4.75,
+  "not": 4.5,
   "speed": 7,
   "tools": 10,
   "type": 16,
@@ -17,7 +17,7 @@
   "comp": 33,
   "vfx": 36,
   "outro": 42,
-  "final": 44,
+  "final": 43,
   "end": 45
  }
 }

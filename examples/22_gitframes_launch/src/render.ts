@@ -1,6 +1,6 @@
 /**
  * pnpm render                    → output/gitframes-launch.mp4 (with the score) + QA report; exits 1 if QA fails
- * pnpm render preview            → live player on localhost; stops when its tab closes, re-running replaces it
+ * pnpm render preview            → live player on localhost; add --open for the system browser
  * pnpm render frames 0 80 320    → output/frames/f0000.png … for visual checks
  * pnpm render sheet 0 320 20     → every 20th frame from 0 to 320, plus a contact sheet
  * pnpm render:src …               → any of the above, run on the engine's source (no package builds)
@@ -17,7 +17,7 @@ if (mode === "preview") {
 	// The page runs film.ts itself and renders with WebGPU in the browser.
 	const session = await startPreview(
 		{ entry: new URL("./film.ts", import.meta.url), export: "buildFilm" },
-		{ title: "gitframes launch" },
+		{ title: "gitframes launch", open: args.includes("--open") },
 	);
 	console.log(`Preview at ${session.url}`);
 	// Serves until its tab closes, or the next `pnpm render preview` takes over.

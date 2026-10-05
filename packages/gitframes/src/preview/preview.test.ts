@@ -1,6 +1,10 @@
+import fs from "node:fs";
 import http from "node:http";
+import os from "node:os";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
+import { prebuiltEngineDir } from "./bundle.js";
 import { type PreviewSession, startPreview } from "./index.js";
 
 const entry = new URL("./fixtures/comp.ts", import.meta.url);
@@ -40,6 +44,23 @@ describe("startPreview", () => {
 		const code = await player.text();
 		expect(code).toContain("startPlayer");
 		expect(code).not.toContain("Could not build the preview");
+	}, 60_000);
+
+	it("serves the browser engine the project bundle imports", async () => {
+		const session = await start({ entry }, { open: false, port: 0 });
+
+		const player = await fetch(`${session.url}@gitframes/engine/player.mjs`);
+		expect(player.status).toBe(200);
+		expect(player.headers.get("content-type")).toContain("javascript");
+		expect(await player.text()).toContain("startPlayer");
+
+		const shim = await fetch(`${session.url}@gitframes/engine/shims/path.mjs`);
+		expect(shim.status).toBe(200);
+		expect(await shim.text()).toContain("export");
+
+		expect(
+			(await fetch(`${session.url}@gitframes/engine/missing.mjs`)).status,
+		).toBe(404);
 	}, 60_000);
 
 	it("serves project files by absolute path, with byte ranges", async () => {
@@ -107,5 +128,27 @@ describe("startPreview", () => {
 		await first.closed;
 		expect(second.url).toBe(first.url);
 		expect((await fetch(`${second.url}meta`)).status).toBe(200);
+	});
+});
+
+describe("prebuiltEngineDir", () => {
+	it("finds the engine at the dist root or beside dist/preview", async () => {
+		const root = await fs.promises.mkdtemp(
+			path.join(os.tmpdir(), "gf-engine-"),
+		);
+		try {
+			const engine = path.join(root, "preview-engine");
+			expect(prebuiltEngineDir(root)).toBeUndefined();
+
+			await fs.promises.mkdir(engine, { recursive: true });
+			await fs.promises.writeFile(path.join(engine, "player.mjs"), "export {}");
+			expect(prebuiltEngineDir(root)).toBe(engine);
+
+			const nested = path.join(root, "preview");
+			await fs.promises.mkdir(nested, { recursive: true });
+			expect(prebuiltEngineDir(nested)).toBe(engine);
+		} finally {
+			await fs.promises.rm(root, { recursive: true, force: true });
+		}
 	});
 });

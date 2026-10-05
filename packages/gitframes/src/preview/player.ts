@@ -2,9 +2,11 @@
 /// <reference types="webgpu" />
 /**
  * The browser side of the preview: runs the project's composition code and
- * renders its frames with WebGPU straight onto the page's canvas. Bundled
- * together with the composition module by bundle.ts.
+ * renders its frames with WebGPU straight onto the page's canvas. Part of the
+ * browser engine (bundle.ts); the project's bundle calls `startPlayer`.
  */
+
+import { BUILTIN_NODE_RENDERERS } from "gitframes-preview:renderers";
 import { GetFontAssetUrl } from "@gitframes/client-utils";
 import {
 	compositionStateStore,
@@ -90,28 +92,41 @@ declare global {
 	}
 }
 
-export interface PlayerOptions {
-	renderers: readonly BuiltinRenderer[];
-	/** Loads onnxruntime-web for vision nodes. */
-	loadOrt?: () => Promise<unknown>;
+export interface PlayerSettings {
+	/** Where cached vision models are (served by the preview server). */
+	modelsDir: string;
+	/** URL of an onnxruntime-web `dist/` folder, for vision nodes. */
+	ortBase: string;
 }
 
 export function startPlayer(
 	mod: Record<string, unknown>,
 	exportName: string,
-	options: PlayerOptions,
+	settings: PlayerSettings,
 ): void {
-	const { loadOrt } = options;
-	// Vision nodes create their runners themselves; here they run on WebGPU.
-	if (loadOrt) {
-		setDefaultSessionProvider(
-			() =>
-				new WebGPUProvider({
-					loader: () => loadOrt() as Promise<OrtWebModule>,
-				}),
-		);
-	}
-	window.gitframesPlayer = createPlayer(mod, exportName, options.renderers);
+	process.env.GITFRAMES_MODELS_DIR = settings.modelsDir;
+	// Vision nodes create their runners themselves; here they run on WebGPU,
+	// with onnxruntime-web loaded on first use.
+	setDefaultSessionProvider(
+		() =>
+			new WebGPUProvider({
+				loader: async () => {
+					const ort = await import(
+						/* @vite-ignore */ `${settings.ortBase}ort.webgpu.bundle.min.mjs`
+					);
+					ort.env.wasm.wasmPaths = settings.ortBase;
+					ort.env.logLevel = "error";
+					// Threads need the wasm on this origin; a CDN build runs on one.
+					if (!settings.ortBase.startsWith("/")) ort.env.wasm.numThreads = 1;
+					return ort as OrtWebModule;
+				},
+			}),
+	);
+	window.gitframesPlayer = createPlayer(
+		mod,
+		exportName,
+		BUILTIN_NODE_RENDERERS,
+	);
 	// The page listens for this; a failure is shown there.
 	window.dispatchEvent(new Event("gitframes:player"));
 }

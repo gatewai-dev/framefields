@@ -1,4 +1,5 @@
 import { defineConfig } from "tsdown";
+import { buildEngine } from "./src/preview/bundle.ts";
 
 export default defineConfig({
 	entry: [
@@ -12,6 +13,8 @@ export default defineConfig({
 	],
 	format: ["esm"],
 	clean: true,
+	// The live preview's browser engine, shipped prebuilt in dist/preview-engine.
+	onSuccess: () => buildEngine("dist/preview-engine"),
 	dts: { resolve: [/^@gitframes\//] },
 	target: "es2022",
 	noExternal: [/^@gitframes\//],

@@ -87,7 +87,7 @@ Keep the composition separate from the script that renders it, so tests and the 
 src/
   theme.ts    # canvas size, fps, colors, fonts: the only place for magic numbers
   film.ts     # buildFilm(): assembles the Composition
-  render.ts   # renders frames for review, or the full video
+  render.ts   # renders frames for review, a live preview, or the full video
 assets/
   fonts/      # .ttf / .otf files the film uses
 output/       # renders (add to .gitignore)
@@ -158,11 +158,19 @@ export async function buildFilm(): Promise<Composition> {
 // src/render.ts
 import fs from "node:fs/promises";
 import path from "node:path";
-import { HeadlessMediaRenderer } from "gitframes";
+import { HeadlessMediaRenderer, startPreview } from "gitframes";
 import { buildFilm } from "./film.js";
 
 const OUT = path.resolve(import.meta.dirname, "../output");
 const [mode = "video", ...args] = process.argv.slice(2);
+
+if (mode === "preview") {
+  // The page runs film.ts itself and renders it with WebGPU in the browser.
+  const session = await startPreview({ entry: new URL("./film.ts", import.meta.url), export: "buildFilm" });
+  console.log(`Preview at ${session.url}`);
+  await session.closed; // until its tab closes or the next preview replaces it
+  process.exit(0);
+}
 
 const film = await buildFilm();
 await fs.mkdir(OUT, { recursive: true });
@@ -201,6 +209,7 @@ Add scripts to `package.json`:
   "typecheck": "tsc --noEmit -p .",
   "frames": "tsx src/render.ts frames",
   "grid": "tsx src/render.ts grid",
+  "preview": "tsx src/render.ts preview",
   "render": "tsx src/render.ts"
 }
 ```
@@ -212,9 +221,19 @@ Never go straight to a full video render. Each step catches problems in seconds 
 1. `npm run typecheck`
 2. `npm run frames -- 0 30 60` and look at the PNGs in `output/`. A black frame usually means a missing font, a layer outside the canvas, or opacity stuck at 0.
 3. `npm run grid` and check the motion reads smoothly across the contact sheet.
-4. `npm run render` once frames and motion look right.
+4. `npm run preview` when a person is watching: they play the film with sound before you export (see below).
+5. `npm run render` once frames and motion look right.
 
 Show the user the frame PNGs or the grid before the full render. `gitframes-render` covers pixel-probe tests, render QA (`renderVideo({ qa })`), and diagnosing blank frames.
+
+### Live preview
+
+`npm run preview` serves a localhost player (picture, sound, timeline) and prints its URL. The page runs `film.ts` itself and renders with WebGPU, so the user sees the real film at full frame rate.
+
+- Run it as a background command; it serves until its tab closes.
+- It doesn't open anything. If your app has a built-in browser (Claude Code, Codex), open the URL there; otherwise give the user the link. `startPreview(..., { open: true })` opens their default browser.
+- After changing the film, run it again. It takes over the same URL, and the open tab reloads by itself.
+- Take feedback in chat. `gitframes-render` has the details.
 
 ## 5. Grow the film
 

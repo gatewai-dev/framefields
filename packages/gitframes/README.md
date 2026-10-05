@@ -69,7 +69,7 @@ comp.add(
 - **Unified 3D Scene Graph**: Position 2D surfaces in 3D coordinate space with 3D cameras, lights, and OBJ/FBX/glTF models.
 - **Audio DSP & SFX**: Procedural sound effects (impact, whoosh, riser), audio stem analysis, and audio-reactive signals.
 - **Headless GPU Video Rendering**: Direct hardware encoding via `@mediabunny/server` / WebCodecs without headless browser overhead.
-- **Live Preview**: `startPreview({ entry, export })` opens a localhost player (soundtrack, waveform timeline, frame stepping). The page runs the composition's own code and renders it with WebGPU in the browser, at or near full frame rate. Re-running it replaces the running preview, and an open tab reloads into the new version.
+- **Live Preview**: `startPreview({ entry, export })` opens a localhost player (soundtrack, waveform timeline, frame stepping). The page runs the composition's own code and renders it with WebGPU in the browser, at or near full frame rate. It serves the page and returns the URL, so an agent can show it in its own browser pane (`open: true` opens the system browser instead). Re-running it replaces the running preview, and an open tab reloads into the new version.
 
 ---
 

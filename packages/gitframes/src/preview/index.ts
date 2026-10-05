@@ -8,7 +8,13 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import type { VirtualMediaData } from "@gitframes/core";
 import { encodeStereoWav } from "../audio/index.js";
 import { HeadlessMediaRenderer } from "../renderer/index.js";
-import { bundlePlayer, visionAssets } from "./bundle.js";
+import {
+	bundleProject,
+	ENGINE_URL,
+	engineDir,
+	onnxRuntimeWeb,
+	visionModelsDir,
+} from "./bundle.js";
 import { previewPage } from "./page.js";
 
 /** Where the composition comes from: the module that builds it. */
@@ -43,8 +49,9 @@ export interface PreviewOptions {
 	/** Interface to bind. Defaults to "127.0.0.1" so the preview never leaves the machine. */
 	host?: string;
 	/**
-	 * Open the page in the default browser. Defaults to true unless `CI` is set.
-	 * Skipped when a tab from an earlier preview reconnects on its own.
+	 * Also open the page in the system's default browser. Off by default: the
+	 * caller shows the URL where it suits, e.g. an agent app's own browser
+	 * pane. Skipped when a tab from an earlier preview reconnects on its own.
 	 */
 	open?: boolean;
 	/** Title shown in the page header. */
@@ -114,9 +121,11 @@ export async function startPreview(
 			: path.resolve(String(source.entry));
 	const exportName = source.export ?? "default";
 	const root = path.resolve(options.root ?? repoRoot(path.dirname(entry)));
-	// Vision nodes load their cached models and onnxruntime-web's .wasm files.
-	const vision = visionAssets();
-	const roots = [root, vision.modelsDir, vision.ortDir].filter(Boolean);
+	// Vision nodes load their cached models, and onnxruntime-web's files when
+	// the project has it installed.
+	const modelsDir = visionModelsDir();
+	const ort = onnxRuntimeWeb(path.dirname(entry));
+	const roots = [root, modelsDir, ort.dir].filter((r): r is string => !!r);
 	const sseClients = new Set<http.ServerResponse>();
 	const idleCloseMs = options.idleCloseMs ?? 5000;
 	let idleTimer: NodeJS.Timeout | undefined;
@@ -125,14 +134,27 @@ export async function startPreview(
 
 	const target = await loadTarget(entry, exportName);
 	const meta = await resolveMeta(target, title, session);
+	// The project's own code, bundled against the browser engine; the engine
+	// itself is prebuilt (or built once, running from source).
 	let bundle: Promise<string> | undefined;
 	const playerBundle = () => {
-		bundle ??= bundlePlayer({ entry, exportName }).then((b) => b.code);
-		bundle.catch(() => {
-			bundle = undefined;
-		});
+		if (!bundle) {
+			const built = bundleProject({
+				entry,
+				exportName,
+				modelsDir,
+				ortBase: ort.base,
+			}).then((b) => b.code);
+			bundle = built;
+			built.catch(() => {
+				// Let a later request try again, unless it started its own build.
+				if (bundle === built) bundle = undefined;
+			});
+		}
 		return bundle;
 	};
+	const engine = engineDir();
+	engine.catch(() => {});
 
 	// ── Audio: mixed once, by the export engine ──
 	let audio: AudioStatus = {
@@ -227,9 +249,23 @@ export async function startPreview(
 				sendJson(res, 200, { ...meta, audio });
 				return;
 			}
+			if (req.method === "GET" && url.pathname.startsWith(`${ENGINE_URL}/`)) {
+				const dir = await engine;
+				const file = path.resolve(
+					dir,
+					`.${url.pathname.slice(ENGINE_URL.length)}`,
+				);
+				if (isInside(dir, file) && (await isFile(file))) {
+					await sendFile(req, res, file);
+					return;
+				}
+				sendJson(res, 404, { error: "not found" });
+				return;
+			}
 			if (req.method === "GET" && url.pathname === PLAYER_PATH) {
 				let code: string;
 				try {
+					await engine;
 					code = await playerBundle();
 				} catch (err) {
 					// Shown on the page: usually an error in the composition's code.
@@ -367,7 +403,7 @@ export async function startPreview(
 	// Build the page's bundle and mix the soundtrack while the browser opens.
 	void playerBundle().catch(() => {});
 	startAudio();
-	if (options.open ?? !process.env.CI) {
+	if (options.open === true) {
 		// A tab from the last preview reconnects within ~1 s and reloads itself;
 		// only open a new one when nobody comes back.
 		const reconnected = await new Promise<boolean>((resolve) => {

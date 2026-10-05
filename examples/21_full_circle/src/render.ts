@@ -1,6 +1,6 @@
 /**
  * pnpm render                  → output/full-circle.mp4 (with score)
- * pnpm render preview          → live player on localhost; stops when its tab closes
+ * pnpm render preview          → live player on localhost; add --open for the system browser
  * pnpm render frames 0 140 637 → output/frames/f0000.png … for visual checks
  * pnpm render sheet 0 1080 24  → output/frames/ every 24th frame from 0 to 1080
  */
@@ -16,7 +16,7 @@ if (mode === "preview") {
 	// The page runs film.ts itself and renders with WebGPU in the browser.
 	const session = await startPreview(
 		{ entry: new URL("./film.ts", import.meta.url), export: "buildFilm" },
-		{ title: "Full circle" },
+		{ title: "Full circle", open: args.includes("--open") },
 	);
 	console.log(`Preview at ${session.url}`);
 	// Serves until its tab closes, or the next `pnpm render preview` takes over.

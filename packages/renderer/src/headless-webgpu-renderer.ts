@@ -461,6 +461,11 @@ export class HeadlessWebGPURenderer {
 		virtualMedia: VirtualMediaData,
 		frame = 0,
 		fps = 24,
+		options: {
+			renderId?: string;
+			/** "rgba" skips PNG encoding and returns width*height*4 raw pixels. */
+			format?: "png" | "rgba";
+		} = {},
 	): Promise<Buffer> {
 		await HeadlessWebGPURenderer.initialize();
 
@@ -469,7 +474,10 @@ export class HeadlessWebGPURenderer {
 		if (!width || !height)
 			throw new Error(`Invalid dimensions: ${width}x${height}`);
 
-		const renderId = `img-${randomUUID()}`;
+		// A caller rendering consecutive frames (e.g. a scrubbing preview) passes a
+		// stable id so compiled timelines are reused across frames, as renderVideo
+		// does. Never render two frames with the same id concurrently.
+		const renderId = options.renderId ?? `img-${randomUUID()}`;
 
 		rendererLogger.debug(
 			{ renderId, frame, ...renderSemaphore.stats },
@@ -580,6 +588,8 @@ export class HeadlessWebGPURenderer {
 				pixels.byteLength,
 			);
 
+			if (options.format === "rgba") return Buffer.from(pixelsArr);
+
 			const pngBuffer = await sharp(Buffer.from(pixelsArr), {
 				raw: { width, height, channels: 4 },
 			})
@@ -620,7 +630,15 @@ export class HeadlessWebGPURenderer {
 	 */
 	public async renderFrame(
 		source: VirtualMediaData | { toVirtualMedia(): VirtualMediaData },
-		options: { atMs?: number; frame?: number; fps?: number } = {},
+		options: {
+			atMs?: number;
+			frame?: number;
+			fps?: number;
+			/** Reuse compiled state across calls; see `renderImage`. */
+			renderId?: string;
+			/** "rgba" returns raw width*height*4 pixels instead of a PNG. */
+			format?: "png" | "rgba";
+		} = {},
 	): Promise<Buffer> {
 		const vm =
 			typeof source === "object" &&
@@ -633,7 +651,35 @@ export class HeadlessWebGPURenderer {
 			options.atMs !== undefined
 				? Math.round((options.atMs / 1000) * fps)
 				: (options.frame ?? 0);
-		return this.renderImage(vm, frame, fps);
+		return this.renderImage(vm, frame, fps, {
+			renderId: options.renderId,
+			format: options.format,
+		});
+	}
+
+	/**
+	 * Mixes the composition's full audio timeline (clips, effects, synthesized
+	 * tracks) to stereo PCM, exactly as `renderVideo` muxes it.
+	 */
+	public async renderAudio(
+		virtualMedia: VirtualMediaData,
+		options: { fps?: number; sampleRate?: number } = {},
+	): Promise<{ channels: Float32Array[]; sampleRate: number }> {
+		await HeadlessWebGPURenderer.initialize();
+		const fps = options.fps ?? (virtualMedia.metadata?.fps || 30);
+		await renderSemaphore.acquire();
+		try {
+			const device = await ensureDevice();
+			return await mixAudioTracks(
+				virtualMedia,
+				fps,
+				options.sampleRate ?? 48_000,
+				device,
+				`aud-${randomUUID()}`,
+			);
+		} finally {
+			renderSemaphore.release();
+		}
 	}
 
 	public async renderLut(

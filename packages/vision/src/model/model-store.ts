@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
-import { rename, unlink, writeFile } from "node:fs/promises";
+import { existsSync, mkdirSync, statSync } from "node:fs";
+import { readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import {
@@ -271,8 +271,11 @@ export class VisionModelStore {
 		}
 	}
 
-	private readBuffer(key: VisionModelKey, targetPath: string): Uint8Array {
-		const fileBuffer = readFileSync(targetPath);
+	private async readBuffer(
+		key: VisionModelKey,
+		targetPath: string,
+	): Promise<Uint8Array> {
+		const fileBuffer = await readFile(targetPath);
 		const buffer = new Uint8Array(
 			fileBuffer.buffer,
 			fileBuffer.byteOffset,

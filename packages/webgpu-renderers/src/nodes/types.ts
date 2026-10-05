@@ -1,17 +1,5 @@
 import type { SignalData, TextSpan } from "@gitframes/core";
-import type { ChartGPUOptions } from "chartgpu";
 import type { Rect } from "../renderer2d/index.js";
-
-export interface ChartNodeProps {
-	nodeId?: string;
-	chartOptions: ChartGPUOptions;
-	dstRect: Rect;
-	progress?: number;
-	drawProgress?: number;
-	opacity?: number;
-	matrix?: DOMMatrix;
-	isHeadless?: boolean;
-}
 
 export interface VideoNodeProps {
 	nodeId?: string;

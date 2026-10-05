@@ -111,6 +111,28 @@ describe("Hero Scene Conformance", () => {
 
 ---
 
+### Step 4.5: Show the User Before Exporting (`preview`)
+When a person is in the loop, let them watch the composition before you spend time on the final render. `startPreview` serves a localhost player with the soundtrack, a timeline with the waveform, and frame stepping. The page loads the composition's own code and renders it with WebGPU in the browser, so playback runs at or near full frame rate; the server only serves that code, the project's files, and the soundtrack mixed by the export engine. Point it at the module that builds the composition:
+
+```typescript
+import { startPreview } from "gitframes";
+
+const session = await startPreview(
+  { entry: new URL("./film.ts", import.meta.url), export: "buildFilm" },
+  { title: "Launch film" },
+);
+console.log(`Preview at ${session.url}`);
+await session.closed; // keep the process alive while the user watches
+```
+
+- **The export is a function returning the `Composition`** (it may be async), or a `Composition` itself. The browser calls it, so build-time Node code in it must stay simple: `node:path`, `fileURLToPath(import.meta.url)` and synchronous `fs` reads (JSON, text) work through shims; writes are skipped. Assets referenced by absolute path load from the server, limited to the repository that holds the entry (`root` overrides it).
+- **Run it in the background.** The preview serves until it is stopped. Start the script as a background command with the longest timeout your harness allows, tell the user the URL, and ask for feedback in the chat. Feedback comes from the user, not from the page.
+- **One tab for the whole loop.** The port is fixed per project directory. Running the preview again (after you've made changes) takes over from the one already running, and a tab left open reconnects and reloads into the new version by itself. Don't ask the user to reopen anything. When the user closes the tab, the preview stops by itself about 5 s later (a reload doesn't stop it). If the preview was stopped (tab closed, time limit, or you killed it), just start it again.
+- The browser opens automatically (`open: false`, or `CI`, skips that) unless an open tab reconnects first. It needs WebGPU (current Chrome, Edge or Safari).
+- Audio is the same mix `renderVideo` muxes (`audio: false` skips it). Playback uses the soundtrack as its clock; when a frame takes long (a video seek, a heavy shot), the clock and the sound hold until the picture catches up.
+
+---
+
 ### Step 5: Full Video Export (`renderVideo`)
 Once static frames and motion grids are verified, encode the final MP4/WebM video:
 
@@ -141,11 +163,19 @@ Production projects structure their `src/render.ts` to support both quick frame 
 // src/render.ts
 import fs from "node:fs/promises";
 import path from "node:path";
-import { HeadlessMediaRenderer } from "gitframes";
+import { HeadlessMediaRenderer, startPreview } from "gitframes";
 import { buildFilm } from "./film.js";
 
 const OUT = path.resolve(import.meta.dirname, "../output");
 const [mode = "video", ...args] = process.argv.slice(2);
+
+if (mode === "preview") {
+  // The browser runs film.ts itself; no need to build the film here.
+  const session = await startPreview({ entry: new URL("./film.ts", import.meta.url), export: "buildFilm" });
+  console.log(`Preview at ${session.url}`);
+  await session.closed; // serves until its tab closes or the next preview replaces it
+  process.exit(0);
+}
 
 const comp = await buildFilm();
 await fs.mkdir(OUT, { recursive: true });
@@ -177,6 +207,9 @@ CLI Usage:
 ```bash
 # Render specific keyframes for instant review:
 tsx src/render.ts frames 0 18 36 72
+
+# Live player for the user (run in the background; re-run after changes and the open tab reloads):
+tsx src/render.ts preview
 
 # Render full master video:
 tsx src/render.ts

@@ -2,24 +2,36 @@
 import type { WebGPUNodeRenderer } from "@gitframes/node-sdk";
 import {
 	type InstanceMask,
-	type MaskBounds,
 	maskBounds,
 	matchPoseToTracks,
 	mergeSubjectMask,
 	type PersonMatte,
 	type PoseResult,
 	PoseSkeletonRenderer,
-	SegmentationTexturePool,
 	TemporalObjectTracker,
 	type TrackedObject,
 	type VisionBundle,
 	VisionRunner,
 } from "@gitframes/vision";
 import type { VisionOperation } from "../shared/config.js";
+import {
+	fromCachedMask,
+	toCachedMask,
+	VisionFrameCache,
+} from "./frame-cache.js";
+import { MatteCompositor } from "./matte-compositor.js";
 
 let sharedRunner: { key: string; runner: VisionRunner } | null = null;
 let sharedSkeletonRenderer: PoseSkeletonRenderer | null = null;
-let sharedTexturePool: SegmentationTexturePool | null = null;
+let sharedCompositor: MatteCompositor | null = null;
+let sharedCompositorFormat: GPUTextureFormat | null = null;
+/** Analysed frames, shared by every vision node in the process. */
+const frameCache = new VisionFrameCache();
+/** The frame each node's child texture holds (drawn on its last call). */
+const heldFrameByNode = new Map<string, number>();
+/** Per node: a copy of the held frame, and the composited matte. */
+const heldTextures = new Map<string, GPUTexture>();
+const matteTextures = new Map<string, GPUTexture>();
 /** One tracker per vision node — track ids must not mix across nodes/sources. */
 const objectTrackers = new Map<string, TemporalObjectTracker>();
 
@@ -46,6 +58,119 @@ const lastSubjectByNode = new Map<
 	{ mask: InstanceMask; frame: number }
 >();
 const SUBJECT_HOLD_FRAMES = 3;
+
+/** A per-node texture shaped like `like`, recreated when the size changes. */
+function nodeTexture(
+	textures: Map<string, GPUTexture>,
+	device: GPUDevice,
+	key: string,
+	like: GPUTexture,
+	usage: number,
+	label: string,
+): GPUTexture {
+	let tex = textures.get(key);
+	if (
+		!tex ||
+		tex.width !== like.width ||
+		tex.height !== like.height ||
+		tex.format !== like.format
+	) {
+		tex?.destroy();
+		tex = device.createTexture({
+			size: [like.width, like.height],
+			format: like.format,
+			usage,
+			label,
+		});
+		textures.set(key, tex);
+	}
+	return tex;
+}
+
+const heldTexture = (device: GPUDevice, key: string, like: GPUTexture) =>
+	nodeTexture(
+		heldTextures,
+		device,
+		key,
+		like,
+		GPUTextureUsage.COPY_DST | GPUTextureUsage.TEXTURE_BINDING,
+		"vision_held_frame",
+	);
+
+const matteTexture = (device: GPUDevice, key: string, like: GPUTexture) =>
+	nodeTexture(
+		matteTextures,
+		device,
+		key,
+		like,
+		GPUTextureUsage.RENDER_ATTACHMENT |
+			GPUTextureUsage.TEXTURE_BINDING |
+			GPUTextureUsage.COPY_SRC,
+		"vision_matte",
+	);
+
+/** Everything that decides a frame's results besides the frame itself. */
+function cacheSource(
+	nodeKey: string,
+	child: unknown,
+	op: VisionOperation,
+	width: number,
+	height: number,
+): string {
+	const c = child as { id?: unknown; operation?: { id?: unknown } } | undefined;
+	return JSON.stringify([
+		nodeKey,
+		c?.operation?.id ?? c?.id ?? null,
+		width,
+		height,
+		op.mode ?? "passthrough",
+		op.variant,
+		op.confidence,
+		op.classes,
+		op.maskThreshold,
+		op.featherRadius,
+		op.matteSource,
+		op.keyBackground === true,
+		op.maxMissedFrames,
+	]);
+}
+
+/** The background-key threshold at `frame` (it may be animated). */
+function backgroundKeyThreshold(
+	op: VisionOperation,
+	frame: number,
+	fps: number,
+): number {
+	const raw = (op as Record<string, unknown>).backgroundKeyThreshold;
+	if (typeof raw === "number") return raw;
+	if (typeof (raw as { get?: unknown })?.get === "function") {
+		return Number(
+			(raw as { get: (ctx?: unknown) => unknown }).get({ frame, fps }),
+		);
+	}
+	if (typeof (raw as { _value?: unknown })?._value === "number") {
+		return Number((raw as { _value: number })._value);
+	}
+	return 70;
+}
+
+/**
+ * The model's subject, or the last one through brief misses: a transient miss
+ * then holds the silhouette instead of flashing the raw plate.
+ */
+function selectSubject(
+	selected: InstanceMask | undefined,
+	nodeKey: string,
+	frame: number,
+): InstanceMask | undefined {
+	if (selected) {
+		lastSubjectByNode.set(nodeKey, { mask: selected, frame });
+		return selected;
+	}
+	const last = lastSubjectByNode.get(nodeKey);
+	if (last && frame - last.frame <= SUBJECT_HOLD_FRAMES) return last.mask;
+	return undefined;
+}
 
 /**
  * Lazy shared runner — `create()` is a pure constructor (zero I/O); the first frame that
@@ -137,38 +262,52 @@ function fillInternalHoles(
 	width: number,
 	height: number,
 ): void {
-	const exterior = new Uint8Array(width * height);
-	const queue: number[] = [];
-
-	const tryPushBg = (x: number, y: number) => {
-		if (x < 0 || y < 0 || x >= width || y >= height) return;
-		const idx = y * width + x;
-		if (exterior[idx] || mask[idx] > 0) return;
-		exterior[idx] = 1;
-		queue.push(idx);
+	// Flood the background in from the border; whatever it cannot reach is a hole.
+	const n = width * height;
+	const exterior = new Uint8Array(n);
+	const queue = new Int32Array(n);
+	let tail = 0;
+	const seed = (i: number) => {
+		if (exterior[i] || mask[i] > 0) return;
+		exterior[i] = 1;
+		queue[tail++] = i;
 	};
-
 	for (let x = 0; x < width; x++) {
-		tryPushBg(x, 0);
-		tryPushBg(x, height - 1);
+		seed(x);
+		seed((height - 1) * width + x);
 	}
 	for (let y = 0; y < height; y++) {
-		tryPushBg(0, y);
-		tryPushBg(width - 1, y);
+		seed(y * width);
+		seed(y * width + width - 1);
 	}
 
 	let head = 0;
-	while (head < queue.length) {
-		const idx = queue[head++];
-		const x = idx % width;
-		const y = (idx / width) | 0;
-		tryPushBg(x + 1, y);
-		tryPushBg(x - 1, y);
-		tryPushBg(x, y + 1);
-		tryPushBg(x, y - 1);
+	while (head < tail) {
+		const i = queue[head++];
+		const x = i % width;
+		let j = i + 1;
+		if (x + 1 < width && !exterior[j] && mask[j] === 0) {
+			exterior[j] = 1;
+			queue[tail++] = j;
+		}
+		j = i - 1;
+		if (x > 0 && !exterior[j] && mask[j] === 0) {
+			exterior[j] = 1;
+			queue[tail++] = j;
+		}
+		j = i + width;
+		if (j < n && !exterior[j] && mask[j] === 0) {
+			exterior[j] = 1;
+			queue[tail++] = j;
+		}
+		j = i - width;
+		if (j >= 0 && !exterior[j] && mask[j] === 0) {
+			exterior[j] = 1;
+			queue[tail++] = j;
+		}
 	}
 
-	for (let i = 0; i < mask.length; i++) {
+	for (let i = 0; i < n; i++) {
 		if (mask[i] === 0 && exterior[i] === 0) {
 			mask[i] = 255;
 		}
@@ -202,18 +341,20 @@ function smoothMaskBoundary(
 		}
 	}
 
-	// Vertical box filter
-	for (let x = 0; x < width; x++) {
-		let sum = 0;
-		for (let k = -radius; k <= radius; k++) {
-			const y = Math.max(0, Math.min(height - 1, k));
-			sum += temp[y * width + x];
-		}
-		for (let y = 0; y < height; y++) {
-			out[y * width + x] = Math.round(sum / div);
-			const yOut = Math.max(0, y - radius);
-			const yIn = Math.min(height - 1, y + radius + 1);
-			sum += temp[yIn * width + x] - temp[yOut * width + x];
+	// Vertical box filter, a running sum per column walked row by row
+	// (in memory order).
+	const sums = new Float64Array(width);
+	for (let k = -radius; k <= radius; k++) {
+		const row = Math.max(0, Math.min(height - 1, k)) * width;
+		for (let x = 0; x < width; x++) sums[x] += temp[row + x];
+	}
+	for (let y = 0; y < height; y++) {
+		const row = y * width;
+		const rowOut = Math.max(0, y - radius) * width;
+		const rowIn = Math.min(height - 1, y + radius + 1) * width;
+		for (let x = 0; x < width; x++) {
+			out[row + x] = Math.round(sums[x] / div);
+			sums[x] += temp[rowIn + x] - temp[rowOut + x];
 		}
 	}
 
@@ -232,7 +373,7 @@ function growMaskIntoForeground(
 	let br = 0;
 	let bg = 0;
 	let bb = 0;
-	let n = 0;
+	let count = 0;
 	const sample = (x: number, y: number) => {
 		const i = y * width + x;
 		if (mask[i]) return;
@@ -240,7 +381,7 @@ function growMaskIntoForeground(
 		br += pixels[p];
 		bg += pixels[p + 1];
 		bb += pixels[p + 2];
-		n++;
+		count++;
 	};
 	for (let x = 0; x < width; x += 4) {
 		sample(x, 0);
@@ -250,48 +391,60 @@ function growMaskIntoForeground(
 		sample(0, y);
 		sample(width - 1, y);
 	}
-	if (n === 0) return mask;
-	br /= n;
-	bg /= n;
-	bb /= n;
+	if (count === 0) return mask;
+	br /= count;
+	bg /= count;
+	bb /= count;
 
-	const isForeground = (i: number): boolean => {
-		const p = i * 4;
-		return (
+	// Pixels that stand out from the backdrop, decided once per pixel.
+	const n = width * height;
+	const fg = new Uint8Array(n);
+	for (let i = 0, p = 0; i < n; i++, p += 4) {
+		fg[i] =
 			Math.max(
 				Math.abs(pixels[p] - br),
 				Math.abs(pixels[p + 1] - bg),
 				Math.abs(pixels[p + 2] - bb),
 			) > threshold
-		);
-	};
+				? 1
+				: 0;
+	}
 
-	const queue: number[] = [];
-	for (let i = 0; i < mask.length; i++) {
+	// Each pixel enters the queue at most once: seeds are the masked pixels,
+	// later pushes are pixels just raised to 255.
+	const queue = new Int32Array(n);
+	let tail = 0;
+	for (let i = 0; i < n; i++) {
 		if (mask[i] > 0) {
-			if (isForeground(i)) {
-				mask[i] = 255;
-			}
-			queue.push(i);
+			if (fg[i]) mask[i] = 255;
+			queue[tail++] = i;
 		}
 	}
 
 	let head = 0;
-	while (head < queue.length) {
+	while (head < tail) {
 		const i = queue[head++];
 		const x = i % width;
-		const y = (i / width) | 0;
-		const tryPush = (nx: number, ny: number) => {
-			if (nx < 0 || ny < 0 || nx >= width || ny >= height) return;
-			const ni = ny * width + nx;
-			if (mask[ni] === 255 || !isForeground(ni)) return;
-			mask[ni] = 255;
-			queue.push(ni);
-		};
-		tryPush(x + 1, y);
-		tryPush(x - 1, y);
-		tryPush(x, y + 1);
-		tryPush(x, y - 1);
+		let j = i + 1;
+		if (x + 1 < width && mask[j] !== 255 && fg[j]) {
+			mask[j] = 255;
+			queue[tail++] = j;
+		}
+		j = i - 1;
+		if (x > 0 && mask[j] !== 255 && fg[j]) {
+			mask[j] = 255;
+			queue[tail++] = j;
+		}
+		j = i + width;
+		if (j < n && mask[j] !== 255 && fg[j]) {
+			mask[j] = 255;
+			queue[tail++] = j;
+		}
+		j = i - width;
+		if (j >= 0 && mask[j] !== 255 && fg[j]) {
+			mask[j] = 255;
+			queue[tail++] = j;
+		}
 	}
 
 	fillInternalHoles(mask, width, height);
@@ -395,9 +548,67 @@ export const VisionWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 		}
 	}
 
-	// 2. Read back the PREVIOUS frame's child pixels for inference.
+	const frameIdx = props.frame ?? 0;
+	const fps = props.fps ?? 24;
+	const mode = op.mode ?? "passthrough";
+	const isMatteMode = mode === "mask" || mode === "matte" || mode === "crop";
+	const visionBundle =
+		(op.visionBundle as VisionBundle | undefined) ??
+		((virtualMedia as Record<string, unknown>).visionBundle as
+			| VisionBundle
+			| undefined);
+	const wantsDetection =
+		op.enableDetection !== false || mode === "boxes" || mode === "tracking";
+	const wantsSegmentation =
+		op.enableSegmentation === true ||
+		(isMatteMode && op.matteSource !== "selfie");
+	const wantsSelfie =
+		op.enableMatte === true || (isMatteMode && op.matteSource === "selfie");
+	const wantsPose = op.enablePose === true || mode === "skeleton";
+
+	// 2. Results are cached per source frame (selfie mattes and poses are not,
+	//    so nodes that need them always run inference). A frame analysed before
+	//    is composited with its own pixels; otherwise inference runs on the
+	//    frame the child texture still holds, one frame behind.
+	const cacheable =
+		!wantsSelfie && !wantsPose && (wantsDetection || wantsSegmentation);
+	const source = cacheable
+		? cacheSource(nodeKeyStr, childMedia, op, targetWidth, targetHeight)
+		: "";
+	const keyThresholdAt = (frame: number) =>
+		op.keyBackground === true
+			? backgroundKeyThreshold(op, frame, fps)
+			: undefined;
+	const lookup = (frame: number | undefined) => {
+		if (!cacheable || frame === undefined) return undefined;
+		const hit = frameCache.get(source, frame);
+		if (!hit || hit.keyThreshold !== keyThresholdAt(frame)) return undefined;
+		// Results cached without instance masks can't feed a bundle that wants them.
+		if (wantsSegmentation && visionBundle && !hit.masks) return undefined;
+		return hit;
+	};
+	const heldFrame = hasPreviousFrame
+		? heldFrameByNode.get(nodeKeyStr)
+		: undefined;
+	let cached = lookup(frameIdx);
+	const exact = cached !== undefined;
+	if (!cached) cached = lookup(heldFrame);
+
+	// Keep the held frame's picture on the GPU: the matte of that frame is
+	// composited from it after the child texture is redrawn below.
+	let heldTex: GPUTexture | undefined;
+	if (isMatteMode && hasPreviousFrame && !exact) {
+		heldTex = heldTexture(ctx.device, nodeKeyStr, childTex);
+		encoder.copyTextureToTexture({ texture: childTex }, { texture: heldTex }, [
+			targetWidth,
+			targetHeight,
+			1,
+		]);
+	}
+
+	// 3. Read back the held frame's pixels, only when it still needs inference.
 	let framePixels: Uint8ClampedArray | null = null;
-	if (hasPreviousFrame) {
+	if (hasPreviousFrame && !cached) {
 		const bytesPerPixel = 4;
 		const unalignedBytesPerRow = targetWidth * bytesPerPixel;
 		const bytesPerRow = Math.ceil(unalignedBytesPerRow / 256) * 256;
@@ -439,7 +650,7 @@ export const VisionWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 		stagingBuffer.destroy();
 	}
 
-	// 3. Draw THIS frame's child into the persistent texture (recorded into the
+	// 4. Draw THIS frame's child into the persistent texture (recorded into the
 	//    shared encoder, submitted at end of frame, read back next call).
 	const childView = childTex.createView();
 	const clearPass = ctx.renderer.beginFrame(
@@ -460,112 +671,130 @@ export const VisionWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 		targetWidth,
 		targetHeight,
 	);
+	heldFrameByNode.set(nodeKeyStr, frameIdx);
 
-	// 4. Inference on the previous frame's pixels (models download lazily on first
-	//    use of each task). Results are therefore one frame behind the plate.
-	const frameIdx = props.frame ?? 0;
-	const fps = props.fps ?? 24;
-	const mode = op.mode ?? "passthrough";
-	const isMatteMode = mode === "mask" || mode === "matte" || mode === "crop";
-	const visionBundle =
-		(op.visionBundle as VisionBundle | undefined) ??
-		((virtualMedia as Record<string, unknown>).visionBundle as
-			| VisionBundle
-			| undefined);
-	const runner = getSharedRunner(op);
-	const image = framePixels
-		? { data: framePixels, width: targetWidth, height: targetHeight }
-		: null;
-
-	// detect + segment share one RTMDet-Ins pass per frame inside the runner.
-	// Tracked objects are kept locally (like masks below) so `boxes` / `tracking`
-	// draw even without an attached visionBundle.
+	// 5. Results: from the cache, or inference on the held frame's pixels
+	//    (models download lazily on first use of each task).
 	let frameObjects: readonly TrackedObject[] = [];
-	if (
-		image &&
-		(op.enableDetection !== false || mode === "boxes" || mode === "tracking")
-	) {
-		const detections = await runner.detect(image);
-		const tracker = getObjectTracker(nodeKeyStr, op);
-		if (frameIdx === 0) {
-			tracker.reset();
-		}
-		frameObjects = tracker.update(detections, frameIdx, fps);
-		visionBundle?.setObjectResult(frameIdx, {
-			objects: frameObjects,
-			rawDetections: detections,
-		});
-	}
-
-	// Decoded masks are kept locally so mask-family modes render even without an
-	// attached visionBundle (the round-trip through the bundle is for signal DX).
 	let frameMasks: readonly InstanceMask[] = [];
-	if (
-		image &&
-		(op.enableSegmentation === true ||
-			(isMatteMode && op.matteSource !== "selfie"))
-	) {
-		const segRes = await runner.segment(image);
-		frameMasks = assignMasksToTracks(segRes.masks, frameObjects);
-		visionBundle?.setMaskResult(frameIdx, frameMasks);
-	}
-
 	let personMatte: PersonMatte | undefined;
-	if (
-		image &&
-		(op.enableMatte === true || (isMatteMode && op.matteSource === "selfie"))
-	) {
-		personMatte = await runner.matte(image);
-		visionBundle?.setMatteResult(frameIdx, personMatte);
-	}
-
 	let currentPoseRes: PoseResult | undefined;
-	if (image && (op.enablePose === true || mode === "skeleton")) {
-		const poseRes = await runner.pose(image);
-		const normalized = normalizePoseKeypoints(
-			poseRes,
-			image.width,
-			image.height,
-		);
-		currentPoseRes = {
-			people: matchPoseToTracks(normalized.people, frameObjects),
+	let subject: InstanceMask | undefined;
+
+	if (cached) {
+		frameObjects = cached.objects;
+		if (wantsDetection) {
+			visionBundle?.setObjectResult(frameIdx, {
+				objects: cached.objects,
+				rawDetections: cached.detections,
+			});
+		}
+		if (wantsSegmentation && visionBundle && cached.masks) {
+			frameMasks = cached.masks.map(fromCachedMask);
+			visionBundle.setMaskResult(frameIdx, frameMasks);
+		}
+		if (cached.subject) {
+			subject = fromCachedMask(cached.subject.mask);
+			lastSubjectByNode.set(nodeKeyStr, { mask: subject, frame: frameIdx });
+		}
+	} else if (framePixels) {
+		const runner = getSharedRunner(op);
+		const image = {
+			data: framePixels,
+			width: targetWidth,
+			height: targetHeight,
 		};
-		visionBundle?.setPoseResult(frameIdx, currentPoseRes);
+
+		// detect + segment share one RTMDet-Ins pass per frame inside the runner.
+		// Tracked objects are kept locally (like masks below) so `boxes` /
+		// `tracking` draw even without an attached visionBundle.
+		let detections: Awaited<ReturnType<VisionRunner["detect"]>> = [];
+		if (wantsDetection) {
+			detections = await runner.detect(image);
+			const tracker = getObjectTracker(nodeKeyStr, op);
+			if (frameIdx === 0) {
+				tracker.reset();
+			}
+			frameObjects = tracker.update(detections, frameIdx, fps);
+			visionBundle?.setObjectResult(frameIdx, {
+				objects: frameObjects,
+				rawDetections: detections,
+			});
+		}
+
+		// Decoded masks are kept locally so mask-family modes render even without
+		// an attached visionBundle (the round-trip through the bundle is for signal DX).
+		if (wantsSegmentation) {
+			const segRes = await runner.segment(image);
+			frameMasks = assignMasksToTracks(segRes.masks, frameObjects);
+			visionBundle?.setMaskResult(frameIdx, frameMasks);
+		}
+
+		if (wantsSelfie) {
+			personMatte = await runner.matte(image);
+			visionBundle?.setMatteResult(frameIdx, personMatte);
+		}
+
+		if (wantsPose) {
+			const poseRes = await runner.pose(image);
+			const normalized = normalizePoseKeypoints(
+				poseRes,
+				image.width,
+				image.height,
+			);
+			currentPoseRes = {
+				people: matchPoseToTracks(normalized.people, frameObjects),
+			};
+			visionBundle?.setPoseResult(frameIdx, currentPoseRes);
+		}
+
+		if (isMatteMode) {
+			subject = selectSubject(
+				op.matteSource === "selfie"
+					? personMatteAsMask(personMatte)
+					: mergeSubjectMask(
+							frameMasks.length > 0
+								? frameMasks
+								: (visionBundle?.getMaskResult(frameIdx) ?? []),
+						),
+				nodeKeyStr,
+				frameIdx,
+			);
+			// Opt-in: grow the subject into connected pixels that stand out from
+			// the backdrop (catches edges the model's soft mask leaves behind).
+			const threshold = keyThresholdAt(heldFrame ?? frameIdx);
+			if (subject && threshold !== undefined) {
+				subject = {
+					...subject,
+					mask: growMaskIntoForeground(
+						subject.mask,
+						subject.width,
+						subject.height,
+						framePixels,
+						threshold,
+						op.featherRadius,
+					),
+				};
+			}
+		}
+
+		if (cacheable && heldFrame !== undefined) {
+			frameCache.set(source, heldFrame, {
+				detections,
+				objects: frameObjects,
+				masks: visionBundle ? frameMasks.map(toCachedMask) : null,
+				subject: subject ? { mask: toCachedMask(subject) } : null,
+				keyThreshold: keyThresholdAt(heldFrame),
+			});
+		}
 	}
 
-	// 5. Output to destination texture based on mode
+	// 6. Output to destination texture based on mode
 
-	// Mask-family modes composite from CPU pixels we already hold (frame + masks)
+	// Mask-family modes: the picture the results belong to, cut out on the GPU.
 	if (isMatteMode) {
-		if (!sharedTexturePool) {
-			sharedTexturePool = new SegmentationTexturePool(ctx.device);
-		}
-		const selected =
-			op.matteSource === "selfie"
-				? personMatteAsMask(personMatte)
-				: mergeSubjectMask(
-						frameMasks.length > 0
-							? frameMasks
-							: (visionBundle?.getMaskResult(frameIdx) ?? []),
-					);
-		let subject: InstanceMask | undefined;
-		const lastSubjectEntry = lastSubjectByNode.get(nodeKeyStr);
-		const lastSubjectMask = lastSubjectEntry?.mask ?? null;
-		const lastSubjectFrame =
-			lastSubjectEntry?.frame ?? Number.NEGATIVE_INFINITY;
-
-		if (selected) {
-			subject = selected;
-			lastSubjectByNode.set(nodeKeyStr, { mask: selected, frame: frameIdx });
-		} else if (
-			lastSubjectMask &&
-			frameIdx - lastSubjectFrame <= SUBJECT_HOLD_FRAMES
-		) {
-			// Hold the last silhouette through brief model misses; otherwise stay
-			// transparent rather than flashing the raw plate over the smoke.
-			subject = lastSubjectMask;
-		}
-		if (!subject || !framePixels) {
+		const picture = exact ? childTex : heldTex;
+		if (!subject || !picture) {
 			const outPass = ctx.renderer.beginFrame(
 				encoder,
 				targetView,
@@ -578,49 +807,26 @@ export const VisionWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 			return;
 		}
 
-		// Opt-in: grow the subject into connected pixels that stand out from the
-		// backdrop (catches edges the model's soft mask leaves behind).
-		if (op.keyBackground === true) {
-			const rawThreshold = (op as Record<string, unknown>)
-				.backgroundKeyThreshold;
-			const threshold =
-				typeof rawThreshold === "number"
-					? rawThreshold
-					: typeof (rawThreshold as { get?: unknown })?.get === "function"
-						? Number(
-								(rawThreshold as { get: (ctx?: unknown) => unknown }).get({
-									frame: frameIdx,
-									fps: props.fps ?? 30,
-								}),
-							)
-						: typeof (rawThreshold as { _value?: unknown })?._value === "number"
-							? Number((rawThreshold as { _value: number })._value)
-							: 70;
-			const grownMask = growMaskIntoForeground(
-				subject.mask,
-				subject.width,
-				subject.height,
-				framePixels,
-				threshold,
-				op.featherRadius,
-			);
-			subject = {
-				...subject,
-				mask: grownMask,
-			};
+		if (!sharedCompositor || sharedCompositorFormat !== ctx.renderer.format) {
+			sharedCompositor = new MatteCompositor(ctx.device, ctx.renderer.format);
+			sharedCompositorFormat = ctx.renderer.format;
 		}
-
-		const maskTex = uploadComposite(
-			sharedTexturePool,
-			mode,
-			subject,
-			framePixels,
-			targetWidth,
-			targetHeight,
-			frameIdx,
+		const maskTex = sharedCompositor.uploadMask(
 			nodeKeyStr,
+			subject.mask,
+			subject.width,
+			subject.height,
 		);
-		visionBundle?.setStencilTexture(maskTex);
+		const matteTex = matteTexture(ctx.device, nodeKeyStr, childTex);
+		sharedCompositor.draw(
+			encoder,
+			matteTex.createView(),
+			picture,
+			maskTex,
+			mode,
+			mode === "crop" ? (maskBounds(subject) ?? undefined) : undefined,
+		);
+		visionBundle?.setStencilTexture(matteTex);
 
 		const outPass = ctx.renderer.beginFrame(
 			encoder,
@@ -630,7 +836,7 @@ export const VisionWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 			targetHeight,
 			"clear",
 		);
-		ctx.renderer.drawTexture(outPass, maskTex, {
+		ctx.renderer.drawTexture(outPass, matteTex, {
 			x: 0,
 			y: 0,
 			width: targetWidth,
@@ -772,90 +978,6 @@ export const VisionWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 	});
 	outPass.end();
 };
-
-/**
- * Builds the RGBA output bytes for mask-family modes from pixels we already hold:
- *  - mask:  white silhouette (r=g=b=mask, a=255)
- *  - matte: child pixels × subject mask (isolate)
- *  - crop:  matte, fitted to the subject bounding box
- */
-function uploadComposite(
-	pool: SegmentationTexturePool,
-	mode: "mask" | "matte" | "crop",
-	subject: InstanceMask,
-	framePixels: Uint8ClampedArray,
-	width: number,
-	height: number,
-	frameIdx: number,
-	nodeKeyStr = "default",
-): GPUTexture {
-	const mask = subject.mask;
-	const out = new Uint8Array(width * height * 4);
-
-	for (let i = 0; i < mask.length; i++) {
-		const a = mask[i];
-		const px = i * 4;
-		if (mode === "mask") {
-			out[px] = a;
-			out[px + 1] = a;
-			out[px + 2] = a;
-			out[px + 3] = 255;
-		} else {
-			// matte & crop: premultiply child RGBA by the subject mask so the
-			// background is genuinely transparent (composites over smoke/plates)
-			const alpha = (framePixels[px + 3] * a) >> 8;
-			out[px] = (framePixels[px] * alpha) >> 8;
-			out[px + 1] = (framePixels[px + 1] * alpha) >> 8;
-			out[px + 2] = (framePixels[px + 2] * alpha) >> 8;
-			out[px + 3] = alpha;
-		}
-	}
-
-	const key = `vision_composite_${nodeKeyStr}_${mode}_${frameIdx}`;
-	const tex = pool.uploadMask(key, out, width, height);
-
-	if (mode === "crop") {
-		// Punch in: stretch the subject's bounds to fill the frame.
-		const box = maskBounds(subject);
-		if (box) {
-			return pool.uploadMask(
-				`vision_crop_${nodeKeyStr}_${frameIdx}`,
-				cropToBounds(out, width, height, box),
-				width,
-				height,
-			);
-		}
-	}
-
-	return tex;
-}
-
-/** Nearest-neighbour resample of `bounds` inside an RGBA frame up to the full frame. */
-function cropToBounds(
-	rgba: Uint8Array,
-	width: number,
-	height: number,
-	bounds: MaskBounds,
-): Uint8Array {
-	const cropW = bounds.x1 - bounds.x0 + 1;
-	const cropH = bounds.y1 - bounds.y0 + 1;
-	const crop = new Uint8Array(width * height * 4);
-	for (let y = 0; y < height; y++) {
-		const srcY =
-			bounds.y0 + Math.min(cropH - 1, Math.floor((y / height) * cropH));
-		for (let x = 0; x < width; x++) {
-			const srcX =
-				bounds.x0 + Math.min(cropW - 1, Math.floor((x / width) * cropW));
-			const src = (srcY * width + srcX) * 4;
-			const dst = (y * width + x) * 4;
-			crop[dst] = rgba[src];
-			crop[dst + 1] = rgba[src + 1];
-			crop[dst + 2] = rgba[src + 2];
-			crop[dst + 3] = rgba[src + 3];
-		}
-	}
-	return crop;
-}
 
 /** Adapts a Selfie Segmenter matte to the instance-mask shape the composite path takes. */
 function personMatteAsMask(

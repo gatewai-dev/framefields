@@ -1,6 +1,5 @@
 export * from "./audio-signal-extractor.js";
 export * from "./caption.js";
-export * from "./chart.js";
 export * from "./gif.js";
 export * from "./image.js";
 export * from "./lottie.js";

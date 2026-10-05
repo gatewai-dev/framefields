@@ -3,6 +3,13 @@ export class TextureCache {
 	private refs = new Map<string, number>();
 	private lruMap = new Map<string, true>(); // insertion order = recency order
 	public activeKeys = new Set<string>();
+	/**
+	 * Evicted textures wait here until the frame being recorded has been
+	 * submitted: a command encoder may already reference them, and a frame's
+	 * recording can span awaits (decodes, inference) during which they are
+	 * evicted. `flushRetired` hands them to the GPU queue for destruction.
+	 */
+	private retired: GPUTexture[] = [];
 
 	acquire(key: string): GPUTexture | undefined {
 		const tex = this.textures.get(key);
@@ -71,21 +78,7 @@ export class TextureCache {
 	evict(key: string, device?: GPUDevice): void {
 		const tex = this.textures.get(key);
 		if (tex) {
-			try {
-				if (device) {
-					const toDestroy = tex;
-					device.queue
-						.onSubmittedWorkDone()
-						.then(() => {
-							try {
-								toDestroy.destroy();
-							} catch (_) {}
-						})
-						.catch(() => {});
-				} else {
-					tex.destroy();
-				}
-			} catch (_) {}
+			this.retire(tex, device);
 			this.textures.delete(key);
 		}
 		this.refs.delete(key);
@@ -102,32 +95,17 @@ export class TextureCache {
 			}
 		}
 
-		// Evict least recently used inactive textures until inactiveCount <= maxInactive
-		const lruKeys = Array.from(this.lruMap.keys());
-		for (let i = lruKeys.length - 1; i >= 0; i--) {
+		// Evict least recently used inactive textures (oldest first in the LRU
+		// map) until inactiveCount <= maxInactive.
+		for (const key of Array.from(this.lruMap.keys())) {
 			if (inactiveCount <= maxInactive) {
 				break;
 			}
-			const key = lruKeys[i];
 			const count = this.refs.get(key) ?? 0;
 			if (count === 0 && !this.activeKeys.has(key)) {
 				const tex = this.textures.get(key);
 				if (tex) {
-					try {
-						if (device) {
-							const toDestroy = tex;
-							device.queue
-								.onSubmittedWorkDone()
-								.then(() => {
-									try {
-										toDestroy.destroy();
-									} catch (_) {}
-								})
-								.catch(() => {});
-						} else {
-							tex.destroy();
-						}
-					} catch (_) {}
+					this.retire(tex, device);
 					this.textures.delete(key);
 				}
 				this.refs.delete(key);
@@ -137,12 +115,48 @@ export class TextureCache {
 		}
 	}
 
+	private retire(tex: GPUTexture, device?: GPUDevice): void {
+		if (!device) {
+			try {
+				tex.destroy();
+			} catch (_) {}
+			return;
+		}
+		this.retired.push(tex);
+	}
+
+	/**
+	 * Destroys textures retired before the last submit, once the GPU is done
+	 * with that work. Call at the start of a frame, after the previous one was
+	 * submitted (`Renderer2D.resetPools` does).
+	 */
+	flushRetired(device: GPUDevice): void {
+		if (this.retired.length === 0) return;
+		const batch = this.retired;
+		this.retired = [];
+		device.queue
+			.onSubmittedWorkDone()
+			.then(() => {
+				for (const tex of batch) {
+					try {
+						tex.destroy();
+					} catch (_) {}
+				}
+			})
+			.catch(() => {});
+	}
+
 	private updateLru(key: string): void {
 		this.lruMap.delete(key);
 		this.lruMap.set(key, true);
 	}
 
 	destroy(): void {
+		for (const tex of this.retired.splice(0)) {
+			try {
+				tex.destroy();
+			} catch (_) {}
+		}
 		for (const [_, tex] of this.textures) {
 			try {
 				tex.destroy();

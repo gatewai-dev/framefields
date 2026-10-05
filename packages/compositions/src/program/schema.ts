@@ -110,10 +110,6 @@ export const AnimatablePropSchema = z.enum([
 	"translateZ",
 	"perspectiveOriginX",
 	"perspectiveOriginY",
-	// Chart properties
-	"progress",
-	"drawProgress",
-	"chartProgress",
 	// 3D Camera & Scene properties
 	"cameraX",
 	"cameraY",
@@ -438,10 +434,7 @@ const animationInvariants = (
 			} else if (
 				(track.prop === "volume" ||
 					track.prop === "trimStart" ||
-					track.prop === "trimEnd" ||
-					track.prop === "progress" ||
-					track.prop === "drawProgress" ||
-					track.prop === "chartProgress") &&
+					track.prop === "trimEnd") &&
 				((kf.value as number) < 0 || (kf.value as number) > 1)
 			) {
 				ctx.addIssue({
@@ -950,13 +943,6 @@ export interface ShapeNode extends CompositionNodeBase {
 	trimOffset?: number;
 }
 
-export interface ChartNode extends CompositionNodeBase {
-	kind: "chart";
-	chartOptions: ChartGPUOptions;
-	progress?: number;
-	drawProgress?: number;
-}
-
 export const CameraLensSchema = z
 	.object({
 		focalLength: z.number().min(5).max(500).default(50),
@@ -1154,7 +1140,6 @@ export type LayoutNode =
 	| TextNode
 	| MediaNode
 	| ShapeNode
-	| ChartNode
 	| CameraNode
 	| LightNode
 	| Model3DNode;
@@ -1399,178 +1384,11 @@ export const ShapeNodeSchema: z.ZodType<ShapeNode> = z
 	})
 	.strict() as unknown as z.ZodType<ShapeNode>;
 
-export const ChartSeriesTypeSchema = z.enum([
-	"line",
-	"area",
-	"bar",
-	"candlestick",
-	"ohlc",
-	"pie",
-	"heatmap",
-	"band",
-	"errorBar",
-	"impulse",
-	"pointCloud3d",
-	"surface3d",
-]);
-export type ChartSeriesType = z.infer<typeof ChartSeriesTypeSchema>;
-
 export const ColorStopSchema = z.object({
 	offset: z.number().min(0).max(1),
 	color: z.string(),
 });
 export type ColorStop = z.infer<typeof ColorStopSchema>;
-
-export const ChartLineStyleSchema = z
-	.object({
-		color: z.string().default("#3b82f6"),
-		width: z.number().min(0.5).default(2),
-		smooth: z.boolean().default(true),
-		dash: z.array(z.number()).optional(),
-		opacity: z.number().min(0).max(1).default(1),
-	})
-	.strict();
-export type ChartLineStyle = z.infer<typeof ChartLineStyleSchema>;
-
-export const ChartAreaStyleSchema = z
-	.object({
-		color: z.string().optional(),
-		gradient: z
-			.object({
-				direction: z.enum(["vertical", "horizontal"]).default("vertical"),
-				stops: z.array(ColorStopSchema).min(2),
-			})
-			.optional(),
-		opacity: z.number().min(0).max(1).default(0.35),
-	})
-	.strict();
-export type ChartAreaStyle = z.infer<typeof ChartAreaStyleSchema>;
-
-export const ChartPointStyleSchema = z
-	.object({
-		show: z.boolean().default(false),
-		size: z.number().min(1).default(4),
-		color: z.string().optional(),
-		shape: z.enum(["circle", "square", "diamond"]).default("circle"),
-	})
-	.strict();
-export type ChartPointStyle = z.infer<typeof ChartPointStyleSchema>;
-
-export const ChartDataPoint2DSchema = z.union([
-	z.tuple([z.number(), z.number()]),
-	z.object({ x: z.number(), y: z.number() }),
-]);
-export type ChartDataPoint2D = z.infer<typeof ChartDataPoint2DSchema>;
-
-export const ChartDataPointOHLCSchema = z.union([
-	z.tuple([z.number(), z.number(), z.number(), z.number(), z.number()]),
-	z.object({
-		timestamp: z.number(),
-		open: z.number(),
-		high: z.number(),
-		low: z.number(),
-		close: z.number(),
-	}),
-]);
-export type ChartDataPointOHLC = z.infer<typeof ChartDataPointOHLCSchema>;
-
-export const ChartSeriesSchema = z
-	.object({
-		id: z.string().optional(),
-		name: z.string().optional(),
-		type: ChartSeriesTypeSchema.default("line"),
-		data: z.union([
-			z.array(ChartDataPoint2DSchema),
-			z.array(ChartDataPointOHLCSchema),
-			z.array(z.number()),
-		]),
-		lineStyle: ChartLineStyleSchema.optional(),
-		areaStyle: ChartAreaStyleSchema.optional(),
-		itemStyle: ChartPointStyleSchema.optional(),
-		yAxisIndex: z.number().int().min(0).default(0),
-		visible: z.boolean().default(true),
-		progress: z.number().min(0).max(1).default(1),
-	})
-	.strict();
-export type ChartSeries = z.infer<typeof ChartSeriesSchema>;
-
-export const ChartAxisSchema = z
-	.object({
-		id: z.string().optional(),
-		type: z.enum(["value", "category", "time", "log"]).default("value"),
-		show: z.boolean().default(true),
-		min: z.number().optional(),
-		max: z.number().optional(),
-		grid: z
-			.object({
-				show: z.boolean().default(true),
-				color: z.string().default("rgba(255, 255, 255, 0.08)"),
-				width: z.number().default(1),
-				dash: z.array(z.number()).optional(),
-			})
-			.optional(),
-		line: z
-			.object({
-				show: z.boolean().default(true),
-				color: z.string().default("rgba(255, 255, 255, 0.2)"),
-				width: z.number().default(1),
-			})
-			.optional(),
-		ticks: z
-			.object({
-				show: z.boolean().default(true),
-				count: z.number().int().min(2).max(50).optional(),
-			})
-			.optional(),
-		labels: z
-			.object({
-				show: z.boolean().default(true),
-				fontFamily: z.string().default("Inter, sans-serif"),
-				fontSize: z.number().default(11),
-				color: z.string().default("rgba(255, 255, 255, 0.6)"),
-				format: z.string().optional(),
-			})
-			.optional(),
-	})
-	.strict();
-export type ChartAxis = z.infer<typeof ChartAxisSchema>;
-
-export const ChartGPUOptionsSchema = z
-	.object({
-		theme: z.enum(["dark", "light"]).default("dark"),
-		backgroundColor: z.string().default("transparent"),
-		padding: z
-			.object({
-				top: z.number().default(20),
-				right: z.number().default(20),
-				bottom: z.number().default(30),
-				left: z.number().default(40),
-			})
-			.default({ top: 20, right: 20, bottom: 30, left: 40 }),
-		xAxis: ChartAxisSchema.default({ type: "category", show: true }),
-		yAxis: z
-			.union([ChartAxisSchema, z.array(ChartAxisSchema)])
-			.default({ type: "value", show: true }),
-		series: z.array(ChartSeriesSchema).min(1),
-		drawProgress: z.number().min(0).max(1).default(1),
-		samples: z.union([z.literal(1), z.literal(4)]).default(4),
-	})
-	.strict();
-/** Chart options as authored: fields with schema defaults may be left out. */
-export type ChartGPUOptions = z.input<typeof ChartGPUOptionsSchema>;
-
-export const ChartNodeSchema: z.ZodType<ChartNode> = z
-	.object({
-		...BaseNodeFields,
-		kind: z.literal("chart"),
-		chartOptions: ChartGPUOptionsSchema,
-		progress: z.number().min(0).max(1).default(1),
-		drawProgress: z.number().min(0).max(1).default(1),
-	})
-	.strict() as unknown as z.ZodType<ChartNode>;
-
-export const CompositionChartNodeSchema = ChartNodeSchema;
-export type CompositionChartNode = ChartNode;
 
 export const Model3DNodeSchema: z.ZodType<Model3DNode> = z
 	.object({
@@ -1616,7 +1434,6 @@ export const LayoutNodeSchema = z.lazy(() =>
 		TextNodeSchema,
 		MediaNodeSchema,
 		ShapeNodeSchema,
-		ChartNodeSchema,
 		CameraNodeSchema,
 		LightNodeSchema,
 		Model3DNodeSchema,

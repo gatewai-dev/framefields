@@ -34,6 +34,42 @@ const builders = {
 		Layer.carousel3d({ radius: 200, items: [Layer.box(), Layer.box()] }),
 	plane3d: () => Layer.plane3d({ width: 100, height: 50 }),
 	prism3d: () => Layer.prism3d({ sides: 6, radius: 50, height: 100 }),
+	barChart: () =>
+		Layer.chart({
+			type: "bar",
+			categories: ["a", "b"],
+			series: [{ data: [1, -2] }, { data: [3, 4] }],
+			valueLabels: true,
+		}),
+	stackedArea: () =>
+		Layer.chart({
+			type: "area",
+			stacked: true,
+			series: [{ data: [1, 2, 3] }, { data: [2, 1, 2] }],
+		}),
+	lineChart: () =>
+		Layer.chart({
+			data: [
+				[0, 1],
+				[1, 3],
+				[2, 2],
+			],
+		}),
+	scatterChart: () => Layer.chart({ type: "scatter", data: [1, 4, 2] }),
+	candlestickChart: () =>
+		Layer.chart({
+			type: "candlestick",
+			data: [{ x: "d1", open: 1, high: 3, low: 0, close: 2 }],
+		}),
+	donutChart: () =>
+		Layer.chart({
+			type: "donut",
+			data: [
+				{ label: "a", value: 1 },
+				{ label: "b", value: 2 },
+			],
+			valueLabels: true,
+		}),
 	animatedCube: () =>
 		Layer.cube({ size: 10 }).animate(
 			LayerAnimation.create().fromTo("scale", 0, 1, { start: 0, end: 24 }),

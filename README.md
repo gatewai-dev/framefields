@@ -16,7 +16,7 @@
 
 > **⚠️ Beta:** gitframes is under active development. APIs may change between releases and some features may be incomplete or unstable.
 
-Gitframes is built for coding agents. It packs the work people usually split across three desktop apps (Photoshop-grade compositing and VFX, After Effects-style motion, typography and keyframing, and Blender-style 3D scenes, cameras and models) into one npm package whose engine is about 10 MB. Your agent writes a TypeScript composition, checks frames, and renders an MP4, and nobody has to install or license a multi-gigabyte creative suite.
+Gitframes is built for coding agents. It packs the work people usually split across three desktop apps (Photoshop-grade compositing and VFX, After Effects-style motion, typography and keyframing, and Blender-style 3D scenes, cameras and models) into one lightweight npm package. Your agent writes a TypeScript composition, checks frames, and renders an MP4, and nobody has to install or license a multi-gigabyte creative suite.
 
 **Code-first video as pure software engineering** — no headless browser, no DOM reflow, no screenshot pipeline.
 Renders directly on GPU hardware via Dawn / WebGPU / Metal / Vulkan in Node.js and modern WebGPU browsers.
@@ -73,9 +73,10 @@ Every frame of these films is rendered by gitframes from TypeScript in [`example
   - [2. Photoshop-Grade WebGPU 2D VFX](#2-photoshop-grade-webgpu-2d-vfx-50-shaders)
   - [3. Unified 3D Scene Graph, Camera & Mesh Shading](#3-unified-3d-scene-graph-camera--mesh-shading)
   - [4. Audio Layers, Procedural SFX & Reactive Signals](#4-audio-layers-procedural-sfx--reactive-signals)
-  - [5. WebGPU ChartGPU Bridge](#5-webgpu-chartgpu-bridge)
+  - [5. Animated Charts](#5-animated-charts)
   - [6. On-Device Vision & Tracking](#6-on-device-vision--tracking)
   - [7. Headless Conformance & FrameGrid Testing](#7-headless-conformance--framegrid-testing)
+  - [8. Live Preview in the Browser](#8-live-preview-in-the-browser)
 - [Monorepo Architecture](#monorepo-architecture)
 - [Quickstart Guide](#quickstart-guide)
   - [1. Basic Composition & Kinetic Auto-Layout](#1-basic-composition--kinetic-auto-layout)
@@ -127,7 +128,7 @@ Developers generating video programmatically commonly weigh **Remotion** (React/
 | **3D Graphics & Depth** | **Native 3D scene graph** — LookAt/Turntable camera, multiplane, skinning (OBJ/FBX/glTF), SSAO, PCSS, DoF | None built-in (embed Three.js/Fiber inside React DOM) | Minimal 2.5D layers; no unified mesh pipeline |
 | **Motion Blur & Physics** | Physical 180° shutter velocity buffers in MRT + closed-form spring kinematics | CSS transitions / JS interpolation; synthetic blur hacks | Frame interpolation or manual multipass |
 | **Audio Engine & DSP** | Native audio DSP & procedural SFX (multi-track mixing, beat grids, reactive signals) | `<Audio>` playback; basic volume curves | Basic static audio playback |
-| **Live Charting & Telemetry** | **ChartGPU bridge** — GPU-rendered line, bar, OHLC, area charts into GPU textures | DOM chart libraries (Recharts, Chart.js) | Custom canvas draw operations |
+| **Charts & Data Viz** | **`Layer.chart`** — line, area, bar, scatter, candlestick, pie and donut charts built from native vector nodes, with staggered reveal animations | DOM chart libraries (Recharts, Chart.js) | Custom canvas draw operations |
 | **AI & Computer Vision** | **On-device ONNX vision** — COCO-80 detection + instance masks (RTMDet-Ins), COCO-17 pose (RTMO), person mattes (Selfie Segmenter); WebGPU tensor conditioning (Canny, depth-to-normals, optical flow, deflicker) | External pre-rendered assets; no native GPU tensor conditioning | External pre-rendered assets |
 | **Headless Verification** | **FrameGrid contact sheets**, single-frame snapshots, Skia MSE pixel-invariant assertions | Playwright/Puppeteer visual snapshots | Manual frame inspection / canvas diffing |
 | **Docker / Cloud Portability** | **Compact** (~500 MB slim image with native GPU/Vulkan drivers) | **Heavy** (~2–3 GB with Chromium, fonts, X11/Mesa) | Moderate container size |
@@ -164,10 +165,29 @@ A comprehensive suite of professional image/video shader nodes in [`nodes/`](nod
 - **Multi-track mixing** — master tracks headlessly with `mixAudioTracks` and `encodeStereoWav`.
 - **Reactive signals** — drive transforms, scale, borders, or shader uniforms from tempo signals (`Signal.builder`) or audio analysis.
 
-### 5. WebGPU ChartGPU Bridge
-Through native [`ChartGPU`](packages/webgpu-renderers/src/chartgpu/chartgpu-bridge.ts) integration:
-- Render real-time financial, scientific, and metric charts (line, bar, OHLC/candlestick, area, scatter) directly onto offscreen GPU textures.
-- Composite live charts into 3D perspective cards, flex layouts, or HUD overlays — no canvas DOM elements.
+### 5. Animated Charts
+[`Layer.chart`](packages/gitframes/src/chart.ts) builds line, area, bar (grouped or stacked), scatter, candlestick, pie and donut charts. [d3](https://d3js.org) computes the scales, ticks and geometry; every bar, line, slice and label is an ordinary box, path or text node:
+- Labels use the composition's registered fonts and the same GPU text renderer as the rest of the film.
+- A built-in reveal draws lines on, grows bars from the baseline and staggers points and slices (`animate: { start, duration, stagger, ease }`, or `animate: false`).
+- The chart is one box, so it positions, animates, grades and tilts into 3D like any other layer.
+
+```typescript
+Layer.chart(
+  {
+    type: "bar",
+    width: 900,
+    height: 480,
+    categories: ["Q1", "Q2", "Q3", "Q4"],
+    series: [
+      { name: "Revenue", data: [12, 19, 24, 31] },
+      { name: "Costs", data: [8, 11, 13, 15] },
+    ],
+    yAxis: { format: "$,.0f" },
+    animate: { start: 10, duration: 30 },
+  },
+  { position: "absolute", x: 120, y: 200 },
+);
+```
 
 ### 6. On-Device Vision & Tracking
 [`@gitframes/vision`](packages/vision) runs ONNX models via `onnxruntime-node` (CPU) or `onnxruntime-web` (WebGPU) and wires every result into the same reactive signal surface the rest of Gitframes consumes.
@@ -238,6 +258,24 @@ Project normalized landmarks to screen space with a configurable camera FOV, the
 ### 7. Headless Conformance & FrameGrid Testing
 - **Pixel-sampling invariant assertions** — test compositions in Vitest with `skia-canvas` to verify shader math, font coverage, and Mean Squared Error (MSE) temporal deltas.
 - **FrameGrid contact sheets** — `comp.renderFrameGrid(...)` outputs sequential-frame contact sheets for instant review of easing, kinetic type, and transitions.
+
+### 8. Live Preview in the Browser
+- **Runs your composition, not a video** — `startPreview({ entry, export })` serves a localhost WebGPU player that loads the composition's own module and renders every frame live in the browser. Nothing is streamed: the server only hands over the bundle, the project's assets, and the soundtrack mixed by the export engine.
+- **Timeline, waveform & frame stepping** — play/pause, scrub, step frame by frame, and read resolution, FPS, duration, and audio status at a glance.
+- **One stable URL per project** — the port is derived from the working directory, so re-running the preview replaces the running server and any open tab reloads into the new version by itself. Close the tab and the server shuts down about five seconds later.
+
+```typescript
+import { startPreview } from "gitframes";
+
+const session = await startPreview(
+  { entry: new URL("./film.ts", import.meta.url), export: "buildFilm" },
+  { title: "gitframes film" },
+);
+console.log(`Preview at ${session.url}`);
+await session.closed; // serves until its tab closes or a newer preview takes over
+```
+
+<img src="assets/showcase/prw-ss.png" alt="gitframes live preview player: WebGPU rendering, waveform timeline, frame stepping, and audio status at 127.0.0.1:41133" width="100%">
 
 ---
 
@@ -352,8 +390,13 @@ import { Composition, Layer, Layer3D, CameraAnimation, Light } from "gitframes";
 const comp = new Composition({ width: 1920, height: 1080, fps: 60, durationFrames: 300 });
 
 // 1. LookAt 3D camera with a continuous orbit
-const cameraAnim = CameraAnimation.create()
-  .orbit({ fromAzimuth: -30, toAzimuth: 30, elevation: 15, radius: 1200, start: 0, end: 300 });
+const cameraAnim = CameraAnimation.camera().orbit({
+  azimuth: { from: -30, to: 30 },
+  elevation: { from: 15, to: 15 },
+  radius: { to: 1200 },
+  start: 0,
+  end: 300,
+});
 
 comp.add(
   Layer.camera({ x: 960, y: 540, z: -1000, targetX: 960, targetY: 540, targetZ: 0 }).animate(cameraAnim)
@@ -379,7 +422,7 @@ comp.add(
 comp.add(
   Layer3D.carousel({
     radius: 400,
-    cards: [
+    items: [
       Layer.box({ width: 280, height: 180, background: "#1e293b", borderRadius: 16 }),
       Layer.box({ width: 280, height: 180, background: "#334155", borderRadius: 16 }),
       Layer.box({ width: 280, height: 180, background: "#0f172a", borderRadius: 16 }),
@@ -438,7 +481,12 @@ const comp = new Composition({ width: 1920, height: 1080, fps: 60 });
 // Whole-composition cinematic grade + film emulsion
 comp.apply(new Vignette({ strength: 0.28, radius: 0.85 }));
 comp.apply(new FilmGrain({ strength: 0.06, size: 1.5, animated: true }));
-comp.apply(new ColorBalance({ shadows: [0, 2, 6], highlights: [4, 1, -2] }));
+comp.apply(
+  new ColorBalance({
+    shadows: { cyanRed: 0, magentaGreen: 2, yellowBlue: 6 },
+    highlights: { cyanRed: 4, magentaGreen: 1, yellowBlue: -2 },
+  }),
+);
 ```
 
 ---

@@ -36,6 +36,8 @@ export interface OrtWebModule {
 			options: {
 				executionProviders: string[];
 				graphOptimizationLevel?: "disabled" | "basic" | "extended" | "all";
+				/** 0 verbose … 4 fatal. */
+				logSeverityLevel?: 0 | 1 | 2 | 3 | 4;
 			},
 		): Promise<OrtWebSession>;
 	};
@@ -98,12 +100,16 @@ export class WebGPUProvider implements SessionProvider {
 			session = await ort.InferenceSession.create(modelBytes, {
 				executionProviders: [...this._providers],
 				graphOptimizationLevel: "all",
+				// Errors only: node-placement notes print as console errors otherwise.
+				logSeverityLevel: 3,
 			});
 		} catch (err) {
 			if (!this._wasmFallback || !this._providers.includes("webgpu")) throw err;
 			session = await ort.InferenceSession.create(modelBytes, {
 				executionProviders: ["wasm"],
 				graphOptimizationLevel: "all",
+				// Errors only: node-placement notes print as console errors otherwise.
+				logSeverityLevel: 3,
 			});
 		}
 

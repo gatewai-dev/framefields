@@ -42,11 +42,12 @@ For a new project, create `package.json` with all three blocks. In an existing p
     "sharp": false,
     "webgpu": false,
     "onnxruntime-node": false,
-    "node-av": false
+    "node-av": false,
+    "esbuild": false
   },
   "pnpm": {
     "onlyBuiltDependencies": ["skia-canvas"],
-    "ignoredBuiltDependencies": ["sharp", "webgpu", "onnxruntime-node", "node-av"]
+    "ignoredBuiltDependencies": ["sharp", "webgpu", "onnxruntime-node", "node-av", "esbuild"]
   },
   "trustedDependencies": ["skia-canvas"]
 }
@@ -71,7 +72,8 @@ A minimal `tsconfig.json`:
     "target": "ES2022",
     "strict": true,
     "skipLibCheck": true,
-    "noEmit": true
+    "noEmit": true,
+    "types": ["node"]
   },
   "include": ["src/**/*"]
 }

@@ -25,7 +25,6 @@ import {
 	type Color,
 	type DrawMesh3DOpts,
 	type DrawQuad3DOpts,
-	drawChartNode,
 	type ExtrudedTextGeometryOptions,
 	type GPUMeshBuffers,
 	generateExtrudedTextGeometry,
@@ -59,6 +58,39 @@ import {
 	solveHomography,
 	Transform3DMath,
 } from "./transform3d.js";
+
+// Layout depends on the document tree (whose `children` array keeps its
+// identity between frames), the viewport, media sizes and the few layout
+// props a timeline can animate. A film's tree holds every scene, so
+// re-running Yoga each frame is costly when none of those changed.
+const LAYOUT_PROPS = [
+	"width",
+	"height",
+	"gap",
+	"padding",
+	"fontSize",
+	"letterSpacing",
+] as const;
+const layoutMemo = new WeakMap<
+	object,
+	{ key: string; rects: Record<string, Rect> }
+>();
+
+function layoutKey(
+	width: number,
+	height: number,
+	targetsById: Record<string, any>,
+	mediaDims: Map<string, { width: number; height: number }>,
+): string {
+	const parts: unknown[] = [width, height];
+	for (const id in targetsById) {
+		const t = targetsById[id];
+		for (const k of LAYOUT_PROPS)
+			if (t[k] !== undefined) parts.push(id, k, t[k]);
+	}
+	for (const [id, d] of mediaDims) parts.push(id, d.width, d.height);
+	return JSON.stringify(parts);
+}
 
 const compositorHomographyWgsl = `
 struct HomographyUniforms {
@@ -727,58 +759,74 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 			if (!node.children.length) node.children = undefined;
 			return node;
 		};
-		const layoutRoots: LayoutNode[] = (virtualMedia.children ?? [])
-			.map(frameResolveNode)
-			.filter((node: any) => node?.kind !== "camera" && node?.kind !== "light");
-		const { rects } = await computeLayout({
-			layout: layoutRoots,
-			viewport: { width: nativeWidth, height: nativeHeight },
-			measure: (node, constraintWidth) => {
-				if (node.kind === "text") {
-					const textStyle = {
-						fontSize: node.fontSize ?? 48,
-						fontWeight: node.fontWeight,
-						fontFamily: node.fontFamily,
-						letterSpacing: node.letterSpacing,
-						lineHeight: node.lineHeight,
-						padding: node.padding,
-					};
+		const layoutRoots = (): LayoutNode[] =>
+			(virtualMedia.children ?? [])
+				.map(frameResolveNode)
+				.filter(
+					(node: any) => node?.kind !== "camera" && node?.kind !== "light",
+				);
+		const memoTree = virtualMedia.children as object | undefined;
+		const memoKey = layoutKey(
+			nativeWidth,
+			nativeHeight,
+			targetsById,
+			mediaDims,
+		);
+		const memo = memoTree ? layoutMemo.get(memoTree) : undefined;
+		const { rects } =
+			memo?.key === memoKey
+				? memo
+				: await computeLayout({
+						layout: layoutRoots(),
+						viewport: { width: nativeWidth, height: nativeHeight },
+						measure: (node, constraintWidth) => {
+							if (node.kind === "text") {
+								const textStyle = {
+									fontSize: node.fontSize ?? 48,
+									fontWeight: node.fontWeight,
+									fontFamily: node.fontFamily,
+									letterSpacing: node.letterSpacing,
+									lineHeight: node.lineHeight,
+									padding: node.padding,
+								};
 
-					if (constraintWidth !== undefined) {
-						const isAuto = typeof node.width !== "number";
-						const wrapped = measureText(node.text ?? "", {
-							...textStyle,
-							width: isAuto ? undefined : constraintWidth,
-							keepNaturalWidth: true,
-						});
-						return {
-							width: isAuto
-								? Math.ceil(wrapped.width)
-								: Math.min(constraintWidth, Math.ceil(wrapped.width)),
-							height: Math.ceil(wrapped.height),
-						};
-					}
+								if (constraintWidth !== undefined) {
+									const isAuto = typeof node.width !== "number";
+									const wrapped = measureText(node.text ?? "", {
+										...textStyle,
+										width: isAuto ? undefined : constraintWidth,
+										keepNaturalWidth: true,
+									});
+									return {
+										width: isAuto
+											? Math.ceil(wrapped.width)
+											: Math.min(constraintWidth, Math.ceil(wrapped.width)),
+										height: Math.ceil(wrapped.height),
+									};
+								}
 
-					const natural = measureText(node.text ?? "", textStyle);
-					if (typeof node.width !== "number") {
-						return {
-							width: Math.ceil(natural.width),
-							height: Math.ceil(natural.height),
-						};
-					}
-					const wrapped = measureText(node.text ?? "", {
-						...textStyle,
-						width: node.width,
+								const natural = measureText(node.text ?? "", textStyle);
+								if (typeof node.width !== "number") {
+									return {
+										width: Math.ceil(natural.width),
+										height: Math.ceil(natural.height),
+									};
+								}
+								const wrapped = measureText(node.text ?? "", {
+									...textStyle,
+									width: node.width,
+								});
+								return {
+									width: Math.ceil(wrapped.width),
+									height: Math.ceil(wrapped.height),
+								};
+							}
+							if (node.kind === "media") return mediaDims.get(node.id) ?? null;
+							return null;
+						},
 					});
-					return {
-						width: Math.ceil(wrapped.width),
-						height: Math.ceil(wrapped.height),
-					};
-				}
-				if (node.kind === "media") return mediaDims.get(node.id) ?? null;
-				return null;
-			},
-		});
+		if (memoTree && memo?.key !== memoKey)
+			layoutMemo.set(memoTree, { key: memoKey, rects });
 		// 4. 3D Camera and Multiplane Setup
 		const allNodeOps = collectNodeOps(virtualMedia.children ?? []);
 		// A film can cut between cameras: the active one is the camera whose
@@ -3177,41 +3225,6 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				);
 
 				shapePass.end();
-			} else if (kind === "chart") {
-				const chartOptions = lop.chartOptions;
-				if (chartOptions) {
-					const progress =
-						typeof target?.progress === "number"
-							? target.progress
-							: typeof target?.drawProgress === "number"
-								? target.drawProgress
-								: typeof target?.chartProgress === "number"
-									? target.chartProgress
-									: typeof lop.drawProgress === "number"
-										? lop.drawProgress
-										: typeof lop.progress === "number"
-											? lop.progress
-											: 1.0;
-
-					const chartPass = ctx.renderer.beginFrame(
-						encoder,
-						localView,
-						{ r: 0, g: 0, b: 0, a: 0 },
-						texW,
-						texH,
-						"load",
-					);
-
-					await drawChartNode(ctx, chartPass, {
-						nodeId: lop.id,
-						chartOptions,
-						dstRect: { x: 0, y: 0, width: layerW, height: layerH },
-						progress,
-						opacity: 1.0,
-					});
-
-					chartPass.end();
-				}
 			}
 
 			// Temporal De-flickering & Optical Flow Warping

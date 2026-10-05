@@ -924,69 +924,6 @@ describe("validateLayoutProgram (E-code pre-parse scan)", () => {
 		expect(parsedInvalid.success).toBe(false);
 	});
 
-	it("parses valid chart layout node with chartOptions and drawProgress animation", () => {
-		const doc = {
-			width: 1920,
-			height: 1080,
-			layout: [
-				{
-					id: "chart-1",
-					kind: "chart",
-					chartOptions: {
-						theme: "dark",
-						xAxis: { type: "category" },
-						yAxis: { type: "value" },
-						series: [
-							{
-								type: "line",
-								data: [
-									[0, 10],
-									[1, 25],
-									[2, 50],
-								],
-								lineStyle: {
-									color: "#3b82f6",
-									width: 3,
-								},
-								areaStyle: {
-									gradient: {
-										direction: "vertical",
-										stops: [
-											{ offset: 0, color: "rgba(59, 130, 246, 0.5)" },
-											{ offset: 1, color: "rgba(59, 130, 246, 0.0)" },
-										],
-									},
-								},
-							},
-						],
-					},
-					animation: {
-						tracks: [
-							{
-								id: "t-draw-progress",
-								prop: "drawProgress",
-								keyframes: [
-									{ id: "kf0", frame: 0, value: 0 },
-									{ id: "kf1", frame: 30, value: 1 },
-								],
-							},
-						],
-					},
-				},
-			],
-		};
-
-		const parsed = CompositorProgramSchema.safeParse(doc);
-		expect(parsed.success).toBe(true);
-		if (parsed.success) {
-			const chartNode = parsed.data.layout[0] as any;
-			expect(chartNode.kind).toBe("chart");
-			expect(chartNode.chartOptions.series[0].type).toBe("line");
-			expect(chartNode.chartOptions.series[0].lineStyle.width).toBe(3);
-			expect(chartNode.animation.tracks[0].prop).toBe("drawProgress");
-		}
-	});
-
 	it("accepts a per-node effect chain on media and box nodes", () => {
 		const doc = {
 			width: 1080,

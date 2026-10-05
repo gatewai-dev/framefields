@@ -1,15 +1,28 @@
 /**
  * pnpm render                  → output/full-circle.mp4 (with score)
+ * pnpm render preview          → live player on localhost; stops when its tab closes
  * pnpm render frames 0 140 637 → output/frames/f0000.png … for visual checks
  * pnpm render sheet 0 1080 24  → output/frames/ every 24th frame from 0 to 1080
  */
 import fs from "node:fs/promises";
 import path from "node:path";
-import { HeadlessMediaRenderer } from "gitframes";
+import { HeadlessMediaRenderer, startPreview } from "gitframes";
 import { buildFilm } from "./film.js";
 import { OUTPUT } from "./paths.js";
 
 const [mode = "video", ...args] = process.argv.slice(2);
+
+if (mode === "preview") {
+	// The page runs film.ts itself and renders with WebGPU in the browser.
+	const session = await startPreview(
+		{ entry: new URL("./film.ts", import.meta.url), export: "buildFilm" },
+		{ title: "Full circle" },
+	);
+	console.log(`Preview at ${session.url}`);
+	// Serves until its tab closes, or the next `pnpm render preview` takes over.
+	await session.closed;
+	process.exit(0);
+}
 
 const film = await buildFilm();
 await fs.mkdir(path.join(OUTPUT, "frames"), { recursive: true });

@@ -65,6 +65,12 @@
 			"development": "./src/fonts/index.ts",
 			"import": "./dist/fonts/index.mjs",
 			"default": "./dist/fonts/index.mjs"
+		},
+		"./preview": {
+			"types": "./dist/preview/index.d.mts",
+			"development": "./src/preview/index.ts",
+			"import": "./dist/preview/index.mjs",
+			"default": "./dist/preview/index.mjs"
 		}
 	},
 	"files": [
@@ -82,9 +88,12 @@
 		"@mediabunny/server": "^1.51.0",
 		"@napi-rs/webcodecs": "^1.3.1",
 		"@resvg/resvg-js": "^2.6.2",
-		"chartgpu": "^0.4.0",
+		"d3-format": "^3.1.2",
+		"d3-scale": "^4.0.2",
+		"d3-shape": "^3.2.0",
 		"dotenv": "^16.4.5",
 		"earcut": "^3.2.4",
+		"esbuild": "^0.28.1",
 		"fontkit": "^2.0.4",
 		"gifuct-js": "^2.1.2",
 		"gsap": "^3.15.0",
@@ -92,13 +101,14 @@
 		"nanoid": "^5.1.6",
 		"onnxruntime-node": "^1.24.0",
 		"pino": "^10.3.1",
-		"sharp": "^0.34.5",
+		"sharp": "^0.35.4",
 		"skia-canvas": "^3.0.8",
 		"webgpu": "^0.4.0",
 		"yoga-layout": "^3.2.1",
 		"zod": "^4.3.6"
 	},
 	"devDependencies": {
+		"@gitframes/client-utils": "workspace:*",
 		"@gitframes/compositions": "workspace:*",
 		"@gitframes/core": "workspace:*",
 		"@gitframes/node-audio-compressor": "workspace:*",
@@ -134,6 +144,7 @@
 		"@gitframes/node-refine-edge": "workspace:*",
 		"@gitframes/node-refraction-caustics": "workspace:*",
 		"@gitframes/node-relight-3d": "workspace:*",
+		"@gitframes/node-sdk": "workspace:*",
 		"@gitframes/node-selective-color": "workspace:*",
 		"@gitframes/node-shadows-highlights": "workspace:*",
 		"@gitframes/node-signal": "workspace:*",
@@ -148,8 +159,11 @@
 		"@gitframes/renderers": "workspace:*",
 		"@gitframes/tensor-webgpu": "workspace:*",
 		"@gitframes/tsconfig": "workspace:*",
-		"@gitframes/webgpu-renderers": "workspace:*",
 		"@gitframes/vision": "workspace:*",
+		"@gitframes/webgpu-renderers": "workspace:*",
+		"@types/d3-format": "^3.0.4",
+		"@types/d3-scale": "^4.0.9",
+		"@types/d3-shape": "^3.2.0",
 		"@types/fontkit": "^2.0.9",
 		"@types/node": "^24.1.0",
 		"tsdown": "^0.19.0",

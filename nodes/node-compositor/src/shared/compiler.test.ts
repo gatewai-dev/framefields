@@ -1,5 +1,10 @@
+import gsapModule from "gsap";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { compileLayerTimeline, compileTimeline } from "./compiler.js";
+
+const gsap: any = (gsapModule as any).timeline
+	? gsapModule
+	: (gsapModule as any).default || gsapModule;
 
 describe("Compositor GSAP Compiler", () => {
 	it("should compile a 2-keyframe fromTo tween correctly", () => {
@@ -1175,6 +1180,130 @@ describe("keyframe tail truncation (review M8)", () => {
 		// Wiggle moves smoothly around baseline 50 +- 40
 		expect(stub.x).toBeGreaterThanOrEqual(10);
 		expect(stub.x).toBeLessThanOrEqual(90);
+	});
+});
+
+describe("Compositor timeline cache lifecycle", () => {
+	/**
+	 * A stand-in for a real signal (Signal.fromArray / ProgrammaticSignal): its
+	 * per-frame cache fields mutate on every get(), which is exactly what made
+	 * the old content hash change every frame.
+	 */
+	function mutableSignal() {
+		return {
+			_cachedFrame: -1,
+			_cachedValue: 0,
+			get(ctx?: { frame?: number }): number {
+				const f = ctx?.frame ?? 0;
+				if (this._cachedFrame === f) return this._cachedValue;
+				this._cachedFrame = f;
+				this._cachedValue = f % 2 === 0 ? 0 : 1;
+				return this._cachedValue;
+			},
+		};
+	}
+
+	function vmWithSignal(signals: Record<string, unknown>) {
+		return {
+			metadata: { width: 1920, height: 1080, durationMs: 2000 },
+			operation: { op: "Compositor", signals },
+			children: [
+				{
+					operation: {
+						op: "CompositorLayer",
+						id: "sig-node",
+						x: 0,
+						y: 0,
+						scale: 1,
+						durationFrames: 48,
+						animation: {
+							tracks: [
+								{
+									id: "t_sig",
+									prop: "opacity" as const,
+									source: {
+										type: "signal" as const,
+										inputHandleId: "gate",
+										multiplier: 1,
+										offset: 0,
+										channel: "primary",
+									},
+								},
+							],
+						},
+					},
+				},
+			],
+		} as any;
+	}
+
+	it("reuses one compiled timeline for a live signal across frames", () => {
+		const signal = mutableSignal();
+		const vm = vmWithSignal({ gate: signal });
+
+		const first = compileTimeline("signal-cache", vm, {
+			fps: 24,
+			durationSec: 2,
+		});
+		// Advance the signal exactly as the next frame's evaluation would — its
+		// cached frame/value now differ from the values at the first compile.
+		signal.get({ frame: 7 });
+		const second = compileTimeline("signal-cache", vm, {
+			fps: 24,
+			durationSec: 2,
+		});
+
+		expect(second.tl).toBe(first.tl);
+	});
+
+	it("reuses the timeline when the operation is shallow-copied per frame", () => {
+		// drawCompositionTree bakes signal values into a fresh copy of the
+		// operation every frame; children keep their identity.
+		const vm = vmWithSignal({ gate: [0, 1, 0] });
+		const first = compileTimeline("shallow-copy", vm, {
+			fps: 24,
+			durationSec: 2,
+		});
+		const second = compileTimeline(
+			"shallow-copy",
+			{ ...vm, operation: { ...vm.operation, gate: 1 } },
+			{ fps: 24, durationSec: 2 },
+		);
+
+		expect(second.tl).toBe(first.tl);
+	});
+
+	it("still busts the cache when plain (non-signal) signal data changes", () => {
+		const vm = vmWithSignal({ gate: [0, 1, 0] });
+		const first = compileTimeline("plain-signal", vm, {
+			fps: 24,
+			durationSec: 2,
+		});
+
+		vm.operation.signals.gate = [1, 0, 1];
+		const second = compileTimeline("plain-signal", vm, {
+			fps: 24,
+			durationSec: 2,
+		});
+
+		expect(second.tl).not.toBe(first.tl);
+	});
+
+	it("kills evicted timelines so gsap's global timeline stays bounded", () => {
+		const count = () =>
+			gsap.globalTimeline.getChildren(true, false, true).length;
+
+		const vm = vmWithSignal({ gate: mutableSignal() });
+		compileTimeline("kill-cap-0", vm, { fps: 24, durationSec: 2 });
+		const before = count();
+
+		// Far more compiled ids than the cache capacity: each insert past the
+		// cap must evict AND kill, or the global timeline grows one per compile.
+		for (let i = 0; i < 120; i++) {
+			compileTimeline(`kill-cap-${i}`, vm, { fps: 24, durationSec: 2 });
+		}
+
+		expect(count() - before).toBeLessThanOrEqual(50);
 	});
 });
 

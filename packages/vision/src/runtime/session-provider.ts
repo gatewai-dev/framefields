@@ -28,6 +28,24 @@ export interface SessionProvider {
 	createSession(modelBytes: Uint8Array): Promise<VisionSession>;
 }
 
+let defaultProvider: (() => SessionProvider) | undefined;
+
+/**
+ * Sets the provider runners use when none is passed, for hosts that create
+ * runners indirectly (e.g. a browser player rendering vision nodes). `undefined`
+ * restores the default, onnxruntime-node.
+ */
+export function setDefaultSessionProvider(
+	factory: (() => SessionProvider) | undefined,
+): void {
+	defaultProvider = factory;
+}
+
+/** The provider for a runner created without one. */
+export function createDefaultSessionProvider(): SessionProvider {
+	return defaultProvider?.() ?? new NodeSessionProvider();
+}
+
 /** onnxruntime-node provider. The native module is imported lazily on first session. */
 export class NodeSessionProvider implements SessionProvider {
 	public readonly kind = "node" as const;

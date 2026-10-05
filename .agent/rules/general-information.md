@@ -26,7 +26,7 @@ Gitframes is a code-first video engine on native WebGPU (Dawn) in Node, with no 
 
 - `packages/gitframes`: the public SDK. `Composition`, `Layer.*`, `LayerAnimation`, `Signal`, effect classes (`src/effects/classes.ts`), `FontManager`, `renderFrameGrid` (`src/renderer/framegrid.ts`). `src/index.ts` is large and is the export surface.
 - `packages/compositions`: layout (Yoga, `utils/layout/resolve-layout.ts`), program schema (`program/schema.ts`), animation and evaluator, `to-virtual-media`.
-- `packages/webgpu-renderers`: WGSL shaders, 2D/3D pipelines, Slug text, audio DSP, ChartGPU bridge.
+- `packages/webgpu-renderers`: WGSL shaders, 2D/3D pipelines, Slug text, audio DSP.
 - `packages/renderer`: headless Node renderer (Dawn, WebCodecs/mediabunny, `HeadlessMediaRenderer`).
 - `packages/core`: shared types, `Effect` base, signals. Other packages: `renderers`, `media`, `node-sdk` (node authoring: `shared/` + `renderer/`), `server-utils`, `client-utils`, `tensor-webgpu`, `vision`, `tsconfig`.
 - `nodes/node-*` (59): one VFX/audio/layout node each. Layout: `src/shared/` (config and schema), `src/renderers/` (WebGPU), `src/index.ts`. Only `node-compositor` has a `SKILL.md`; update it when Compositor behavior changes (`packages/compositions/src/program/skillmd-check.test.ts` guards it).

@@ -25,7 +25,7 @@ pnpm add gitframes
 ## Quickstart
 
 ```typescript
-import { Composition, Layer, LayerAnimation, FontManager } from "gitframes";
+import { Composition, Layer, LayerAnimation } from "gitframes";
 
 // 1. Create a 1080p, 60 FPS composition
 const comp = new Composition({
@@ -52,8 +52,8 @@ comp.add(
     fontFamily: "Inter",
     align: "center",
     y: 480,
-  }).withAnimation(
-    new LayerAnimation()
+  }).animate(
+    LayerAnimation.create()
       .fadeIn(0, 30, "power2.out")
       .fromTo("y", 520, 480, { start: 0, end: 30, ease: "power3.out" })
   )
@@ -69,6 +69,7 @@ comp.add(
 - **Unified 3D Scene Graph**: Position 2D surfaces in 3D coordinate space with 3D cameras, lights, and OBJ/FBX/glTF models.
 - **Audio DSP & SFX**: Procedural sound effects (impact, whoosh, riser), audio stem analysis, and audio-reactive signals.
 - **Headless GPU Video Rendering**: Direct hardware encoding via `@mediabunny/server` / WebCodecs without headless browser overhead.
+- **Live Preview**: `startPreview({ entry, export })` opens a localhost player (soundtrack, waveform timeline, frame stepping). The page runs the composition's own code and renders it with WebGPU in the browser, at or near full frame rate. Re-running it replaces the running preview, and an open tab reloads into the new version.
 
 ---
 

@@ -119,8 +119,6 @@ import {
 	type AnimationTrack,
 	type BoxNode,
 	type CameraNode,
-	type ChartGPUOptions,
-	type ChartNode,
 	type CompositorProgramConfig,
 	type CompositorToProgramOptions,
 	compositorToProgram,
@@ -174,6 +172,7 @@ import {
 	TensorPipeline,
 } from "@gitframes/tensor-webgpu";
 import { inputStore, mediaDecoderCache } from "@gitframes/webgpu-renderers";
+import { buildChart, type ChartOptions } from "./chart.js";
 import {
 	ApplyLUT,
 	type ApplyLUTProps,
@@ -418,32 +417,11 @@ export {
 	type CarrierHandoffConfig,
 	CarrierHandoffConfigSchema,
 	type CarrierState,
-	type ChartAreaStyle,
-	ChartAreaStyleSchema,
-	type ChartAxis,
-	ChartAxisSchema,
-	type ChartDataPoint2D,
-	ChartDataPoint2DSchema,
-	type ChartDataPointOHLC,
-	ChartDataPointOHLCSchema,
-	type ChartGPUOptions,
-	ChartGPUOptionsSchema,
-	type ChartLineStyle,
-	ChartLineStyleSchema,
-	type ChartNode,
-	ChartNodeSchema,
-	type ChartPointStyle,
-	ChartPointStyleSchema,
-	type ChartSeries,
-	ChartSeriesSchema,
-	type ChartSeriesType,
-	ChartSeriesTypeSchema,
 	type ChromaticGlitchConfig,
 	ChromaticGlitchConfigSchema,
 	type ColorSignalOptions,
 	type ColorStop,
 	ColorStopSchema,
-	CompositionChartNodeSchema,
 	type CompositorProgramConfig,
 	CompositorProgramSchema,
 	type CompositorToProgramOptions,
@@ -605,18 +583,10 @@ export {
 	type BlendMode,
 	type Bone3D,
 	Camera3D,
-	ChartGPUEngineBridge,
-	type ChartNodeProps,
-	chartBridgeCache,
-	drawChartNode,
 	EffectPipeline,
 	ensureDevice,
 	GlassPipeline,
 	type GPULightData,
-	HeadlessChartCanvasElementMock,
-	HeadlessChartContainerMock,
-	type HeadlessChartTarget,
-	HeadlessGPUCanvasContextMock,
 	inputStore,
 	Light3D,
 	type Light3DOptions,
@@ -645,6 +615,19 @@ export {
 	shaderStore,
 	textureCache,
 } from "@gitframes/webgpu-renderers";
+export {
+	type ChartAnimationOptions,
+	type ChartAxisOptions,
+	type ChartCandle,
+	type ChartDatum,
+	type ChartOptions,
+	type ChartPadding,
+	type ChartSeries,
+	type ChartSlice,
+	type ChartType,
+	type ChartX,
+	DEFAULT_CHART_COLORS,
+} from "./chart.js";
 export {
 	ApplyLUT,
 	type ApplyLUTProps,
@@ -2442,16 +2425,17 @@ export const Layer = {
 			],
 		});
 	},
+	/**
+	 * A line, area, bar, scatter, candlestick, pie or donut chart. Returns a box
+	 * of ordinary nodes (bars are boxes, lines and slices are path shapes,
+	 * labels are text), so it positions, animates and composites like any layer.
+	 * `props` applies to that box: position, id, timing, effects.
+	 */
 	chart: (
-		options: ChartGPUOptions,
-		props: Partial<ChartNode> = {},
-	): AnimatableNode<ChartNode> =>
-		withAnimation({
-			id: props.id ?? autoId("chart"),
-			kind: "chart",
-			chartOptions: options,
-			...props,
-		}),
+		options: ChartOptions,
+		props: Partial<BoxNode> = {},
+	): AnimatableNode<BoxNode> =>
+		buildChart(options, props, FontManager.getAll()[0]?.family ?? "Inter"),
 	camera: (options: Partial<CameraNode> = {}): AnimatableNode<CameraNode> =>
 		withAnimation<CameraNode>({
 			id: options.id ?? autoId("camera"),
@@ -2654,6 +2638,12 @@ export const Light = {
 		}),
 };
 
+export {
+	type PreviewOptions,
+	type PreviewSession,
+	type PreviewSource,
+	startPreview,
+} from "./preview/index.js";
 export {
 	type AudioQaStats,
 	computeGridLayout,

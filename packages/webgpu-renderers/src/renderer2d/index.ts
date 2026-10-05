@@ -192,6 +192,9 @@ export class Renderer2D {
 		this.pathPipeline.resetPools();
 		if (this.effectPipeline) this.effectPipeline.resetPools();
 		this.slugPipeline.resetPools();
+		// The previous frame has been submitted: textures evicted while it was
+		// recorded can go once it completes.
+		textureCache.flushRetired(this.device);
 		textureCache.prune(this.device);
 	}
 

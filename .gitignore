@@ -52,6 +52,7 @@ assets/soundfonts/
 # ...except the brand assets and showcase stills the README links to, and the plugin icon
 !assets/brand/*.png
 !assets/showcase/*.jpg
+!assets/showcase/*.png
 !plugins/gitframes/assets/*.png
 
 # Vision Tracking Caches

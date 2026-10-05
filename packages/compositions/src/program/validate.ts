@@ -29,7 +29,6 @@ const KIND_SET = new Set([
 	"text",
 	"media",
 	"shape",
-	"chart",
 ]);
 const MAX_NODES = 512;
 const MAX_DEPTH = 64;
@@ -111,7 +110,7 @@ export function validateLayoutProgram(raw: unknown): ProgramValidationResult {
 				issue(
 					"E1201",
 					[...path, "kind"],
-					`Unknown layout node kind '${String(kind)}'. Expected one of: flex, block, box, text, media, shape, chart.`,
+					`Unknown layout node kind '${String(kind)}'. Expected one of: flex, block, box, text, media, shape.`,
 				),
 			);
 		}

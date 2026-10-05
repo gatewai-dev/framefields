@@ -47,8 +47,6 @@ export interface LayerStub {
 	translateZ?: number;
 	backfaceVisibility?: "visible" | "hidden";
 	transformStyle?: "flat" | "preserve-3d";
-	drawProgress?: number;
-	chartProgress?: number;
 	// 3D Layer Props
 	is3D?: boolean;
 	z?: number;
@@ -99,7 +97,6 @@ export interface LayerStub {
 	[key: string]: unknown;
 }
 
-
 export type CompilerVirtualMedia = {
 	metadata?: Partial<VirtualMediaData["metadata"]>;
 	operation?: Partial<VirtualMediaData["operation"]> & Record<string, any>;
@@ -123,6 +120,29 @@ export interface CompileResult {
 // concurrently without cloning `tl` + stubs first.
 const cache = new Map<string, { cacheTime: number; value: CompileResult }>();
 
+// L1: hashing the layer ops stringifies every keyframe of every layer, which
+// costs tens of ms per frame on a full film. Programs are rebuilt (not mutated)
+// when a composition changes, so that hash is memoized on the children array:
+// the operation itself is shallow-copied each frame to bake in signal values,
+// but `children` keeps its identity. Signals are cheap to key and may be plain
+// data mutated in place, so they are re-keyed on every call.
+const nodesHashMemo = new WeakMap<
+	object,
+	{
+		width: number;
+		height: number;
+		fps: number;
+		durationSec: number;
+		hash: string;
+	}
+>();
+
+/** Entries untouched for this long are dropped (and their timeline killed). */
+const CACHE_TTL_MS = 10000;
+/** Max compiled timelines retained per cache. */
+const TIMELINE_CACHE_MAX = 50;
+const LAYER_TIMELINE_CACHE_MAX = 50;
+
 function fnv1a(str: string): string {
 	let hash = 2166136261;
 	for (let i = 0; i < str.length; i++) {
@@ -131,6 +151,69 @@ function fnv1a(str: string): string {
 			(hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
 	}
 	return (hash >>> 0).toString(16);
+}
+
+// Signal objects carry per-frame caches (last frame, last value), so hashing
+// their contents gives a new key every frame: the timeline would recompile
+// each frame and the cache would never hit. Key live signals by identity.
+const signalIds = new WeakMap<object, number>();
+let nextSignalId = 0;
+
+function signalsKey(signals: unknown): string {
+	if (!signals || typeof signals !== "object") return stableStringify(signals);
+	return Object.keys(signals)
+		.sort()
+		.map((name) => {
+			const s = (signals as Record<string, unknown>)[name];
+			if (
+				s &&
+				typeof s === "object" &&
+				typeof (s as { get?: unknown }).get === "function"
+			) {
+				let id = signalIds.get(s);
+				if (id === undefined) {
+					id = nextSignalId++;
+					signalIds.set(s, id);
+				}
+				return `${JSON.stringify(name)}:#${id}`;
+			}
+			return `${JSON.stringify(name)}:${stableStringify(s)}`;
+		})
+		.join(",");
+}
+
+/**
+ * Paused gsap timelines stay attached to gsap's global timeline until killed,
+ * so anything dropped from a cache must be killed or it is never collected.
+ */
+function release(value: { tl: gsap.core.Timeline }): void {
+	value.tl.kill();
+}
+
+/**
+ * Make room for one insertion: drop and kill TTL-expired entries, then evict
+ * the least-recently-used entry if the cache is at capacity. Every dropped
+ * timeline MUST be killed — see `release`.
+ */
+function evictForInsert<T extends { tl: gsap.core.Timeline }>(
+	cache: Map<string, { cacheTime: number; value: T }>,
+	maxSize: number,
+): void {
+	const now = Date.now();
+	for (const [key, entry] of cache.entries()) {
+		if (now - entry.cacheTime > CACHE_TTL_MS) {
+			cache.delete(key);
+			release(entry.value);
+		}
+	}
+	if (cache.size >= maxSize) {
+		const oldestKey = cache.keys().next().value;
+		if (oldestKey !== undefined) {
+			const oldest = cache.get(oldestKey);
+			cache.delete(oldestKey);
+			if (oldest) release(oldest.value);
+		}
+	}
 }
 
 function stableStringify(obj: any): string {
@@ -153,8 +236,9 @@ function stableStringify(obj: any): string {
 export function getCachedTimeline(cacheKey: string): CompileResult | undefined {
 	const entry = cache.get(cacheKey);
 	if (entry) {
-		if (Date.now() - entry.cacheTime > 10000) {
+		if (Date.now() - entry.cacheTime > CACHE_TTL_MS) {
 			cache.delete(cacheKey);
+			release(entry.value);
 			return undefined;
 		}
 		entry.cacheTime = Date.now();
@@ -166,19 +250,8 @@ export function getCachedTimeline(cacheKey: string): CompileResult | undefined {
 }
 
 export function setCachedTimeline(cacheKey: string, value: CompileResult) {
-	const now = Date.now();
-	for (const [key, entry] of cache.entries()) {
-		if (now - entry.cacheTime > 10000) {
-			cache.delete(key);
-		}
-	}
-	if (cache.size >= 50) {
-		const oldestKey = cache.keys().next().value;
-		if (oldestKey !== undefined) {
-			cache.delete(oldestKey);
-		}
-	}
-	cache.set(cacheKey, { cacheTime: now, value });
+	evictForInsert(cache, TIMELINE_CACHE_MAX);
+	cache.set(cacheKey, { cacheTime: Date.now(), value });
 }
 
 export function mappedEase(
@@ -490,20 +563,13 @@ function warnTruncationOnce(cacheKey: string, truncations: TruncationInfo[]) {
 	);
 }
 
-export function compileTimeline(
-	renderId: string,
-	virtualMedia: CompilerVirtualMedia | null | undefined,
-	options: { fps: number; durationSec: number },
-): CompileResult {
-	const fps = options.fps;
-	const durationSec = options.durationSec;
-	const width = virtualMedia?.metadata?.width ?? 1920;
-	const height = virtualMedia?.metadata?.height ?? 1080;
-
-	// Collect node ops from the render tree (pre-order: parents first).
-	const nodeOps = collectNodeOps((virtualMedia?.children as any) ?? []);
-
-	// LRU cache check
+function hashNodes(
+	nodeOps: CompilerNodeVM[],
+	width: number,
+	height: number,
+	fps: number,
+	durationSec: number,
+): string {
 	const irHashInput = stableStringify({
 		nodes: nodeOps.map((vm) => {
 			const lop = (vm?.operation || {}) as any;
@@ -535,8 +601,6 @@ export function compileTimeline(
 				translateZ: lop.translateZ,
 				backfaceVisibility: lop.backfaceVisibility,
 				transformStyle: lop.transformStyle,
-				drawProgress: lop.drawProgress,
-				chartProgress: lop.chartProgress,
 				is3D: lop.is3D,
 				z: lop.z,
 				scaleZ: lop.scaleZ,
@@ -593,9 +657,50 @@ export function compileTimeline(
 		height,
 		fps,
 		durationSec,
-		signals: (virtualMedia as any)?.operation?.signals ?? (virtualMedia as any)?.signals,
 	});
-	const irHash = fnv1a(irHashInput);
+	return fnv1a(irHashInput);
+}
+
+export function compileTimeline(
+	renderId: string,
+	virtualMedia: CompilerVirtualMedia | null | undefined,
+	options: { fps: number; durationSec: number },
+): CompileResult {
+	const fps = options.fps;
+	const durationSec = options.durationSec;
+	const width = virtualMedia?.metadata?.width ?? 1920;
+	const height = virtualMedia?.metadata?.height ?? 1080;
+
+	// Collect node ops from the render tree (pre-order: parents first).
+	const nodeOps = collectNodeOps((virtualMedia?.children as any) ?? []);
+
+	// LRU cache check
+	const memoKey = virtualMedia?.children as object | undefined;
+	const memo = memoKey ? nodesHashMemo.get(memoKey) : undefined;
+	let nodesHash: string;
+	if (
+		memo &&
+		memo.width === width &&
+		memo.height === height &&
+		memo.fps === fps &&
+		memo.durationSec === durationSec
+	) {
+		nodesHash = memo.hash;
+	} else {
+		nodesHash = hashNodes(nodeOps, width, height, fps, durationSec);
+		if (memoKey) {
+			nodesHashMemo.set(memoKey, {
+				width,
+				height,
+				fps,
+				durationSec,
+				hash: nodesHash,
+			});
+		}
+	}
+	const irHash = fnv1a(
+		`${nodesHash}|${signalsKey((virtualMedia as any)?.operation?.signals ?? (virtualMedia as any)?.signals)}`,
+	);
 	const cacheKey = `${renderId}_${irHash}`;
 
 	const cached = getCachedTimeline(cacheKey);
@@ -618,8 +723,14 @@ export function compileTimeline(
 			id: layerId,
 			inputHandleId: lop.inputHandleId || `layer_${index}`,
 			trackId: layerId,
-			x: lop.kind === "camera" || lop.kind === "light" ? (lop.x ?? lop.cameraX) : (lop.x ?? 0),
-			y: lop.kind === "camera" || lop.kind === "light" ? (lop.y ?? lop.cameraY) : (lop.y ?? 0),
+			x:
+				lop.kind === "camera" || lop.kind === "light"
+					? (lop.x ?? lop.cameraX)
+					: (lop.x ?? 0),
+			y:
+				lop.kind === "camera" || lop.kind === "light"
+					? (lop.y ?? lop.cameraY)
+					: (lop.y ?? 0),
 			scale: lop.scale ?? 1,
 			rotation: lop.rotation ?? 0,
 			opacity: lop.opacity ?? 1,
@@ -637,8 +748,6 @@ export function compileTimeline(
 			translateZ: lop.translateZ ?? 0,
 			backfaceVisibility: lop.backfaceVisibility ?? "visible",
 			transformStyle: lop.transformStyle ?? "flat",
-			drawProgress: lop.drawProgress ?? 1,
-			chartProgress: lop.chartProgress ?? 1,
 			fontSize: lop.fontSize,
 			text: 1,
 			fill: lop.fill,
@@ -657,7 +766,11 @@ export function compileTimeline(
 			typewriter: lop.typewriter,
 			marquee: lop.marquee,
 			// 3D Layer Props
-			is3D: lop.is3D ?? (lop.kind === "camera" || lop.kind === "light" || lop.kind === "model3d" ? true : false),
+			is3D:
+				lop.is3D ??
+				(lop.kind === "camera" || lop.kind === "light" || lop.kind === "model3d"
+					? true
+					: false),
 			z: lop.z ?? (lop.kind === "camera" ? (lop.z ?? -1500) : 0),
 			scaleZ: lop.scaleZ ?? 1,
 			twoSided: lop.twoSided ?? true,
@@ -708,7 +821,6 @@ export function compileTimeline(
 			penumbra: lop.penumbra,
 			decay: lop.decay,
 		};
-
 
 		for (const track of lop.animation?.tracks ?? []) {
 			const source = track.source ?? { type: "keyframe" };
@@ -853,11 +965,12 @@ export function compileLayerTimeline(
 
 	const cached = layerTimelineCache.get(cacheKey);
 	if (cached) {
-		if (Date.now() - cached.cacheTime <= 10000) {
+		if (Date.now() - cached.cacheTime <= CACHE_TTL_MS) {
 			cached.cacheTime = Date.now();
 			return cached.value;
 		}
 		layerTimelineCache.delete(cacheKey);
+		release(cached.value);
 	}
 
 	const tl = gsap.timeline({ paused: true, smoothChildTiming: false });
@@ -877,6 +990,7 @@ export function compileLayerTimeline(
 	tl.seek(0);
 
 	const result = { tl, stub };
+	evictForInsert(layerTimelineCache, LAYER_TIMELINE_CACHE_MAX);
 	layerTimelineCache.set(cacheKey, { cacheTime: Date.now(), value: result });
 	return result;
 }

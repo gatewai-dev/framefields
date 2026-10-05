@@ -537,28 +537,6 @@ export class LayerAnimation implements LayerAnimationSpec {
 	}
 
 	/**
-	 * Animates chart write-on draw progress from fromVal to toVal.
-	 */
-	public drawProgress(
-		fromVal = 0,
-		toVal = 1,
-		options: FromToOptions = {},
-	): this {
-		return this.fromTo("drawProgress", fromVal, toVal, options);
-	}
-
-	/**
-	 * Animates chartProgress from fromVal to toVal.
-	 */
-	public chartProgress(
-		fromVal = 0,
-		toVal = 1,
-		options: FromToOptions = {},
-	): this {
-		return this.fromTo("chartProgress", fromVal, toVal, options);
-	}
-
-	/**
 	 * Slides in Y coordinate from fromY to toY.
 	 */
 	public slideInY(

@@ -20,7 +20,7 @@ import {
 	type VisionVariant,
 } from "../model/registry.js";
 import {
-	NodeSessionProvider,
+	createDefaultSessionProvider,
 	type SessionProvider,
 	type VisionSession,
 	type VisionTensor,
@@ -99,7 +99,7 @@ export class VisionRunner {
 				timeoutMs: options.timeoutMs,
 				onProgress: options.onProgress,
 			});
-		this._provider = options.provider ?? new NodeSessionProvider();
+		this._provider = options.provider ?? createDefaultSessionProvider();
 	}
 
 	/** Cheap: no downloads, no sessions, no side effects. */

@@ -198,23 +198,44 @@ function processCurveCubic(
 	}
 }
 
+type Edge = [string, ...number[]];
+
+/**
+ * The glyph outline with overlaps merged (skia's `simplify`), or null where
+ * skia isn't available, as in the browser.
+ */
+function simplifiedEdges(svg: string): Edge[] | null {
+	try {
+		const edges = new Path2D(svg).simplify().edges as unknown;
+		return Array.isArray(edges) ? (edges as Edge[]) : null;
+	} catch {
+		return null;
+	}
+}
+
+interface GlyphContours {
+	contours: Contour[];
+	/** Overlaps merged, so contours never cross. */
+	simplified: boolean;
+}
+
 function extractGlyphContours(
 	glyph: fontkit.Glyph,
 	glyphX: number,
 	glyphY: number,
 	scale: number,
 	flattening: CurveFlattening,
-): Contour[] {
+): GlyphContours {
 	const svg = glyph.path?.toSVG();
-	if (!svg) return [];
+	if (!svg) return { contours: [], simplified: true };
 
-	let edges: [string, ...number[]][];
-	try {
-		const p2d = new Path2D(svg).simplify();
-		edges = p2d.edges as [string, ...number[]][];
-	} catch {
-		return [];
-	}
+	// Without skia, read fontkit's own outline: same verbs, but overlapping
+	// contours (common in variable fonts) stay as they are.
+	let edges = simplifiedEdges(svg);
+	const simplified = edges !== null;
+	edges ??= (glyph.path?.commands ?? []).map(
+		(c) => [c.command, ...c.args] as Edge,
+	);
 
 	const contours: Contour[] = [];
 	let curr: Point2D = { x: 0, y: 0 };
@@ -283,7 +304,7 @@ function extractGlyphContours(
 		}
 	}
 	finishCurrent();
-	return contours;
+	return { contours, simplified };
 }
 
 /** Side-wall segments meeting at more than this angle (30°) keep a hard edge. */
@@ -300,7 +321,11 @@ interface PolygonHierarchy {
  * of "O", or the "R" sitting in the counter of "®"), one inside an odd number
  * is a hole of the smallest outline around it.
  */
-function organizeGlyphPolygons(glyphContours: Contour[]): PolygonHierarchy[] {
+function organizeGlyphPolygons({
+	contours: glyphContours,
+	simplified,
+}: GlyphContours): PolygonHierarchy[] {
+	if (!simplified) return organizeByWinding(glyphContours);
 	const contours = glyphContours.map((contour) => ({
 		contour,
 		area: Math.abs(computeContourSignedArea(contour)),
@@ -340,6 +365,48 @@ function organizeGlyphPolygons(glyphContours: Contour[]): PolygonHierarchy[] {
 				.get(around[around.length - 1]!)
 				?.holes.push(contours[i]!.contour);
 		}
+	}
+	return polygons;
+}
+
+/**
+ * For outlines that may overlap: fonts wind filled contours one way and holes
+ * the other, so the winding of the largest contour marks the outlines; each
+ * hole goes to the smallest outline around it. Overlapping outlines become
+ * separate solids, which look the same once extruded.
+ */
+function organizeByWinding(glyphContours: Contour[]): PolygonHierarchy[] {
+	const contours = glyphContours.map((contour) => {
+		const signed = computeContourSignedArea(contour);
+		return { contour, signed, area: Math.abs(signed) };
+	});
+	if (contours.length === 0) return [];
+	contours.sort((a, b) => b.area - a.area);
+	const filled = Math.sign(contours[0]!.signed);
+	const polygons: PolygonHierarchy[] = [];
+	for (const c of contours) {
+		if (Math.sign(c.signed) === filled)
+			polygons.push({ outer: c.contour, holes: [] });
+	}
+	for (const c of contours) {
+		if (Math.sign(c.signed) === filled) continue;
+		const probe = c.contour[0]!;
+		const mid = c.contour[Math.floor(c.contour.length / 2)]!;
+		let home: PolygonHierarchy | undefined;
+		let homeArea = Number.POSITIVE_INFINITY;
+		for (const poly of polygons) {
+			const area = Math.abs(computeContourSignedArea(poly.outer));
+			if (
+				area > c.area &&
+				area < homeArea &&
+				(isPointInsidePolygon(probe, poly.outer) ||
+					isPointInsidePolygon(mid, poly.outer))
+			) {
+				home = poly;
+				homeArea = area;
+			}
+		}
+		home?.holes.push(c.contour);
 	}
 	return polygons;
 }

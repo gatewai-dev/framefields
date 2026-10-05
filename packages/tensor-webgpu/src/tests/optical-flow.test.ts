@@ -1,4 +1,4 @@
-import { ensureDevice } from "@gitframes/webgpu-renderers";
+import { ensureDevice } from "@framefields/webgpu-renderers";
 import { describe, expect, it } from "vitest";
 import { ControlNetMultiplexer } from "../multiplexer/controlnet-multiplexer.js";
 import { OpticalFlowComputePipeline } from "../pipelines/optical-flow-pipeline.js";

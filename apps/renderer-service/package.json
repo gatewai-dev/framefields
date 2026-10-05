@@ -1,5 +1,5 @@
 {
-	"name": "@gitframes/renderer-service",
+	"name": "@framefields/renderer-service",
 	"private": true,
 	"version": "2.0.2",
 	"type": "module",
@@ -18,11 +18,11 @@
 		"test": "vitest run"
 	},
 	"dependencies": {
-		"@gitframes/client-utils": "workspace:*",
-		"@gitframes/core": "workspace:*",
-		"@gitframes/renderer": "workspace:*",
-		"@gitframes/media": "workspace:*",
-		"@gitframes/server-utils": "workspace:*",
+		"@framefields/client-utils": "workspace:*",
+		"@framefields/core": "workspace:*",
+		"@framefields/renderer": "workspace:*",
+		"@framefields/media": "workspace:*",
+		"@framefields/server-utils": "workspace:*",
 		"@hono/node-server": "^1.19.11",
 		"dotenv": "^17.0.1",
 		"hono": "^4.13.7",
@@ -35,6 +35,6 @@
 		"tsx": "^4.20.3",
 		"typescript": "^5.8.3",
 		"vitest": "^4.1.5",
-		"@gitframes/tsconfig": "workspace:*"
+		"@framefields/tsconfig": "workspace:*"
 	}
 }

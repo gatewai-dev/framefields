@@ -1,4 +1,4 @@
-# @gitframes/example-21-full-circle
+# @framefields/example-21-full-circle
 
 ## 2.0.2
 

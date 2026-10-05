@@ -1,8 +1,8 @@
-import { SignalDataSchema } from "@gitframes/core";
+import { SignalDataSchema } from "@framefields/core";
 import {
 	createOutputItemSchema,
 	MultiOutputGenericSchema,
-} from "@gitframes/node-sdk";
+} from "@framefields/node-sdk";
 import { z } from "zod";
 
 export const GateModeSchema = z.enum(["gate", "trigger", "toggle"]);

@@ -1,9 +1,9 @@
-import type { DataType } from "@gitframes/core";
+import type { DataType } from "@framefields/core";
 import {
 	ColorSchema,
 	ImageResultSchema,
 	VideoResultSchema,
-} from "@gitframes/node-sdk";
+} from "@framefields/node-sdk";
 import { z } from "zod";
 
 export const LAYER_STYLE_BLEND_MODES = [

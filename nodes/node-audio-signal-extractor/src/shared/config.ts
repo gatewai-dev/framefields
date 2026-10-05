@@ -1,7 +1,7 @@
 import {
 	createOutputItemSchema,
 	MultiOutputGenericSchema,
-} from "@gitframes/node-sdk";
+} from "@framefields/node-sdk";
 import { z } from "zod";
 
 export const ExtractionModeEnum = z.enum([

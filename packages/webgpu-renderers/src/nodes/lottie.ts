@@ -2,7 +2,7 @@ import {
 	BASE_URL,
 	GetFontAssetUrl,
 	localFontManager,
-} from "@gitframes/client-utils";
+} from "@framefields/client-utils";
 import { DotLottie, type Fit } from "@lottiefiles/dotlottie-web";
 import {
 	getHeadlessFontData,

@@ -1,5 +1,5 @@
 {
-	"extends": "@gitframes/tsconfig/base.json",
+	"extends": "@framefields/tsconfig/base.json",
 	"compilerOptions": {
 		"lib": ["ESNext", "DOM"],
 		"types": ["@types/webgpu"]

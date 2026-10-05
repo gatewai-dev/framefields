@@ -10,7 +10,7 @@
  * Signal functions see the composition frame (`ctx.frame`), not the layer's
  * local frame, so anything tied to a scene takes that scene's start.
  */
-import { type Composition, Signal } from "gitframes";
+import { type Composition, Signal } from "framefields";
 import { envelope } from "./motion.js";
 import { BEAT } from "./theme.js";
 

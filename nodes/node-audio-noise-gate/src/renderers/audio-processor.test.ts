@@ -1,5 +1,5 @@
-import type { VirtualMediaData } from "@gitframes/core";
-import { ensureDevice } from "@gitframes/webgpu-renderers";
+import type { VirtualMediaData } from "@framefields/core";
+import { ensureDevice } from "@framefields/webgpu-renderers";
 import { describe, expect, it } from "vitest";
 import { noiseGateAudioProcessor } from "./audio-processor.js";
 

@@ -1,4 +1,4 @@
-import { GetFontAssetUrl } from "@gitframes/client-utils";
+import { GetFontAssetUrl } from "@framefields/client-utils";
 import { parseColor } from "../color.js";
 import type { RenderContextValue } from "../render-context.js";
 import type { Color } from "../renderer2d/index.js";

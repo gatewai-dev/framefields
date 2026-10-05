@@ -1,4 +1,4 @@
-import type { VirtualMediaData } from "@gitframes/core";
+import type { VirtualMediaData } from "@framefields/core";
 import { describe, expect, it } from "vitest";
 import { ensureDevice } from "../device.js";
 import { WebGPUAudioProcessor } from "./webgpu-audio-processor.js";

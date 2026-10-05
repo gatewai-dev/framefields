@@ -1,7 +1,7 @@
-import type { LayerAnimation } from "@gitframes/compositions/program";
-import type { VirtualMediaData } from "@gitframes/core";
-import type { AudioProcessor } from "@gitframes/node-sdk";
-import { audioRegistry } from "@gitframes/node-sdk";
+import type { LayerAnimation } from "@framefields/compositions/program";
+import type { VirtualMediaData } from "@framefields/core";
+import type { AudioProcessor } from "@framefields/node-sdk";
+import { audioRegistry } from "@framefields/node-sdk";
 import { compileLayerTimeline } from "../shared/compiler.js";
 
 interface CompositorOperation {

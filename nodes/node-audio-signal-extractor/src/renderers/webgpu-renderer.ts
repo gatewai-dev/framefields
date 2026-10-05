@@ -1,5 +1,5 @@
-import type { WebGPUNodeRenderer } from "@gitframes/node-sdk";
-import { drawAudioSignalExtractorNode } from "@gitframes/webgpu-renderers";
+import type { WebGPUNodeRenderer } from "@framefields/node-sdk";
+import { drawAudioSignalExtractorNode } from "@framefields/webgpu-renderers";
 
 export const AudioSignalExtractorWebGPURenderer: WebGPUNodeRenderer = async (
 	args,

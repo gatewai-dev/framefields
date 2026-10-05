@@ -1,0 +1,225 @@
+{
+  "url": "https://v3b.fal.media/files/b/0aacde9c/QWCfHTyCah-OL1Vyo6s27_music_generated.mp3",
+  "seed": 1,
+  "plan": {
+    "chunks": [
+      {
+        "duration_ms": 5333,
+        "text": "[Intro]\nWhat if video was just code?\nWhat if motion shipped in a commit?\nNo timeline, no render farm,\njust type it and let it hit.",
+        "positive_styles": [
+          "180 bpm",
+          "high-energy drum and bass",
+          "liquid neurofunk",
+          "punchy breakbeat drums",
+          "reese bass",
+          "bright supersaw chords",
+          "fast-paced female rap",
+          "confident female rapper with a rich, warm, powerful voice",
+          "rapid-fire double-time flow locked to the beat",
+          "crisp enunciation, every word clear",
+          "the rap never stops: vocals from the first bar to the last",
+          "F minor",
+          "modern festival mix",
+          "rap starts on the very first beat",
+          "filtered drums already rolling",
+          "rising tension",
+          "riser into the drop"
+        ],
+        "negative_styles": [
+          "male vocals",
+          "slow tempo",
+          "acoustic guitar",
+          "lo-fi",
+          "mumbled vocals",
+          "heavy autotune",
+          "instrumental breaks",
+          "long instrumental intro",
+          "silence",
+          "heavy bass",
+          "spoken word"
+        ],
+        "context_adherence": "high"
+      },
+      {
+        "duration_ms": 8000,
+        "text": "[Drop]\nFramefields!\nNo browser, no Chromium,\nno screenshots, just the GPU.\nA hundred twenty frames a second,\nevery pixel rendered true,\nwatch it move.",
+        "positive_styles": [
+          "massive drop",
+          "full breakbeat",
+          "rolling reese bass",
+          "punchy female rap hook, shouted ad-libs"
+        ],
+        "negative_styles": [
+          "male vocals",
+          "slow tempo",
+          "acoustic guitar",
+          "lo-fi",
+          "mumbled vocals",
+          "heavy autotune",
+          "instrumental breaks",
+          "long instrumental intro",
+          "silence",
+          "quiet"
+        ],
+        "context_adherence": "high"
+      },
+      {
+        "duration_ms": 8000,
+        "text": "[Tools]\nAfter Effects, Photoshop,\nPremiere, Cinema 4D,\nBlender, Illustrator,\nall of it in one import,\nlightweight, typed and fast,\nall the power, none of the weight.",
+        "positive_styles": [
+          "driving drums",
+          "offbeat chord stabs",
+          "rapid-fire female rap verse, list flow"
+        ],
+        "negative_styles": [
+          "male vocals",
+          "slow tempo",
+          "acoustic guitar",
+          "lo-fi",
+          "mumbled vocals",
+          "heavy autotune",
+          "instrumental breaks",
+          "long instrumental intro",
+          "silence",
+          "quiet"
+        ],
+        "context_adherence": "high"
+      },
+      {
+        "duration_ms": 8000,
+        "text": "[Verse]\nEvery letter razor sharp,\nbend the words around the arc,\ntype that moves the way you speak,\nsplit it, stagger it, spin it sweet,\nevery font a different feel,\nkinetic on every beat.",
+        "positive_styles": [
+          "wobbling growl bass",
+          "offbeat chord stabs",
+          "rapid-fire female rap verse"
+        ],
+        "negative_styles": [
+          "male vocals",
+          "slow tempo",
+          "acoustic guitar",
+          "lo-fi",
+          "mumbled vocals",
+          "heavy autotune",
+          "instrumental breaks",
+          "long instrumental intro",
+          "silence",
+          "quiet"
+        ],
+        "context_adherence": "high"
+      },
+      {
+        "duration_ms": 8000,
+        "text": "[Pre-Chorus]\nStep inside the camera,\nfly the third dimension,\npaths and planes in motion,\ncubes in every direction,\norbit round and dolly through,\nlight it up in depth.",
+        "positive_styles": [
+          "soaring supersaw lead",
+          "driving drums",
+          "fast female rap with melodic edge"
+        ],
+        "negative_styles": [
+          "male vocals",
+          "slow tempo",
+          "acoustic guitar",
+          "lo-fi",
+          "mumbled vocals",
+          "heavy autotune",
+          "instrumental breaks",
+          "long instrumental intro",
+          "silence",
+          "quiet"
+        ],
+        "context_adherence": "high"
+      },
+      {
+        "duration_ms": 5334,
+        "text": "[Warp]\nDrop a mesh and make it bend,\nwarp the vertices to the bass,\nripple, twist and fold the space,\nevery frame a different shape.",
+        "positive_styles": [
+          "heavy wobbling bass with pitch bends",
+          "full drums",
+          "aggressive female rap, punchy flow"
+        ],
+        "negative_styles": [
+          "male vocals",
+          "slow tempo",
+          "acoustic guitar",
+          "lo-fi",
+          "mumbled vocals",
+          "heavy autotune",
+          "instrumental breaks",
+          "long instrumental intro",
+          "silence",
+          "quiet",
+          "drums drop out"
+        ],
+        "context_adherence": "high"
+      },
+      {
+        "duration_ms": 5333,
+        "text": "[Composite]\nIt's just code, write it once,\nkey it, mask it, blend the light,\nstack the layers, comp it through,\nrender true every night.",
+        "positive_styles": [
+          "riser and snare roll building",
+          "driving drums",
+          "tight female rap, building intensity"
+        ],
+        "negative_styles": [
+          "male vocals",
+          "slow tempo",
+          "acoustic guitar",
+          "lo-fi",
+          "mumbled vocals",
+          "heavy autotune",
+          "instrumental breaks",
+          "long instrumental intro",
+          "silence",
+          "quiet",
+          "drums drop out"
+        ],
+        "context_adherence": "high"
+      },
+      {
+        "duration_ms": 8000,
+        "text": "[Chorus]\nFrame by frame,\nshader by shader,\ngrade it, grain it, glitch it, make it louder,\nframe by frame,\nfaster and faster!",
+        "positive_styles": [
+          "biggest drop of the song",
+          "anthemic chorus",
+          "full energy",
+          "female rap chorus with stacked ad-libs"
+        ],
+        "negative_styles": [
+          "male vocals",
+          "slow tempo",
+          "acoustic guitar",
+          "lo-fi",
+          "mumbled vocals",
+          "heavy autotune",
+          "instrumental breaks",
+          "long instrumental intro",
+          "silence",
+          "quiet"
+        ],
+        "context_adherence": "high"
+      },
+      {
+        "duration_ms": 4000,
+        "text": "[Outro]\nFramefields.\nMotion, compiled.",
+        "positive_styles": [
+          "final hit",
+          "big sustained chord ringing out",
+          "clean ending"
+        ],
+        "negative_styles": [
+          "male vocals",
+          "slow tempo",
+          "acoustic guitar",
+          "lo-fi",
+          "mumbled vocals",
+          "heavy autotune",
+          "instrumental breaks",
+          "long instrumental intro",
+          "silence",
+          "fade-in"
+        ],
+        "context_adherence": "high"
+      }
+    ]
+  }
+}

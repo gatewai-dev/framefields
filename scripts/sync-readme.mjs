@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // npm renders the README that sits beside the package's package.json, while
 // GitHub shows the repo root's. Keep one source of truth: generate
-// packages/gitframes/README.md from the root README, rewriting its relative
+// packages/framefields/README.md from the root README, rewriting its relative
 // asset and repository links to absolute GitHub URLs so images and links
 // resolve on npmjs.com (which serves the file with no repo context).
 //
@@ -12,15 +12,18 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const source = join(repoRoot, "README.md");
-const target = join(repoRoot, "packages", "gitframes", "README.md");
+const target = join(repoRoot, "packages", "framefields", "README.md");
 
 const pkg = JSON.parse(
-	readFileSync(join(repoRoot, "packages", "gitframes", "package.json"), "utf8"),
+	readFileSync(
+		join(repoRoot, "packages", "framefields", "package.json"),
+		"utf8",
+	),
 );
 const repo = /github\.com[/:]([^/]+)\/([^/]+?)(?:\.git)?$/.exec(
 	pkg.repository?.url ?? pkg.repository ?? "",
 );
-if (!repo) throw new Error("gitframes: no GitHub repository URL to link to");
+if (!repo) throw new Error("framefields: no GitHub repository URL to link to");
 const REPO = `https://github.com/${repo[1]}/${repo[2]}`;
 const REF = "main";
 const RAW = `https://raw.githubusercontent.com/${repo[1]}/${repo[2]}/${REF}/`;
@@ -61,5 +64,5 @@ const readme = readFileSync(source, "utf8");
 const generated = `<!-- Generated from README.md by scripts/sync-readme.mjs. Edit that file, not this one. -->\n\n${rewrite(readme)}`;
 writeFileSync(target, generated);
 console.log(
-	`packages/gitframes/README.md ← README.md (${generated.length} bytes)`,
+	`packages/framefields/README.md ← README.md (${generated.length} bytes)`,
 );

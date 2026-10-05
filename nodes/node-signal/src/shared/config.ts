@@ -1,4 +1,4 @@
-import { SignalResultSchema } from "@gitframes/node-sdk";
+import { SignalResultSchema } from "@framefields/node-sdk";
 import { z } from "zod";
 
 // ---------------------------------------------------------------------------

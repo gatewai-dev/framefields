@@ -1,4 +1,4 @@
-import { ensureDevice } from "@gitframes/webgpu-renderers";
+import { ensureDevice } from "@framefields/webgpu-renderers";
 import { describe, expect, it } from "vitest";
 import { SegmentationComputePipeline } from "../pipelines/segmentation-pipeline.js";
 import { TensorPipeline } from "../pipeline/tensor-pipeline.js";

@@ -1,7 +1,7 @@
 /// <reference types="webgpu" />
-import type { SignalData, VirtualMediaData } from "@gitframes/core";
-import type { WebGPUNodeRenderer } from "@gitframes/node-sdk";
-import { parseColor, signalRegistry } from "@gitframes/webgpu-renderers";
+import type { SignalData, VirtualMediaData } from "@framefields/core";
+import type { WebGPUNodeRenderer } from "@framefields/node-sdk";
+import { parseColor, signalRegistry } from "@framefields/webgpu-renderers";
 
 interface Relight3DOp {
 	op: "Relight3D";

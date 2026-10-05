@@ -1,6 +1,6 @@
 /// <reference types="webgpu" />
-import type { WebGPUNodeRenderer } from "@gitframes/node-sdk";
-import { TemporalDeflickerPipeline } from "@gitframes/tensor-webgpu";
+import type { WebGPUNodeRenderer } from "@framefields/node-sdk";
+import { TemporalDeflickerPipeline } from "@framefields/tensor-webgpu";
 
 interface TemporalDeflickerOp {
 	op: "TemporalDeflicker" | "Deflicker";

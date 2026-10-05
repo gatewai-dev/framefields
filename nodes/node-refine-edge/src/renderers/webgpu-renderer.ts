@@ -1,7 +1,7 @@
 /// <reference types="webgpu" />
-import type { VirtualMediaData } from "@gitframes/core";
-import type { WebGPUNodeRenderer } from "@gitframes/node-sdk";
-import { signalRegistry } from "@gitframes/webgpu-renderers";
+import type { VirtualMediaData } from "@framefields/core";
+import type { WebGPUNodeRenderer } from "@framefields/node-sdk";
+import { signalRegistry } from "@framefields/webgpu-renderers";
 import {
 	MAX_DECONTAMINATE,
 	MAX_FEATHER,

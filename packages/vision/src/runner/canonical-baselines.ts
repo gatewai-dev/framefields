@@ -2,7 +2,7 @@ import type {
 	DetectedObject,
 	Landmark3D,
 	TrackedObject,
-} from "@gitframes/core";
+} from "@framefields/core";
 import type { PoseResult } from "../types.js";
 
 /** Neutral fallbacks so signal evaluators always have a well-formed frame to read. */

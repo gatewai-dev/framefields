@@ -8,7 +8,7 @@ import {
 	type ProgrammaticSignal,
 	type TensorData,
 	type TrackedObject,
-} from "@gitframes/core";
+} from "@framefields/core";
 import { COCO_CLASSES } from "../model/registry.js";
 import { COCO17_KEYPOINT_NAMES, COCO17_KEYPOINTS } from "../pose/keypoints.js";
 import {
@@ -124,7 +124,7 @@ export interface ObjectTrackSignals {
 	readonly topLeft: LandmarkCoordinateSignals;
 	readonly bottomLeft: LandmarkCoordinateSignals;
 
-	// Extensible editing & isolating helpers (decorated by @gitframes/gitframes)
+	// Extensible editing & isolating helpers (decorated by @framefields/framefields)
 	readonly [key: string]: unknown;
 }
 

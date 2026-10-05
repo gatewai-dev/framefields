@@ -1,6 +1,6 @@
 /**
  * @file shaders/pbr-glass.ts
- * @module @gitframes/webgpu-renderers/shaders/pbr-glass
+ * @module @framefields/webgpu-renderers/shaders/pbr-glass
  *
  * WebGPU PBR Glass, Acrylic & Frosted Glass Refraction WGSL Shader.
  * Features Schlick Fresnel grazing rim reflectance, Snell's law refraction,

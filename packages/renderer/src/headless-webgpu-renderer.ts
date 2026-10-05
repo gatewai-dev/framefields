@@ -46,14 +46,14 @@ import {
 	compositionStateStore,
 	drawCompositionTree,
 	mixAudioTracks,
-} from "@gitframes/compositions";
+} from "@framefields/compositions";
 import {
 	getMediaType,
 	takeRenderDiagnostics,
 	updateClockSignals,
 	type VirtualMediaData,
-} from "@gitframes/core";
-import { rendererLogger } from "@gitframes/server-utils";
+} from "@framefields/core";
+import { rendererLogger } from "@framefields/server-utils";
 import {
 	clearAllVideoCache,
 	ensureDevice,
@@ -69,7 +69,7 @@ import {
 	SlugFontCache,
 	textureCache,
 	WebGPUAudioProcessor,
-} from "@gitframes/webgpu-renderers";
+} from "@framefields/webgpu-renderers";
 import {
 	AudioSample,
 	AudioSampleSource,

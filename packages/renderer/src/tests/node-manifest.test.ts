@@ -1,6 +1,6 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { audioRegistry, webgpuRegistry } from "@gitframes/node-sdk";
+import { audioRegistry, webgpuRegistry } from "@framefields/node-sdk";
 import { describe, expect, it } from "vitest";
 import {
 	discoverAndRegisterNodeRenderers,
@@ -17,7 +17,7 @@ import {
 const here = path.dirname(fileURLToPath(import.meta.url));
 const nodesDir = findNodesDir(here);
 
-describe("node manifests (package.json `gitframes` block)", () => {
+describe("node manifests (package.json `framefields` block)", () => {
 	it("locates the workspace nodes directory", () => {
 		expect(nodesDir).toBeTruthy();
 	});
@@ -80,18 +80,18 @@ describe("node manifests (package.json `gitframes` block)", () => {
 });
 
 describe("parseNodeManifest", () => {
-	it("rejects a package with no gitframes block", () => {
+	it("rejects a package with no framefields block", () => {
 		const { manifest, problems } = parseNodeManifest(
-			{ name: "@gitframes/node-x" },
+			{ name: "@framefields/node-x" },
 			"node-x",
 		);
 		expect(manifest).toBeUndefined();
-		expect(problems[0]).toContain('no "gitframes" block');
+		expect(problems[0]).toContain('no "framefields" block');
 	});
 
 	it("rejects a missing type and an unknown kind", () => {
 		const { manifest, problems } = parseNodeManifest(
-			{ gitframes: { kind: "filter" } },
+			{ framefields: { kind: "filter" } },
 			"node-x",
 		);
 		expect(manifest).toBeUndefined();
@@ -100,7 +100,7 @@ describe("parseNodeManifest", () => {
 
 	it("does not derive an op from the package name", () => {
 		const { manifest } = parseNodeManifest(
-			{ name: "@gitframes/node-lut", gitframes: { kind: "effect" } },
+			{ name: "@framefields/node-lut", framefields: { kind: "effect" } },
 			"node-apply-lut",
 		);
 		expect(manifest).toBeUndefined();
@@ -109,10 +109,10 @@ describe("parseNodeManifest", () => {
 	it("reads optional fields and the legacy opt-out", () => {
 		const { manifest, problems } = parseNodeManifest(
 			{
-				name: "@gitframes/node-x",
+				name: "@framefields/node-x",
 				gatewai: { enabled: false },
 				exports: { "./renderer": { development: "./src/renderers/index.ts" } },
-				gitframes: {
+				framefields: {
 					type: "ApplyLUT",
 					kind: "effect",
 					aliases: ["Lut"],

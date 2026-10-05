@@ -1,4 +1,4 @@
-import { registerHeadlessFont } from "@gitframes/webgpu-renderers";
+import { registerHeadlessFont } from "@framefields/webgpu-renderers";
 
 /**
  * Preloads a font into the browser or headless environment.

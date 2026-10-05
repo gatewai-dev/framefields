@@ -2,7 +2,7 @@
  * 0 – bar 2 — Out of black: the eclipse fades up, a ring draws itself around
  * the moon's disc on the first downbeat and lets go, the kicker names the film.
  */
-import { Layer, LayerAnimation } from "gitframes";
+import { Layer, LayerAnimation } from "framefields";
 import { bar } from "../grid.js";
 import { sourceCircle } from "../plates.js";
 import {

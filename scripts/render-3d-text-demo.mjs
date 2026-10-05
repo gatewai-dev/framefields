@@ -5,7 +5,7 @@ import {
 	Layer,
 	Layer3D,
 	LayerAnimation,
-} from "../packages/gitframes/dist/index.mjs";
+} from "../packages/framefields/dist/index.mjs";
 import fs from "node:fs/promises";
 import path from "node:path";
 
@@ -13,7 +13,7 @@ async function main() {
 	console.log("=== WebGPU 3D Typography Render Demonstration ===");
 
 	const artifactDir = "/Users/okanaslankan/.gemini/antigravity-ide/brain/18faf2d5-3c9b-408e-8ba7-bcbf855a7dc5";
-	const outputDir = "/Users/okanaslankan/gitframes/examples/output/3d_text_demo";
+	const outputDir = "/Users/okanaslankan/framefields/examples/output/3d_text_demo";
 	await fs.mkdir(artifactDir, { recursive: true });
 	await fs.mkdir(outputDir, { recursive: true });
 
@@ -118,7 +118,7 @@ async function main() {
 
 	const extrudedHeadline = Layer3D.extrudedText({
 		id: "volumetric-headline",
-		text: "GITFRAMES 3D",
+		text: "FRAMEFIELDS 3D",
 		fontSize: 100,
 		fontWeight: "bold",
 		fill: "#ffffff",
@@ -178,7 +178,7 @@ async function main() {
 			justify: "space-between",
 			align: "center",
 			children: [
-				Layer.text("GITFRAMES // 3D GPU TYPOGRAPHY ENGINE", {
+				Layer.text("FRAMEFIELDS // 3D GPU TYPOGRAPHY ENGINE", {
 					id: "hud-title",
 					fontSize: 14,
 					fontWeight: "bold",

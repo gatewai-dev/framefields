@@ -1,4 +1,4 @@
-# @gitframes/node-channel-merger
+# @framefields/node-channel-merger
 
 ## 2.0.2
 

@@ -1,22 +1,22 @@
 /// <reference types="webgpu" />
-import { resolveMediaSourceUrl } from "@gitframes/client-utils";
-import { decodeAudioSource } from "@gitframes/compositions";
+import { resolveMediaSourceUrl } from "@framefields/client-utils";
+import { decodeAudioSource } from "@framefields/compositions";
 import {
 	collectNodeOps,
 	computeLayout,
 	initLayout,
 	type LayoutNode,
 	type Rect,
-} from "@gitframes/compositions/program";
-import type { MeshAudioDeformConfig } from "@gitframes/core";
+} from "@framefields/compositions/program";
+import type { MeshAudioDeformConfig } from "@framefields/core";
 import {
 	DEFAULT_DURATION_MS,
 	getActiveMediaMetadata,
 	type VirtualMediaData,
-} from "@gitframes/core";
-import type { WebGPUNodeRenderer } from "@gitframes/node-sdk";
-import { measureText } from "@gitframes/renderers";
-import { TemporalDeflickerPipeline } from "@gitframes/tensor-webgpu";
+} from "@framefields/core";
+import type { WebGPUNodeRenderer } from "@framefields/node-sdk";
+import { measureText } from "@framefields/renderers";
+import { TemporalDeflickerPipeline } from "@framefields/tensor-webgpu";
 import {
 	AudioLatentTrackCache,
 	type BlendMode,
@@ -46,7 +46,7 @@ import {
 	type SlugGlyphBatch,
 	srtLoader,
 	Vector3Math,
-} from "@gitframes/webgpu-renderers";
+} from "@framefields/webgpu-renderers";
 
 import { compileTimeline } from "../shared/compiler.js";
 import type { CompositorOperation } from "../shared/config.js";

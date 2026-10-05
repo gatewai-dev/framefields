@@ -1,4 +1,4 @@
-# @gitframes/tensor-webgpu
+# @framefields/tensor-webgpu
 
 ## 2.0.2
 

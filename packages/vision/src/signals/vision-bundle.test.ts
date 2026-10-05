@@ -3,7 +3,7 @@ import {
 	type FrameContext,
 	frameSignal,
 	type TrackedObject,
-} from "@gitframes/core";
+} from "@framefields/core";
 import { describe, expect, it } from "vitest";
 import type {
 	InstanceMask,

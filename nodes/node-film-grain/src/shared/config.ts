@@ -2,7 +2,7 @@ import {
 	configBuilder,
 	ImageResultSchema,
 	VideoResultSchema,
-} from "@gitframes/node-sdk";
+} from "@framefields/node-sdk";
 import { z } from "zod";
 
 export const MAX_STRENGTH = 100;

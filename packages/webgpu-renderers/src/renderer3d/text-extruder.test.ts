@@ -9,13 +9,13 @@ describe("Extruded 3D Text Polygonal Mesh Generator", () => {
 	it("generates watertight 3D mesh with front cap, side walls, and materials", () => {
 		const fontPath = path.resolve(
 			process.cwd(),
-			"../../examples/22_gitframes_launch/assets/fonts/Unbounded.ttf",
+			"../../examples/22_framefields_launch/assets/fonts/Unbounded.ttf",
 		);
 		const fontBuf = fs.readFileSync(fontPath);
 		const font = fontkit.create(fontBuf) as fontkit.Font;
 
 		const result = generateExtrudedTextGeometry({
-			text: "GITFRAMES",
+			text: "FRAMEFIELDS",
 			font,
 			fontSize: 100,
 			depth: 40,
@@ -61,13 +61,13 @@ describe("Extruded 3D Text Polygonal Mesh Generator", () => {
 	it("generates watertight 3D mesh using Inter font", () => {
 		const fontPath = path.resolve(
 			process.cwd(),
-			"../../examples/22_gitframes_launch/assets/fonts/Inter.ttf",
+			"../../examples/22_framefields_launch/assets/fonts/Inter.ttf",
 		);
 		const fontBuf = fs.readFileSync(fontPath);
 		const font = fontkit.create(fontBuf) as fontkit.Font;
 
 		const result = generateExtrudedTextGeometry({
-			text: "GITFRAMES",
+			text: "FRAMEFIELDS",
 			font,
 			fontSize: 120,
 			depth: 50,
@@ -86,7 +86,7 @@ describe("Extruded 3D Text Polygonal Mesh Generator", () => {
 	it("correctly resolves complex overlapping glyph contours (T, F, M, A) in Unbounded", () => {
 		const fontPath = path.resolve(
 			process.cwd(),
-			"../../examples/22_gitframes_launch/assets/fonts/Unbounded.ttf",
+			"../../examples/22_framefields_launch/assets/fonts/Unbounded.ttf",
 		);
 		const fontBuf = fs.readFileSync(fontPath);
 		const font = fontkit.create(fontBuf) as fontkit.Font;
@@ -115,7 +115,7 @@ describe("Extruded 3D Text Polygonal Mesh Generator", () => {
 			fs.readFileSync(
 				path.resolve(
 					process.cwd(),
-					"../../examples/22_gitframes_launch/assets/fonts/Inter.ttf",
+					"../../examples/22_framefields_launch/assets/fonts/Inter.ttf",
 				),
 			),
 		) as fontkit.Font;

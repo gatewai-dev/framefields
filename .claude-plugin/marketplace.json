@@ -1,15 +1,15 @@
 {
-	"name": "gitframes-plugins",
+	"name": "framefields-plugins",
 	"owner": {
-		"name": "Gitframes",
-		"url": "https://github.com/gatewai-dev/gitframes"
+		"name": "Framefields",
+		"url": "https://github.com/gatewai-dev/framefields"
 	},
-	"description": "Agent skills for the gitframes WebGPU video SDK.",
+	"description": "Agent skills for the framefields WebGPU video SDK.",
 	"plugins": [
 		{
-			"name": "gitframes",
-			"source": "./plugins/gitframes",
-			"description": "Author, render and verify video compositions with the gitframes WebGPU SDK.",
+			"name": "framefields",
+			"source": "./plugins/framefields",
+			"description": "Author, render and verify video compositions with the framefields WebGPU SDK.",
 			"category": "design"
 		}
 	]

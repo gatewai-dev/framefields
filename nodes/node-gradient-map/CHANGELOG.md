@@ -1,4 +1,4 @@
-# @gitframes/node-gradient-map
+# @framefields/node-gradient-map
 
 ## 2.0.2
 

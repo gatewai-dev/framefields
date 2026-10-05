@@ -53,7 +53,7 @@ assets/soundfonts/
 !assets/brand/*.png
 !assets/showcase/*.jpg
 !assets/showcase/*.png
-!plugins/gitframes/assets/*.png
+!plugins/framefields/assets/*.png
 
 # Vision Tracking Caches
 *tracking.json
@@ -89,7 +89,7 @@ packages/**/models/
 .hermes/
 
 # Plugin ZIP for the OpenAI plugin directory (pnpm run pack:plugin)
-gitframes-plugin.zip
+framefields-plugin.zip
 
 # Generated package README, built from the repo root README (scripts/sync-readme.mjs)
-packages/gitframes/README.md
+packages/framefields/README.md

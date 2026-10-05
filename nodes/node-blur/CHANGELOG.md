@@ -1,4 +1,4 @@
-# @gitframes/node-blur
+# @framefields/node-blur
 
 ## 2.0.2
 

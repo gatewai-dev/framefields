@@ -1,4 +1,4 @@
-import type { TextSpan, TextSpanMark } from "@gitframes/core";
+import type { TextSpan, TextSpanMark } from "@framefields/core";
 import {
 	buildPathLUT,
 	generatePathSegments,

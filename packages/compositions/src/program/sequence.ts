@@ -1,6 +1,6 @@
 /**
  * @file program/sequence.ts
- * @module @gitframes/compositions/program/sequence
+ * @module @framefields/compositions/program/sequence
  *
  * Multi-Scene Timeline Orchestration, Camera Choreography & Carrier Match Cuts.
  * Complies with specs/cinematic-sequencing.ts.

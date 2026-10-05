@@ -1,4 +1,4 @@
-# @gitframes/webgpu-renderers
+# @framefields/webgpu-renderers
 
 ## 2.0.2
 

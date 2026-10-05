@@ -5,7 +5,7 @@ import {
 	Layer,
 	Layer3D,
 	LayerAnimation,
-} from "../packages/gitframes/dist/index.mjs";
+} from "../packages/framefields/dist/index.mjs";
 import { loadImage, Canvas } from "skia-canvas";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -15,7 +15,7 @@ async function main() {
 
 	const artifactDir =
 		"/Users/okanaslankan/.gemini/antigravity-ide/brain/b888d40e-44c5-4686-bebd-a131288bd97e";
-	const outputDir = "/Users/okanaslankan/gitframes/examples/output/text_2d_3d";
+	const outputDir = "/Users/okanaslankan/framefields/examples/output/text_2d_3d";
 	await fs.mkdir(artifactDir, { recursive: true });
 	await fs.mkdir(outputDir, { recursive: true });
 
@@ -122,7 +122,7 @@ async function main() {
 
 	const extrudedHeadline = Layer3D.extrudedText({
 		id: "volumetric-3d-headline",
-		text: "GITFRAMES 3D",
+		text: "FRAMEFIELDS 3D",
 		fontSize: 104,
 		fontWeight: "bold",
 		fill: "#ffffff",
@@ -285,7 +285,7 @@ async function main() {
 					fill: "#10b981",
 					letterSpacing: 2,
 				}),
-				Layer.text("GITFRAMES CORE ENGINE", {
+				Layer.text("FRAMEFIELDS CORE ENGINE", {
 					id: "footer-right",
 					fontSize: 12,
 					fontWeight: "bold",

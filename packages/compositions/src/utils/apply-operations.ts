@@ -1,9 +1,9 @@
-import { getEnv, resolveMediaSourceUrl } from "@gitframes/client-utils";
+import { getEnv, resolveMediaSourceUrl } from "@framefields/client-utils";
 import {
 	getActiveMediaMetadata,
 	resolveMediaMimeType,
 	type VirtualMediaData,
-} from "@gitframes/core";
+} from "@framefields/core";
 
 export type CropRegion = {
 	leftPct: number;

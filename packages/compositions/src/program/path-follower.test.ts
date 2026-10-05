@@ -1,4 +1,4 @@
-import { Path3D } from "@gitframes/renderers";
+import { Path3D } from "@framefields/renderers";
 import { describe, expect, it } from "vitest";
 import { CameraAnimation, LayerAnimation } from "./animation.js";
 

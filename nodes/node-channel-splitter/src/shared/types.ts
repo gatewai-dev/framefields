@@ -1,4 +1,4 @@
-import type { VirtualMediaData } from "@gitframes/core";
+import type { VirtualMediaData } from "@framefields/core";
 import type { ChannelColorSpace } from "./config.js";
 
 export interface ChannelSplitterOp {

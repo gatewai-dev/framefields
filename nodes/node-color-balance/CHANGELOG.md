@@ -1,4 +1,4 @@
-# @gitframes/node-color-balance
+# @framefields/node-color-balance
 
 ## 2.0.2
 

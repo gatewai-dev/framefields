@@ -1,5 +1,5 @@
 /**
- * `@gitframes/compositions/program` — the v2 composition document.
+ * `@framefields/compositions/program` — the v2 composition document.
  *
  * Pure module: schema, E-code validation, the doc → render-tree constructor
  * and the deterministic layout pass. Zero React/WebGPU/browser deps — safe

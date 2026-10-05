@@ -1,6 +1,6 @@
 import assert from "node:assert";
 import fs from "node:fs/promises";
-import type { VirtualMediaData } from "@gitframes/core";
+import type { VirtualMediaData } from "@framefields/core";
 import { HeadlessWebGPURenderer } from "./headless-webgpu-renderer.js";
 
 async function runTests() {

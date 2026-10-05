@@ -2,7 +2,7 @@ import type {
 	DetectedObject,
 	ObjectBoundingBox,
 	TrackedObject,
-} from "@gitframes/core";
+} from "@framefields/core";
 
 export interface TemporalTrackerOptions {
 	/** Minimum Intersection-over-Union to associate a detection with an existing track. Default: 0.25 */

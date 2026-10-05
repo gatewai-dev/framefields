@@ -15,7 +15,7 @@ export interface VisionModelStoreOptions {
 	readonly modelsDir?: string;
 	/**
 	 * Mirror origin: models are fetched from `<baseUrl>/<filename>` instead of their pinned
-	 * Hugging Face URLs. Defaults to `$GITFRAMES_MODELS_BASE_URL` when set.
+	 * Hugging Face URLs. Defaults to `$FRAMEFIELDS_MODELS_BASE_URL` when set.
 	 */
 	readonly baseUrl?: string;
 	readonly timeoutMs?: number;
@@ -39,14 +39,14 @@ export interface VisionModelStoreOptions {
 
 /**
  * Resolves the default model cache directory:
- * 1. `GITFRAMES_MODELS_DIR`
- * 2. `~/.cache/gitframes/models`
+ * 1. `FRAMEFIELDS_MODELS_DIR`
+ * 2. `~/.cache/framefields/models`
  */
 export function getDefaultModelsDir(): string {
-	if (process.env.GITFRAMES_MODELS_DIR) {
-		return resolve(process.env.GITFRAMES_MODELS_DIR);
+	if (process.env.FRAMEFIELDS_MODELS_DIR) {
+		return resolve(process.env.FRAMEFIELDS_MODELS_DIR);
 	}
-	return resolve(homedir(), ".cache/gitframes/models");
+	return resolve(homedir(), ".cache/framefields/models");
 }
 
 /**
@@ -75,7 +75,7 @@ export class VisionModelStore {
 			? resolve(options.modelsDir)
 			: getDefaultModelsDir();
 		this._baseUrl =
-			options.baseUrl ?? process.env.GITFRAMES_MODELS_BASE_URL ?? undefined;
+			options.baseUrl ?? process.env.FRAMEFIELDS_MODELS_BASE_URL ?? undefined;
 		this._timeoutMs = options.timeoutMs;
 		this._retries = Math.max(0, options.retries ?? 2);
 		this._retryDelayMs = options.retryDelayMs ?? 1000;

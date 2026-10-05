@@ -1,4 +1,4 @@
-# @gitframes/node-deflicker
+# @framefields/node-deflicker
 
 ## 2.0.2
 

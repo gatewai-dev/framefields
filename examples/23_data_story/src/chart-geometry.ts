@@ -3,7 +3,7 @@
  * (`<id>-bar-<series>-<i>`, `<id>-point-<series>-<i>`, `<id>-slice-<i>`), so a
  * scene can read a bar's or point's geometry and anchor its own overlays to it.
  */
-import type { LayoutNode } from "gitframes";
+import type { LayoutNode } from "framefields";
 
 export interface Box {
 	x: number;

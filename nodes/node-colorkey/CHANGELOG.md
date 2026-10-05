@@ -1,4 +1,4 @@
-# @gitframes/node-colorkey
+# @framefields/node-colorkey
 
 ## 2.0.2
 

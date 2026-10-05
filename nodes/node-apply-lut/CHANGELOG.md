@@ -1,4 +1,4 @@
-# @gitframes/node-lut
+# @framefields/node-lut
 
 ## 2.0.2
 

@@ -1,6 +1,6 @@
 /// <reference types="webgpu" />
-import type { WebGPUNodeRenderer } from "@gitframes/node-sdk";
-import { drawSvgNode } from "@gitframes/webgpu-renderers";
+import type { WebGPUNodeRenderer } from "@framefields/node-sdk";
+import { drawSvgNode } from "@framefields/webgpu-renderers";
 import type { ShapeGeneratorNodeConfig } from "../shared/config.js";
 import { generateShapeSvgDataUrl } from "../shared/svg-generator.js";
 

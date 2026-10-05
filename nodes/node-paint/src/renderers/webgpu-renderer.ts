@@ -1,8 +1,8 @@
 import type {
 	GPURenderPassEncoder,
 	WebGPUNodeRenderer,
-} from "@gitframes/node-sdk";
-import { parseColor } from "@gitframes/webgpu-renderers";
+} from "@framefields/node-sdk";
+import { parseColor } from "@framefields/webgpu-renderers";
 import type { PaintNodeConfig } from "../shared/config.js";
 
 export const PaintWebGPURenderer: WebGPUNodeRenderer = async (args) => {

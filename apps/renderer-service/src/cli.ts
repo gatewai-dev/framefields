@@ -1,13 +1,13 @@
 import "reflect-metadata";
-import { configureAssetUrls } from "@gitframes/client-utils";
-import { HeadlessMediaRenderer } from "@gitframes/renderer";
-import "@gitframes/renderer/offscreen-gl-polyfill";
+import { configureAssetUrls } from "@framefields/client-utils";
+import { HeadlessMediaRenderer } from "@framefields/renderer";
+import "@framefields/renderer/offscreen-gl-polyfill";
 import {
 	container,
 	rendererLogger,
 	type StorageService,
 	TOKENS,
-} from "@gitframes/server-utils";
+} from "@framefields/server-utils";
 import { registerBackendServices } from "./di-setup.js";
 import { RENDERER_ENV_CONFIG } from "./env-config.js";
 

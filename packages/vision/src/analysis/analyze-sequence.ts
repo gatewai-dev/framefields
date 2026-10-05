@@ -1,4 +1,4 @@
-import type { DetectedObject } from "@gitframes/core";
+import type { DetectedObject } from "@framefields/core";
 import { VISION_MODELS, type VisionTask } from "../model/registry.js";
 import type { VisionRunner } from "../runner/vision-runner.js";
 import { TemporalObjectTracker } from "../tracking/temporal-object-tracker.js";
@@ -14,7 +14,7 @@ import type {
  * One-shot, ffmpeg-free sequence analysis.
  *
  * Pure frame-iterable analyzer: it never decodes media itself, so it stays engine-only and
- * offline-testable. Callers (e.g. the gitframes ingestion adapter) supply decoded frames.
+ * offline-testable. Callers (e.g. the framefields ingestion adapter) supply decoded frames.
  * Model loading remains lazy — the runner downloads each task's model on the first frame
  * that actually runs that task, and only the tasks requested here are ever touched.
  */

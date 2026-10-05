@@ -1,4 +1,4 @@
-import { ImageResultSchema, VideoResultSchema } from "@gitframes/node-sdk";
+import { ImageResultSchema, VideoResultSchema } from "@framefields/node-sdk";
 import { z } from "zod";
 
 export const LevelChannelSchema = z

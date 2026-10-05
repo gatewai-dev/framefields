@@ -1,4 +1,4 @@
-# @gitframes/node-layer-style
+# @framefields/node-layer-style
 
 ## 2.0.2
 

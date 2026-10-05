@@ -1,4 +1,4 @@
-# @gitframes/core
+# @framefields/core
 
 ## 2.0.2
 

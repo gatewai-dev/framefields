@@ -1,4 +1,4 @@
-# @gitframes/node-signal
+# @framefields/node-signal
 
 ## 2.0.2
 

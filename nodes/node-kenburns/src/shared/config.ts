@@ -3,7 +3,7 @@ import {
 	MediaMetadataSchema,
 	SingleOutputGenericSchema,
 	VirtualMediaDataSchema,
-} from "@gitframes/core";
+} from "@framefields/core";
 import { z } from "zod";
 
 export const KEN_BURNS_EASING_OPTIONS = [

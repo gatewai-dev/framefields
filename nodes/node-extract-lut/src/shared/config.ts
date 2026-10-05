@@ -1,5 +1,5 @@
-import { createOutputItemSchema } from "@gitframes/core";
-import { configBuilder } from "@gitframes/node-sdk";
+import { createOutputItemSchema } from "@framefields/core";
+import { configBuilder } from "@framefields/node-sdk";
 import { z } from "zod";
 
 export const extractLutConfig = configBuilder()

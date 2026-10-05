@@ -5,7 +5,7 @@
  * and adaptive photometric blending to eliminate generative video flicker.
  */
 
-import type { DeflickerOptions } from "@gitframes/core";
+import type { DeflickerOptions } from "@framefields/core";
 import {
 	temporalWarpBlendRgba8Wgsl,
 	temporalWarpBlendRgba16fWgsl,

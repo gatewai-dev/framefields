@@ -178,19 +178,19 @@ importers:
 
   apps/renderer-service:
     dependencies:
-      '@gitframes/client-utils':
+      '@framefields/client-utils':
         specifier: workspace:*
         version: link:../../packages/client-utils
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@gitframes/media':
+      '@framefields/media':
         specifier: workspace:*
         version: link:../../packages/media
-      '@gitframes/renderer':
+      '@framefields/renderer':
         specifier: workspace:*
         version: link:../../packages/renderer
-      '@gitframes/server-utils':
+      '@framefields/server-utils':
         specifier: workspace:*
         version: link:../../packages/server-utils
       '@hono/node-server':
@@ -212,7 +212,7 @@ importers:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -228,16 +228,16 @@ importers:
         specifier: ^4.1.11
         version: 4.1.11(@opentelemetry/api@1.9.0)(@types/node@24.10.14)(@vitest/coverage-v8@4.1.11)(jsdom@29.1.0(@noble/hashes@2.0.1)(canvas@3.2.3))(vite@8.2.1(@types/node@24.10.14)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.3))
 
-  examples/19_gitframes_film:
+  examples/19_framefields_film:
     dependencies:
       dotenv:
         specifier: ^16.4.7
         version: 16.6.1
-      gitframes:
+      framefields:
         specifier: workspace:*
-        version: link:../../packages/gitframes
+        version: link:../../packages/framefields
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -258,11 +258,11 @@ importers:
       dotenv:
         specifier: ^16.4.7
         version: 16.6.1
-      gitframes:
+      framefields:
         specifier: workspace:*
-        version: link:../../packages/gitframes
+        version: link:../../packages/framefields
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -278,13 +278,13 @@ importers:
         specifier: ^4.1.11
         version: 4.1.11(@opentelemetry/api@1.9.0)(@types/node@24.10.14)(@vitest/coverage-v8@4.1.11)(jsdom@29.1.0(@noble/hashes@2.0.1)(canvas@3.2.3))(vite@8.2.1(@types/node@24.10.14)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.3))
 
-  examples/22_gitframes_launch:
+  examples/22_framefields_launch:
     dependencies:
-      gitframes:
+      framefields:
         specifier: workspace:*
-        version: link:../../packages/gitframes
+        version: link:../../packages/framefields
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -302,14 +302,14 @@ importers:
 
   examples/23_data_story:
     dependencies:
-      gitframes:
+      framefields:
         specifier: workspace:*
-        version: link:../../packages/gitframes
+        version: link:../../packages/framefields
       gsap:
         specifier: ^3.15.0
         version: 3.15.0
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -330,20 +330,20 @@ importers:
 
   nodes/node-apply-lut:
     dependencies:
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@gitframes/node-sdk':
+      '@framefields/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
-      '@gitframes/webgpu-renderers':
+      '@framefields/webgpu-renderers':
         specifier: workspace:*
         version: link:../../packages/webgpu-renderers
       zod:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -361,20 +361,20 @@ importers:
 
   nodes/node-audio-compressor:
     dependencies:
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@gitframes/node-sdk':
+      '@framefields/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
-      '@gitframes/webgpu-renderers':
+      '@framefields/webgpu-renderers':
         specifier: workspace:*
         version: link:../../packages/webgpu-renderers
       zod:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -392,20 +392,20 @@ importers:
 
   nodes/node-audio-delay:
     dependencies:
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@gitframes/node-sdk':
+      '@framefields/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
-      '@gitframes/webgpu-renderers':
+      '@framefields/webgpu-renderers':
         specifier: workspace:*
         version: link:../../packages/webgpu-renderers
       zod:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -423,20 +423,20 @@ importers:
 
   nodes/node-audio-fade:
     dependencies:
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@gitframes/node-sdk':
+      '@framefields/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
-      '@gitframes/webgpu-renderers':
+      '@framefields/webgpu-renderers':
         specifier: workspace:*
         version: link:../../packages/webgpu-renderers
       zod:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -454,20 +454,20 @@ importers:
 
   nodes/node-audio-noise-gate:
     dependencies:
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@gitframes/node-sdk':
+      '@framefields/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
-      '@gitframes/webgpu-renderers':
+      '@framefields/webgpu-renderers':
         specifier: workspace:*
         version: link:../../packages/webgpu-renderers
       zod:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -485,20 +485,20 @@ importers:
 
   nodes/node-audio-parametric-eq:
     dependencies:
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@gitframes/node-sdk':
+      '@framefields/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
-      '@gitframes/webgpu-renderers':
+      '@framefields/webgpu-renderers':
         specifier: workspace:*
         version: link:../../packages/webgpu-renderers
       zod:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -516,20 +516,20 @@ importers:
 
   nodes/node-audio-reverb:
     dependencies:
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@gitframes/node-sdk':
+      '@framefields/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
-      '@gitframes/webgpu-renderers':
+      '@framefields/webgpu-renderers':
         specifier: workspace:*
         version: link:../../packages/webgpu-renderers
       zod:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -547,20 +547,20 @@ importers:
 
   nodes/node-audio-signal-extractor:
     dependencies:
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@gitframes/node-sdk':
+      '@framefields/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
-      '@gitframes/webgpu-renderers':
+      '@framefields/webgpu-renderers':
         specifier: workspace:*
         version: link:../../packages/webgpu-renderers
       zod:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -581,20 +581,20 @@ importers:
 
   nodes/node-blur:
     dependencies:
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@gitframes/node-sdk':
+      '@framefields/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
-      '@gitframes/webgpu-renderers':
+      '@framefields/webgpu-renderers':
         specifier: workspace:*
         version: link:../../packages/webgpu-renderers
       zod:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -612,20 +612,20 @@ importers:
 
   nodes/node-camera-parallax-3d:
     dependencies:
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@gitframes/node-sdk':
+      '@framefields/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
-      '@gitframes/webgpu-renderers':
+      '@framefields/webgpu-renderers':
         specifier: workspace:*
         version: link:../../packages/webgpu-renderers
       zod:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -643,17 +643,17 @@ importers:
 
   nodes/node-canvas-generator:
     dependencies:
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@gitframes/node-sdk':
+      '@framefields/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
       zod:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -671,14 +671,14 @@ importers:
 
   nodes/node-caption-editor:
     dependencies:
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../../packages/core
       zod:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -693,14 +693,14 @@ importers:
 
   nodes/node-caption-generator:
     dependencies:
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../../packages/core
       zod:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -715,17 +715,17 @@ importers:
 
   nodes/node-channel-merger:
     dependencies:
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@gitframes/node-sdk':
+      '@framefields/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
       zod:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -746,17 +746,17 @@ importers:
 
   nodes/node-channel-splitter:
     dependencies:
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@gitframes/node-sdk':
+      '@framefields/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
       zod:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -777,20 +777,20 @@ importers:
 
   nodes/node-color-balance:
     dependencies:
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@gitframes/node-sdk':
+      '@framefields/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
-      '@gitframes/webgpu-renderers':
+      '@framefields/webgpu-renderers':
         specifier: workspace:*
         version: link:../../packages/webgpu-renderers
       zod:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -811,20 +811,20 @@ importers:
 
   nodes/node-colorkey:
     dependencies:
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@gitframes/node-sdk':
+      '@framefields/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
-      '@gitframes/webgpu-renderers':
+      '@framefields/webgpu-renderers':
         specifier: workspace:*
         version: link:../../packages/webgpu-renderers
       zod:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -842,25 +842,25 @@ importers:
 
   nodes/node-compositor:
     dependencies:
-      '@gitframes/client-utils':
+      '@framefields/client-utils':
         specifier: workspace:*
         version: link:../../packages/client-utils
-      '@gitframes/compositions':
+      '@framefields/compositions':
         specifier: workspace:*
         version: link:../../packages/compositions
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@gitframes/node-sdk':
+      '@framefields/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
-      '@gitframes/renderers':
+      '@framefields/renderers':
         specifier: workspace:*
         version: link:../../packages/renderers
-      '@gitframes/tensor-webgpu':
+      '@framefields/tensor-webgpu':
         specifier: workspace:*
         version: link:../../packages/tensor-webgpu
-      '@gitframes/webgpu-renderers':
+      '@framefields/webgpu-renderers':
         specifier: workspace:*
         version: link:../../packages/webgpu-renderers
       gsap:
@@ -870,7 +870,7 @@ importers:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -891,17 +891,17 @@ importers:
 
   nodes/node-corner-pin:
     dependencies:
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@gitframes/node-sdk':
+      '@framefields/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
       zod:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -916,17 +916,17 @@ importers:
 
   nodes/node-crop:
     dependencies:
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@gitframes/node-sdk':
+      '@framefields/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
       zod:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -941,17 +941,17 @@ importers:
 
   nodes/node-curves:
     dependencies:
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@gitframes/node-sdk':
+      '@framefields/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
       zod:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -966,23 +966,23 @@ importers:
 
   nodes/node-deflicker:
     dependencies:
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@gitframes/node-sdk':
+      '@framefields/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
-      '@gitframes/tensor-webgpu':
+      '@framefields/tensor-webgpu':
         specifier: workspace:*
         version: link:../../packages/tensor-webgpu
-      '@gitframes/webgpu-renderers':
+      '@framefields/webgpu-renderers':
         specifier: workspace:*
         version: link:../../packages/webgpu-renderers
       zod:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -1000,20 +1000,20 @@ importers:
 
   nodes/node-displacement-map:
     dependencies:
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@gitframes/node-sdk':
+      '@framefields/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
-      '@gitframes/webgpu-renderers':
+      '@framefields/webgpu-renderers':
         specifier: workspace:*
         version: link:../../packages/webgpu-renderers
       zod:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -1031,17 +1031,17 @@ importers:
 
   nodes/node-extract-frame:
     dependencies:
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@gitframes/node-sdk':
+      '@framefields/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
       zod:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -1056,20 +1056,20 @@ importers:
 
   nodes/node-extract-lut:
     dependencies:
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@gitframes/node-sdk':
+      '@framefields/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
-      '@gitframes/webgpu-renderers':
+      '@framefields/webgpu-renderers':
         specifier: workspace:*
         version: link:../../packages/webgpu-renderers
       zod:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -1087,20 +1087,20 @@ importers:
 
   nodes/node-film-grain:
     dependencies:
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@gitframes/node-sdk':
+      '@framefields/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
-      '@gitframes/webgpu-renderers':
+      '@framefields/webgpu-renderers':
         specifier: workspace:*
         version: link:../../packages/webgpu-renderers
       zod:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -1118,17 +1118,17 @@ importers:
 
   nodes/node-flip:
     dependencies:
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@gitframes/node-sdk':
+      '@framefields/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
       zod:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -1146,20 +1146,20 @@ importers:
 
   nodes/node-gradient-map:
     dependencies:
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@gitframes/node-sdk':
+      '@framefields/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
-      '@gitframes/webgpu-renderers':
+      '@framefields/webgpu-renderers':
         specifier: workspace:*
         version: link:../../packages/webgpu-renderers
       zod:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -1180,20 +1180,20 @@ importers:
 
   nodes/node-halftone-screen:
     dependencies:
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@gitframes/node-sdk':
+      '@framefields/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
-      '@gitframes/webgpu-renderers':
+      '@framefields/webgpu-renderers':
         specifier: workspace:*
         version: link:../../packages/webgpu-renderers
       zod:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -1211,20 +1211,20 @@ importers:
 
   nodes/node-high-pass:
     dependencies:
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@gitframes/node-sdk':
+      '@framefields/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
-      '@gitframes/webgpu-renderers':
+      '@framefields/webgpu-renderers':
         specifier: workspace:*
         version: link:../../packages/webgpu-renderers
       zod:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -1242,17 +1242,17 @@ importers:
 
   nodes/node-kenburns:
     dependencies:
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@gitframes/node-sdk':
+      '@framefields/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
       zod:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -1267,17 +1267,17 @@ importers:
 
   nodes/node-layer-style:
     dependencies:
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@gitframes/node-sdk':
+      '@framefields/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
       zod:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -1298,20 +1298,20 @@ importers:
 
   nodes/node-levels:
     dependencies:
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@gitframes/node-sdk':
+      '@framefields/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
-      '@gitframes/webgpu-renderers':
+      '@framefields/webgpu-renderers':
         specifier: workspace:*
         version: link:../../packages/webgpu-renderers
       zod:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -1326,17 +1326,17 @@ importers:
 
   nodes/node-liquify:
     dependencies:
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@gitframes/node-sdk':
+      '@framefields/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
       zod:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -1354,14 +1354,14 @@ importers:
 
   nodes/node-lottie:
     dependencies:
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../../packages/core
       zod:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -1379,20 +1379,20 @@ importers:
 
   nodes/node-mask-math:
     dependencies:
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@gitframes/node-sdk':
+      '@framefields/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
-      '@gitframes/webgpu-renderers':
+      '@framefields/webgpu-renderers':
         specifier: workspace:*
         version: link:../../packages/webgpu-renderers
       zod:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -1413,17 +1413,17 @@ importers:
 
   nodes/node-mesh-warp:
     dependencies:
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@gitframes/node-sdk':
+      '@framefields/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
       zod:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -1438,20 +1438,20 @@ importers:
 
   nodes/node-modulate:
     dependencies:
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@gitframes/node-sdk':
+      '@framefields/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
-      '@gitframes/webgpu-renderers':
+      '@framefields/webgpu-renderers':
         specifier: workspace:*
         version: link:../../packages/webgpu-renderers
       zod:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -1466,20 +1466,20 @@ importers:
 
   nodes/node-noise-generator:
     dependencies:
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@gitframes/node-sdk':
+      '@framefields/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
-      '@gitframes/webgpu-renderers':
+      '@framefields/webgpu-renderers':
         specifier: workspace:*
         version: link:../../packages/webgpu-renderers
       zod:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -1497,20 +1497,20 @@ importers:
 
   nodes/node-paint:
     dependencies:
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@gitframes/node-sdk':
+      '@framefields/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
-      '@gitframes/webgpu-renderers':
+      '@framefields/webgpu-renderers':
         specifier: workspace:*
         version: link:../../packages/webgpu-renderers
       zod:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -1525,20 +1525,20 @@ importers:
 
   nodes/node-patch-heal:
     dependencies:
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@gitframes/node-sdk':
+      '@framefields/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
-      '@gitframes/webgpu-renderers':
+      '@framefields/webgpu-renderers':
         specifier: workspace:*
         version: link:../../packages/webgpu-renderers
       zod:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -1556,20 +1556,20 @@ importers:
 
   nodes/node-procedural-vfx:
     dependencies:
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@gitframes/node-sdk':
+      '@framefields/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
-      '@gitframes/webgpu-renderers':
+      '@framefields/webgpu-renderers':
         specifier: workspace:*
         version: link:../../packages/webgpu-renderers
       zod:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -1587,20 +1587,20 @@ importers:
 
   nodes/node-refine-edge:
     dependencies:
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@gitframes/node-sdk':
+      '@framefields/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
-      '@gitframes/webgpu-renderers':
+      '@framefields/webgpu-renderers':
         specifier: workspace:*
         version: link:../../packages/webgpu-renderers
       zod:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -1621,20 +1621,20 @@ importers:
 
   nodes/node-refraction-caustics:
     dependencies:
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@gitframes/node-sdk':
+      '@framefields/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
-      '@gitframes/webgpu-renderers':
+      '@framefields/webgpu-renderers':
         specifier: workspace:*
         version: link:../../packages/webgpu-renderers
       zod:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -1652,20 +1652,20 @@ importers:
 
   nodes/node-relight-3d:
     dependencies:
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@gitframes/node-sdk':
+      '@framefields/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
-      '@gitframes/webgpu-renderers':
+      '@framefields/webgpu-renderers':
         specifier: workspace:*
         version: link:../../packages/webgpu-renderers
       zod:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -1683,17 +1683,17 @@ importers:
 
   nodes/node-resizer-scaler:
     dependencies:
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@gitframes/node-sdk':
+      '@framefields/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
       zod:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -1711,17 +1711,17 @@ importers:
 
   nodes/node-selective-color:
     dependencies:
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@gitframes/node-sdk':
+      '@framefields/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
       zod:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -1742,20 +1742,20 @@ importers:
 
   nodes/node-shadows-highlights:
     dependencies:
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@gitframes/node-sdk':
+      '@framefields/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
-      '@gitframes/webgpu-renderers':
+      '@framefields/webgpu-renderers':
         specifier: workspace:*
         version: link:../../packages/webgpu-renderers
       zod:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -1776,20 +1776,20 @@ importers:
 
   nodes/node-shape-generator:
     dependencies:
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@gitframes/node-sdk':
+      '@framefields/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
-      '@gitframes/webgpu-renderers':
+      '@framefields/webgpu-renderers':
         specifier: workspace:*
         version: link:../../packages/webgpu-renderers
       zod:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -1810,14 +1810,14 @@ importers:
 
   nodes/node-signal:
     dependencies:
-      '@gitframes/node-sdk':
+      '@framefields/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
       zod:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -1832,17 +1832,17 @@ importers:
 
   nodes/node-signal-gate:
     dependencies:
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@gitframes/node-sdk':
+      '@framefields/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
       zod:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -1863,17 +1863,17 @@ importers:
 
   nodes/node-signal-math:
     dependencies:
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@gitframes/node-sdk':
+      '@framefields/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
       zod:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -1891,20 +1891,20 @@ importers:
 
   nodes/node-stereo-panning:
     dependencies:
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@gitframes/node-sdk':
+      '@framefields/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
-      '@gitframes/webgpu-renderers':
+      '@framefields/webgpu-renderers':
         specifier: workspace:*
         version: link:../../packages/webgpu-renderers
       zod:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -1922,14 +1922,14 @@ importers:
 
   nodes/node-svg:
     dependencies:
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../../packages/core
       zod:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -1947,14 +1947,14 @@ importers:
 
   nodes/node-text:
     dependencies:
-      '@gitframes/node-sdk':
+      '@framefields/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
       zod:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -1969,20 +1969,20 @@ importers:
 
   nodes/node-tile-offset:
     dependencies:
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@gitframes/node-sdk':
+      '@framefields/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
-      '@gitframes/webgpu-renderers':
+      '@framefields/webgpu-renderers':
         specifier: workspace:*
         version: link:../../packages/webgpu-renderers
       zod:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -2003,20 +2003,20 @@ importers:
 
   nodes/node-unsharp-mask:
     dependencies:
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@gitframes/node-sdk':
+      '@framefields/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
-      '@gitframes/webgpu-renderers':
+      '@framefields/webgpu-renderers':
         specifier: workspace:*
         version: link:../../packages/webgpu-renderers
       zod:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -2034,20 +2034,20 @@ importers:
 
   nodes/node-vignette:
     dependencies:
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@gitframes/node-sdk':
+      '@framefields/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
-      '@gitframes/webgpu-renderers':
+      '@framefields/webgpu-renderers':
         specifier: workspace:*
         version: link:../../packages/webgpu-renderers
       zod:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -2065,20 +2065,20 @@ importers:
 
   nodes/node-vision:
     dependencies:
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@gitframes/node-sdk':
+      '@framefields/node-sdk':
         specifier: workspace:*
         version: link:../../packages/node-sdk
-      '@gitframes/vision':
+      '@framefields/vision':
         specifier: workspace:*
         version: link:../../packages/vision
       zod:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
@@ -2096,11 +2096,11 @@ importers:
 
   packages/client-utils:
     dependencies:
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../core
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../tsconfig
       tsdown:
@@ -2112,13 +2112,13 @@ importers:
 
   packages/compositions:
     dependencies:
-      '@gitframes/node-sdk':
+      '@framefields/node-sdk':
         specifier: workspace:*
         version: link:../node-sdk
-      '@gitframes/renderers':
+      '@framefields/renderers':
         specifier: workspace:*
         version: link:../renderers
-      '@gitframes/webgpu-renderers':
+      '@framefields/webgpu-renderers':
         specifier: workspace:*
         version: link:../webgpu-renderers
       '@mediabunny/mp3-encoder':
@@ -2134,16 +2134,16 @@ importers:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/client-utils':
+      '@framefields/client-utils':
         specifier: workspace:*
         version: link:../client-utils
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../core
-      '@gitframes/server-utils':
+      '@framefields/server-utils':
         specifier: workspace:*
         version: link:../server-utils
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../tsconfig
       '@webgpu/types':
@@ -2177,7 +2177,7 @@ importers:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../tsconfig
       '@webgpu/types':
@@ -2193,7 +2193,7 @@ importers:
         specifier: ^4.1.11
         version: 4.1.11(@opentelemetry/api@1.9.0)(@types/node@24.10.14)(@vitest/coverage-v8@4.1.11)(jsdom@29.1.0(@noble/hashes@2.0.1)(canvas@3.2.3))(vite@8.2.1(@types/node@24.10.14)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.3))
 
-  packages/gitframes:
+  packages/framefields:
     dependencies:
       '@lottiefiles/dotlottie-web':
         specifier: ^0.74.0
@@ -2265,163 +2265,163 @@ importers:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/client-utils':
+      '@framefields/client-utils':
         specifier: workspace:*
         version: link:../client-utils
-      '@gitframes/compositions':
+      '@framefields/compositions':
         specifier: workspace:*
         version: link:../compositions
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../core
-      '@gitframes/node-audio-compressor':
+      '@framefields/node-audio-compressor':
         specifier: workspace:*
         version: link:../../nodes/node-audio-compressor
-      '@gitframes/node-audio-delay':
+      '@framefields/node-audio-delay':
         specifier: workspace:*
         version: link:../../nodes/node-audio-delay
-      '@gitframes/node-audio-fade':
+      '@framefields/node-audio-fade':
         specifier: workspace:*
         version: link:../../nodes/node-audio-fade
-      '@gitframes/node-audio-noise-gate':
+      '@framefields/node-audio-noise-gate':
         specifier: workspace:*
         version: link:../../nodes/node-audio-noise-gate
-      '@gitframes/node-audio-parametric-eq':
+      '@framefields/node-audio-parametric-eq':
         specifier: workspace:*
         version: link:../../nodes/node-audio-parametric-eq
-      '@gitframes/node-audio-reverb':
+      '@framefields/node-audio-reverb':
         specifier: workspace:*
         version: link:../../nodes/node-audio-reverb
-      '@gitframes/node-audio-signal-extractor':
+      '@framefields/node-audio-signal-extractor':
         specifier: workspace:*
         version: link:../../nodes/node-audio-signal-extractor
-      '@gitframes/node-blur':
+      '@framefields/node-blur':
         specifier: workspace:*
         version: link:../../nodes/node-blur
-      '@gitframes/node-color-balance':
+      '@framefields/node-color-balance':
         specifier: workspace:*
         version: link:../../nodes/node-color-balance
-      '@gitframes/node-colorkey':
+      '@framefields/node-colorkey':
         specifier: workspace:*
         version: link:../../nodes/node-colorkey
-      '@gitframes/node-corner-pin':
+      '@framefields/node-corner-pin':
         specifier: workspace:*
         version: link:../../nodes/node-corner-pin
-      '@gitframes/node-crop':
+      '@framefields/node-crop':
         specifier: workspace:*
         version: link:../../nodes/node-crop
-      '@gitframes/node-curves':
+      '@framefields/node-curves':
         specifier: workspace:*
         version: link:../../nodes/node-curves
-      '@gitframes/node-deflicker':
+      '@framefields/node-deflicker':
         specifier: workspace:*
         version: link:../../nodes/node-deflicker
-      '@gitframes/node-displacement-map':
+      '@framefields/node-displacement-map':
         specifier: workspace:*
         version: link:../../nodes/node-displacement-map
-      '@gitframes/node-film-grain':
+      '@framefields/node-film-grain':
         specifier: workspace:*
         version: link:../../nodes/node-film-grain
-      '@gitframes/node-flip':
+      '@framefields/node-flip':
         specifier: workspace:*
         version: link:../../nodes/node-flip
-      '@gitframes/node-gradient-map':
+      '@framefields/node-gradient-map':
         specifier: workspace:*
         version: link:../../nodes/node-gradient-map
-      '@gitframes/node-halftone-screen':
+      '@framefields/node-halftone-screen':
         specifier: workspace:*
         version: link:../../nodes/node-halftone-screen
-      '@gitframes/node-high-pass':
+      '@framefields/node-high-pass':
         specifier: workspace:*
         version: link:../../nodes/node-high-pass
-      '@gitframes/node-kenburns':
+      '@framefields/node-kenburns':
         specifier: workspace:*
         version: link:../../nodes/node-kenburns
-      '@gitframes/node-layer-style':
+      '@framefields/node-layer-style':
         specifier: workspace:*
         version: link:../../nodes/node-layer-style
-      '@gitframes/node-levels':
+      '@framefields/node-levels':
         specifier: workspace:*
         version: link:../../nodes/node-levels
-      '@gitframes/node-liquify':
+      '@framefields/node-liquify':
         specifier: workspace:*
         version: link:../../nodes/node-liquify
-      '@gitframes/node-lut':
+      '@framefields/node-lut':
         specifier: workspace:*
         version: link:../../nodes/node-apply-lut
-      '@gitframes/node-mask-math':
+      '@framefields/node-mask-math':
         specifier: workspace:*
         version: link:../../nodes/node-mask-math
-      '@gitframes/node-mesh-warp':
+      '@framefields/node-mesh-warp':
         specifier: workspace:*
         version: link:../../nodes/node-mesh-warp
-      '@gitframes/node-modulate':
+      '@framefields/node-modulate':
         specifier: workspace:*
         version: link:../../nodes/node-modulate
-      '@gitframes/node-paint':
+      '@framefields/node-paint':
         specifier: workspace:*
         version: link:../../nodes/node-paint
-      '@gitframes/node-patch-heal':
+      '@framefields/node-patch-heal':
         specifier: workspace:*
         version: link:../../nodes/node-patch-heal
-      '@gitframes/node-refine-edge':
+      '@framefields/node-refine-edge':
         specifier: workspace:*
         version: link:../../nodes/node-refine-edge
-      '@gitframes/node-refraction-caustics':
+      '@framefields/node-refraction-caustics':
         specifier: workspace:*
         version: link:../../nodes/node-refraction-caustics
-      '@gitframes/node-relight-3d':
+      '@framefields/node-relight-3d':
         specifier: workspace:*
         version: link:../../nodes/node-relight-3d
-      '@gitframes/node-sdk':
+      '@framefields/node-sdk':
         specifier: workspace:*
         version: link:../node-sdk
-      '@gitframes/node-selective-color':
+      '@framefields/node-selective-color':
         specifier: workspace:*
         version: link:../../nodes/node-selective-color
-      '@gitframes/node-shadows-highlights':
+      '@framefields/node-shadows-highlights':
         specifier: workspace:*
         version: link:../../nodes/node-shadows-highlights
-      '@gitframes/node-signal':
+      '@framefields/node-signal':
         specifier: workspace:*
         version: link:../../nodes/node-signal
-      '@gitframes/node-signal-gate':
+      '@framefields/node-signal-gate':
         specifier: workspace:*
         version: link:../../nodes/node-signal-gate
-      '@gitframes/node-signal-math':
+      '@framefields/node-signal-math':
         specifier: workspace:*
         version: link:../../nodes/node-signal-math
-      '@gitframes/node-stereo-panning':
+      '@framefields/node-stereo-panning':
         specifier: workspace:*
         version: link:../../nodes/node-stereo-panning
-      '@gitframes/node-tile-offset':
+      '@framefields/node-tile-offset':
         specifier: workspace:*
         version: link:../../nodes/node-tile-offset
-      '@gitframes/node-unsharp-mask':
+      '@framefields/node-unsharp-mask':
         specifier: workspace:*
         version: link:../../nodes/node-unsharp-mask
-      '@gitframes/node-vignette':
+      '@framefields/node-vignette':
         specifier: workspace:*
         version: link:../../nodes/node-vignette
-      '@gitframes/node-vision':
+      '@framefields/node-vision':
         specifier: workspace:*
         version: link:../../nodes/node-vision
-      '@gitframes/renderer':
+      '@framefields/renderer':
         specifier: workspace:*
         version: link:../renderer
-      '@gitframes/renderers':
+      '@framefields/renderers':
         specifier: workspace:*
         version: link:../renderers
-      '@gitframes/tensor-webgpu':
+      '@framefields/tensor-webgpu':
         specifier: workspace:*
         version: link:../tensor-webgpu
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../tsconfig
-      '@gitframes/vision':
+      '@framefields/vision':
         specifier: workspace:*
         version: link:../vision
-      '@gitframes/webgpu-renderers':
+      '@framefields/webgpu-renderers':
         specifier: workspace:*
         version: link:../webgpu-renderers
       '@types/d3-format':
@@ -2451,10 +2451,10 @@ importers:
 
   packages/media:
     dependencies:
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../core
-      '@gitframes/server-utils':
+      '@framefields/server-utils':
         specifier: workspace:*
         version: link:../server-utils
       fflate:
@@ -2470,7 +2470,7 @@ importers:
         specifier: ^0.35.4
         version: 0.35.5(@types/node@24.10.14)
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../tsconfig
       '@types/node':
@@ -2494,17 +2494,17 @@ importers:
 
   packages/node-sdk:
     dependencies:
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../core
-      '@gitframes/webgpu-renderers':
+      '@framefields/webgpu-renderers':
         specifier: workspace:*
         version: link:../webgpu-renderers
       zod:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../tsconfig
       '@types/node':
@@ -2525,178 +2525,178 @@ importers:
 
   packages/renderer:
     dependencies:
-      '@gitframes/client-utils':
+      '@framefields/client-utils':
         specifier: workspace:*
         version: link:../client-utils
-      '@gitframes/compositions':
+      '@framefields/compositions':
         specifier: workspace:*
         version: link:../compositions
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../core
-      '@gitframes/node-audio-compressor':
+      '@framefields/node-audio-compressor':
         specifier: workspace:*
         version: link:../../nodes/node-audio-compressor
-      '@gitframes/node-audio-delay':
+      '@framefields/node-audio-delay':
         specifier: workspace:*
         version: link:../../nodes/node-audio-delay
-      '@gitframes/node-audio-fade':
+      '@framefields/node-audio-fade':
         specifier: workspace:*
         version: link:../../nodes/node-audio-fade
-      '@gitframes/node-audio-noise-gate':
+      '@framefields/node-audio-noise-gate':
         specifier: workspace:*
         version: link:../../nodes/node-audio-noise-gate
-      '@gitframes/node-audio-parametric-eq':
+      '@framefields/node-audio-parametric-eq':
         specifier: workspace:*
         version: link:../../nodes/node-audio-parametric-eq
-      '@gitframes/node-audio-reverb':
+      '@framefields/node-audio-reverb':
         specifier: workspace:*
         version: link:../../nodes/node-audio-reverb
-      '@gitframes/node-audio-signal-extractor':
+      '@framefields/node-audio-signal-extractor':
         specifier: workspace:*
         version: link:../../nodes/node-audio-signal-extractor
-      '@gitframes/node-blur':
+      '@framefields/node-blur':
         specifier: workspace:*
         version: link:../../nodes/node-blur
-      '@gitframes/node-camera-parallax-3d':
+      '@framefields/node-camera-parallax-3d':
         specifier: workspace:*
         version: link:../../nodes/node-camera-parallax-3d
-      '@gitframes/node-canvas-generator':
+      '@framefields/node-canvas-generator':
         specifier: workspace:*
         version: link:../../nodes/node-canvas-generator
-      '@gitframes/node-channel-merger':
+      '@framefields/node-channel-merger':
         specifier: workspace:*
         version: link:../../nodes/node-channel-merger
-      '@gitframes/node-channel-splitter':
+      '@framefields/node-channel-splitter':
         specifier: workspace:*
         version: link:../../nodes/node-channel-splitter
-      '@gitframes/node-color-balance':
+      '@framefields/node-color-balance':
         specifier: workspace:*
         version: link:../../nodes/node-color-balance
-      '@gitframes/node-colorkey':
+      '@framefields/node-colorkey':
         specifier: workspace:*
         version: link:../../nodes/node-colorkey
-      '@gitframes/node-compositor':
+      '@framefields/node-compositor':
         specifier: workspace:*
         version: link:../../nodes/node-compositor
-      '@gitframes/node-corner-pin':
+      '@framefields/node-corner-pin':
         specifier: workspace:*
         version: link:../../nodes/node-corner-pin
-      '@gitframes/node-crop':
+      '@framefields/node-crop':
         specifier: workspace:*
         version: link:../../nodes/node-crop
-      '@gitframes/node-curves':
+      '@framefields/node-curves':
         specifier: workspace:*
         version: link:../../nodes/node-curves
-      '@gitframes/node-deflicker':
+      '@framefields/node-deflicker':
         specifier: workspace:*
         version: link:../../nodes/node-deflicker
-      '@gitframes/node-displacement-map':
+      '@framefields/node-displacement-map':
         specifier: workspace:*
         version: link:../../nodes/node-displacement-map
-      '@gitframes/node-extract-frame':
+      '@framefields/node-extract-frame':
         specifier: workspace:*
         version: link:../../nodes/node-extract-frame
-      '@gitframes/node-extract-lut':
+      '@framefields/node-extract-lut':
         specifier: workspace:*
         version: link:../../nodes/node-extract-lut
-      '@gitframes/node-film-grain':
+      '@framefields/node-film-grain':
         specifier: workspace:*
         version: link:../../nodes/node-film-grain
-      '@gitframes/node-flip':
+      '@framefields/node-flip':
         specifier: workspace:*
         version: link:../../nodes/node-flip
-      '@gitframes/node-gradient-map':
+      '@framefields/node-gradient-map':
         specifier: workspace:*
         version: link:../../nodes/node-gradient-map
-      '@gitframes/node-halftone-screen':
+      '@framefields/node-halftone-screen':
         specifier: workspace:*
         version: link:../../nodes/node-halftone-screen
-      '@gitframes/node-high-pass':
+      '@framefields/node-high-pass':
         specifier: workspace:*
         version: link:../../nodes/node-high-pass
-      '@gitframes/node-kenburns':
+      '@framefields/node-kenburns':
         specifier: workspace:*
         version: link:../../nodes/node-kenburns
-      '@gitframes/node-layer-style':
+      '@framefields/node-layer-style':
         specifier: workspace:*
         version: link:../../nodes/node-layer-style
-      '@gitframes/node-levels':
+      '@framefields/node-levels':
         specifier: workspace:*
         version: link:../../nodes/node-levels
-      '@gitframes/node-liquify':
+      '@framefields/node-liquify':
         specifier: workspace:*
         version: link:../../nodes/node-liquify
-      '@gitframes/node-lut':
+      '@framefields/node-lut':
         specifier: workspace:*
         version: link:../../nodes/node-apply-lut
-      '@gitframes/node-mask-math':
+      '@framefields/node-mask-math':
         specifier: workspace:*
         version: link:../../nodes/node-mask-math
-      '@gitframes/node-mesh-warp':
+      '@framefields/node-mesh-warp':
         specifier: workspace:*
         version: link:../../nodes/node-mesh-warp
-      '@gitframes/node-modulate':
+      '@framefields/node-modulate':
         specifier: workspace:*
         version: link:../../nodes/node-modulate
-      '@gitframes/node-noise-generator':
+      '@framefields/node-noise-generator':
         specifier: workspace:*
         version: link:../../nodes/node-noise-generator
-      '@gitframes/node-paint':
+      '@framefields/node-paint':
         specifier: workspace:*
         version: link:../../nodes/node-paint
-      '@gitframes/node-patch-heal':
+      '@framefields/node-patch-heal':
         specifier: workspace:*
         version: link:../../nodes/node-patch-heal
-      '@gitframes/node-refine-edge':
+      '@framefields/node-refine-edge':
         specifier: workspace:*
         version: link:../../nodes/node-refine-edge
-      '@gitframes/node-refraction-caustics':
+      '@framefields/node-refraction-caustics':
         specifier: workspace:*
         version: link:../../nodes/node-refraction-caustics
-      '@gitframes/node-relight-3d':
+      '@framefields/node-relight-3d':
         specifier: workspace:*
         version: link:../../nodes/node-relight-3d
-      '@gitframes/node-resizer-scaler':
+      '@framefields/node-resizer-scaler':
         specifier: workspace:*
         version: link:../../nodes/node-resizer-scaler
-      '@gitframes/node-sdk':
+      '@framefields/node-sdk':
         specifier: workspace:*
         version: link:../node-sdk
-      '@gitframes/node-selective-color':
+      '@framefields/node-selective-color':
         specifier: workspace:*
         version: link:../../nodes/node-selective-color
-      '@gitframes/node-shadows-highlights':
+      '@framefields/node-shadows-highlights':
         specifier: workspace:*
         version: link:../../nodes/node-shadows-highlights
-      '@gitframes/node-shape-generator':
+      '@framefields/node-shape-generator':
         specifier: workspace:*
         version: link:../../nodes/node-shape-generator
-      '@gitframes/node-signal-gate':
+      '@framefields/node-signal-gate':
         specifier: workspace:*
         version: link:../../nodes/node-signal-gate
-      '@gitframes/node-stereo-panning':
+      '@framefields/node-stereo-panning':
         specifier: workspace:*
         version: link:../../nodes/node-stereo-panning
-      '@gitframes/node-tile-offset':
+      '@framefields/node-tile-offset':
         specifier: workspace:*
         version: link:../../nodes/node-tile-offset
-      '@gitframes/node-unsharp-mask':
+      '@framefields/node-unsharp-mask':
         specifier: workspace:*
         version: link:../../nodes/node-unsharp-mask
-      '@gitframes/node-vignette':
+      '@framefields/node-vignette':
         specifier: workspace:*
         version: link:../../nodes/node-vignette
-      '@gitframes/node-vision':
+      '@framefields/node-vision':
         specifier: workspace:*
         version: link:../../nodes/node-vision
-      '@gitframes/renderers':
+      '@framefields/renderers':
         specifier: workspace:*
         version: link:../renderers
-      '@gitframes/server-utils':
+      '@framefields/server-utils':
         specifier: workspace:*
         version: link:../server-utils
-      '@gitframes/webgpu-renderers':
+      '@framefields/webgpu-renderers':
         specifier: workspace:*
         version: link:../webgpu-renderers
       '@mediabunny/server':
@@ -2718,7 +2718,7 @@ importers:
         specifier: ^0.4.0
         version: 0.4.0
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../tsconfig
       '@types/node':
@@ -2739,17 +2739,17 @@ importers:
 
   packages/renderers:
     dependencies:
-      '@gitframes/client-utils':
+      '@framefields/client-utils':
         specifier: workspace:*
         version: link:../client-utils
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../core
-      '@gitframes/webgpu-renderers':
+      '@framefields/webgpu-renderers':
         specifier: workspace:*
         version: link:../webgpu-renderers
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../tsconfig
       tsdown:
@@ -2767,7 +2767,7 @@ importers:
       '@aws-sdk/client-s3':
         specifier: ^3.714.0
         version: 3.1010.0
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../core
       dotenv:
@@ -2783,7 +2783,7 @@ importers:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../tsconfig
       '@types/node':
@@ -2798,17 +2798,17 @@ importers:
 
   packages/tensor-webgpu:
     dependencies:
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../core
-      '@gitframes/webgpu-renderers':
+      '@framefields/webgpu-renderers':
         specifier: workspace:*
         version: link:../webgpu-renderers
       webgpu:
         specifier: ^0.4.0
         version: 0.4.0
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../tsconfig
       skia-canvas:
@@ -2828,10 +2828,10 @@ importers:
 
   packages/vision:
     dependencies:
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../core
-      '@gitframes/tensor-webgpu':
+      '@framefields/tensor-webgpu':
         specifier: workspace:*
         version: link:../tensor-webgpu
       onnxruntime-node:
@@ -2847,7 +2847,7 @@ importers:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../tsconfig
       '@types/node':
@@ -2868,10 +2868,10 @@ importers:
 
   packages/webgpu-renderers:
     dependencies:
-      '@gitframes/client-utils':
+      '@framefields/client-utils':
         specifier: workspace:*
         version: link:../client-utils
-      '@gitframes/core':
+      '@framefields/core':
         specifier: workspace:*
         version: link:../core
       '@lottiefiles/dotlottie-web':
@@ -2902,7 +2902,7 @@ importers:
         specifier: ^0.4.0
         version: 0.4.0
     devDependencies:
-      '@gitframes/tsconfig':
+      '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../tsconfig
       '@types/earcut':

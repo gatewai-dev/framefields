@@ -1,4 +1,4 @@
-# @gitframes/node-signal-gate
+# @framefields/node-signal-gate
 
 ## 2.0.2
 

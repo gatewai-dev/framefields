@@ -5,8 +5,8 @@ import {
 	audioRegistry,
 	type NodeRendererPlugin,
 	registerWebGPURenderer,
-} from "@gitframes/node-sdk";
-import { rendererLogger } from "@gitframes/server-utils";
+} from "@framefields/node-sdk";
+import { rendererLogger } from "@framefields/server-utils";
 import { BUILTIN_NODE_RENDERERS } from "./generated/node-renderers.js";
 import {
 	loadNodeManifests,
@@ -75,7 +75,7 @@ async function registerNode(manifest: NodeManifest): Promise<void> {
 	if (!entry) return;
 
 	const mod = await import(pathToFileURL(path.join(manifest.path, entry)).href);
-	// The op comes from package.json only (`gitframes.type` + `gitframes.aliases`).
+	// The op comes from package.json only (`framefields.type` + `framefields.aliases`).
 	registerPlugin([manifest.type, ...manifest.aliases], mod?.default);
 }
 
@@ -126,7 +126,7 @@ async function registerBuiltinNodeRenderers(): Promise<void> {
 
 /**
  * Registers the built-in node renderers, then any extra nodes found in the
- * directory named by `GITFRAMES_NODES_DIR` (local node development). A node in
+ * directory named by `FRAMEFIELDS_NODES_DIR` (local node development). A node in
  * that directory overrides the built-in renderer for the same op.
  */
 export async function discoverAndRegisterNodeRenderers(): Promise<void> {
@@ -136,13 +136,13 @@ export async function discoverAndRegisterNodeRenderers(): Promise<void> {
 
 	await registerBuiltinNodeRenderers();
 
-	const extraDir = process.env.GITFRAMES_NODES_DIR;
+	const extraDir = process.env.FRAMEFIELDS_NODES_DIR;
 	if (!extraDir) return;
 
 	const nodesDir = path.resolve(extraDir);
 	if (!fs.existsSync(nodesDir)) {
 		console.warn(
-			`[HeadlessWebGPURenderer] GITFRAMES_NODES_DIR does not exist: ${nodesDir}`,
+			`[HeadlessWebGPURenderer] FRAMEFIELDS_NODES_DIR does not exist: ${nodesDir}`,
 		);
 		return;
 	}
@@ -151,7 +151,7 @@ export async function discoverAndRegisterNodeRenderers(): Promise<void> {
 		`[HeadlessWebGPURenderer] Discovering node renderers in: ${nodesDir}`,
 	);
 
-	// Throws when any node lacks a valid `gitframes` block or two nodes claim
+	// Throws when any node lacks a valid `framefields` block or two nodes claim
 	// the same op. A misdeclared op must fail loudly rather than render nothing.
 	const manifests = loadNodeManifests(nodesDir);
 

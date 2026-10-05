@@ -1,17 +1,17 @@
-import { resolveLayerDuration } from "@gitframes/compositions";
+import { resolveLayerDuration } from "@framefields/compositions";
 import {
 	type AnimationTrack,
 	collectNodeOps,
 	type EaseRef,
 	evaluateTrackAtFrame,
 	type LayerAnimationSpec,
-} from "@gitframes/compositions/program";
+} from "@framefields/compositions/program";
 import {
 	DEFAULT_DURATION_MS,
 	getActiveMediaMetadata,
 	reportRenderDiagnostic,
 	type VirtualMediaData,
-} from "@gitframes/core";
+} from "@framefields/core";
 import gsapModule from "gsap";
 import { solveCubicBezier } from "./bezier-solver.js";
 

@@ -56,7 +56,7 @@ vi.mock("../slug/slug-geometry.js", () => {
 });
 
 // Mock client-utils
-vi.mock("@gitframes/client-utils", () => {
+vi.mock("@framefields/client-utils", () => {
 	return {
 		GetFontAssetUrl: vi.fn().mockReturnValue("http://test.com/font.slug"),
 	};

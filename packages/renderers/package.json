@@ -1,5 +1,5 @@
 {
-	"name": "@gitframes/renderers",
+	"name": "@framefields/renderers",
 	"version": "2.0.2",
 	"private": false,
 	"type": "module",
@@ -25,12 +25,12 @@
 		"clean": "rm -rf .turbo && rm -rf node_modules && rm -rf dist"
 	},
 	"dependencies": {
-		"@gitframes/client-utils": "workspace:*",
-		"@gitframes/core": "workspace:*",
-		"@gitframes/webgpu-renderers": "workspace:*"
+		"@framefields/client-utils": "workspace:*",
+		"@framefields/core": "workspace:*",
+		"@framefields/webgpu-renderers": "workspace:*"
 	},
 	"devDependencies": {
-		"@gitframes/tsconfig": "workspace:*",
+		"@framefields/tsconfig": "workspace:*",
 		"tsdown": "^0.19.0",
 		"typescript": "^5.8.3",
 		"vitest": "^5.0.1"

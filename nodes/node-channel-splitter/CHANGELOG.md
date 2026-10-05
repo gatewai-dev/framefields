@@ -1,4 +1,4 @@
-# @gitframes/node-channel-splitter
+# @framefields/node-channel-splitter
 
 ## 2.0.2
 

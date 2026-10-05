@@ -1,4 +1,4 @@
-# @gitframes/node-shape-generator
+# @framefields/node-shape-generator
 
 ## 2.0.2
 

@@ -1,6 +1,6 @@
 /**
  * @file renderer3d/glass-pipeline.ts
- * @module @gitframes/webgpu-renderers/renderer3d/glass-pipeline
+ * @module @framefields/webgpu-renderers/renderer3d/glass-pipeline
  *
  * WebGPU Pipeline for PBR Glass, Acrylic, Frosted & Metallic Refraction rendering.
  */

@@ -1,4 +1,4 @@
-import type { FileData, VirtualMediaData } from "@gitframes/core";
+import type { FileData, VirtualMediaData } from "@framefields/core";
 
 export interface MediaResolutionResult {
 	buffer?: Buffer;

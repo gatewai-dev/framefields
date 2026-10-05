@@ -1,4 +1,4 @@
-import { defineRenderer } from "@gitframes/node-sdk/renderer";
+import { defineRenderer } from "@framefields/node-sdk/renderer";
 import { CompositorWebGPURenderer } from "./webgpu-renderer.js";
 import "./audio-processor.js";
 

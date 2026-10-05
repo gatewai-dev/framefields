@@ -3,7 +3,7 @@ import {
 	Composition,
 	FontManager,
 	Layer,
-} from "../packages/gitframes/dist/index.mjs";
+} from "../packages/framefields/dist/index.mjs";
 import fs from "node:fs/promises";
 import path from "node:path";
 
@@ -11,7 +11,7 @@ async function main() {
 	console.log("=== WebGPU 3D Camera & Multiplane Render Demonstration ===");
 
 	const artifactDir = "/Users/okanaslankan/.gemini/antigravity-ide/brain/18faf2d5-3c9b-408e-8ba7-bcbf855a7dc5";
-	const assetsDir = "/Users/okanaslankan/gitframes/assets/renders-3d";
+	const assetsDir = "/Users/okanaslankan/framefields/assets/renders-3d";
 	await fs.mkdir(artifactDir, { recursive: true });
 	await fs.mkdir(assetsDir, { recursive: true });
 

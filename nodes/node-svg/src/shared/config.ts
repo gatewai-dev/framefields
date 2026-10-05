@@ -2,7 +2,7 @@ import {
 	createOutputItemSchema,
 	MultiOutputGenericSchema,
 	VirtualMediaDataSchema,
-} from "@gitframes/core";
+} from "@framefields/core";
 import { z } from "zod";
 
 export const SVG_NODE_MODELS = [

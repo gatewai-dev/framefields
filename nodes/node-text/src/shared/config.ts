@@ -1,4 +1,4 @@
-import { TextResultSchema } from "@gitframes/node-sdk";
+import { TextResultSchema } from "@framefields/node-sdk";
 import { z } from "zod";
 
 export const TextNodeConfigSchema = z

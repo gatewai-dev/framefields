@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// Structural validator for the gitframes agent plugin.
+// Structural validator for the framefields agent plugin.
 //
-// The plugin lives in plugins/gitframes/ so installs ship only the skills, not the engine
+// The plugin lives in plugins/framefields/ so installs ship only the skills, not the engine
 // (users get the engine from npm). Every client discovers the same skills from there:
 //   plugin.json                 portable Agent Plugins 1.0 manifest (closed field set)
 //   .claude-plugin/plugin.json  Claude Code manifest
@@ -26,16 +26,16 @@ import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const PLUGIN_DIR = join(repoRoot, "plugins", "gitframes");
-const PLUGIN_NAME = "gitframes";
-const MARKETPLACE_NAME = "gitframes-plugins";
+const PLUGIN_DIR = join(repoRoot, "plugins", "framefields");
+const PLUGIN_NAME = "framefields";
+const MARKETPLACE_NAME = "framefields-plugins";
 const AGENT_PLUGINS_SCHEMA =
 	"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json";
 const SKILL_NAMES = [
-	"gitframes",
-	"gitframes-compose",
-	"gitframes-effects",
-	"gitframes-render",
+	"framefields",
+	"framefields-compose",
+	"framefields-effects",
+	"framefields-render",
 ];
 const PORTABLE_FIELDS = new Set([
 	"$schema",
@@ -209,9 +209,9 @@ function checkSkills() {
 			fail(
 				`skills/${entry.name}: description is ${description.length} chars (max 1024)`,
 			);
-		else if (!/gitframes/i.test(description))
+		else if (!/framefields/i.test(description))
 			fail(
-				`skills/${entry.name}: description never mentions gitframes — hosts match on it`,
+				`skills/${entry.name}: description never mentions framefields — hosts match on it`,
 			);
 		if (fm.body.trim().length < 400)
 			fail(`skills/${entry.name}: body is too thin to carry a workflow`);

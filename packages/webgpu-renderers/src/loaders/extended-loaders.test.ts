@@ -40,7 +40,7 @@ endsolid tetrahedron
 		it("parses Binary STL", () => {
 			// 80 bytes header + 4 bytes uint32 count (1 triangle) + 50 bytes triangle
 			const buf = Buffer.alloc(84 + 50);
-			buf.write("Gitframes Binary STL Test Header", 0, "ascii");
+			buf.write("Framefields Binary STL Test Header", 0, "ascii");
 			buf.writeUInt32LE(1, 80); // 1 triangle
 
 			let offset = 84;

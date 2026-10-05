@@ -1,5 +1,5 @@
 /// <reference types="webgpu" />
-import type { WebGPUNodeRenderer } from "@gitframes/node-sdk";
+import type { WebGPUNodeRenderer } from "@framefields/node-sdk";
 import type { ChannelColorSpace, ChannelMergerOp } from "../shared/index.js";
 
 const COLOR_SPACE_MAP: Record<ChannelColorSpace, number> = {

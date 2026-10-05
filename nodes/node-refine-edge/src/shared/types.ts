@@ -1,4 +1,4 @@
-import type { SignalData } from "@gitframes/core";
+import type { SignalData } from "@framefields/core";
 import type { MatteChannel, RefineEdgeOutputMode } from "./config.js";
 
 export interface RefineEdgeOp {

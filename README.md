@@ -1,10 +1,10 @@
 <div align="center">
 
-<img src="assets/brand/banner.png" alt="gitframes — code-first video, rendered natively on WebGPU" width="100%">
+<img src="assets/brand/banner.png" alt="framefields — code-first video, rendered natively on WebGPU" width="100%">
 
 **Compositing, motion graphics and 3D for code-first video — one npm package that AI agents drive with code.**
 
-[![npm](https://img.shields.io/badge/npm-gitframes-cb3837?logo=npm&logoColor=white)](https://www.npmjs.com/package/gitframes)
+[![npm](https://img.shields.io/badge/npm-framefields-cb3837?logo=npm&logoColor=white)](https://www.npmjs.com/package/framefields)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENCE)
 [![status](https://img.shields.io/badge/status-beta-orange.svg)](#)
 [![discord](https://img.shields.io/badge/Discord-join-5865F2?logo=discord&logoColor=white)](https://discord.gg/cbqMGGme5)
@@ -14,25 +14,25 @@
 [![gpu](https://img.shields.io/badge/GPU-Dawn%20%C2%B7%20Metal%20%C2%B7%20Vulkan-8b5cf6)](#monorepo-architecture)
 [![vision](https://img.shields.io/badge/vision-RTMDet%20%C2%B7%20RTMO%20%C2%B7%20ONNX-ff5a1f)](#6-on-device-vision--tracking)
 
-> **⚠️ Beta:** gitframes is under active development. APIs may change between releases and some features may be incomplete or unstable.
+> **⚠️ Beta:** framefields is under active development. APIs may change between releases and some features may be incomplete or unstable.
 
-Gitframes is built for coding agents. It packs the work people usually split across three desktop apps (Photoshop-inspired compositing and VFX, After Effects-style motion, typography and keyframing, and Blender-style 3D scenes, cameras and models) into one lightweight npm package. Your agent writes a TypeScript composition, checks frames, and renders an MP4, and nobody has to install or license a multi-gigabyte creative suite.
+Framefields is built for coding agents. It packs the work people usually split across three desktop apps (Photoshop-inspired compositing and VFX, After Effects-style motion, typography and keyframing, and Blender-style 3D scenes, cameras and models) into one lightweight npm package. Your agent writes a TypeScript composition, checks frames, and renders an MP4, and nobody has to install or license a multi-gigabyte creative suite.
 
 **Code-first video as pure software engineering** — no headless browser, no DOM reflow, no screenshot pipeline.
 Renders directly on GPU hardware via Dawn / WebGPU / Metal / Vulkan in Node.js and modern WebGPU browsers.
 
 </div>
 
-### Made with gitframes
+### Made with framefields
 
-Every frame of these films is rendered by gitframes from TypeScript in [`examples/`](examples). Click a still to watch it on YouTube.
+Every frame of these films is rendered by framefields from TypeScript in [`examples/`](examples). Click a still to watch it on YouTube.
 
 <table>
   <tr>
     <td width="33%" align="center">
-      <a href="https://youtu.be/w6IQNrhJJek"><img src="assets/showcase/gitframes-launch.jpg" alt="Gitframes launch film" width="100%"></a>
-      <br><a href="https://youtu.be/w6IQNrhJJek"><b>Gitframes launch</b></a>
-      <br><sub><a href="examples/22_gitframes_launch"><code>22_gitframes_launch</code></a></sub>
+      <a href="https://youtu.be/w6IQNrhJJek"><img src="assets/showcase/framefields-launch.jpg" alt="Framefields launch film" width="100%"></a>
+      <br><a href="https://youtu.be/w6IQNrhJJek"><b>Framefields launch</b></a>
+      <br><sub><a href="examples/22_framefields_launch"><code>22_framefields_launch</code></a></sub>
     </td>
     <td width="33%" align="center">
       <a href="https://youtu.be/YeIpp4xf_j8"><img src="assets/showcase/full-circle.jpg" alt="Full Circle film" width="100%"></a>
@@ -42,22 +42,22 @@ Every frame of these films is rendered by gitframes from TypeScript in [`example
     <td width="33%" align="center">
       <a href="https://youtu.be/R5Zug49FTTQ"><img src="assets/showcase/dancer.jpg" alt="Dancer showcase film" width="100%"></a>
       <br><a href="https://youtu.be/R5Zug49FTTQ"><b>Dancer showcase</b></a>
-      <br><sub><a href="examples/19_gitframes_film"><code>19_gitframes_film</code></a></sub>
+      <br><sub><a href="examples/19_framefields_film"><code>19_framefields_film</code></a></sub>
     </td>
   </tr>
 </table>
 
 > [!NOTE]
-> **Using an AI coding agent?** Install the gitframes skills in one line.
+> **Using an AI coding agent?** Install the framefields skills in one line.
 >
 > **Claude Code**
 > ```text
-> /plugin install gitframes
+> /plugin install framefields
 > ```
 >
 > **Any other agent** (Codex, Cursor, Hermes, Gemini CLI, Copilot, and more)
 > ```bash
-> npx skills add gatewai-dev/gitframes
+> npx skills add gatewai-dev/framefields
 > ```
 >
 > See [Agent Skills & Plugins](#agent-skills--plugins) for details.
@@ -66,8 +66,8 @@ Every frame of these films is rendered by gitframes from TypeScript in [`example
 
 ## Table of Contents
 
-- [Why Gitframes](#why-gitframes)
-- [Architectural Comparison](#architectural-comparison-gitframes-vs-remotion-vs-hyperframes)
+- [Why Framefields](#why-framefields)
+- [Architectural Comparison](#architectural-comparison-framefields-vs-remotion-vs-hyperframes)
 - [Key Features & Capabilities](#key-features--capabilities)
   - [1. Slug GPU Vector Typography & After Effects Animators](#1-slug-gpu-vector-typography--after-effects-animators)
   - [2. Photoshop-Inspired WebGPU 2D VFX](#2-photoshop-inspired-webgpu-2d-vfx-50-shaders)
@@ -94,13 +94,13 @@ Every frame of these films is rendered by gitframes from TypeScript in [`example
 
 ---
 
-## Why Gitframes
+## Why Framefields
 
-Modern automated video generation is usually constrained by the architectures of general-purpose web browsers: process overhead, non-deterministic DOM layout reflows, and slow screenshot capture. Gitframes treats **video composition as software engineering**:
+Modern automated video generation is usually constrained by the architectures of general-purpose web browsers: process overhead, non-deterministic DOM layout reflows, and slow screenshot capture. Framefields treats **video composition as software engineering**:
 
 | | Pillar | What it means |
 |---|---|---|
-| 🚀 | **Zero Headless-Browser Overhead** | No Puppeteer, no Chromium IPC, no `page.screenshot()`. Gitframes talks straight to native GPU devices via Dawn/WebGPU and hardware-encodes with `@napi-rs/webcodecs`. |
+| 🚀 | **Zero Headless-Browser Overhead** | No Puppeteer, no Chromium IPC, no `page.screenshot()`. Framefields talks straight to native GPU devices via Dawn/WebGPU and hardware-encodes with `@napi-rs/webcodecs`. |
 | 🎯 | **Deterministic Frame-Accurate Clock** | Absolute frame clocks, discrete sample points, and frame-accurate audio BeatGrids. No floating timers, no drift, no dropped frames. |
 | 🔠 | **Analytic, Resolution-Independent Type** | The Slug algorithm evaluates glyph contours per-pixel in WGSL — no texture atlases, no scaling artifacts, razor-sharp from 10 px to 10,000 px. |
 | 🎨 | **Photoshop-Inspired Tonal & Spatial VFX** | 50+ modular GPU shaders: Curves, Levels, Selective Color, 3D LUTs, Halftone, Film Grain, Unsharp Mask, Mesh Warp, and Screen-Space Relighting. |
@@ -111,13 +111,13 @@ Modern automated video generation is usually constrained by the architectures of
 
 ---
 
-## Architectural Comparison: Gitframes vs. Remotion vs. Hyperframes
+## Architectural Comparison: Framefields vs. Remotion vs. Hyperframes
 
 Developers generating video programmatically commonly weigh **Remotion** (React/Chromium) or **Hyperframes** (Canvas2D/SVG web animation). The matrix below compares the fundamental engineering dimensions.
 
 ### Detailed Comparison Matrix
 
-| Capability / Dimension | **Gitframes** | **Remotion** | **Hyperframes** |
+| Capability / Dimension | **Framefields** | **Remotion** | **Hyperframes** |
 |---|---|---|---|
 | **Underlying Engine** | **Native WebGPU** (WGSL compute & render pipelines via Dawn / Metal / Vulkan) | **Chromium / Puppeteer** (React DOM, HTML/CSS layout) | **Canvas2D / WebGL / SVG** (browser or Node Skia) |
 | **Rendering Architecture** | Direct hardware framebuffer rendering & hardware video encoding (`@napi-rs/webcodecs`) | Spawns headless Chrome; captures frames via CDP / `page.screenshot()` | Software or hardware 2D canvas context |
@@ -138,23 +138,23 @@ Developers generating video programmatically commonly weigh **Remotion** (React/
 ## Key Features & Capabilities
 
 ### 1. Slug GPU Vector Typography & After Effects Animators
-Traditional text relies on CPU rasterization or low-res SDF atlases that soften under 3D camera sweeps. Gitframes integrates the **Slug algorithm** ([`SlugPipeline`](packages/webgpu-renderers/src/slug/slug-pipeline.ts)):
+Traditional text relies on CPU rasterization or low-res SDF atlases that soften under 3D camera sweeps. Framefields integrates the **Slug algorithm** ([`SlugPipeline`](packages/webgpu-renderers/src/slug/slug-pipeline.ts)):
 - **Analytic GPU evaluation** — WGSL fragment shaders solve exact cubic/quadratic Béziers per-pixel. Glyphs stay sharp at 10 px or 10,000 px with zero CPU re-rasterization.
-- **After Effects–style animators** — range selectors (`square`, `ramp_up`, `ramp_down`, `triangle`, `smooth`), `easeHigh`/`easeLow` curves, and seeded PRNG character shuffling ([`TextAnimator`](packages/gitframes/src/index.ts)).
-- **Human typing cadence** — weighted punctuation delays (commas 3×, sentence ends 5.5×, newlines 7×) and trailing scramble resolution ([`TypewriterAnimator`](packages/gitframes/src/index.ts)).
-- **3D volumetric formations** — map text onto cylindrical drums, logarithmic vortex spirals, and double-helix ribbons with surface-normal banking ([`evaluateVolumetricFormation`](packages/gitframes/src/index.ts)).
+- **After Effects–style animators** — range selectors (`square`, `ramp_up`, `ramp_down`, `triangle`, `smooth`), `easeHigh`/`easeLow` curves, and seeded PRNG character shuffling ([`TextAnimator`](packages/framefields/src/index.ts)).
+- **Human typing cadence** — weighted punctuation delays (commas 3×, sentence ends 5.5×, newlines 7×) and trailing scramble resolution ([`TypewriterAnimator`](packages/framefields/src/index.ts)).
+- **3D volumetric formations** — map text onto cylindrical drums, logarithmic vortex spirals, and double-helix ribbons with surface-normal banking ([`evaluateVolumetricFormation`](packages/framefields/src/index.ts)).
 - **Dynamic leading & skew** — area-preserving unimodular shear and accordion line-leading anchored to baseline, center, or top.
 
 ### 2. Photoshop-Inspired WebGPU 2D VFX (50+ Shaders)
 A comprehensive suite of professional image/video shader nodes in [`nodes/`](nodes) and [`packages/webgpu-renderers`](packages/webgpu-renderers):
-- **Tonal grading** — Curves (RGB/R/G/B spline), Levels (black/white point, gamma, output), Shadows/Highlights, Selective Color (CMYK gamut isolation), 3D Cube LUT ([`ApplyLUT`](packages/gitframes/src/effects)).
+- **Tonal grading** — Curves (RGB/R/G/B spline), Levels (black/white point, gamma, output), Shadows/Highlights, Selective Color (CMYK gamut isolation), 3D Cube LUT ([`ApplyLUT`](packages/framefields/src/effects)).
 - **Stylization & grain** — Film Grain (Gaussian emulsion with spatial seed variation), Halftone (mono/RGB/CMYK, adjustable dot shape & angle), Gradient Map, High Pass.
-- **Optics & lens** — Bilateral Gaussian Blur, Unsharp Mask, Vignette, Refraction Caustics, PBR Glassmorphism with chromatic dispersion ([`PBRGlass`](packages/gitframes/src/effects)).
+- **Optics & lens** — Bilateral Gaussian Blur, Unsharp Mask, Vignette, Refraction Caustics, PBR Glassmorphism with chromatic dispersion ([`PBRGlass`](packages/framefields/src/effects)).
 - **Distortion & warping** — Displacement Maps, Liquify, Mesh Warp, Corner Pin homography.
 
 ### 3. Unified 3D Scene Graph, Camera & Mesh Shading
 - **Calibrated camera rig** — LookAt and Turntable cameras ([`Camera3D`](packages/webgpu-renderers/src/math3d/camera3d.ts)) calibrated so `z = 0` matches 2D canvas pixel coordinates 1:1.
-- **3D layout primitives** — [`Layer3D.cube`](packages/gitframes/src/shapes3d.ts), `carousel`, `prism`, `plane`, `grid` with unified depth-buffer testing.
+- **3D layout primitives** — [`Layer3D.cube`](packages/framefields/src/shapes3d.ts), `carousel`, `prism`, `plane`, `grid` with unified depth-buffer testing.
 - **Zero-dependency model parsers** — OBJ, FBX, glTF/GLB, STL, PLY, VOX, 3DS, OFF.
 - **Skeletal animation & shading** — 128-bone Linear Blend Skinning, Blinn-Phong & PBR multi-light shading, PCSS/Poisson contact shadows, SSAO, and optical DoF.
 - **Physical motion blur** — 180° shutter motion blur with per-vertex velocity vectors packed into `rg16float` MRT buffers.
@@ -166,7 +166,7 @@ A comprehensive suite of professional image/video shader nodes in [`nodes/`](nod
 - **Reactive signals** — drive transforms, scale, borders, or shader uniforms from tempo signals (`Signal.builder`) or audio analysis.
 
 ### 5. Animated Charts
-[`Layer.chart`](packages/gitframes/src/chart.ts) builds line, area, bar (grouped or stacked), scatter, candlestick, pie and donut charts. [d3](https://d3js.org) computes the scales, ticks and geometry; every bar, line, slice and label is an ordinary box, path or text node:
+[`Layer.chart`](packages/framefields/src/chart.ts) builds line, area, bar (grouped or stacked), scatter, candlestick, pie and donut charts. [d3](https://d3js.org) computes the scales, ticks and geometry; every bar, line, slice and label is an ordinary box, path or text node:
 - Labels use the composition's registered fonts and the same GPU text renderer as the rest of the film.
 - A built-in reveal draws lines on, grows bars from the baseline and staggers points and slices (`animate: { start, duration, stagger, ease }`, or `animate: false`).
 - The chart is one box, so it positions, animates, grades and tilts into 3D like any other layer.
@@ -190,7 +190,7 @@ Layer.chart(
 ```
 
 ### 6. On-Device Vision & Tracking
-[`@gitframes/vision`](packages/vision) runs ONNX models via `onnxruntime-node` (CPU) or `onnxruntime-web` (WebGPU) and wires every result into the same reactive signal surface the rest of Gitframes consumes.
+[`@framefields/vision`](packages/vision) runs ONNX models via `onnxruntime-node` (CPU) or `onnxruntime-web` (WebGPU) and wires every result into the same reactive signal surface the rest of Framefields consumes.
 
 > [!TIP]
 > **Lazy by construction.** `VisionRunner.create()`, `comp.withVision(...)` and `VisionNode.attach(...)` perform **zero I/O** — no downloads, no sessions, no file probes. A model is fetched the first time a task actually runs. To warm up ahead of time, call `await runner.preload(["detect", "pose"])` (or `await vision.ready()` on an attached node).
@@ -211,7 +211,7 @@ Every model is **Apache-2.0**, pinned to an immutable Hugging Face revision, and
 - **Picking a matte** — the Selfie Segmenter is tuned for a person filling much of the frame: it misses distant figures and can report "person" on close-ups with nobody in them. For anything else, cut out with instance masks (`matteSource: "instance"`, the default).
 - **Whole-subject cutouts** — `mask` / `matte` / `crop` modes merge every comparably sized instance that overlaps the main subject, so a flowing dress or a held instrument stays attached to the person, while a tunnel or window framing them does not.
 - **One-frame delay** — vision reads each layer's previous rendered frame, so results trail the plate by one frame and frame 0 has none. Verify vision layers with the exported video or consecutive frames, not frame grids.
-- **Model cache & mirrors** — models are cached atomically (temp + rename) in `$GITFRAMES_MODELS_DIR` (default `~/.cache/gitframes/models`). Point `baseUrl` or `GITFRAMES_MODELS_BASE_URL` at your own mirror for air-gapped or CI renders.
+- **Model cache & mirrors** — models are cached atomically (temp + rename) in `$FRAMEFIELDS_MODELS_DIR` (default `~/.cache/framefields/models`). Point `baseUrl` or `FRAMEFIELDS_MODELS_BASE_URL` at your own mirror for air-gapped or CI renders.
 
 #### GPU helpers
 - **OpenPose-style skeleton textures** — rasterize COCO-17 keypoints into a VRAM conditioning texture ([`PoseSkeletonRenderer`](packages/vision/src/gpu/pose-skeleton-renderer.ts)).
@@ -250,10 +250,10 @@ Project normalized landmarks to screen space with a configurable camera FOV, the
 - **Node modes** — `passthrough`, `mask`, `matte`, `crop`, `skeleton`, `boxes`, `tracking`; pick the cutout alpha with `matteSource: "instance" | "selfie"`, and optionally `keyBackground` to grow the subject into connected foreground.
 
 #### Agent-first DX
-- **Runtime config is zod-validated** and available from a **zod-only entry** (`@gitframes/vision/schemas`) so the hot path stays zod-free. Unknown or removed options are rejected, not silently ignored.
+- **Runtime config is zod-validated** and available from a **zod-only entry** (`@framefields/vision/schemas`) so the hot path stays zod-free. Unknown or removed options are rejected, not silently ignored.
 - **`vision.summary(frame)`** returns a deterministic, serializable snapshot (objects, classes, masks) safe to call inside a frame hook.
 - **Clear failures** — a model that is the wrong size, fails its checksum, or lacks an expected output raises an error naming the model and its source.
-- **Browser entry** — `@gitframes/vision/web` re-exports the engine plus `createWebGPUProvider()` / `hasWebGPU()`; `onnxruntime-web` is an optional lazy peer.
+- **Browser entry** — `@framefields/vision/web` re-exports the engine plus `createWebGPUProvider()` / `hasWebGPU()`; `onnxruntime-web` is an optional lazy peer.
 
 ### 7. Headless Conformance & FrameGrid Testing
 - **Pixel-sampling invariant assertions** — test compositions in Vitest with `skia-canvas` to verify shader math, font coverage, and Mean Squared Error (MSE) temporal deltas.
@@ -263,22 +263,22 @@ Project normalized landmarks to screen space with a configurable camera FOV, the
 - **Runs your composition, not a video** — `startPreview({ entry, export })` serves a localhost WebGPU player that loads the composition's own module and renders every frame live in the browser. Nothing is streamed: the server only hands over the bundle, the project's assets, and the soundtrack mixed by the export engine.
 - **Timeline, waveform & frame stepping** — play/pause, scrub, step frame by frame, and read resolution, FPS, duration, and audio status at a glance.
 - **One stable URL per project** — the port is derived from the working directory, so re-running the preview replaces the running server and any open tab reloads into the new version by itself. Close the tab and the server shuts down about five seconds later. A reload comes back at the same moment, and `#t=12.5` links to one.
-- **Notes pinned on the picture** — pause, click a spot (or drag an area) and write what should change. Each note keeps its moment, its spot and a picture of the frame with the spot marked, in `.gitframes/preview-notes/`, and prints where the preview runs, so an agent can apply exactly what you meant. Tick notes off as you check them.
-- **Tells you what happened** — the page's errors (a failed build, a frame that threw, a missing font) and why the server stopped are printed where the preview runs, so whoever started it, person or agent, sees them without opening devtools. Scripts can drive the page through `window.gitframesPreview` (`seek`, `play`, `pause`, `state`).
+- **Notes pinned on the picture** — pause, click a spot (or drag an area) and write what should change. Each note keeps its moment, its spot and a picture of the frame with the spot marked, in `.framefields/preview-notes/`, and prints where the preview runs, so an agent can apply exactly what you meant. Tick notes off as you check them.
+- **Tells you what happened** — the page's errors (a failed build, a frame that threw, a missing font) and why the server stopped are printed where the preview runs, so whoever started it, person or agent, sees them without opening devtools. Scripts can drive the page through `window.framefieldsPreview` (`seek`, `play`, `pause`, `state`).
 - **Shown where you are** — `startPreview` serves the page and returns its URL instead of opening a browser, so an agent can show it in its own pane (Claude Code, Codex); pass `open: true` to open the system browser.
 
 ```typescript
-import { startPreview } from "gitframes";
+import { startPreview } from "framefields";
 
 const session = await startPreview(
   { entry: new URL("./film.ts", import.meta.url), export: "buildFilm" },
-  { title: "gitframes film" },
+  { title: "framefields film" },
 );
 console.log(`Preview at ${session.url}`);
 await session.closed; // serves until its tab closes or a newer preview takes over
 ```
 
-<img src="assets/showcase/prw-ss.png" alt="gitframes live preview player: WebGPU rendering, waveform timeline, frame stepping, and audio status at 127.0.0.1:41133" width="100%">
+<img src="assets/showcase/prw-ss.png" alt="framefields live preview player: WebGPU rendering, waveform timeline, frame stepping, and audio status at 127.0.0.1:41133" width="100%">
 
 ---
 
@@ -287,9 +287,9 @@ await session.closed; // serves until its tab closes or a newer preview takes ov
 Managed with `pnpm` workspaces and `turbo`:
 
 ```
-gitframes/
+framefields/
 ├── packages/
-│   ├── gitframes/              # Unified SDK (Composition, Layer, LayerAnimation, Signal, effects)
+│   ├── framefields/              # Unified SDK (Composition, Layer, LayerAnimation, Signal, effects)
 │   ├── core/                   # Core AST, Effect base class, VirtualMediaData, vision types
 │   ├── compositions/           # Layout engine, Flex/Box AST compiler, timeline evaluator
 │   ├── webgpu-renderers/       # WGSL shaders, Slug text engine, 3D renderer, camera, lights, materials
@@ -305,7 +305,7 @@ gitframes/
 ├── apps/
 │   └── renderer-service/       # Production HTTP / gRPC rendering microservice container
 ├── examples/                   # Reference compositions and films
-├── plugins/gitframes/          # Agent plugin: skills only (setup, compose, effects, render)
+├── plugins/framefields/          # Agent plugin: skills only (setup, compose, effects, render)
 └── scripts/                    # Build, release, and plugin validation tooling
 ```
 
@@ -316,17 +316,17 @@ gitframes/
 ### Installation
 
 ```bash
-pnpm add gitframes
+pnpm add framefields
 ```
 
-> **Requirements:** Node.js ≥ 22. Gitframes uses native GPU acceleration via Dawn / WebGPU or Vulkan.
+> **Requirements:** Node.js ≥ 22. Framefields uses native GPU acceleration via Dawn / WebGPU or Vulkan.
 
 ---
 
 ### 1. Basic Composition & Kinetic Auto-Layout
 
 ```typescript
-import { Composition, Layer, LayerAnimation } from "gitframes";
+import { Composition, Layer, LayerAnimation } from "framefields";
 
 // 1. Initialize a 1080p60 composition
 const comp = new Composition({
@@ -358,7 +358,7 @@ const heroCard = Layer.box({
       dir: "column",
       gap: 16,
       children: [
-        Layer.text("GITFRAMES ENGINE", {
+        Layer.text("FRAMEFIELDS ENGINE", {
           fontSize: 16,
           fontWeight: 700,
           fill: "#6366f1",
@@ -388,7 +388,7 @@ comp.add(heroCard);
 ### 2. Unified 3D Scene with Camera & 3D Model
 
 ```typescript
-import { Composition, Layer, Layer3D, CameraAnimation, Light } from "gitframes";
+import { Composition, Layer, Layer3D, CameraAnimation, Light } from "framefields";
 
 const comp = new Composition({ width: 1920, height: 1080, fps: 60, durationFrames: 300 });
 
@@ -439,7 +439,7 @@ comp.add(
 ### 3. Audio Soundtrack, Procedural SFX & Reactive Signals
 
 ```typescript
-import { Composition, Layer, LayerAnimation, Signal, renderSfx, mixSfxInto, softLimit } from "gitframes";
+import { Composition, Layer, LayerAnimation, Signal, renderSfx, mixSfxInto, softLimit } from "framefields";
 
 const comp = new Composition({ width: 1920, height: 1080, fps: 60 });
 const totalFrames = 240;
@@ -477,7 +477,7 @@ comp.add(reactiveCard);
 ### 4. Chained WebGPU Post-Processing VFX
 
 ```typescript
-import { Composition, FilmGrain, Vignette, ColorBalance } from "gitframes";
+import { Composition, FilmGrain, Vignette, ColorBalance } from "framefields";
 
 const comp = new Composition({ width: 1920, height: 1080, fps: 60 });
 
@@ -497,7 +497,7 @@ comp.apply(
 ### 5. Vision: Pin, Matte & Reframe
 
 ```typescript
-import { Composition, Layer, Vignette } from "gitframes";
+import { Composition, Layer, Vignette } from "framefields";
 
 const comp = new Composition({ width: 1920, height: 1080, fps: 30 });
 
@@ -541,7 +541,7 @@ console.log(report.tracks.map((t) => `${t.category}#${t.trackId} ${t.frames.join
 **Standalone runner (no composition):**
 
 ```typescript
-import { VisionRunner } from "@gitframes/vision";
+import { VisionRunner } from "@framefields/vision";
 
 const runner = VisionRunner.create({ variant: "s", confidence: 0.3 }); // zero I/O
 const frame = { data: rgba, width: 1920, height: 1080 };
@@ -554,7 +554,7 @@ runner.close();
 **In the browser (WebGPU EP):**
 
 ```typescript
-import { VisionRunner, createWebGPUProvider, hasWebGPU } from "@gitframes/vision/web";
+import { VisionRunner, createWebGPUProvider, hasWebGPU } from "@framefields/vision/web";
 
 if (hasWebGPU()) {
   const runner = VisionRunner.create({ provider: createWebGPUProvider() });
@@ -606,34 +606,34 @@ console.log(`Video rendered successfully to: ${filePath}`);
 
 ## Agent Skills & Plugins
 
-Gitframes ships agent skills that teach Claude, Codex, and other coding agents how to write, render, and check compositions. The plugin (`gitframes`) is listed in Anthropic's official plugin directory and contains **only skills** — no MCP servers, hooks, or commands. Every other agent gets the same skills through the [`skills`](https://skills.sh) CLI.
+Framefields ships agent skills that teach Claude, Codex, and other coding agents how to write, render, and check compositions. The plugin (`framefields`) is listed in Anthropic's official plugin directory and contains **only skills** — no MCP servers, hooks, or commands. Every other agent gets the same skills through the [`skills`](https://skills.sh) CLI.
 
 | Skill | Use it for |
 | --- | --- |
-| `gitframes` | Starting a project: install from npm, scaffold a composition and render script, first verified render |
-| `gitframes-compose` | Compositions, layer trees, layout, animation and easing, beat grids, film structure |
-| `gitframes-effects` | Effect classes, the unified section architecture, premultiplied-alpha invariants, vision conditioning |
-| `gitframes-render` | Headless rendering, FrameGrid inspection, pixel probes, MP4 delivery checks |
+| `framefields` | Starting a project: install from npm, scaffold a composition and render script, first verified render |
+| `framefields-compose` | Compositions, layer trees, layout, animation and easing, beat grids, film structure |
+| `framefields-effects` | Effect classes, the unified section architecture, premultiplied-alpha invariants, vision conditioning |
+| `framefields-render` | Headless rendering, FrameGrid inspection, pixel probes, MP4 delivery checks |
 
 Once installed, skills load automatically when a task matches (e.g. *"add a film-grain pass to this scene"* or *"render a frame grid of intro.ts"*).
 
 ### What the plugin runs and sends
 
-The plugin is instructions only. It bundles no executables, MCP servers, hooks, or package launchers, and it sends no data anywhere. The skills tell your agent to add the [`gitframes`](https://www.npmjs.com/package/gitframes) npm package to your project and how to use it. When that code uses on-device vision, the SDK downloads the pinned model weights from Hugging Face on first use (see [On-Device Vision](#6-on-device-vision--tracking)). Nothing else leaves your machine.
+The plugin is instructions only. It bundles no executables, MCP servers, hooks, or package launchers, and it sends no data anywhere. The skills tell your agent to add the [`framefields`](https://www.npmjs.com/package/framefields) npm package to your project and how to use it. When that code uses on-device vision, the SDK downloads the pinned model weights from Hugging Face on first use (see [On-Device Vision](#6-on-device-vision--tracking)). Nothing else leaves your machine.
 
 ### Claude Code
 
 ```text
-/plugin install gitframes
+/plugin install framefields
 ```
 
 Or from your shell:
 
 ```bash
-claude plugin install gitframes@claude-plugins-official
+claude plugin install framefields@claude-plugins-official
 ```
 
-It installs from Anthropic's official marketplace, which Claude Code adds for you, so there is no marketplace step, and plugins from it update automatically. Afterwards, restart Claude Code or run `/reload-plugins`. `/plugin` commands need an interactive `claude` terminal; in the desktop app's Code tab, use the shell form or **+ > Plugins > Add plugin** and pick **Gitframes**.
+It installs from Anthropic's official marketplace, which Claude Code adds for you, so there is no marketplace step, and plugins from it update automatically. Afterwards, restart Claude Code or run `/reload-plugins`. `/plugin` commands need an interactive `claude` terminal; in the desktop app's Code tab, use the shell form or **+ > Plugins > Add plugin** and pick **Framefields**.
 
 Add `--scope project` to the shell form to record the plugin in `.claude/settings.json` for the whole team.
 
@@ -642,7 +642,7 @@ Add `--scope project` to the shell form to record the plugin in `.claude/setting
 ```json
 {
   "enabledPlugins": {
-    "gitframes@claude-plugins-official": true
+    "framefields@claude-plugins-official": true
   }
 }
 ```
@@ -650,8 +650,8 @@ Add `--scope project` to the shell form to record the plugin in `.claude/setting
 **Straight from this repository** (tracks `main` instead of the directory release):
 
 ```text
-/plugin marketplace add gatewai-dev/gitframes
-/plugin install gitframes@gitframes-plugins
+/plugin marketplace add gatewai-dev/framefields
+/plugin install framefields@framefields-plugins
 ```
 
 ### Codex, Cursor, Hermes, and other agents
@@ -659,24 +659,24 @@ Add `--scope project` to the shell form to record the plugin in `.claude/setting
 The [`skills`](https://skills.sh) CLI installs the skills into any of 70+ agents, including Codex, Cursor, Hermes, Gemini CLI, GitHub Copilot, Windsurf, OpenCode, and Goose:
 
 ```bash
-npx skills add gatewai-dev/gitframes
+npx skills add gatewai-dev/framefields
 ```
 
 It detects the agents on your machine and asks where to install. To choose them yourself, pass `-a` once per agent, add `-g` to install for your user instead of this project, and `-y` to skip the prompts:
 
 ```bash
-npx skills add gatewai-dev/gitframes -a codex -a cursor -a hermes-agent -g -y
+npx skills add gatewai-dev/framefields -a codex -a cursor -a hermes-agent -g -y
 ```
 
 Keep them current with `npx skills update`, and remove them with `npx skills remove`.
 
-Or copy the folders by hand: put `plugins/gitframes/skills/<name>/` into `.claude/skills/`, `.agents/skills/`, or `~/.agents/skills/`. VS Code / Copilot / Cursor / Kiro can load the portable [`plugin.json`](plugins/gitframes/plugin.json) through their plugin UI.
+Or copy the folders by hand: put `plugins/framefields/skills/<name>/` into `.claude/skills/`, `.agents/skills/`, or `~/.agents/skills/`. VS Code / Copilot / Cursor / Kiro can load the portable [`plugin.json`](plugins/framefields/plugin.json) through their plugin UI.
 
 ### Maintaining the plugin
 
-The plugin lives in [`plugins/gitframes/`](plugins/gitframes) so installs carry only the skills; users get the engine from npm. Two manifests there describe it: [`plugin.json`](plugins/gitframes/plugin.json) (portable [Agent Plugins 1.0](https://agent-plugins.org), which also carries the OpenAI listing metadata) and [`.claude-plugin/plugin.json`](plugins/gitframes/.claude-plugin/plugin.json). The marketplace catalog is [`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json). The portable field set is closed — client-specific fields go in that client's manifest, not in `plugin.json`. The `version` in both follows the `gitframes` package: `pnpm run version:packages` syncs it after `changeset version` (or run `pnpm run sync:plugin-version` on its own), since clients use it to decide when to update.
+The plugin lives in [`plugins/framefields/`](plugins/framefields) so installs carry only the skills; users get the engine from npm. Two manifests there describe it: [`plugin.json`](plugins/framefields/plugin.json) (portable [Agent Plugins 1.0](https://agent-plugins.org), which also carries the OpenAI listing metadata) and [`.claude-plugin/plugin.json`](plugins/framefields/.claude-plugin/plugin.json). The marketplace catalog is [`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json). The portable field set is closed — client-specific fields go in that client's manifest, not in `plugin.json`. The `version` in both follows the `framefields` package: `pnpm run version:packages` syncs it after `changeset version` (or run `pnpm run sync:plugin-version` on its own), since clients use it to decide when to update.
 
-Inside this repository, Claude Code and other agents pick up skills through the symlinks in `.agents/skills/` and `.claude/skills/`. Skills live only under `plugins/gitframes/skills/`; never copy them elsewhere. `pnpm run check:plugins` validates manifests, skill frontmatter, marketplace catalogs, symlinks, and the generated effects catalog. `pnpm run sync:effects-catalog` regenerates the `gitframes-effects` catalog after any `Effect` class change.
+Inside this repository, Claude Code and other agents pick up skills through the symlinks in `.agents/skills/` and `.claude/skills/`. Skills live only under `plugins/framefields/skills/`; never copy them elsewhere. `pnpm run check:plugins` validates manifests, skill frontmatter, marketplace catalogs, symlinks, and the generated effects catalog. `pnpm run sync:effects-catalog` regenerates the `framefields-effects` catalog after any `Effect` class change.
 
 ---
 
@@ -686,15 +686,15 @@ The [`examples/`](examples) directory holds production-grade reference compositi
 
 | Example | What it demonstrates |
 | --- | --- |
-| [`19_gitframes_film`](examples/19_gitframes_film) | The 30-second master brand film — full pipeline, audio, VFX, 3D |
+| [`19_framefields_film`](examples/19_framefields_film) | The 30-second master brand film — full pipeline, audio, VFX, 3D |
 | [`21_full_circle`](examples/21_full_circle) | Multi-scene narrative composition |
-| [`22_gitframes_launch`](examples/22_gitframes_launch) | Launch/product-motion composition |
+| [`22_framefields_launch`](examples/22_framefields_launch) | Launch/product-motion composition |
 
 ---
 
 ## Development & Building
 
-Gitframes uses `pnpm` (10+) and `turbo` for orchestration.
+Framefields uses `pnpm` (10+) and `turbo` for orchestration.
 
 ```bash
 # Install
@@ -707,13 +707,13 @@ pnpm build
 pnpm test
 
 # Check the vision models end to end (downloads ~380 MB of weights once)
-pnpm --filter @gitframes/vision test:models
+pnpm --filter @framefields/vision test:models
 
 # Render a specific showcase example
-pnpm --filter @gitframes/example-21-full-circle render
+pnpm --filter @framefields/example-21-full-circle render
 
 # Render the master brand film
-cd examples/19_gitframes_film && pnpm render
+cd examples/19_framefields_film && pnpm render
 ```
 
 ### Docker Container for Production Rendering
@@ -721,7 +721,7 @@ cd examples/19_gitframes_film && pnpm render
 An optimized [`Dockerfile.renderer`](Dockerfile.renderer) deploys the renderer service into cloud GPU clusters:
 
 ```bash
-docker build -t gitframes-renderer -f Dockerfile.renderer .
+docker build -t framefields-renderer -f Dockerfile.renderer .
 ```
 
 ---
@@ -729,10 +729,10 @@ docker build -t gitframes-renderer -f Dockerfile.renderer .
 ## Community
 
 - **Discord:** ask questions, share renders, and follow development at [discord.gg/cbqMGGme5](https://discord.gg/cbqMGGme5).
-- **YouTube:** watch films made with gitframes on [@gatewai.studio](https://www.youtube.com/@gatewai.studio).
+- **YouTube:** watch films made with framefields on [@gatewai.studio](https://www.youtube.com/@gatewai.studio).
 
 ---
 
 ## License
 
-Gitframes is open-source software licensed under [Apache-2.0](LICENCE). The vision models it downloads on demand — RTMDet-Ins and RTMO (OpenMMLab) and the Selfie Segmenter (Google) — are also Apache-2.0; see [`registry.ts`](packages/vision/src/model/registry.ts) for exact sources and checksums.
+Framefields is open-source software licensed under [Apache-2.0](LICENCE). The vision models it downloads on demand — RTMDet-Ins and RTMO (OpenMMLab) and the Selfie Segmenter (Google) — are also Apache-2.0; see [`registry.ts`](packages/vision/src/model/registry.ts) for exact sources and checksums.

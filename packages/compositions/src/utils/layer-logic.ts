@@ -1,6 +1,6 @@
-import type { ExtendedLayer } from "@gitframes/core";
-import { DEFAULT_DURATION_MS } from "@gitframes/core";
-import { interpolate, spring } from "@gitframes/renderers";
+import type { ExtendedLayer } from "@framefields/core";
+import { DEFAULT_DURATION_MS } from "@framefields/core";
+import { interpolate, spring } from "@framefields/renderers";
 
 export const isStaticVisualMedia = (type?: string): boolean =>
 	type === "Image" || type === "SVG" || type === "Text";

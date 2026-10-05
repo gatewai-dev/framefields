@@ -1,4 +1,4 @@
-# @gitframes/node-audio-parametric-eq
+# @framefields/node-audio-parametric-eq
 
 ## 2.0.2
 

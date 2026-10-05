@@ -1,10 +1,10 @@
-import type { AudioProcessor } from "@gitframes/node-sdk";
+import type { AudioProcessor } from "@framefields/node-sdk";
 import {
 	type AudioSignalComputeConfig,
 	AudioSignalComputePipeline,
 	shaderStore,
 	signalRegistry,
-} from "@gitframes/webgpu-renderers";
+} from "@framefields/webgpu-renderers";
 
 export const audioSignalExtractorAudioProcessor: AudioProcessor = async (
 	channels,

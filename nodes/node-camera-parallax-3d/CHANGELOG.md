@@ -1,4 +1,4 @@
-# @gitframes/node-camera-parallax-3d
+# @framefields/node-camera-parallax-3d
 
 ## 2.0.2
 

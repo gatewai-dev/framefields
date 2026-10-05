@@ -1,4 +1,4 @@
-import type { VisionConfig, VisionNodeSpec } from "@gitframes/core";
+import type { VisionConfig, VisionNodeSpec } from "@framefields/core";
 import type { VisionTask } from "./model/registry.js";
 import {
 	VisionRunner,

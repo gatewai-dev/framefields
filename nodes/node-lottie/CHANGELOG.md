@@ -1,4 +1,4 @@
-# @gitframes/node-lottie
+# @framefields/node-lottie
 
 ## 2.0.2
 

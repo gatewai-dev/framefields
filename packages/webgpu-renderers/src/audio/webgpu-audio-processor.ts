@@ -1,4 +1,4 @@
-import type { VirtualMediaData } from "@gitframes/core";
+import type { VirtualMediaData } from "@framefields/core";
 import { shaderStore } from "../shader-store.js";
 import { signalRegistry } from "../signals/signal-registry.js";
 

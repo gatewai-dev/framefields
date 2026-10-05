@@ -1,9 +1,9 @@
-import type { VirtualMediaData } from "@gitframes/core";
+import type { VirtualMediaData } from "@framefields/core";
 import {
 	AudioSignalComputePipeline,
 	shaderStore,
 	signalRegistry,
-} from "@gitframes/webgpu-renderers";
+} from "@framefields/webgpu-renderers";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { audioSignalExtractorAudioProcessor } from "./audio-processor.js";
 

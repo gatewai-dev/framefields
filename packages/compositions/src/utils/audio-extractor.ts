@@ -2,9 +2,9 @@ import {
 	getActiveMediaMetadata,
 	getMediaType,
 	type VirtualMediaData,
-} from "@gitframes/core";
-import { type AudioProcessor, audioRegistry } from "@gitframes/node-sdk";
-import { inputStore, shaderStore } from "@gitframes/webgpu-renderers";
+} from "@framefields/core";
+import { type AudioProcessor, audioRegistry } from "@framefields/node-sdk";
+import { inputStore, shaderStore } from "@framefields/webgpu-renderers";
 import { AudioSampleSink } from "mediabunny";
 import { computeRenderParams } from "./apply-operations.js";
 import { normalizeTimeline } from "./normalization.js";
@@ -14,7 +14,7 @@ const verbose =
 	typeof process !== "undefined" &&
 	/^(debug|trace)$/i.test(process.env?.LOG_LEVEL ?? "");
 
-// Fallback logger for browser environment. In Node.js environment, we dynamically load @gitframes/server-utils to avoid bundling it on the frontend.
+// Fallback logger for browser environment. In Node.js environment, we dynamically load @framefields/server-utils to avoid bundling it on the frontend.
 let mediaLogger = {
 	debug: (msg: unknown, ...args: unknown[]) => {
 		if (!verbose) return;
@@ -44,7 +44,9 @@ if (
 	typeof window === "undefined" ||
 	(typeof process !== "undefined" && process.versions?.node)
 ) {
-	import(/* webpackIgnore: true */ /* @vite-ignore */ "@gitframes/server-utils")
+	import(
+		/* webpackIgnore: true */ /* @vite-ignore */ "@framefields/server-utils"
+	)
 		.then((m) => {
 			if (m.mediaLogger) {
 				mediaLogger = m.mediaLogger;

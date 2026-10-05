@@ -2,9 +2,9 @@ import { parentPort } from "node:worker_threads";
 import {
 	compositionStateStore,
 	drawCompositionTree,
-} from "@gitframes/compositions";
-import type { VirtualMediaData } from "@gitframes/core";
-import { rendererLogger } from "@gitframes/server-utils";
+} from "@framefields/compositions";
+import type { VirtualMediaData } from "@framefields/core";
+import { rendererLogger } from "@framefields/server-utils";
 import {
 	clearAllVideoCache,
 	ensureDevice,
@@ -17,7 +17,7 @@ import {
 	resetDeviceInstance,
 	shaderStore,
 	textureCache,
-} from "@gitframes/webgpu-renderers";
+} from "@framefields/webgpu-renderers";
 import sharp from "sharp";
 import { Canvas as SkiaCanvas, Image as SkiaImage } from "skia-canvas";
 import { preloadFonts } from "./asset-preloader.js";

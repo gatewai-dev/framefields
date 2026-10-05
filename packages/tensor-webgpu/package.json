@@ -1,5 +1,5 @@
 {
-	"name": "@gitframes/tensor-webgpu",
+	"name": "@framefields/tensor-webgpu",
 	"version": "2.0.2",
 	"private": false,
 	"publishConfig": {
@@ -28,12 +28,12 @@
 		"test": "vitest run"
 	},
 	"dependencies": {
-		"@gitframes/core": "workspace:*",
-		"@gitframes/webgpu-renderers": "workspace:*",
+		"@framefields/core": "workspace:*",
+		"@framefields/webgpu-renderers": "workspace:*",
 		"webgpu": "^0.4.0"
 	},
 	"devDependencies": {
-		"@gitframes/tsconfig": "workspace:*",
+		"@framefields/tsconfig": "workspace:*",
 		"skia-canvas": "^3.0.8",
 		"tsdown": "^0.19.0",
 		"typescript": "^5.8.3",

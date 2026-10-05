@@ -1,11 +1,11 @@
-import type { VirtualMediaData } from "@gitframes/core";
-import { HeadlessMediaRenderer } from "@gitframes/renderer";
+import type { VirtualMediaData } from "@framefields/core";
+import { HeadlessMediaRenderer } from "@framefields/renderer";
 import {
 	container,
 	rendererLogger,
 	type StorageService,
 	TOKENS,
-} from "@gitframes/server-utils";
+} from "@framefields/server-utils";
 
 export interface RenderJobInput {
 	virtualMedia?: VirtualMediaData;

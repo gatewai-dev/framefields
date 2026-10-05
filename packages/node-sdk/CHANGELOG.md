@@ -1,4 +1,4 @@
-# @gitframes/node-sdk
+# @framefields/node-sdk
 
 ## 2.0.2
 

@@ -16,7 +16,7 @@ import {
 	type DataType,
 	getActiveMediaMetadata,
 	type VirtualMediaData,
-} from "@gitframes/core";
+} from "@framefields/core";
 import { collectInlineSignals } from "./inline-signals.js";
 import type { CompositorProgramConfig, LayoutNode } from "./schema.js";
 

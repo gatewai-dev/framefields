@@ -131,7 +131,7 @@ Per-kind fields:
   - Fill: `fillType` (`"solid"` | `"linear"` | `"radial"` | `"none"`), `fillColor`, `gradientEndColor`, `gradientAngle`.
   - Stroke: `strokeColor`, `strokeWidth`, `strokeDashArray`, `strokeDashOffset`, `strokeLineCap` (`"butt"` | `"round"` | `"square"`), `strokeLineJoin` (`"miter"` | `"round"` | `"bevel"`), `strokeAlign` (`"inside"` | `"center"` | `"outside"`).
   - Trim Paths: `trimStart` (0..1), `trimEnd` (0..1), `trimOffset` (rotation/offset).
-- **Charts**: there is no chart node kind. `Layer.chart` in the `gitframes` SDK expands a chart into `box`, `shape` (`"path"`/`"circle"`) and `text` nodes, so a program document describes a chart with those kinds.
+- **Charts**: there is no chart node kind. `Layer.chart` in the `framefields` SDK expands a chart into `box`, `shape` (`"path"`/`"circle"`) and `text` nodes, so a program document describes a chart with those kinds.
 - **`media`**: `inputHandleId` (string, required — must match a connected input handle).
   - **Standard Media (`Video`, `Image`, `GIF`, `SVG`, `Lottie`)**: `fit` (`"cover"` | `"contain"` | `"fill"` | `"none"`, default `"contain"`), `volume` (0–1), `muted`, `borderRadius`, `borderColor`, `borderWidth`.
   - **Captions & Subtitles (`Caption` DataType)**: When bound to a `Caption` input (SRT source), `kind: "media"` renders time-synchronized subtitle cues:

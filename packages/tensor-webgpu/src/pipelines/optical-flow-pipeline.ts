@@ -4,7 +4,7 @@
  * Executes dense coarse-to-fine Lucas-Kanade motion vector estimation.
  */
 
-import type { OpticalFlowOptions } from "@gitframes/core";
+import type { OpticalFlowOptions } from "@framefields/core";
 import {
 	opticalFlowDirectWgsl,
 	opticalFlowRefineWgsl,

@@ -3,7 +3,7 @@
  * through a circular window), the ring that carries the eye across cuts, and
  * the catalogue caption naming each circle.
  */
-import { GradientMap, Layer } from "gitframes";
+import { GradientMap, Layer } from "framefields";
 import type { Circle } from "./circles.js";
 import {
 	EDIT,

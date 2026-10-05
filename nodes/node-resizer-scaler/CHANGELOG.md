@@ -1,4 +1,4 @@
-# @gitframes/node-resizer-scaler
+# @framefields/node-resizer-scaler
 
 ## 2.0.2
 

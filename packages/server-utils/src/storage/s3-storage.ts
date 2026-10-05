@@ -12,7 +12,7 @@ import type { StorageService } from "./interface.js";
 @injectable()
 export class S3StorageService implements StorageService {
 	private client?: S3Client;
-	private defaultBucket: string = "gitframes-renders";
+	private defaultBucket: string = "framefields-renders";
 	private customDomain?: string;
 
 	constructor(@inject(TOKENS.ENV) private env: EnvConfig) {}
@@ -22,7 +22,7 @@ export class S3StorageService implements StorageService {
 		const endpoint = this.env.R2_S3_API_ENDPOINT;
 		const accessKeyId = this.env.R2_ACCESS_KEY_ID;
 		const secretAccessKey = this.env.R2_SECRET_ACCESS_KEY;
-		this.defaultBucket = this.env.R2_ASSETS_BUCKET || "gitframes-renders";
+		this.defaultBucket = this.env.R2_ASSETS_BUCKET || "framefields-renders";
 		this.customDomain = this.env.R2_CUSTOM_DOMAIN;
 
 		if (endpoint && accessKeyId && secretAccessKey) {

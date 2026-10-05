@@ -1,4 +1,4 @@
-import type { VirtualMediaData } from "@gitframes/core";
+import type { VirtualMediaData } from "@framefields/core";
 import { describe, expect, it } from "vitest";
 import type { CompositorProgramConfig, LayoutNode } from "./schema.js";
 import { compositorToProgram } from "./to-virtual-media.js";

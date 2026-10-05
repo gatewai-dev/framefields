@@ -1,5 +1,5 @@
 {
-	"name": "@gitframes/example-21-full-circle",
+	"name": "@framefields/example-21-full-circle",
 	"version": "2.0.2",
 	"private": true,
 	"type": "module",
@@ -11,10 +11,10 @@
 	},
 	"dependencies": {
 		"dotenv": "^16.4.7",
-		"gitframes": "workspace:*"
+		"framefields": "workspace:*"
 	},
 	"devDependencies": {
-		"@gitframes/tsconfig": "workspace:*",
+		"@framefields/tsconfig": "workspace:*",
 		"@types/node": "^24.1.0",
 		"tsx": "^4.20.3",
 		"typescript": "^5.8.3",

@@ -1,4 +1,4 @@
-import type { ExtendedLayer, VirtualMediaData } from "@gitframes/core";
+import type { ExtendedLayer, VirtualMediaData } from "@framefields/core";
 
 export type RenderMediaProgress = {
 	renderedFrames: number;

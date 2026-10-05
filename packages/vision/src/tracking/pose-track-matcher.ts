@@ -1,4 +1,4 @@
-import type { TrackedObject } from "@gitframes/core";
+import type { TrackedObject } from "@framefields/core";
 import type { PosePerson } from "../types.js";
 import { computeIoU, type PixelBox } from "./temporal-object-tracker.js";
 

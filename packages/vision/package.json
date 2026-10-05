@@ -1,6 +1,6 @@
 {
-	"name": "@gitframes/vision",
-	"description": "On-device vision for gitframes: RTMDet-Ins detection + instance masks, RTMO pose, and Selfie Segmenter mattes over ONNX Runtime.",
+	"name": "@framefields/vision",
+	"description": "On-device vision for framefields: RTMDet-Ins detection + instance masks, RTMO pose, and Selfie Segmenter mattes over ONNX Runtime.",
 	"version": "2.0.2",
 	"private": false,
 	"publishConfig": {
@@ -39,7 +39,7 @@
 		"dev": "tsdown --watch",
 		"clean": "rm -rf .turbo && rm -rf node_modules && rm -rf dist",
 		"test": "vitest run",
-		"test:models": "GITFRAMES_VISION_E2E=1 vitest run src/models.e2e.test.ts"
+		"test:models": "FRAMEFIELDS_VISION_E2E=1 vitest run src/models.e2e.test.ts"
 	},
 	"peerDependencies": {
 		"onnxruntime-web": "^1.24.0"
@@ -50,14 +50,14 @@
 		}
 	},
 	"dependencies": {
-		"@gitframes/core": "workspace:*",
-		"@gitframes/tensor-webgpu": "workspace:*",
+		"@framefields/core": "workspace:*",
+		"@framefields/tensor-webgpu": "workspace:*",
 		"onnxruntime-node": "^1.24.0",
 		"webgpu": "^0.4.0",
 		"zod": "^4.3.6"
 	},
 	"devDependencies": {
-		"@gitframes/tsconfig": "workspace:*",
+		"@framefields/tsconfig": "workspace:*",
 		"@types/node": "^24.1.0",
 		"skia-canvas": "^3.0.8",
 		"tsdown": "^0.19.0",

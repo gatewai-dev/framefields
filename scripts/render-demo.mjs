@@ -12,15 +12,15 @@ import {
   computed,
   AudioSignal,
   AudioSignalExtractor
-} from "/Users/okanaslankan/gitframes/packages/gitframes/dist/index.mjs";
-import { HeadlessMediaRenderer } from "/Users/okanaslankan/gitframes/packages/gitframes/dist/renderer/index.mjs";
+} from "/Users/okanaslankan/framefields/packages/framefields/dist/index.mjs";
+import { HeadlessMediaRenderer } from "/Users/okanaslankan/framefields/packages/framefields/dist/renderer/index.mjs";
 import fs from "node:fs/promises";
 
 async function main() {
-  console.log("=== Gitframes Signal-Driven Animation Pipeline ===");
-  const inputVideo = "/Users/okanaslankan/gitframes/export (5).mp4";
-  const outputPng = "/Users/okanaslankan/gitframes/rendered_preview.png";
-  const outputMp4 = "/Users/okanaslankan/gitframes/rendered_composition.mp4";
+  console.log("=== Framefields Signal-Driven Animation Pipeline ===");
+  const inputVideo = "/Users/okanaslankan/framefields/export (5).mp4";
+  const outputPng = "/Users/okanaslankan/framefields/rendered_preview.png";
+  const outputMp4 = "/Users/okanaslankan/framefields/rendered_composition.mp4";
 
   console.log("1. Registering TrueType fonts via FontManager singleton...");
   const font = await FontManager.register("assets/fonts/Inter.ttf");
@@ -201,7 +201,7 @@ async function main() {
 
   // 8. Main title (entrance slide-up & fade-in)
   comp.add(
-    Layer.text("Gitframes Render Engine", {
+    Layer.text("Framefields Render Engine", {
       id: "main-title",
       x: 100,
       y: 554,

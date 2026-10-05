@@ -1,7 +1,7 @@
 /// <reference types="webgpu" />
-import type { SignalData } from "@gitframes/core";
-import type { WebGPUNodeRenderer } from "@gitframes/node-sdk";
-import { parseColor, signalRegistry } from "@gitframes/webgpu-renderers";
+import type { SignalData } from "@framefields/core";
+import type { WebGPUNodeRenderer } from "@framefields/node-sdk";
+import { parseColor, signalRegistry } from "@framefields/webgpu-renderers";
 import type { HalftoneScreenOperation } from "../shared/config.js";
 
 interface HalftoneScreenOp extends HalftoneScreenOperation {

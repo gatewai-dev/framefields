@@ -4,7 +4,7 @@ import { VISION_VARIANTS } from "./model/registry.js";
 /**
  * Zod schemas for vision outputs and config.
  *
- * Deliberately a SEPARATE entry point (`@gitframes/vision/schemas`) so the core runtime entry
+ * Deliberately a SEPARATE entry point (`@framefields/vision/schemas`) so the core runtime entry
  * stays zod-free: the hot path (runner, decode, signals) never imports this module. Agents,
  * node config validation, and report round-tripping consume these.
  */

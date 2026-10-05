@@ -1,4 +1,4 @@
-import { reportRenderDiagnostic, takeRenderDiagnostics } from "@gitframes/core";
+import { reportRenderDiagnostic, takeRenderDiagnostics } from "@framefields/core";
 import { describe, expect, it } from "vitest";
 import {
 	analyzeAudio,

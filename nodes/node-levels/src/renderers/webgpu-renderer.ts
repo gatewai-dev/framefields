@@ -1,5 +1,5 @@
-import type { WebGPUNodeRenderer } from "@gitframes/node-sdk";
-import { colorMatrixWgsl } from "@gitframes/webgpu-renderers";
+import type { WebGPUNodeRenderer } from "@framefields/node-sdk";
+import { colorMatrixWgsl } from "@framefields/webgpu-renderers";
 import { type LevelChannel, type LevelsOperation, defaultLevelChannel } from "../shared/config.js";
 
 interface DeviceLevelsResources {

@@ -41,7 +41,7 @@ import { Slug3DPipeline } from "./slug3d-pipeline.js";
 import type { SlugGlyphBatch } from "../slug/slug-pipeline.js";
 import { AudioMeshDeformPipeline } from "./audio-mesh-deform-pipeline.js";
 import { UniformBindGroupCache } from "../renderer2d/uniform-bind-group-cache.js";
-import type { MeshAudioDeformConfig } from "@gitframes/core";
+import type { MeshAudioDeformConfig } from "@framefields/core";
 
 const ADDRESS_MODES: Record<"repeat" | "clamp" | "mirror", GPUAddressMode> = {
 	repeat: "repeat",

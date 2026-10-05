@@ -4,7 +4,7 @@
  * a path's `d` isn't, so slices can grow, shrink and slide around the ring.
  * Round caps with a gap of one stroke width between slices keep the joins clean.
  */
-import { Layer, LayerAnimation, type LayoutNode } from "gitframes";
+import { Layer, LayerAnimation, type LayoutNode } from "framefields";
 
 export interface DonutSlice {
 	label: string;

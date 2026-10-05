@@ -6,8 +6,8 @@
  *  - the Node core entry never pulls browser code, and
  *  - unit tests can run fully offline with a fake module.
  *
- * `onnxruntime-web` is an OPTIONAL peer dependency — consumers of `@gitframes/vision/web`
- * provide it; the main `@gitframes/vision` entry never touches it.
+ * `onnxruntime-web` is an OPTIONAL peer dependency — consumers of `@framefields/vision/web`
+ * provide it; the main `@framefields/vision` entry never touches it.
  */
 
 import type {
@@ -139,7 +139,7 @@ export class WebGPUProvider implements SessionProvider {
 
 /**
  * Convenience factory: a `SessionProvider` type guard for the browser entry. Kept tiny so
- * `@gitframes/vision/web` stays tree-shakeable.
+ * `@framefields/vision/web` stays tree-shakeable.
  */
 export function createWebGPUProvider(
 	options?: WebGPUProviderOptions,

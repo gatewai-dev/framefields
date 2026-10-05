@@ -1,5 +1,5 @@
-import type { AudioProcessor } from "@gitframes/node-sdk";
-import { WebGPUAudioProcessor } from "@gitframes/webgpu-renderers";
+import type { AudioProcessor } from "@framefields/node-sdk";
+import { WebGPUAudioProcessor } from "@framefields/webgpu-renderers";
 
 const PARAM_ORDER = ["roomSize", "damping", "wet", "dry", "width"];
 

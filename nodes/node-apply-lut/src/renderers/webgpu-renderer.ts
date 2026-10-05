@@ -1,6 +1,6 @@
 /// <reference types="webgpu" />
-import type { WebGPUNodeRenderer } from "@gitframes/node-sdk";
-import { lutStore, signalRegistry } from "@gitframes/webgpu-renderers";
+import type { WebGPUNodeRenderer } from "@framefields/node-sdk";
+import { lutStore, signalRegistry } from "@framefields/webgpu-renderers";
 
 export const LUT_3D_SHADER = `
 struct LutUniforms {

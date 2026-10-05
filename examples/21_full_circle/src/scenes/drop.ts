@@ -2,7 +2,7 @@
  * bar 11 – 15 — The drop. Light flashes on every bar (and every beat once the
  * montage starts) and the title orbits the ring a quarter turn per bar.
  */
-import { LayerAnimation } from "gitframes";
+import { LayerAnimation } from "framefields";
 import { BEAT_RING } from "../edit.js";
 import { bar, DROP } from "../grid.js";
 import { BONE, type Key, keys, orbit, plane, scene } from "../theme.js";

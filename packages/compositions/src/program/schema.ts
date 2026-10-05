@@ -18,8 +18,8 @@ import type {
 	MeshAudioDeformConfig,
 	TextSpan,
 	TextSpanMark,
-} from "@gitframes/core";
-import { ColorSchema } from "@gitframes/node-sdk";
+} from "@framefields/core";
+import { ColorSchema } from "@framefields/node-sdk";
 export type { TextSpan, TextSpanMark };
 
 import { z } from "zod";

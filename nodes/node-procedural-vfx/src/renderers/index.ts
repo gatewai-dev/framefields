@@ -1,4 +1,4 @@
-import { defineRenderer } from "@gitframes/node-sdk/renderer";
+import { defineRenderer } from "@framefields/node-sdk/renderer";
 import { ProceduralVFXWebGPURenderer } from "./webgpu-renderer.js";
 
 export default defineRenderer({

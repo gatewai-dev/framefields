@@ -1,7 +1,7 @@
 /// <reference types="webgpu" />
-import type { SignalData, VirtualMediaData } from "@gitframes/core";
-import type { WebGPUNodeRenderer } from "@gitframes/node-sdk";
-import { signalRegistry as globalSignalRegistry } from "@gitframes/webgpu-renderers";
+import type { SignalData, VirtualMediaData } from "@framefields/core";
+import type { WebGPUNodeRenderer } from "@framefields/node-sdk";
+import { signalRegistry as globalSignalRegistry } from "@framefields/webgpu-renderers";
 import {
 	MAX_FEATHER,
 	MAX_OFFSET,

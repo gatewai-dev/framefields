@@ -1,4 +1,4 @@
-import { Layer, LayerAnimation, type LayoutNode } from "gitframes";
+import { Layer, LayerAnimation, type LayoutNode } from "framefields";
 import { odometer } from "../motion.js";
 import {
 	ACCENT,
@@ -19,7 +19,7 @@ export function titleScene(): LayoutNode {
 	const numberY = 560;
 	const size = 170;
 	return scene("title", TITLE.from, TITLE.to, [
-		Layer.text("GITFRAMES ANALYTICS  ·  Q3 REPORT", {
+		Layer.text("FRAMEFIELDS ANALYTICS  ·  Q3 REPORT", {
 			id: "title-kicker",
 			position: "absolute",
 			x: MARGIN,

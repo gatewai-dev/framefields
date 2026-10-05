@@ -1,4 +1,4 @@
-import type { FileAsset, FileData } from "@gitframes/core";
+import type { FileAsset, FileData } from "@framefields/core";
 
 export function GetAssetEndpointBackend(
 	baseUrl: string,

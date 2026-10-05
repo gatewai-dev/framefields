@@ -7,14 +7,14 @@ import {
 	isSignal,
 	updateClockSignals,
 	type VirtualMediaData,
-} from "@gitframes/core";
+} from "@framefields/core";
 import {
 	type GPUCommandEncoder,
 	type GPUTexture,
 	type GPUTextureView,
 	type NodeRenderProps,
 	webgpuRegistry,
-} from "@gitframes/node-sdk";
+} from "@framefields/node-sdk";
 import {
 	drawCaptionNode,
 	drawGifNode,
@@ -26,7 +26,7 @@ import {
 	drawVideoNode,
 	type RenderContextValue,
 	signalRegistry,
-} from "@gitframes/webgpu-renderers";
+} from "@framefields/webgpu-renderers";
 import { computeRenderParams } from "../utils/apply-operations.js";
 
 // Cache segment ranges per (segments reference) to avoid recomputation each frame

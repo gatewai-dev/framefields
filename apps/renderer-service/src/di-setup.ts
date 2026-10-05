@@ -1,10 +1,10 @@
-import { ServerMediaService } from "@gitframes/media/server";
+import { ServerMediaService } from "@framefields/media/server";
 import {
 	container,
 	logger,
 	R2StorageService,
 	TOKENS,
-} from "@gitframes/server-utils";
+} from "@framefields/server-utils";
 import { RENDERER_ENV_CONFIG } from "./env-config.js";
 
 /**

@@ -1,10 +1,10 @@
-import type { PoseSkeletonOptions } from "@gitframes/tensor-webgpu";
-import { PoseSkeletonComputePipeline } from "@gitframes/tensor-webgpu";
+import type { PoseSkeletonOptions } from "@framefields/tensor-webgpu";
+import { PoseSkeletonComputePipeline } from "@framefields/tensor-webgpu";
 import { COCO17_BONES } from "../pose/keypoints.js";
 import type { PoseKeypoint } from "../types.js";
 
 export type { PoseSkeletonOptions };
-export type { CanonicalBoneDef as SkeletonBone } from "@gitframes/tensor-webgpu";
+export type { CanonicalBoneDef as SkeletonBone } from "@framefields/tensor-webgpu";
 
 /**
  * WebGPU skeleton renderer for pose results.

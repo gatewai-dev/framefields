@@ -1,4 +1,4 @@
-# @gitframes/node-canvas-generator
+# @framefields/node-canvas-generator
 
 ## 2.0.2
 

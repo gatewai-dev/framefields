@@ -1,0 +1,10 @@
+{
+	"extends": "@framefields/tsconfig/base.json",
+	"compilerOptions": {
+		"moduleResolution": "bundler",
+		"rootDir": "src",
+		"outDir": "dist",
+		"module": "ESNext"
+	},
+	"include": ["src/**/*"]
+}

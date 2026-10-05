@@ -1,7 +1,7 @@
 /// <reference types="webgpu" />
-import type { SignalData } from "@gitframes/core";
-import type { WebGPUNodeRenderer } from "@gitframes/node-sdk";
-import { signalRegistry } from "@gitframes/webgpu-renderers";
+import type { SignalData } from "@framefields/core";
+import type { WebGPUNodeRenderer } from "@framefields/node-sdk";
+import { signalRegistry } from "@framefields/webgpu-renderers";
 import { MAX_AMOUNT, MAX_RADIUS, MIN_RADIUS } from "../shared/config.js";
 
 interface ShadowsHighlightsOp {

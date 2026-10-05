@@ -1,4 +1,4 @@
-# @gitframes/node-audio-signal-extractor
+# @framefields/node-audio-signal-extractor
 
 ## 2.0.2
 

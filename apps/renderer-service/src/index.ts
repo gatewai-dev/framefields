@@ -1,13 +1,13 @@
 // Keep this at top. (Force reload 1)
 import "reflect-metadata";
 import { Server as HttpServer } from "node:http";
-import { configureAssetUrls } from "@gitframes/client-utils";
+import { configureAssetUrls } from "@framefields/client-utils";
 import {
 	HeadlessMediaRenderer,
 	renderSemaphore,
-} from "@gitframes/renderer";
-import "@gitframes/renderer/offscreen-gl-polyfill";
-import { rendererLogger } from "@gitframes/server-utils";
+} from "@framefields/renderer";
+import "@framefields/renderer/offscreen-gl-polyfill";
+import { rendererLogger } from "@framefields/server-utils";
 import { serve } from "@hono/node-server";
 import { type Context, Hono } from "hono";
 import { HTTPException } from "hono/http-exception";

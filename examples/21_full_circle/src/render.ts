@@ -6,7 +6,7 @@
  */
 import fs from "node:fs/promises";
 import path from "node:path";
-import { HeadlessMediaRenderer, startPreview } from "gitframes";
+import { HeadlessMediaRenderer, startPreview } from "framefields";
 import { buildFilm } from "./film.js";
 import { OUTPUT } from "./paths.js";
 

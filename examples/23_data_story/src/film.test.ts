@@ -1,4 +1,4 @@
-import { CompositorProgramSchema, type LayoutNode } from "gitframes";
+import { CompositorProgramSchema, type LayoutNode } from "framefields";
 import { Canvas, loadImage } from "skia-canvas";
 import { describe, expect, it } from "vitest";
 import { boxOf, findNode } from "./chart-geometry.js";

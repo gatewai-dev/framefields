@@ -1,6 +1,6 @@
 import os from "node:os";
 import path from "node:path";
-import { ensureDevice } from "@gitframes/webgpu-renderers";
+import { ensureDevice } from "@framefields/webgpu-renderers";
 import {
 	FilePathTarget,
 	Mp4OutputFormat,

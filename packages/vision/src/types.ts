@@ -1,6 +1,6 @@
-export * from "@gitframes/core";
+export * from "@framefields/core";
 
-import type { DetectedObject, ObjectBoundingBox } from "@gitframes/core";
+import type { DetectedObject, ObjectBoundingBox } from "@framefields/core";
 
 export type VisionInputSource =
 	| string
@@ -122,11 +122,11 @@ export interface PinToLandmarkOptions {
 }
 
 export interface LandmarkCoordinateSignals {
-	readonly x: import("@gitframes/core").ProgrammaticSignal;
-	readonly y: import("@gitframes/core").ProgrammaticSignal;
-	readonly z: import("@gitframes/core").ProgrammaticSignal;
-	readonly screenX: import("@gitframes/core").ProgrammaticSignal;
-	readonly screenY: import("@gitframes/core").ProgrammaticSignal;
+	readonly x: import("@framefields/core").ProgrammaticSignal;
+	readonly y: import("@framefields/core").ProgrammaticSignal;
+	readonly z: import("@framefields/core").ProgrammaticSignal;
+	readonly screenX: import("@framefields/core").ProgrammaticSignal;
+	readonly screenY: import("@framefields/core").ProgrammaticSignal;
 }
 
 export type ObjectAnchorName =

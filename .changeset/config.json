@@ -3,7 +3,7 @@
 	"changelog": ["../scripts/custom-changelog.js", null],
 	"baseBranch": "main",
 	"commit": false,
-	"fixed": [["gitframes", "@gitframes/*"]],
+	"fixed": [["framefields", "@framefields/*"]],
 	"linked": [],
 	"access": "public",
 	"updateInternalDependencies": "patch"

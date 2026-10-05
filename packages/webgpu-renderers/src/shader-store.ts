@@ -1,4 +1,4 @@
-import type { VirtualMediaData } from "@gitframes/core";
+import type { VirtualMediaData } from "@framefields/core";
 
 export interface RegisteredShader {
 	wgsl: string;

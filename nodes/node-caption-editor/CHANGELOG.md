@@ -1,4 +1,4 @@
-# @gitframes/node-caption-editor
+# @framefields/node-caption-editor
 
 ## 2.0.2
 

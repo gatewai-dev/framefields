@@ -9,5 +9,5 @@ export default defineConfig({
 	clean: true,
 	sourcemap: true,
 	treeshake: true,
-	external: ["@gitframes/server-utils", "sharp"],
+	external: ["@framefields/server-utils", "sharp"],
 });

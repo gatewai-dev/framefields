@@ -3,7 +3,7 @@ import type {
 	MediaMetadata,
 	MediaOperation,
 	VirtualMediaData,
-} from "@gitframes/core";
+} from "@framefields/core";
 import type { KenBurnsConfig } from "./config.js";
 
 /**

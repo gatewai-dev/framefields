@@ -1,4 +1,4 @@
-import type { VirtualMediaData } from "@gitframes/core";
+import type { VirtualMediaData } from "@framefields/core";
 
 const DEFAULT_STATE = { frame: 0, fps: 30, isPlaying: false };
 

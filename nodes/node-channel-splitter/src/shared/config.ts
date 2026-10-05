@@ -1,11 +1,11 @@
 import {
 	createOutputItemSchema,
 	VirtualMediaDataSchema,
-} from "@gitframes/core";
+} from "@framefields/core";
 import {
 	configBuilder,
 	MultiOutputGenericSchema,
-} from "@gitframes/node-sdk";
+} from "@framefields/node-sdk";
 import { z } from "zod";
 
 export const ChannelColorSpaceEnum = z.enum(["RGBA", "HSLA", "CMYK", "LAB"]);

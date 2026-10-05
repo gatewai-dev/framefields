@@ -1,6 +1,6 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { FontManager } from "gitframes";
+import { FontManager } from "framefields";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FONTS = path.resolve(HERE, "../../../assets/fonts");

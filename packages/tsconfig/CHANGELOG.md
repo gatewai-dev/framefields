@@ -1,4 +1,4 @@
-# @gitframes/tsconfig
+# @framefields/tsconfig
 
 ## 2.0.2
 

@@ -1,4 +1,4 @@
-# @gitframes/node-extract-lut
+# @framefields/node-extract-lut
 
 ## 2.0.2
 

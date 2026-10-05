@@ -1,4 +1,4 @@
-import { Layer, type LayoutNode } from "gitframes";
+import { Layer, type LayoutNode } from "framefields";
 import { liveDonut } from "../donut.js";
 import { morph } from "../morph.js";
 import { odometer } from "../motion.js";

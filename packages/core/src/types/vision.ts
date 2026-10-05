@@ -1,7 +1,7 @@
 /**
  * Shared vision types (engine-agnostic — no ONNX imports here).
  *
- * Consumed by @gitframes/vision (the inference engine) and @gitframes/gitframes (the SDK).
+ * Consumed by @framefields/vision (the inference engine) and @framefields/framefields (the SDK).
  */
 
 /**
@@ -27,7 +27,7 @@ export interface VisionConfig {
 	readonly confidence?: number;
 	/** Model size. Default "s". */
 	readonly variant?: VisionVariant;
-	/** Model cache directory. Default `$GITFRAMES_MODELS_DIR` or `~/.cache/gitframes/models`. */
+	/** Model cache directory. Default `$FRAMEFIELDS_MODELS_DIR` or `~/.cache/framefields/models`. */
 	readonly modelsDir?: string;
 	/** Mirror origin for model downloads (`<baseUrl>/<filename>`). Default: pinned Hugging Face revisions. */
 	readonly baseUrl?: string;

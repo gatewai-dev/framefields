@@ -1,8 +1,8 @@
 import {
 	createOutputItemSchema,
 	VirtualMediaDataSchema,
-} from "@gitframes/core";
-import { MultiOutputGenericSchema } from "@gitframes/node-sdk";
+} from "@framefields/core";
+import { MultiOutputGenericSchema } from "@framefields/node-sdk";
 import { z } from "zod";
 
 export const ResizerScalerNodeConfigSchema = z

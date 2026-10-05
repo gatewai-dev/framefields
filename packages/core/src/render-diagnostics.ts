@@ -14,7 +14,7 @@ export interface RenderDiagnostic {
 // Kept on globalThis: bundles can each carry their own copy of this module
 // (the compositor reports through one, the renderer collects through another),
 // and they must all see one store.
-const STORE_KEY = Symbol.for("gitframes.renderDiagnostics");
+const STORE_KEY = Symbol.for("framefields.renderDiagnostics");
 const diagnosticsByRender: Map<string, Map<string, RenderDiagnostic>> =
 	((globalThis as Record<symbol, unknown>)[STORE_KEY] as
 		| Map<string, Map<string, RenderDiagnostic>>

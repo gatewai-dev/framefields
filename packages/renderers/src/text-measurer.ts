@@ -1,6 +1,6 @@
-import { GetFontAssetUrl } from "@gitframes/client-utils";
-import type { TextSpan } from "@gitframes/core";
-import { SlugFontCache, SlugGeometry } from "@gitframes/webgpu-renderers";
+import { GetFontAssetUrl } from "@framefields/client-utils";
+import type { TextSpan } from "@framefields/core";
+import { SlugFontCache, SlugGeometry } from "@framefields/webgpu-renderers";
 
 export interface TextMeasureStyle {
 	fontFamily?: string;

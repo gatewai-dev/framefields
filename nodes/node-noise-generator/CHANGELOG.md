@@ -1,4 +1,4 @@
-# @gitframes/node-noise-generator
+# @framefields/node-noise-generator
 
 ## 2.0.2
 

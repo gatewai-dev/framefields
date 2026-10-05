@@ -1,7 +1,7 @@
 /**
  * Motion helpers built on gsap.
  *
- * gitframes already evaluates every `ease` string with gsap, so single moves
+ * framefields already evaluates every `ease` string with gsap, so single moves
  * are plain `fromTo` calls. gsap is used directly for what keyframes can't say
  * on their own:
  *
@@ -10,7 +10,7 @@
  *   is authored the gsap way and still renders deterministically.
  * - `envelope` turns a gsap ease into a curve that signal functions can sample.
  */
-import { Layer, LayerAnimation, type LayoutNode } from "gitframes";
+import { Layer, LayerAnimation, type LayoutNode } from "framefields";
 import { gsap } from "./gsap.js";
 import { FPS, MONO, TEXT } from "./theme.js";
 

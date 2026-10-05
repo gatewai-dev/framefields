@@ -1,4 +1,4 @@
-import { Layer, LayerAnimation, type LayoutNode } from "gitframes";
+import { Layer, LayerAnimation, type LayoutNode } from "framefields";
 import { BREATHE, PULSE } from "./signals.js";
 import {
 	ACCENT,

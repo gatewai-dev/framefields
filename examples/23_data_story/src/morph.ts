@@ -8,7 +8,7 @@
  * content can't be keyframed, so changing lines are drawn as segment boxes
  * (`segments`) and changing numbers roll on odometers.
  */
-import { LayerAnimation, type LayoutNode } from "gitframes";
+import { LayerAnimation, type LayoutNode } from "framefields";
 
 export interface DataState {
 	/** Scene frame the morph into this state starts (ignored for the first state). */

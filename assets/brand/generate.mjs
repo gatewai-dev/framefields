@@ -1,5 +1,5 @@
 /**
- * Generates the gitframes brand assets (logo + README banner) as SVG and PNG.
+ * Generates the framefields brand assets (logo + README banner) as SVG and PNG.
  *
  *   node assets/brand/generate.mjs
  *
@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "../..");
 // fontkit and resvg are dependencies of the SDK package; resolve them from there.
-const require = createRequire(join(ROOT, "packages/gitframes/package.json"));
+const require = createRequire(join(ROOT, "packages/framefields/package.json"));
 const fontkit = require("fontkit");
 const { Resvg } = require("@resvg/resvg-js");
 

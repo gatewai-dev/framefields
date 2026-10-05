@@ -1,4 +1,4 @@
-import type { SignalData, TextSpan } from "@gitframes/core";
+import type { SignalData, TextSpan } from "@framefields/core";
 import type { Rect } from "../renderer2d/index.js";
 
 export interface VideoNodeProps {

@@ -1,1 +1,1 @@
-export type { StorageService } from "@gitframes/core";
+export type { StorageService } from "@framefields/core";

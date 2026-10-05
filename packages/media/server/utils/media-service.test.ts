@@ -1,8 +1,8 @@
-import type { FileData } from "@gitframes/core";
+import type { FileData } from "@framefields/core";
 import {
 	type EnvConfig,
 	GetAssetEndpointBackend,
-} from "@gitframes/server-utils";
+} from "@framefields/server-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ServerMediaService } from "./media-service.js";
 
@@ -16,7 +16,7 @@ vi.mock("sharp", () => {
 });
 
 // Mock server-utils
-vi.mock("@gitframes/server-utils", () => ({
+vi.mock("@framefields/server-utils", () => ({
 	GetAssetEndpointBackend: vi.fn(),
 	TOKENS: {
 		ENV: Symbol.for("ENV"),

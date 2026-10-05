@@ -1,4 +1,7 @@
-import { getActiveMediaMetadata, type VirtualMediaData } from "@gitframes/core";
+import {
+	getActiveMediaMetadata,
+	type VirtualMediaData,
+} from "@framefields/core";
 import { secondsToFrames } from "./timing.js";
 
 /**

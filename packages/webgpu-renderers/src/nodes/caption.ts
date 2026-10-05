@@ -1,4 +1,4 @@
-import { GetFontAssetUrl } from "@gitframes/client-utils";
+import { GetFontAssetUrl } from "@framefields/client-utils";
 import type { RenderContextValue } from "../render-context.js";
 import { SlugFontCache } from "../slug/slug-font-cache.js";
 import { SlugGeometry } from "../slug/slug-geometry.js";

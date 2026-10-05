@@ -1,4 +1,4 @@
-import { Layer, LayerAnimation, type LayoutNode } from "gitframes";
+import { Layer, LayerAnimation, type LayoutNode } from "framefields";
 import { boxOf } from "../chart-geometry.js";
 import { type DataState, morph, segment } from "../morph.js";
 import { odometer } from "../motion.js";

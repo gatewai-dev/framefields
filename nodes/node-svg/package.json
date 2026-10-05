@@ -1,9 +1,9 @@
 {
-	"name": "@gitframes/node-svg",
+	"name": "@framefields/node-svg",
 	"version": "2.0.2",
 	"license": "Apache-2.0",
 	"private": false,
-	"gitframes": {
+	"framefields": {
 		"type": "Svg",
 		"kind": "source"
 	},
@@ -25,11 +25,11 @@
 		"test": "vitest run --passWithNoTests"
 	},
 	"dependencies": {
-		"@gitframes/core": "workspace:*",
+		"@framefields/core": "workspace:*",
 		"zod": "^4.3.6"
 	},
 	"devDependencies": {
-		"@gitframes/tsconfig": "workspace:*",
+		"@framefields/tsconfig": "workspace:*",
 		"@types/node": "^24.1.0",
 		"tsdown": "^0.19.0",
 		"typescript": "^5.8.3",

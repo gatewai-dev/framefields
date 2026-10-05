@@ -14,7 +14,7 @@ export type {
 	TensorFormat,
 	TensorNode,
 	TensorPipelineConfig,
-} from "@gitframes/core";
+} from "@framefields/core";
 
 export type TensorSource =
 	| GPUTexture

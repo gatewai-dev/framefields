@@ -1,4 +1,4 @@
-import type { RenderDiagnostic } from "@gitframes/core";
+import type { RenderDiagnostic } from "@framefields/core";
 
 /**
  * Quality checks run on a video while it renders: frames are measured as

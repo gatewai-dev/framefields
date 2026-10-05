@@ -1,5 +1,5 @@
 /**
- * Browser entry (`@gitframes/vision/web`).
+ * Browser entry (`@framefields/vision/web`).
  *
  * Re-exports the full engine plus the WebGPU session provider. Consumers pass a provider to
  * the runner explicitly (keeps the runner environment-agnostic and tree-shakeable):

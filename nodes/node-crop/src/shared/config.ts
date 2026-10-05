@@ -2,11 +2,11 @@ import {
 	createOutputItemSchema,
 	SingleOutputGenericSchema,
 	VirtualMediaDataSchema,
-} from "@gitframes/core";
+} from "@framefields/core";
 import {
 	ImageResultSchema,
 	MultiOutputGenericSchema,
-} from "@gitframes/node-sdk";
+} from "@framefields/node-sdk";
 import { z } from "zod";
 
 const BaseCropNodeConfigSchema = z

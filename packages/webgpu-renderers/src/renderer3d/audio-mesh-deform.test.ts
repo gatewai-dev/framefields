@@ -1,4 +1,4 @@
-import type { MeshAudioDeformConfig } from "@gitframes/core";
+import type { MeshAudioDeformConfig } from "@framefields/core";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { NUM_BINS } from "../audio/audio-latent-engine.js";
 import {

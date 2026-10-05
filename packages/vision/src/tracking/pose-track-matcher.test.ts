@@ -1,4 +1,4 @@
-import type { TrackedObject } from "@gitframes/core";
+import type { TrackedObject } from "@framefields/core";
 import { describe, expect, it } from "vitest";
 import type { PosePerson } from "../types.js";
 import { matchPoseToTracks } from "./pose-track-matcher.js";

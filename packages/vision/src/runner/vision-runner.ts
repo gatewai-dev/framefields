@@ -1,4 +1,4 @@
-import type { DetectedObject } from "@gitframes/core";
+import type { DetectedObject } from "@framefields/core";
 import {
 	type InputTransform,
 	imageToTensor,

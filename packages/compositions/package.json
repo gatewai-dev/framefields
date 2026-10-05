@@ -1,5 +1,5 @@
 {
-	"name": "@gitframes/compositions",
+	"name": "@framefields/compositions",
 	"version": "2.0.2",
 	"private": false,
 	"type": "module",
@@ -37,10 +37,10 @@
 		"clean": "rm -rf .turbo && rm -rf node_modules && rm -rf dist"
 	},
 	"devDependencies": {
-		"@gitframes/client-utils": "workspace:*",
-		"@gitframes/core": "workspace:*",
-		"@gitframes/server-utils": "workspace:*",
-		"@gitframes/tsconfig": "workspace:*",
+		"@framefields/client-utils": "workspace:*",
+		"@framefields/core": "workspace:*",
+		"@framefields/server-utils": "workspace:*",
+		"@framefields/tsconfig": "workspace:*",
 		"@webgpu/types": "^0.1.70",
 		"dotenv": "^16.4.5",
 		"tsdown": "^0.19.0",
@@ -54,11 +54,11 @@
 		"zod": "^4.3.6"
 	},
 	"dependencies": {
-		"@gitframes/renderers": "workspace:*",
-		"@gitframes/webgpu-renderers": "workspace:*",
+		"@framefields/renderers": "workspace:*",
+		"@framefields/webgpu-renderers": "workspace:*",
 		"@mediabunny/mp3-encoder": "^1.51.0",
 		"yoga-layout": "^3.2.1",
-		"@gitframes/node-sdk": "workspace:*"
+		"@framefields/node-sdk": "workspace:*"
 	},
 	"publishConfig": {
 		"access": "public"

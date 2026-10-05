@@ -1,4 +1,4 @@
-# @gitframes/node-audio-noise-gate
+# @framefields/node-audio-noise-gate
 
 ## 2.0.2
 

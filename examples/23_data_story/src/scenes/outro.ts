@@ -1,4 +1,4 @@
-import { Layer, type LayoutNode } from "gitframes";
+import { Layer, type LayoutNode } from "framefields";
 import { morph } from "../morph.js";
 import {
 	ACCENT,

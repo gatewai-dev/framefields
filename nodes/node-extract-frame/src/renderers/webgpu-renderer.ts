@@ -1,4 +1,4 @@
-import type { WebGPUNodeRenderer } from "@gitframes/node-sdk";
+import type { WebGPUNodeRenderer } from "@framefields/node-sdk";
 
 /**
  * WebGPU renderer for the ExtractFrame operation.

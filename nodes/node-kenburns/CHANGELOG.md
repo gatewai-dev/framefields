@@ -1,4 +1,4 @@
-# @gitframes/node-kenburns
+# @framefields/node-kenburns
 
 ## 2.0.2
 

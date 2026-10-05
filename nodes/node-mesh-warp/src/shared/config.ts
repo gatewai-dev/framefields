@@ -2,7 +2,7 @@ import {
 	createOutputItemSchema,
 	SingleOutputGenericSchema,
 	VirtualMediaDataSchema,
-} from "@gitframes/core";
+} from "@framefields/core";
 import { z } from "zod";
 
 export const MeshWarpNodeConfigSchema = z

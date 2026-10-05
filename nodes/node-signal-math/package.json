@@ -1,8 +1,8 @@
 {
-	"name": "@gitframes/node-signal-math",
+	"name": "@framefields/node-signal-math",
 	"version": "2.0.2",
 	"private": false,
-	"gitframes": {
+	"framefields": {
 		"type": "SignalMath",
 		"kind": "signal"
 	},
@@ -23,12 +23,12 @@
 		"test": "vitest run --passWithNoTests"
 	},
 	"dependencies": {
-		"@gitframes/core": "workspace:*",
-		"@gitframes/node-sdk": "workspace:*",
+		"@framefields/core": "workspace:*",
+		"@framefields/node-sdk": "workspace:*",
 		"zod": "^4.3.6"
 	},
 	"devDependencies": {
-		"@gitframes/tsconfig": "workspace:*",
+		"@framefields/tsconfig": "workspace:*",
 		"@types/node": "^24.1.0",
 		"tsdown": "^0.19.0",
 		"typescript": "^5.8.3",

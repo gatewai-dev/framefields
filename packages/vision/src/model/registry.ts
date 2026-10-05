@@ -1,4 +1,4 @@
-import type { VisionTask, VisionVariant } from "@gitframes/core";
+import type { VisionTask, VisionVariant } from "@framefields/core";
 
 /**
  * Vision model registry — single source of truth for what exists, where it lives, and which

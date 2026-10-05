@@ -15,11 +15,11 @@
 		"changeset": "changeset",
 		"version:packages": "changeset version && node scripts/sync-plugin-version.mjs",
 		"sync:plugin-version": "node scripts/sync-plugin-version.mjs",
-		"pack:plugin": "rm -f gitframes-plugin.zip && cd plugins/gitframes && zip -qrX ../../gitframes-plugin.zip . -x '*.DS_Store'",
+		"pack:plugin": "rm -f framefields-plugin.zip && cd plugins/framefields && zip -qrX ../../framefields-plugin.zip . -x '*.DS_Store'",
 		"release:local": "turbo run build && pnpm -r publish --access public --no-git-checks",
 		"release:local:dry-run": "turbo run build && pnpm -r publish --dry-run --access public --no-git-checks",
-		"release:gitframes": "turbo run build && pnpm --filter gitframes publish --access public --no-git-checks",
-		"release:gitframes:dry-run": "pnpm --filter gitframes publish --dry-run --access public --no-git-checks"
+		"release:framefields": "turbo run build && pnpm --filter framefields publish --access public --no-git-checks",
+		"release:framefields:dry-run": "pnpm --filter framefields publish --dry-run --access public --no-git-checks"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.3.8",
@@ -206,5 +206,5 @@
 		"sharp",
 		"webgpu"
 	],
-	"name": "gitframes-monorepo"
+	"name": "framefields-monorepo"
 }

@@ -1,9 +1,9 @@
-import type { FileData, MediaService } from "@gitframes/core";
+import type { FileData, MediaService } from "@framefields/core";
 import {
 	type EnvConfig,
 	GetAssetEndpointBackend,
 	TOKENS,
-} from "@gitframes/server-utils";
+} from "@framefields/server-utils";
 import { inject, injectable, postConstruct } from "inversify";
 import sharp from "sharp";
 

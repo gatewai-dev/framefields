@@ -1,5 +1,5 @@
-import { generateId } from "@gitframes/core";
-import { apiLogger, loggerContext } from "@gitframes/server-utils";
+import { generateId } from "@framefields/core";
+import { apiLogger, loggerContext } from "@framefields/server-utils";
 import type { Context, Next } from "hono";
 
 // 1. Request/Response Middleware

@@ -1,8 +1,8 @@
 /// <reference types="webgpu" />
 
-import { getFingerprint, type VirtualMediaData } from "@gitframes/core";
-import type { WebGPUNodeRenderer } from "@gitframes/node-sdk";
-import { lutStore } from "@gitframes/webgpu-renderers";
+import { getFingerprint, type VirtualMediaData } from "@framefields/core";
+import type { WebGPUNodeRenderer } from "@framefields/node-sdk";
+import { lutStore } from "@framefields/webgpu-renderers";
 
 // Per-node extraction cache to avoid redundant GPU readbacks on every frame.
 const extractionCache = new Map<string, string>();

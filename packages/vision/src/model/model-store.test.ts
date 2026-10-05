@@ -69,7 +69,7 @@ describe("VisionModelStore (lazy download semantics)", () => {
 	it("uses the pinned Hugging Face URL when no mirror is set", () => {
 		const s = new VisionModelStore({ modelsDir: dir });
 		for (const desc of Object.values(VISION_MODELS)) {
-			if (process.env.GITFRAMES_MODELS_BASE_URL) break;
+			if (process.env.FRAMEFIELDS_MODELS_BASE_URL) break;
 			expect(s.urlFor(desc.key)).toBe(desc.url);
 			expect(desc.url).toMatch(/\/resolve\/[0-9a-f]{40}\//);
 		}

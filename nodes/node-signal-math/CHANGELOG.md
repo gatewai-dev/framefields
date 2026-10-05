@@ -1,4 +1,4 @@
-# @gitframes/node-signal-math
+# @framefields/node-signal-math
 
 ## 2.0.2
 

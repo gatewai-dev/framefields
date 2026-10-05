@@ -10,7 +10,7 @@
  * every evaluator (which only looks signals up by name) sees them.
  */
 
-const INLINE_SIGNAL = Symbol.for("gitframes.inlineSignal");
+const INLINE_SIGNAL = Symbol.for("framefields.inlineSignal");
 
 const handleIds = new WeakMap<object, string>();
 let nextHandle = 0;

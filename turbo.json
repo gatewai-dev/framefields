@@ -17,7 +17,7 @@
 			"dependsOn": ["^build"],
 			"cache": false
 		},
-		"@gitframes/renderer#test": {
+		"@framefields/renderer#test": {
 			"dependsOn": ["^build", "build"],
 			"cache": false
 		},

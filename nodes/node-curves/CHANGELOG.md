@@ -1,4 +1,4 @@
-# @gitframes/node-curves
+# @framefields/node-curves
 
 ## 2.0.2
 

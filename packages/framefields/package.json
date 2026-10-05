@@ -1,0 +1,174 @@
+{
+	"name": "framefields",
+	"version": "2.0.2",
+	"private": false,
+	"description": "High-performance WebGPU rendering SDK for video composition, Photoshop-grade 2D VFX, audio DSP, and reactive signals. Built for AI Agents.",
+	"license": "Apache-2.0",
+	"homepage": "https://gatewai.studio.com",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/gatewai-dev/framefields.git"
+	},
+	"bugs": {
+		"url": "https://github.com/gatewai-dev/framefields/issues"
+	},
+	"keywords": [
+		"video",
+		"webgpu",
+		"motion-graphics",
+		"composition",
+		"vfx",
+		"audio-dsp",
+		"signals",
+		"headless-rendering"
+	],
+	"publishConfig": {
+		"access": "public"
+	},
+	"type": "module",
+	"sideEffects": false,
+	"main": "./dist/index.mjs",
+	"types": "./dist/index.d.mts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.mts",
+			"development": "./src/index.ts",
+			"import": "./dist/index.mjs",
+			"default": "./dist/index.mjs"
+		},
+		"./effects": {
+			"types": "./dist/effects/index.d.mts",
+			"development": "./src/effects/index.ts",
+			"import": "./dist/effects/index.mjs",
+			"default": "./dist/effects/index.mjs"
+		},
+		"./audio": {
+			"types": "./dist/audio/index.d.mts",
+			"development": "./src/audio/index.ts",
+			"import": "./dist/audio/index.mjs",
+			"default": "./dist/audio/index.mjs"
+		},
+		"./signals": {
+			"types": "./dist/signals/index.d.mts",
+			"development": "./src/signals/index.ts",
+			"import": "./dist/signals/index.mjs",
+			"default": "./dist/signals/index.mjs"
+		},
+		"./renderer": {
+			"types": "./dist/renderer/index.d.mts",
+			"development": "./src/renderer/index.ts",
+			"import": "./dist/renderer/index.mjs",
+			"default": "./dist/renderer/index.mjs"
+		},
+		"./fonts": {
+			"types": "./dist/fonts/index.d.mts",
+			"development": "./src/fonts/index.ts",
+			"import": "./dist/fonts/index.mjs",
+			"default": "./dist/fonts/index.mjs"
+		},
+		"./preview": {
+			"types": "./dist/preview/index.d.mts",
+			"development": "./src/preview/index.ts",
+			"import": "./dist/preview/index.mjs",
+			"default": "./dist/preview/index.mjs"
+		}
+	},
+	"files": [
+		"dist/**"
+	],
+	"scripts": {
+		"build": "tsdown && node ../../scripts/sync-readme.mjs && node scripts/check-dts-bundle.mjs",
+		"dev": "tsdown --watch",
+		"clean": "rm -rf dist .turbo",
+		"prepack": "node ../../scripts/sync-readme.mjs",
+		"test": "vitest run --passWithNoTests"
+	},
+	"dependencies": {
+		"@lottiefiles/dotlottie-web": "^0.74.0",
+		"@mediabunny/mp3-encoder": "^1.51.0",
+		"@mediabunny/server": "^1.51.0",
+		"@napi-rs/webcodecs": "^1.3.1",
+		"@resvg/resvg-js": "^2.6.2",
+		"d3-format": "^3.1.2",
+		"d3-scale": "^4.0.2",
+		"d3-shape": "^3.2.0",
+		"dotenv": "^16.4.5",
+		"earcut": "^3.2.4",
+		"esbuild": "^0.28.1",
+		"fontkit": "^2.0.4",
+		"gifuct-js": "^2.1.2",
+		"gsap": "^3.15.0",
+		"mediabunny": "^1.51.0",
+		"nanoid": "^5.1.6",
+		"onnxruntime-node": "^1.24.0",
+		"pino": "^10.3.1",
+		"sharp": "^0.35.4",
+		"skia-canvas": "^3.0.8",
+		"webgpu": "^0.4.0",
+		"yoga-layout": "^3.2.1",
+		"zod": "^4.3.6"
+	},
+	"devDependencies": {
+		"@framefields/client-utils": "workspace:*",
+		"@framefields/compositions": "workspace:*",
+		"@framefields/core": "workspace:*",
+		"@framefields/node-audio-compressor": "workspace:*",
+		"@framefields/node-audio-delay": "workspace:*",
+		"@framefields/node-audio-fade": "workspace:*",
+		"@framefields/node-audio-noise-gate": "workspace:*",
+		"@framefields/node-audio-parametric-eq": "workspace:*",
+		"@framefields/node-audio-reverb": "workspace:*",
+		"@framefields/node-audio-signal-extractor": "workspace:*",
+		"@framefields/node-blur": "workspace:*",
+		"@framefields/node-color-balance": "workspace:*",
+		"@framefields/node-colorkey": "workspace:*",
+		"@framefields/node-corner-pin": "workspace:*",
+		"@framefields/node-crop": "workspace:*",
+		"@framefields/node-curves": "workspace:*",
+		"@framefields/node-deflicker": "workspace:*",
+		"@framefields/node-displacement-map": "workspace:*",
+		"@framefields/node-film-grain": "workspace:*",
+		"@framefields/node-flip": "workspace:*",
+		"@framefields/node-gradient-map": "workspace:*",
+		"@framefields/node-halftone-screen": "workspace:*",
+		"@framefields/node-high-pass": "workspace:*",
+		"@framefields/node-kenburns": "workspace:*",
+		"@framefields/node-layer-style": "workspace:*",
+		"@framefields/node-levels": "workspace:*",
+		"@framefields/node-liquify": "workspace:*",
+		"@framefields/node-lut": "workspace:*",
+		"@framefields/node-mask-math": "workspace:*",
+		"@framefields/node-mesh-warp": "workspace:*",
+		"@framefields/node-modulate": "workspace:*",
+		"@framefields/node-paint": "workspace:*",
+		"@framefields/node-patch-heal": "workspace:*",
+		"@framefields/node-refine-edge": "workspace:*",
+		"@framefields/node-refraction-caustics": "workspace:*",
+		"@framefields/node-relight-3d": "workspace:*",
+		"@framefields/node-sdk": "workspace:*",
+		"@framefields/node-selective-color": "workspace:*",
+		"@framefields/node-shadows-highlights": "workspace:*",
+		"@framefields/node-signal": "workspace:*",
+		"@framefields/node-signal-gate": "workspace:*",
+		"@framefields/node-signal-math": "workspace:*",
+		"@framefields/node-stereo-panning": "workspace:*",
+		"@framefields/node-tile-offset": "workspace:*",
+		"@framefields/node-unsharp-mask": "workspace:*",
+		"@framefields/node-vignette": "workspace:*",
+		"@framefields/node-vision": "workspace:*",
+		"@framefields/renderer": "workspace:*",
+		"@framefields/renderers": "workspace:*",
+		"@framefields/tensor-webgpu": "workspace:*",
+		"@framefields/tsconfig": "workspace:*",
+		"@framefields/vision": "workspace:*",
+		"@framefields/webgpu-renderers": "workspace:*",
+		"@types/d3-format": "^3.0.4",
+		"@types/d3-scale": "^4.0.9",
+		"@types/d3-shape": "^3.2.0",
+		"@types/fontkit": "^2.0.9",
+		"@types/node": "^24.1.0",
+		"tsdown": "^0.19.0",
+		"typescript": "^5.8.3",
+		"vitest": "4.1.5"
+	}
+}

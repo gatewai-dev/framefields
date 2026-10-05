@@ -1,6 +1,6 @@
 /// <reference types="@webgpu/types" />
-import type { VirtualMediaData } from "@gitframes/core";
-import type { RenderContextValue } from "@gitframes/webgpu-renderers";
+import type { VirtualMediaData } from "@framefields/core";
+import type { RenderContextValue } from "@framefields/webgpu-renderers";
 
 export type GPUCommandEncoder = globalThis.GPUCommandEncoder;
 export type GPURenderPassEncoder = globalThis.GPURenderPassEncoder;
@@ -84,7 +84,7 @@ export function defineRenderer(
 	return Object.freeze(plugin);
 }
 
-const GLOBAL_WEBGPU_REGISTRY_KEY = Symbol.for("gitframes.webgpuRegistry");
+const GLOBAL_WEBGPU_REGISTRY_KEY = Symbol.for("framefields.webgpuRegistry");
 
 export class WebGPURegistry {
 	private renderers = new Map<string, WebGPUNodeRenderer>();
@@ -131,7 +131,7 @@ class AudioProcessorRegistry {
 	}
 }
 
-const GLOBAL_AUDIO_KEY = Symbol.for("gitframes.audioRegistry");
+const GLOBAL_AUDIO_KEY = Symbol.for("framefields.audioRegistry");
 export const audioRegistry: AudioProcessorRegistry = (() => {
 	const g = globalThis as typeof globalThis & {
 		[GLOBAL_AUDIO_KEY]?: AudioProcessorRegistry;

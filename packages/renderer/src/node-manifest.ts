@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 /**
- * The `gitframes` block of a node package's `package.json`.
+ * The `framefields` block of a node package's `package.json`.
  *
  * This is the single declaration of a node's op: renderer discovery, the
  * effects generator (`scripts/generate-effects.ts`) and the skill catalog all
@@ -30,7 +30,7 @@ export interface NodeManifest {
 	dir: string;
 	/** Absolute path of the node package. */
 	path: string;
-	/** npm package name, e.g. `@gitframes/node-lut`. */
+	/** npm package name, e.g. `@framefields/node-lut`. */
 	packageName: string;
 	/** Canonical op literal used in the operation AST and the renderer registry. */
 	type: string;
@@ -78,11 +78,11 @@ export function parseNodeManifest(
 	if (!isRecord(pkg)) {
 		return { problems: [`${dir}: package.json is not an object`] };
 	}
-	const block = pkg.gitframes;
+	const block = pkg.framefields;
 	if (!isRecord(block)) {
 		return {
 			problems: [
-				`${dir}: package.json has no "gitframes" block (expected { "type": "<Op>", "kind": "<kind>" })`,
+				`${dir}: package.json has no "framefields" block (expected { "type": "<Op>", "kind": "<kind>" })`,
 			],
 		};
 	}
@@ -90,14 +90,14 @@ export function parseNodeManifest(
 	const { type, kind, aliases, schema, className, factory, custom } = block;
 
 	if (typeof type !== "string" || !IDENTIFIER.test(type)) {
-		problems.push(`${dir}: gitframes.type must be an op identifier`);
+		problems.push(`${dir}: framefields.type must be an op identifier`);
 	}
 	if (
 		typeof kind !== "string" ||
 		!(NODE_KINDS as readonly string[]).includes(kind)
 	) {
 		problems.push(
-			`${dir}: gitframes.kind must be one of ${NODE_KINDS.join(", ")}`,
+			`${dir}: framefields.kind must be one of ${NODE_KINDS.join(", ")}`,
 		);
 	}
 	if (
@@ -108,7 +108,7 @@ export function parseNodeManifest(
 		)
 	) {
 		problems.push(
-			`${dir}: gitframes.aliases must be an array of op identifiers`,
+			`${dir}: framefields.aliases must be an array of op identifiers`,
 		);
 	}
 	for (const [key, value] of Object.entries({ schema, className, factory })) {
@@ -116,11 +116,11 @@ export function parseNodeManifest(
 			value !== undefined &&
 			(typeof value !== "string" || !IDENTIFIER.test(value))
 		) {
-			problems.push(`${dir}: gitframes.${key} must be an identifier`);
+			problems.push(`${dir}: framefields.${key} must be an identifier`);
 		}
 	}
 	if (custom !== undefined && typeof custom !== "boolean") {
-		problems.push(`${dir}: gitframes.custom must be a boolean`);
+		problems.push(`${dir}: framefields.custom must be a boolean`);
 	}
 	if (problems.length > 0) return { problems };
 

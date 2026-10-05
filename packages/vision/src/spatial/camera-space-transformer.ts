@@ -1,4 +1,4 @@
-import type { Landmark3D } from "@gitframes/core";
+import type { Landmark3D } from "@framefields/core";
 
 export interface Camera3DSpec {
 	readonly width: number;

@@ -1,4 +1,4 @@
-# @gitframes/node-audio-reverb
+# @framefields/node-audio-reverb
 
 ## 2.0.2
 

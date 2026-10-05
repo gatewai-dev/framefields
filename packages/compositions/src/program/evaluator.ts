@@ -1,4 +1,4 @@
-import { signalRegistry } from "@gitframes/webgpu-renderers";
+import { signalRegistry } from "@framefields/webgpu-renderers";
 import type {
 	AnimationTrack,
 	LayerAnimationSpec as LayerAnimation,

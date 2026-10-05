@@ -4,6 +4,6 @@
 		"src/**/*",
 		"../../nodes/**/*",
 		"../../packages/**/*",
-		"../../node_modules/@gitframes/**/*"
+		"../../node_modules/@framefields/**/*"
 	]
 }

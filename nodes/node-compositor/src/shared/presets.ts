@@ -3,7 +3,7 @@ import type {
 	AnimationTrack,
 	EaseRef,
 	Keyframe,
-} from "@gitframes/compositions/program";
+} from "@framefields/compositions/program";
 
 export interface LayerBase {
 	x: number;

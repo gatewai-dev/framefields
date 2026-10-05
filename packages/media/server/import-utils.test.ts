@@ -8,7 +8,7 @@ const { mockSharpMetadata } = vi.hoisted(() => {
 });
 
 // 2. Mock Modules
-vi.mock("@gitframes/server-utils", () => ({
+vi.mock("@framefields/server-utils", () => ({
 	container: {
 		get: vi.fn(),
 		isBound: vi.fn(() => true),
@@ -25,7 +25,7 @@ vi.mock("@gitframes/server-utils", () => ({
 	},
 }));
 
-vi.mock("@gitframes/core", () => ({
+vi.mock("@framefields/core", () => ({
 	extractSvgDimensions: vi.fn(() => ({ w: 100, h: 100 })),
 	generateId: vi.fn(() => "test-id"),
 }));
@@ -55,8 +55,8 @@ vi.mock("./utils/index.js", () => ({
 	})),
 }));
 
-import { extractSvgDimensions } from "@gitframes/core";
-import { container } from "@gitframes/server-utils";
+import { extractSvgDimensions } from "@framefields/core";
+import { container } from "@framefields/server-utils";
 import { zipSync } from "fflate";
 import {
 	extractCaptionDuration,

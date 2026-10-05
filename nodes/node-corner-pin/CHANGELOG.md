@@ -1,4 +1,4 @@
-# @gitframes/node-corner-pin
+# @framefields/node-corner-pin
 
 ## 2.0.2
 

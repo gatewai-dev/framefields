@@ -9,7 +9,7 @@ import {
 	Layer,
 	LayerAnimation,
 	Vignette,
-} from "gitframes";
+} from "framefields";
 import { bar, DROP, DURATION } from "./grid.js";
 import { asset } from "./paths.js";
 import { labels, plates, rings } from "./reel.js";

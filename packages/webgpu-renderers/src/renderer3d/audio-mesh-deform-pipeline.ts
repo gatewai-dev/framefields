@@ -4,7 +4,7 @@
  * Executes audioMeshDisplace.wgsl compute pass across mesh vertex buffers.
  */
 
-import type { MeshAudioDeformConfig } from "@gitframes/core";
+import type { MeshAudioDeformConfig } from "@framefields/core";
 import { BufferPool } from "../renderer2d/buffer-pool.js";
 import { audioMeshDisplaceWgsl } from "../shaders/audio-mesh-displace.js";
 

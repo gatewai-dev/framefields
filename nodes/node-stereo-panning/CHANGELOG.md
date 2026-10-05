@@ -1,4 +1,4 @@
-# @gitframes/node-stereo-panning
+# @framefields/node-stereo-panning
 
 ## 2.0.2
 

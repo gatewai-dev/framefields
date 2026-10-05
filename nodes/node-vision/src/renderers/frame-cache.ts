@@ -11,7 +11,7 @@ import type {
 	InstanceMask,
 	SegmentationResult,
 	TrackedObject,
-} from "@gitframes/vision";
+} from "@framefields/vision";
 
 type DetectedObject = SegmentationResult["detections"][number];
 

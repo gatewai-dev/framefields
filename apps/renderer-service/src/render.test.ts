@@ -1,5 +1,5 @@
 import "reflect-metadata";
-import { HeadlessMediaRenderer } from "@gitframes/renderer";
+import { HeadlessMediaRenderer } from "@framefields/renderer";
 import fs from "fs/promises";
 import { describe, expect, it } from "vitest";
 import { hasActiveJobs, jobs } from "./job-processor.js";

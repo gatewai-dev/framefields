@@ -1,14 +1,14 @@
 import {
 	GetFontAssetUrl,
 	R2_CUSTOM_DOMAIN,
-} from "@gitframes/client-utils";
-import type { VirtualMediaData } from "@gitframes/core";
-import { preloadFont } from "@gitframes/renderers";
-import { rendererLogger } from "@gitframes/server-utils";
+} from "@framefields/client-utils";
+import type { VirtualMediaData } from "@framefields/core";
+import { preloadFont } from "@framefields/renderers";
+import { rendererLogger } from "@framefields/server-utils";
 import {
 	getHeadlessFontPath,
 	SlugFontCache,
-} from "@gitframes/webgpu-renderers";
+} from "@framefields/webgpu-renderers";
 import type {} from "webgpu";
 
 /**

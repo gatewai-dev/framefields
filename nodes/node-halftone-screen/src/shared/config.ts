@@ -3,7 +3,7 @@ import {
 	configBuilder,
 	ImageResultSchema,
 	VideoResultSchema,
-} from "@gitframes/node-sdk";
+} from "@framefields/node-sdk";
 import { z } from "zod";
 
 export const HalftoneModeEnum = z.enum(["Monochrome", "CMYK"]);

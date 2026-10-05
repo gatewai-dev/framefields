@@ -12,12 +12,12 @@ import {
 	collectMediaBindings,
 	compositorToProgram,
 	type LayoutNode,
-} from "@gitframes/compositions/program";
+} from "@framefields/compositions/program";
 import {
 	DEFAULT_DURATION_MS,
 	getActiveMediaMetadata,
 	type VirtualMediaData,
-} from "@gitframes/core";
+} from "@framefields/core";
 import type { CompositorNodeConfig } from "./config.js";
 
 function mediaDurationFrames(

@@ -1,4 +1,4 @@
-import { AudioResultSchema, VideoResultSchema } from "@gitframes/node-sdk";
+import { AudioResultSchema, VideoResultSchema } from "@framefields/node-sdk";
 import { z } from "zod";
 
 export const StereoPanningNodeConfigSchema = z.object({

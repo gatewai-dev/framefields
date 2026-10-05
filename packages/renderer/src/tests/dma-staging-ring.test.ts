@@ -1,4 +1,4 @@
-import { ensureDevice } from "@gitframes/webgpu-renderers";
+import { ensureDevice } from "@framefields/webgpu-renderers";
 import { describe, expect, it } from "vitest";
 import { DmaStagingRing } from "../dma-staging-ring.js";
 

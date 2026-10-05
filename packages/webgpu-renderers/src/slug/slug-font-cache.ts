@@ -675,7 +675,7 @@ export class SlugFontCache {
 										path.resolve(process.cwd(), "assets/fonts", v + ".otf"),
 									);
 									candidates.push(
-										`/Users/okanaslankan/gitframes/assets/fonts/${v}.ttf`,
+										`/Users/okanaslankan/framefields/assets/fonts/${v}.ttf`,
 									);
 									candidates.push(
 										`/Users/okanaslankan/Gatewai/apps/gatewai-artifex/assets/fonts/${v}.ttf`,
@@ -685,7 +685,7 @@ export class SlugFontCache {
 									);
 								}
 								candidates.push(
-									"/Users/okanaslankan/gitframes/assets/fonts/Inter.ttf",
+									"/Users/okanaslankan/framefields/assets/fonts/Inter.ttf",
 								);
 								candidates.push(
 									"/Users/okanaslankan/Gatewai/apps/gatewai-artifex/assets/fonts/Inter.ttf",

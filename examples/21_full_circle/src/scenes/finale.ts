@@ -3,7 +3,7 @@
  * moon one last time, the credit settles, the plugin install lines land at the
  * foot of the frame, and the picture and score fade out together.
  */
-import { Layer, LayerAnimation } from "gitframes";
+import { Layer, LayerAnimation } from "framefields";
 import { EDIT, ringAt } from "../edit.js";
 import { bar, DROP, DURATION } from "../grid.js";
 import {
@@ -29,8 +29,8 @@ const TITLE_Y = 630;
 
 /** Agent plugin installs: Claude Code (official directory, bare name), then every other agent via the skills CLI. */
 const INSTALL = [
-	"/plugin install gitframes",
-	"npx skills add gatewai-dev/gitframes",
+	"/plugin install framefields",
+	"npx skills add gatewai-dev/framefields",
 ];
 const INSTALL_Y = H - MARGIN - 22;
 
@@ -65,7 +65,7 @@ export function finaleScene() {
 		// Under the title, in the dark sky: the lone figure owns the bottom of the frame.
 		caption({
 			id: "finale-credit",
-			text: "Eight shots  ·  one ring  ·  made in code with Gitframes",
+			text: "Eight shots  ·  one ring  ·  made in code with Framefields",
 			y: TITLE_Y + TITLE * 1.3 + 12,
 			inAt: 30,
 			color: STONE,

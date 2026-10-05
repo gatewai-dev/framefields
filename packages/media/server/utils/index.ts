@@ -2,8 +2,8 @@ import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { generateId } from "@gitframes/core";
-import { mediaLogger } from "@gitframes/server-utils";
+import { generateId } from "@framefields/core";
+import { mediaLogger } from "@framefields/server-utils";
 import { fileTypeFromBuffer } from "file-type";
 import sharp from "sharp";
 

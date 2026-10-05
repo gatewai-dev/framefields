@@ -1,5 +1,5 @@
 {
-	"name": "@gitframes/webgpu-renderers",
+	"name": "@framefields/webgpu-renderers",
 	"version": "2.0.2",
 	"private": false,
 	"publishConfig": {
@@ -29,8 +29,8 @@
 		"test:ci": "vitest run --coverage"
 	},
 	"dependencies": {
-		"@gitframes/client-utils": "workspace:*",
-		"@gitframes/core": "workspace:*",
+		"@framefields/client-utils": "workspace:*",
+		"@framefields/core": "workspace:*",
 		"@lottiefiles/dotlottie-web": "^0.74.0",
 		"@resvg/resvg-js": "^2.6.2",
 		"earcut": "^3.2.4",
@@ -42,7 +42,7 @@
 		"webgpu": "^0.4.0"
 	},
 	"devDependencies": {
-		"@gitframes/tsconfig": "workspace:*",
+		"@framefields/tsconfig": "workspace:*",
 		"@types/earcut": "^3.0.0",
 		"@types/fontkit": "^2.0.9",
 		"@vitest/coverage-v8": "^4.1.11",

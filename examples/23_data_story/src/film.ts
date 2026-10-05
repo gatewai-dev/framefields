@@ -1,4 +1,4 @@
-import { Composition, Layer, LayerAnimation } from "gitframes";
+import { Composition, Layer, LayerAnimation } from "framefields";
 import { liveScene } from "./scenes/live.js";
 import { marketScene } from "./scenes/market.js";
 import { mixScene } from "./scenes/mix.js";

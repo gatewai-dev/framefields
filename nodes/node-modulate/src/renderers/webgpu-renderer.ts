@@ -1,6 +1,6 @@
 /// <reference types="webgpu" />
-import type { WebGPUNodeRenderer } from "@gitframes/node-sdk";
-import { signalRegistry } from "@gitframes/webgpu-renderers";
+import type { WebGPUNodeRenderer } from "@framefields/node-sdk";
+import { signalRegistry } from "@framefields/webgpu-renderers";
 
 interface ModulateOp {
 	op?: string;

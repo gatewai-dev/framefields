@@ -1,4 +1,4 @@
-# @gitframes/node-displacement-map
+# @framefields/node-displacement-map
 
 ## 2.0.2
 

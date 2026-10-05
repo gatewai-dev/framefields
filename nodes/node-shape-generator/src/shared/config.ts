@@ -4,7 +4,7 @@ import {
 	createOutputItemSchema,
 	MultiOutputGenericSchema,
 	VirtualMediaDataSchema,
-} from "@gitframes/node-sdk";
+} from "@framefields/node-sdk";
 import { z } from "zod";
 
 export const ShapeTypeEnum = z.enum([

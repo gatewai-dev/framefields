@@ -56,7 +56,7 @@ Two things can't be keyframed, so they're built differently:
 
 ## gsap and signals
 
-**gsap** (`motion.ts`). gitframes evaluates every `ease` string with gsap, so single moves are plain
+**gsap** (`motion.ts`). framefields evaluates every `ease` string with gsap, so single moves are plain
 keyframes. gsap is used directly where one tween isn't enough:
 
 - `odometer()` rolls a "0…9" strip per digit in a clipped cell. The first value rolls in with a

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Keeps the agent plugin and monorepo root versions in lockstep with the released
-// `gitframes` package.
+// `framefields` package.
 //
 // Runs after `changeset version` (see `version:packages`), so every release bumps the
 // version in both plugin manifests and the root package.json. Clients compare the
@@ -15,12 +15,12 @@ import { fileURLToPath } from "node:url";
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const MANIFESTS = [
 	"package.json",
-	"plugins/gitframes/plugin.json",
-	"plugins/gitframes/.claude-plugin/plugin.json",
+	"plugins/framefields/plugin.json",
+	"plugins/framefields/.claude-plugin/plugin.json",
 ];
 
 const { version } = JSON.parse(
-	readFileSync(join(repoRoot, "packages/gitframes/package.json"), "utf8"),
+	readFileSync(join(repoRoot, "packages/framefields/package.json"), "utf8"),
 );
 
 for (const manifest of MANIFESTS) {

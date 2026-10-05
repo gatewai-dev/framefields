@@ -1,4 +1,4 @@
-# @gitframes/node-caption-generator
+# @framefields/node-caption-generator
 
 ## 2.0.2
 

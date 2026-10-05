@@ -1,12 +1,12 @@
 /**
  * Real-model end-to-end checks — opt-in, because they download ~380 MB of weights:
  *
- *   pnpm --filter @gitframes/vision test:models
+ *   pnpm --filter @framefields/vision test:models
  *
  * Verifies every pinned model downloads, passes its size + SHA-256 check and matches the
  * registry's input shape, then runs each size on reference frames from `examples/` and checks
  * behaviour that regressed during development (subject selection, merging, pose duplicates).
- * Models are cached in `$GITFRAMES_MODELS_DIR` (default `~/.cache/gitframes/models`).
+ * Models are cached in `$FRAMEFIELDS_MODELS_DIR` (default `~/.cache/framefields/models`).
  */
 
 import { fileURLToPath } from "node:url";
@@ -22,12 +22,12 @@ import { VisionRunner } from "./runner/vision-runner.js";
 import { mergeSubjectMask } from "./segmentation/subject.js";
 import type { VisionImageInput } from "./types.js";
 
-const enabled = process.env.GITFRAMES_VISION_E2E === "1";
+const enabled = process.env.FRAMEFIELDS_VISION_E2E === "1";
 const EXAMPLES = fileURLToPath(new URL("../../../examples/", import.meta.url));
 const ASSETS = {
-	dancer: "19_gitframes_film/assets/dancer.png",
-	portrait: "19_gitframes_film/assets/portrait.png",
-	ink: "19_gitframes_film/assets/ink.png",
+	dancer: "19_framefields_film/assets/dancer.png",
+	portrait: "19_framefields_film/assets/portrait.png",
+	ink: "19_framefields_film/assets/ink.png",
 	crema: "21_full_circle/assets/crema.png",
 	eclipse: "21_full_circle/assets/eclipse.png",
 	spotlight: "21_full_circle/assets/spotlight.png",

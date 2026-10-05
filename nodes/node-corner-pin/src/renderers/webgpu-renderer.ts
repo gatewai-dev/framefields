@@ -1,4 +1,4 @@
-import type { WebGPUNodeRenderer } from "@gitframes/node-sdk";
+import type { WebGPUNodeRenderer } from "@framefields/node-sdk";
 import { solveHomography } from "../shared/utils.js";
 
 const cornerPinWgsl = `

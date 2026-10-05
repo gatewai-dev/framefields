@@ -1,8 +1,8 @@
 {
-	"name": "@gitframes/node-compositor",
+	"name": "@framefields/node-compositor",
 	"version": "2.0.2",
 	"private": false,
-	"gitframes": {
+	"framefields": {
 		"type": "Compositor",
 		"kind": "utility"
 	},
@@ -30,18 +30,18 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@gitframes/client-utils": "workspace:*",
-		"@gitframes/compositions": "workspace:*",
-		"@gitframes/core": "workspace:*",
-		"@gitframes/node-sdk": "workspace:*",
-		"@gitframes/renderers": "workspace:*",
-		"@gitframes/tensor-webgpu": "workspace:*",
-		"@gitframes/webgpu-renderers": "workspace:*",
+		"@framefields/client-utils": "workspace:*",
+		"@framefields/compositions": "workspace:*",
+		"@framefields/core": "workspace:*",
+		"@framefields/node-sdk": "workspace:*",
+		"@framefields/renderers": "workspace:*",
+		"@framefields/tensor-webgpu": "workspace:*",
+		"@framefields/webgpu-renderers": "workspace:*",
 		"gsap": "^3.15.0",
 		"zod": "^4.3.6"
 	},
 	"devDependencies": {
-		"@gitframes/tsconfig": "workspace:*",
+		"@framefields/tsconfig": "workspace:*",
 		"@types/node": "^24.1.0",
 		"tsdown": "^0.19.0",
 		"typescript": "^5.8.3",

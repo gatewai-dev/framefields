@@ -1,5 +1,5 @@
-import { extractSvgDimensions, type MediaService } from "@gitframes/core";
-import { container, logger, TOKENS } from "@gitframes/server-utils";
+import { extractSvgDimensions, type MediaService } from "@framefields/core";
+import { container, logger, TOKENS } from "@framefields/server-utils";
 import { strFromU8, unzipSync } from "fflate";
 import sharp from "sharp";
 import {

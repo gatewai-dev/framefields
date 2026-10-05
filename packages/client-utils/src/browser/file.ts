@@ -6,7 +6,7 @@ import type {
 	FileAsset,
 	FileData,
 	VirtualMediaData,
-} from "@gitframes/core";
+} from "@framefields/core";
 import { getEnv } from "./env.js";
 
 export interface AssetUrlOptions {

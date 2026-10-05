@@ -1,7 +1,7 @@
 /// <reference types="webgpu" />
 
-import { getActiveMediaMetadata } from "@gitframes/core";
-import type { WebGPUNodeRenderer } from "@gitframes/node-sdk";
+import { getActiveMediaMetadata } from "@framefields/core";
+import type { WebGPUNodeRenderer } from "@framefields/node-sdk";
 
 interface ResizerScalerOp {
 	op: "ResizerScaler";

@@ -1,4 +1,4 @@
-import { BASE_URL } from "@gitframes/client-utils";
+import { BASE_URL } from "@framefields/client-utils";
 import { debugLog } from "./debug-log.js";
 
 let tempDir: string | null = null;

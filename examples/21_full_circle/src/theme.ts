@@ -9,7 +9,7 @@ import {
 	LayerAnimation,
 	TextAnimator,
 	TextPathBuilder,
-} from "gitframes";
+} from "framefields";
 import { font } from "./paths.js";
 
 export const W = 1920;

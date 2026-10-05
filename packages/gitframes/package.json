@@ -77,9 +77,10 @@
 		"dist/**"
 	],
 	"scripts": {
-		"build": "tsdown && node scripts/check-dts-bundle.mjs",
+		"build": "tsdown && node ../../scripts/sync-readme.mjs && node scripts/check-dts-bundle.mjs",
 		"dev": "tsdown --watch",
 		"clean": "rm -rf dist .turbo",
+		"prepack": "node ../../scripts/sync-readme.mjs",
 		"test": "vitest run --passWithNoTests"
 	},
 	"dependencies": {

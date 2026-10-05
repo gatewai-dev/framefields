@@ -90,3 +90,6 @@ packages/**/models/
 
 # Plugin ZIP for the OpenAI plugin directory (pnpm run pack:plugin)
 gitframes-plugin.zip
+
+# Generated package README, built from the repo root README (scripts/sync-readme.mjs)
+packages/gitframes/README.md

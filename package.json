@@ -11,6 +11,7 @@
 		"generate:effects": "tsx --conditions development scripts/generate-effects.mts",
 		"generate:node-renderers": "tsx scripts/generate-node-renderers.mts",
 		"sync:effects-catalog": "node scripts/sync-effects-catalog.mjs",
+		"sync:readme": "node scripts/sync-readme.mjs",
 		"changeset": "changeset",
 		"version:packages": "changeset version && node scripts/sync-plugin-version.mjs",
 		"sync:plugin-version": "node scripts/sync-plugin-version.mjs",

@@ -155,9 +155,10 @@ describe("startPreview", () => {
 	});
 
 	it("closes once the last tab has gone, but not on a reload", async () => {
+		const lines: string[] = [];
 		const session = await start(
 			{ entry },
-			{ open: false, port: 0, idleCloseMs: 100 },
+			{ open: false, port: 0, idleCloseMs: 100, log: (l) => lines.push(l) },
 		);
 		let isClosed = false;
 		session.closed.then(() => {
@@ -177,7 +178,121 @@ describe("startPreview", () => {
 		expect(isClosed).toBe(false);
 		// The tab closes for good.
 		tab.destroy();
-		await session.closed;
+		expect(await session.closed).toBe("idle");
+		expect(lines).toEqual([
+			"[gitframes preview] page opened; the server stops 0.1 s after its last tab closes",
+			"[gitframes preview] stopped: its tab was closed",
+		]);
+	});
+
+	it("reports the page's errors once each", async () => {
+		const lines: string[] = [];
+		const session = await start(
+			{ entry },
+			{ open: false, port: 0, log: (l) => lines.push(l) },
+		);
+		const send = (body: unknown, type = "application/json") =>
+			fetch(`${session.url}@gitframes/log`, {
+				method: "POST",
+				headers: { "content-type": type },
+				body: JSON.stringify(body),
+			});
+		expect((await send({ level: "error", message: "boom" })).status).toBe(204);
+		await send({ level: "error", message: "boom" });
+		await send({ level: "warning", message: "[gitframes] font" });
+		// Not JSON: a form post from another site.
+		expect((await send({ message: "spoof" }, "text/plain")).status).toBe(404);
+		expect(lines).toEqual([
+			"[gitframes preview] error in the page: boom",
+			"[gitframes preview] warning in the page: [gitframes] font",
+		]);
+	});
+
+	it("keeps notes pinned on the page as files, and reports them", async () => {
+		const project = await fs.promises.mkdtemp(
+			path.join(os.tmpdir(), "gf-notes-"),
+		);
+		try {
+			const dir = path.join(project, ".gitframes", "preview-notes");
+			const lines: string[] = [];
+			const session = await start(
+				{ entry },
+				{ open: false, port: 0, notesDir: dir, log: (l) => lines.push(l) },
+			);
+			const meta = await (await fetch(`${session.url}meta`)).json();
+			expect(meta.notesDir).toBe(dir);
+
+			const send = (body: unknown) =>
+				fetch(`${session.url}@gitframes/notes`, {
+					method: "POST",
+					headers: { "content-type": "application/json" },
+					body: JSON.stringify(body),
+				});
+			const jpeg = `data:image/jpeg;base64,${Buffer.from("jpeg-bytes").toString("base64")}`;
+			const added = await (
+				await send({
+					op: "add",
+					note: {
+						frame: 5,
+						time: 0.5,
+						x: 0.25,
+						y: 0.5,
+						text: " Bigger title ",
+						image: jpeg,
+					},
+				})
+			).json();
+			expect(added).toMatchObject({
+				id: 1,
+				frame: 5,
+				x: 0.25,
+				y: 0.5,
+				text: "Bigger title",
+				done: false,
+			});
+			expect(await fs.promises.readFile(added.image, "utf8")).toBe(
+				"jpeg-bytes",
+			);
+			expect(
+				await fs.promises.readFile(
+					path.join(project, ".gitframes", ".gitignore"),
+					"utf8",
+				),
+			).toBe("*\n");
+			expect(lines.at(-1)).toBe(
+				`[gitframes preview] note 1 at 0:00.50 (frame 5), spot 25%,50%: Bigger title\n  frame with the spot marked: ${added.image} · all notes: ${dir}/notes.json`,
+			);
+
+			await send({
+				op: "add",
+				note: {
+					frame: 2,
+					time: 0.2,
+					x: 0.1,
+					y: 0.1,
+					w: 0.5,
+					h: 0.2,
+					text: "Too dark",
+				},
+			});
+			await send({ op: "update", id: 2, done: true });
+			expect(lines.at(-1)).toBe("[gitframes preview] note 2 marked done");
+
+			// notes.json is the record: edits made to it show up.
+			const file = JSON.parse(
+				await fs.promises.readFile(path.join(dir, "notes.json"), "utf8"),
+			);
+			expect(file).toHaveLength(2);
+			expect(file[1]).toMatchObject({ w: 0.5, h: 0.2, done: true });
+
+			expect((await send({ op: "remove", id: 1 })).status).toBe(200);
+			expect(fs.existsSync(added.image)).toBe(false);
+			const list = await (await fetch(`${session.url}@gitframes/notes`)).json();
+			expect(list.map((n: { id: number }) => n.id)).toEqual([2]);
+			expect((await send({ op: "remove", id: 9 })).status).toBe(404);
+		} finally {
+			await fs.promises.rm(project, { recursive: true, force: true });
+		}
 	});
 
 	it("a new preview of the project takes over the port", async () => {
@@ -185,7 +300,7 @@ describe("startPreview", () => {
 		const port = Number(new URL(first.url).port);
 		const second = await start({ entry }, { open: false, port });
 
-		await first.closed;
+		expect(await first.closed).toBe("replaced");
 		expect(second.url).toBe(first.url);
 		expect((await fetch(`${second.url}meta`)).status).toBe(200);
 	});

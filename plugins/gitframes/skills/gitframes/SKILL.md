@@ -230,11 +230,12 @@ Show the user the frame PNGs or the grid before the full render. `gitframes-rend
 
 `npm run preview` serves a localhost player (picture, sound, timeline) and prints its URL. The page runs `film.ts` itself and renders with WebGPU, so the user sees the real film at full frame rate.
 
-- Run it as a background command; it serves until its tab closes.
+- Run it as a background command and read its output: it says when the page opened, prints errors from the page (a failed build, a frame that threw, a missing font), and says why it stopped. It stops 5 s after its last tab closes; just run it again.
 - It doesn't open anything. If your app has a built-in browser (Claude Code, Codex), open the URL there; otherwise give the user the link. `startPreview(..., { open: true })` opens their default browser.
 - **Reference assets from the file's URL.** The page runs `film.ts` itself, so asset paths must resolve in the browser too: build them from the module's own URL, `path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../assets/fonts")`, rather than `process.cwd()` or a bare relative path. The preview serves any file inside the project (the folder with `package.json`); pass `root` (one or more paths) to `startPreview` for fonts or media kept elsewhere.
-- After changing the film, run it again. It takes over the same URL, and the open tab reloads by itself.
-- Take feedback in chat. `gitframes-render` has the details.
+- After changing the film, run it again. It takes over the same URL, and the open tab reloads by itself at the same moment.
+- Link to a moment with `#t=12.5` (seconds). In a browser you can script, `window.gitframesPreview` has `seek(seconds)`, `play()`, `pause()` and `state()`; `seek` resolves once the frame is drawn, so screenshot after it.
+- **The user can pin notes on the picture.** Pausing and clicking (or dragging an area) adds a note at that spot and moment. Each one prints in the preview's output and is saved in `.gitframes/preview-notes/`: `notes.json`, plus `note-<id>.jpg`, the frame with the spot marked. When the user says they left notes, read `notes.json` and look at each open note's picture before you edit. Then run the preview again so they can check the changes and tick them off. `gitframes-render` has the details.
 
 ## 5. Grow the film
 

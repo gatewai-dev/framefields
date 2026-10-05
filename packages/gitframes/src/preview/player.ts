@@ -64,14 +64,20 @@ export interface PreviewPlayer {
 	warm(frame: number): Promise<boolean>;
 	/** Frames rendered ahead in order, for playback at full frame rate. */
 	buffer: PlaybackBuffer;
+	/** A frame at full size as an image, e.g. to attach to a note. */
+	snapshot(frame: number): Promise<ImageBitmap>;
 }
 
 export interface PlaybackBuffer {
 	/** Most frames it holds at once. */
 	readonly capacity: number;
-	/** Starts rendering every frame from `frame` on (stops an earlier run). */
+	/**
+	 * Plays on from `frame`: frames already rendered from there are kept and
+	 * rendering continues after them; anywhere else starts over.
+	 */
 	start(frame: number): void;
-	stop(): void;
+	/** Drops every rendered frame, e.g. when the playhead moves elsewhere. */
+	clear(): void;
 	/** Frames ready in a row from `frame` (0 when `frame` isn't buffered). */
 	ahead(frame: number): number;
 	/** The first frame not rendered yet. */
@@ -301,6 +307,7 @@ async function createPlayer(
 	const ringFrames = new Int32Array(capacity).fill(-1);
 	const blitter = new Blitter(device, surface.colorFormat);
 	let bufferToken = 0;
+	let producing = false;
 	let produced = 0;
 	let shown = -1;
 
@@ -316,9 +323,19 @@ async function createPlayer(
 	}
 
 	async function produce(token: number): Promise<void> {
+		producing = true;
+		try {
+			await produceFrames(token);
+		} finally {
+			if (token === bufferToken) producing = false;
+		}
+	}
+
+	async function produceFrames(token: number): Promise<void> {
 		while (token === bufferToken && produced <= lastFrame) {
-			// The slot still holds a frame that hasn't been shown yet.
-			if (produced - capacity > shown) {
+			// The slot holds a frame not shown yet, or the one on screen (kept,
+			// so playing on after a pause starts from the buffer).
+			if (produced - capacity >= shown) {
 				await new Promise((r) => setTimeout(r, 4));
 				continue;
 			}
@@ -335,7 +352,11 @@ async function createPlayer(
 				);
 			await drawing;
 			drawing = null;
-			if (token !== bufferToken) return;
+			if (token !== bufferToken) {
+				// Stopped mid-frame: a frame asked for meanwhile still draws.
+				pump();
+				return;
+			}
 			ringFrames[slot] = frame;
 			produced = frame + 1;
 			pump();
@@ -348,14 +369,21 @@ async function createPlayer(
 			return produced;
 		},
 		start(frame) {
-			const token = ++bufferToken;
+			shown = frame - 1;
+			// Resuming where playback paused: keep what is rendered ahead.
+			if (ringFrames[frame % capacity] === frame && frame < produced) {
+				if (!producing) void produce(++bufferToken);
+				return;
+			}
 			ringFrames.fill(-1);
 			produced = frame;
-			shown = frame - 1;
-			void produce(token);
+			void produce(++bufferToken);
 		},
-		stop() {
+		clear() {
 			bufferToken++;
+			producing = false;
+			ringFrames.fill(-1);
+			produced = 0;
 		},
 		ahead(frame) {
 			if (ringFrames[frame % capacity] !== frame) return 0;
@@ -393,8 +421,65 @@ async function createPlayer(
 			return true;
 		},
 		buffer,
+		async snapshot(frame) {
+			while (drawing) await drawing;
+			const done = (async () => {
+				await draw(frame, false);
+				if (!offscreen) throw new Error("no frame to capture");
+				return readTexture(device, offscreen);
+			})();
+			drawing = done.then(
+				() => {},
+				() => {},
+			);
+			try {
+				return await done;
+			} finally {
+				drawing = null;
+				pump();
+			}
+		},
 	};
 	return player;
+}
+
+/** Reads a texture back as an image (RGBA or BGRA, as the canvas format is). */
+async function readTexture(
+	device: GPUDevice,
+	texture: GPUTexture,
+): Promise<ImageBitmap> {
+	const { width, height } = texture;
+	const bytesPerRow = Math.ceil((width * 4) / 256) * 256;
+	const buffer = device.createBuffer({
+		size: bytesPerRow * height,
+		usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+	});
+	const encoder = device.createCommandEncoder();
+	encoder.copyTextureToBuffer(
+		{ texture },
+		{ buffer, bytesPerRow },
+		{ width, height },
+	);
+	device.queue.submit([encoder.finish()]);
+	await buffer.mapAsync(GPUMapMode.READ);
+	const src = new Uint8Array(buffer.getMappedRange());
+	const pixels = new Uint8ClampedArray(width * height * 4);
+	const bgra = texture.format.startsWith("bgra");
+	for (let y = 0; y < height; y++) {
+		const row = src.subarray(y * bytesPerRow, y * bytesPerRow + width * 4);
+		pixels.set(row, y * width * 4);
+	}
+	buffer.unmap();
+	buffer.destroy();
+	for (let i = 0; i < pixels.length; i += 4) {
+		if (bgra) {
+			const b = pixels[i];
+			pixels[i] = pixels[i + 2];
+			pixels[i + 2] = b;
+		}
+		pixels[i + 3] = 255;
+	}
+	return createImageBitmap(new ImageData(pixels, width, height));
 }
 
 function containsOp(node: VirtualMediaData, op: string): boolean {

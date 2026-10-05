@@ -2639,6 +2639,7 @@ export const Light = {
 };
 
 export {
+	type PreviewCloseReason,
 	type PreviewOptions,
 	type PreviewSession,
 	type PreviewSource,

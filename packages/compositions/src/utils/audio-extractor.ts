@@ -16,7 +16,7 @@ const verbose =
 
 // Fallback logger for browser environment. In Node.js environment, we dynamically load @gitframes/server-utils to avoid bundling it on the frontend.
 let mediaLogger = {
-	info: (msg: unknown, ...args: unknown[]) => {
+	debug: (msg: unknown, ...args: unknown[]) => {
 		if (!verbose) return;
 		if (typeof msg === "object" && msg !== null) {
 			console.info("[AudioExtractor]", msg, ...args);
@@ -130,7 +130,7 @@ export interface AudioClip {
 export async function decodeAudioSource(
 	url: string,
 ): Promise<{ channels: Float32Array[]; sampleRate: number } | null> {
-	mediaLogger.info(
+	mediaLogger.debug(
 		`[AudioExtractor] decodeAudioSource started for url: ${url}`,
 	);
 	try {
@@ -143,7 +143,7 @@ export async function decodeAudioSource(
 				process.versions.node
 			);
 		if (isBrowser) {
-			mediaLogger.info(
+			mediaLogger.debug(
 				`[AudioExtractor] Browser detected. Fetching arrayBuffer for ${url}...`,
 			);
 			const AudioContextClass =
@@ -154,7 +154,7 @@ export async function decodeAudioSource(
 			const audioCtx = new AudioContextClass();
 			try {
 				const response = await fetch(url);
-				mediaLogger.info(
+				mediaLogger.debug(
 					`[AudioExtractor] Fetch response status for ${url}: ${response.status} (${response.statusText})`,
 				);
 				if (!response.ok) {
@@ -163,11 +163,11 @@ export async function decodeAudioSource(
 					);
 				}
 				const arrayBuffer = await response.arrayBuffer();
-				mediaLogger.info(
+				mediaLogger.debug(
 					`[AudioExtractor] Fetched ${arrayBuffer.byteLength} bytes. Decoding audio data...`,
 				);
 				const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-				mediaLogger.info(
+				mediaLogger.debug(
 					`[AudioExtractor] Decoded successfully: ${audioBuffer.numberOfChannels} channels, sampleRate: ${audioBuffer.sampleRate}, duration: ${audioBuffer.duration}s`,
 				);
 
@@ -178,18 +178,18 @@ export async function decodeAudioSource(
 				return { channels, sampleRate: audioBuffer.sampleRate };
 			} finally {
 				void audioCtx.close();
-				mediaLogger.info(`[AudioExtractor] AudioContext closed for ${url}`);
+				mediaLogger.debug(`[AudioExtractor] AudioContext closed for ${url}`);
 			}
 		}
 
 		let inputAcquired = false;
 		try {
-			mediaLogger.info(
+			mediaLogger.debug(
 				`[AudioExtractor] Server / Node.js detected. Acquiring from inputStore for ${url}...`,
 			);
 			const input = await inputStore.acquire(url);
 			inputAcquired = true;
-			mediaLogger.info(
+			mediaLogger.debug(
 				`[AudioExtractor] inputStore acquired. Retrieving primary audio track...`,
 			);
 			const track = await input.getPrimaryAudioTrack();
@@ -208,7 +208,7 @@ export async function decodeAudioSource(
 			let sampleRate = 48000;
 			let numChannels = 1;
 
-			mediaLogger.info(
+			mediaLogger.debug(
 				`[AudioExtractor] Starting mediabunny generator loop for ${url}...`,
 			);
 			for await (const sample of generator) {
@@ -275,7 +275,7 @@ export async function decodeAudioSource(
 				totalFrames += sampleFrames;
 				sample.close();
 			}
-			mediaLogger.info(
+			mediaLogger.debug(
 				`[AudioExtractor] Generator loop finished. Decoded total frames: ${totalFrames}`,
 			);
 
@@ -400,7 +400,7 @@ export async function mixAudioTracks(
 	device?: GPUDevice,
 	renderId?: string,
 ): Promise<{ channels: Float32Array[]; sampleRate: number }> {
-	mediaLogger.info(
+	mediaLogger.debug(
 		`[AudioExtractor] mixAudioTracks started. FPS: ${fps}, targetSampleRate: ${targetSampleRate}`,
 	);
 	await waitForDelayRender();
@@ -411,7 +411,7 @@ export async function mixAudioTracks(
 	const durationMs = getActiveMediaMetadata(virtualMedia)?.durationMs || 1000;
 	const totalDurationSec = durationMs / 1000;
 	const totalTargetSamples = Math.ceil(totalDurationSec * targetSampleRate);
-	mediaLogger.info(
+	mediaLogger.debug(
 		`[AudioExtractor] Composition total duration: ${durationMs}ms (${totalDurationSec}s). Total mixed samples to allocate: ${totalTargetSamples}`,
 	);
 

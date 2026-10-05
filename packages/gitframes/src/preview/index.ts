@@ -15,6 +15,7 @@ import {
 	onnxRuntimeWeb,
 	visionModelsDir,
 } from "./bundle.js";
+import { describeNote, type NewNote, NoteStore } from "./notes.js";
 import { previewPage } from "./page.js";
 
 /** Where the composition comes from: the module that builds it. */
@@ -73,17 +74,43 @@ export interface PreviewOptions {
 	 * several to allow assets kept outside it.
 	 */
 	root?: string | string[];
+	/**
+	 * Where the preview reports what happens out of sight: the page opening,
+	 * errors in the page (a failed build, a frame that threw, no WebGPU), and
+	 * why the server stopped. Defaults to stderr, so whoever runs the preview
+	 * (an agent's background command, say) reads them in its output. `false`
+	 * keeps it quiet.
+	 */
+	log?: ((line: string) => void) | false;
+	/**
+	 * Where notes pinned on the page are kept: `notes.json` and, per note, the
+	 * frame with its spot marked. Defaults to `.gitframes/preview-notes` in the
+	 * working directory (`.gitframes` ignores itself in git). `false` turns
+	 * notes off.
+	 */
+	notesDir?: string | false;
 }
+
+/** Why a preview stopped. */
+export type PreviewCloseReason =
+	/** `close()` was called. */
+	| "closed"
+	/** Its last tab closed (see `idleCloseMs`). */
+	| "idle"
+	/** A newer preview of the project took over its port. */
+	| "replaced";
 
 export interface PreviewSession {
 	url: string;
 	close(): Promise<void>;
-	/** Resolves when the server stops: `close()`, an idle tab, or a newer preview took over its port. */
-	closed: Promise<void>;
+	/** Resolves with the reason when the server stops. */
+	closed: Promise<PreviewCloseReason>;
 }
 
 interface PreviewMeta {
 	session: string;
+	/** Where notes are kept; null when they are off. */
+	notesDir: string | null;
 	title: string;
 	fps: number;
 	frameCount: number;
@@ -142,9 +169,29 @@ export async function startPreview(
 	let idleTimer: NodeJS.Timeout | undefined;
 	const title = options.title ?? "gitframes preview";
 	const session = randomUUID();
+	const log =
+		options.log === false
+			? () => {}
+			: (options.log ?? ((line: string) => console.error(line)));
+	const say = (line: string) => log(`[gitframes preview] ${line}`);
+	// Each distinct page error is reported once; playback repeats them per frame.
+	const reported = new Set<string>();
+	let pageOpened = false;
+
+	const notes =
+		options.notesDir === false
+			? undefined
+			: new NoteStore(
+					path.resolve(
+						options.notesDir ??
+							path.join(process.cwd(), ".gitframes", "preview-notes"),
+					),
+				);
+	// Changes run one at a time: each reads and rewrites notes.json.
+	let noteQueue: Promise<unknown> = Promise.resolve();
 
 	const target = await loadTarget(entry, exportName);
-	const meta = await resolveMeta(target, title, session);
+	const meta = await resolveMeta(target, title, session, notes?.dir ?? null);
 	// The project's own code, bundled against the browser engine; the engine
 	// itself is prebuilt (or built once, running from source).
 	let bundle: Promise<string> | undefined;
@@ -157,7 +204,10 @@ export async function startPreview(
 				ortBase: ort.base,
 			}).then((b) => b.code);
 			bundle = built;
-			built.catch(() => {
+			built.catch((err: unknown) => {
+				say(
+					`could not build ${path.relative(process.cwd(), entry)}:\n${errorText(err)}`,
+				);
 				// Let a later request try again, unless it started its own build.
 				if (bundle === built) bundle = undefined;
 			});
@@ -221,19 +271,21 @@ export async function startPreview(
 		);
 	}
 
-	let resolveClosed!: () => void;
-	const closed = new Promise<void>((r) => {
+	let resolveClosed!: (reason: PreviewCloseReason) => void;
+	const closed = new Promise<PreviewCloseReason>((r) => {
 		resolveClosed = r;
 	});
 	let closing: Promise<void> | undefined;
-	function close(): Promise<void> {
+	function close(reason: PreviewCloseReason = "closed"): Promise<void> {
 		closing ??= new Promise<void>((resolve) => {
 			clearTimeout(idleTimer);
+			if (reason === "idle") say("stopped: its tab was closed");
+			if (reason === "replaced") say("stopped: a newer preview took over");
 			for (const client of sseClients) client.end();
 			sseClients.clear();
 			server.close(() => {
 				resolve();
-				resolveClosed();
+				resolveClosed(reason);
 			});
 			server.closeAllConnections();
 		});
@@ -318,13 +370,21 @@ export async function startPreview(
 				);
 				sseClients.add(res);
 				clearTimeout(idleTimer);
+				if (!pageOpened) {
+					pageOpened = true;
+					say(
+						idleCloseMs === false
+							? "page opened"
+							: `page opened; the server stops ${Number((idleCloseMs / 1000).toFixed(1))} s after its last tab closes`,
+					);
+				}
 				onClient?.();
 				req.on("close", () => {
 					sseClients.delete(res);
 					// A reload reconnects within a second; a closed tab doesn't.
 					if (sseClients.size === 0 && idleCloseMs !== false && !closing) {
 						idleTimer = setTimeout(() => {
-							if (sseClients.size === 0) void close();
+							if (sseClients.size === 0) void close("idle");
 						}, idleCloseMs);
 					}
 				});
@@ -338,8 +398,57 @@ export async function startPreview(
 				req.headers[TAKEOVER_HEADER] === "1"
 			) {
 				sendJson(res, 200, { ok: true });
-				setImmediate(() => void close());
+				setImmediate(() => void close("replaced"));
 				return;
+			}
+			// Errors in the page, so they reach the terminal (and an agent)
+			// without anyone looking at the browser. JSON only: other sites
+			// can't send that without a preflight this server doesn't answer.
+			if (
+				req.method === "POST" &&
+				url.pathname === "/@gitframes/log" &&
+				req.headers["content-type"] === "application/json"
+			) {
+				const body = await readBody(req, 16 * 1024);
+				const { message, level } = JSON.parse(body) as {
+					message?: unknown;
+					level?: unknown;
+				};
+				const text = String(message ?? "").trim();
+				if (text && !reported.has(text) && reported.size < 200) {
+					reported.add(text);
+					say(
+						`${level === "warning" ? "warning" : "error"} in the page: ${text}`,
+					);
+				}
+				res.writeHead(204).end();
+				return;
+			}
+			if (notes && url.pathname === "/@gitframes/notes") {
+				if (req.method === "GET") {
+					sendJson(res, 200, await notes.list());
+					return;
+				}
+				if (
+					req.method === "POST" &&
+					req.headers["content-type"] === "application/json"
+				) {
+					const body = JSON.parse(await readBody(req, 16 * 1024 * 1024)) as {
+						op?: string;
+						id?: number;
+						done?: boolean;
+						text?: string;
+						note?: NewNote;
+					};
+					const change = noteQueue.then(() =>
+						changeNote(notes, body, meta.fps, say),
+					);
+					noteQueue = change.catch(() => {});
+					const note = await change;
+					broadcast("notes", await notes.list());
+					sendJson(res, note ? 200 : 404, note ?? { error: "no such note" });
+					return;
+				}
 			}
 			if (req.method === "GET" && url.pathname === "/audio") {
 				if (audio.state !== "ready" || !audioWav) {
@@ -444,7 +553,7 @@ export async function startPreview(
 		if (!reconnected) openBrowser(url);
 	}
 
-	return { url, closed, close };
+	return { url, closed, close: () => close() };
 }
 
 async function loadTarget(
@@ -480,6 +589,63 @@ function repoRoot(dir: string): string {
 		if (!project && fs.existsSync(path.join(d, "package.json"))) project = d;
 		if (path.dirname(d) === d) return project ?? dir;
 	}
+}
+
+/** Applies one change from the page and says what it was. */
+async function changeNote(
+	notes: NoteStore,
+	body: {
+		op?: string;
+		id?: number;
+		done?: boolean;
+		text?: string;
+		note?: NewNote;
+	},
+	fps: number,
+	say: (line: string) => void,
+) {
+	if (body.op === "add" && body.note && String(body.note.text).trim()) {
+		const note = await notes.add(body.note);
+		const files = [
+			note.image && `frame with the spot marked: ${note.image}`,
+			`all notes: ${notes.file}`,
+		];
+		say(`${describeNote(note, fps)}\n  ${files.filter(Boolean).join(" · ")}`);
+		return note;
+	}
+	const id = Number(body.id);
+	if (body.op === "update") {
+		const note = await notes.update(id, body);
+		if (note && typeof body.done === "boolean")
+			say(`note ${id} marked ${note.done ? "done" : "open"}`);
+		return note;
+	}
+	if (body.op === "remove") {
+		const note = await notes.remove(id);
+		if (note) say(`note ${id} deleted`);
+		return note;
+	}
+	return undefined;
+}
+
+function errorText(err: unknown): string {
+	return err instanceof Error ? err.message : String(err);
+}
+
+function readBody(req: http.IncomingMessage, limit: number): Promise<string> {
+	return new Promise((resolve, reject) => {
+		let body = "";
+		req.setEncoding("utf8");
+		req.on("data", (chunk: string) => {
+			body += chunk;
+			if (body.length > limit) {
+				reject(new Error("request body too large"));
+				req.destroy();
+			}
+		});
+		req.on("end", () => resolve(body));
+		req.on("error", reject);
+	});
 }
 
 function isInside(root: string, file: string): boolean {
@@ -566,12 +732,14 @@ async function resolveMeta(
 	target: PreviewTarget,
 	title: string,
 	session: string,
+	notesDir: string | null,
 ): Promise<PreviewMeta> {
 	const fps = target.fps ?? 24;
 	const durationMs =
 		target.durationMs ?? (await target.computeDuration?.()) ?? 5000;
 	return {
 		session,
+		notesDir,
 		title,
 		fps,
 		frameCount: Math.max(1, Math.round((durationMs / 1000) * fps)),

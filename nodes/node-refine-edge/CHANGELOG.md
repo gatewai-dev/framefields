@@ -1,5 +1,7 @@
 # @gitframes/node-refine-edge
 
+## 2.0.0
+
 ## 1.4.3
 
 ## 1.4.2

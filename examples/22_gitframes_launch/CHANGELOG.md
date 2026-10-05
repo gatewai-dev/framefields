@@ -1,5 +1,7 @@
 # @gitframes/example-22-gitframes-launch
 
+## 2.0.0
+
 ## 1.4.3
 
 ## 1.4.2

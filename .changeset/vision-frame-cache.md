@@ -1,7 +1,0 @@
----
-"gitframes": minor
----
-
-Vision effects are faster, in export and in the preview. The matte modes (`matte`, `mask`, `crop`) composite on the GPU: only the 8-bit mask is uploaded, instead of building the cut-out at full resolution on the CPU. That CPU path also kept a new full-frame texture for every frame rendered; the new path keeps two per node. Vision results are cached per source frame, keyed by node, source and inference settings, with run-length-encoded masks, so replays, scrubbing back and later renders in the same process skip inference. A frame found in the cache is cut out from its own pixels, without the usual one-frame delay. The preview analyses frames ahead of the playhead while paused, so tracked shots play at full frame rate. Background keying (`keyBackground`) runs about 10× faster with the same output: flood fills use typed-array queues and a foreground map computed once, and the edge blur reads memory in order. The preview page is served cross-origin isolated, so onnxruntime-web runs its CPU operations on several threads.
-
-Vision effects also run in the browser preview, on onnxruntime-web with WebGPU. `@gitframes/vision` adds `setDefaultSessionProvider()`, which the player uses to switch to that runtime. Cached models are read asynchronously. The texture cache now holds evicted textures until the frame being recorded has been submitted, which fixes "Destroyed texture used in a submit" when a frame's recording spans a mid-frame GPU readback. Its pruning also evicts the least recently used textures first, as documented.

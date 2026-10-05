@@ -232,6 +232,7 @@ Show the user the frame PNGs or the grid before the full render. `gitframes-rend
 
 - Run it as a background command; it serves until its tab closes.
 - It doesn't open anything. If your app has a built-in browser (Claude Code, Codex), open the URL there; otherwise give the user the link. `startPreview(..., { open: true })` opens their default browser.
+- **Reference assets from the file's URL.** The page runs `film.ts` itself, so asset paths must resolve in the browser too: build them from the module's own URL, `path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../assets/fonts")`, rather than `process.cwd()` or a bare relative path. The preview serves any file inside the project (the folder with `package.json`); pass `root` (one or more paths) to `startPreview` for fonts or media kept elsewhere.
 - After changing the film, run it again. It takes over the same URL, and the open tab reloads by itself.
 - Take feedback in chat. `gitframes-render` has the details.
 

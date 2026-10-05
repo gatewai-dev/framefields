@@ -68,9 +68,11 @@ export interface PreviewOptions {
 	idleCloseMs?: number | false;
 	/**
 	 * Files the page may load by absolute path (the composition's assets).
-	 * Defaults to the repository that holds the entry, or its directory.
+	 * Defaults to the project that holds the entry: the nearest `.git`, else
+	 * the nearest `package.json`, else the entry's directory. Pass one path or
+	 * several to allow assets kept outside it.
 	 */
-	root?: string;
+	root?: string | string[];
 }
 
 export interface PreviewSession {
@@ -120,12 +122,21 @@ export async function startPreview(
 			? fileURLToPath(source.entry)
 			: path.resolve(String(source.entry));
 	const exportName = source.export ?? "default";
-	const root = path.resolve(options.root ?? repoRoot(path.dirname(entry)));
 	// Vision nodes load their cached models, and onnxruntime-web's files when
 	// the project has it installed.
 	const modelsDir = visionModelsDir();
 	const ort = onnxRuntimeWeb(path.dirname(entry));
-	const roots = [root, modelsDir, ort.dir].filter((r): r is string => !!r);
+	const roots = [
+		...(options.root === undefined
+			? [repoRoot(path.dirname(entry))]
+			: Array.isArray(options.root)
+				? options.root
+				: [options.root]),
+		modelsDir,
+		ort.dir,
+	]
+		.filter((r): r is string => !!r)
+		.map((r) => path.resolve(r));
 	const sseClients = new Set<http.ServerResponse>();
 	const idleCloseMs = options.idleCloseMs ?? 5000;
 	let idleTimer: NodeJS.Timeout | undefined;
@@ -442,11 +453,17 @@ async function loadTarget(
 	) as PreviewTarget;
 }
 
-/** The repository holding `dir` (nearest `.git`), else `dir` itself. */
+/**
+ * The project holding `dir`: the nearest `.git`, else the nearest
+ * `package.json`, else `dir` itself. A repo wins over a nested package, so a
+ * monorepo's shared assets stay reachable.
+ */
 function repoRoot(dir: string): string {
+	let project: string | undefined;
 	for (let d = dir; ; d = path.dirname(d)) {
 		if (fs.existsSync(path.join(d, ".git"))) return d;
-		if (path.dirname(d) === d) return dir;
+		if (!project && fs.existsSync(path.join(d, "package.json"))) project = d;
+		if (path.dirname(d) === d) return project ?? dir;
 	}
 }
 

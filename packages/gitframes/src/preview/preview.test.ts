@@ -88,6 +88,66 @@ describe("startPreview", () => {
 		expect(await stat("/etc/hosts")).toEqual({ exists: false, size: 0 });
 	});
 
+	it("serves assets from the project root, not only the entry's directory", async () => {
+		const project = await fs.promises.mkdtemp(
+			path.join(os.tmpdir(), "gf-project-"),
+		);
+		try {
+			const src = path.join(project, "src");
+			const fonts = path.join(project, "assets", "fonts");
+			await fs.promises.mkdir(src, { recursive: true });
+			await fs.promises.mkdir(fonts, { recursive: true });
+			// A project with no .git: the root is the nearest package.json.
+			await fs.promises.writeFile(path.join(project, "package.json"), "{}");
+			const comp = path.join(src, "comp.ts");
+			await fs.promises.writeFile(
+				comp,
+				"export default function build() { return { fps: 10, durationMs: 1000, width: 64, height: 36 }; }",
+			);
+			const font = path.join(fonts, "Test.ttf");
+			await fs.promises.writeFile(font, "font-bytes");
+
+			const session = await start({ entry: comp }, { open: false, port: 0 });
+			const res = await fetch(`${session.url}${font.slice(1)}`);
+			expect(res.status).toBe(200);
+			expect(await res.text()).toBe("font-bytes");
+		} finally {
+			await fs.promises.rm(project, { recursive: true, force: true });
+		}
+	});
+
+	it("allows extra asset roots outside the project", async () => {
+		const project = await fs.promises.mkdtemp(
+			path.join(os.tmpdir(), "gf-project-"),
+		);
+		const shared = await fs.promises.mkdtemp(
+			path.join(os.tmpdir(), "gf-shared-"),
+		);
+		try {
+			const src = path.join(project, "src");
+			await fs.promises.mkdir(src, { recursive: true });
+			await fs.promises.writeFile(path.join(project, "package.json"), "{}");
+			const comp = path.join(src, "comp.ts");
+			await fs.promises.writeFile(
+				comp,
+				"export default function build() { return { fps: 10, durationMs: 1000, width: 64, height: 36 }; }",
+			);
+			const font = path.join(shared, "Shared.ttf");
+			await fs.promises.writeFile(font, "shared-bytes");
+
+			const session = await start(
+				{ entry: comp },
+				{ open: false, port: 0, root: [project, shared] },
+			);
+			const res = await fetch(`${session.url}${font.slice(1)}`);
+			expect(res.status).toBe(200);
+			expect(await res.text()).toBe("shared-bytes");
+		} finally {
+			await fs.promises.rm(project, { recursive: true, force: true });
+			await fs.promises.rm(shared, { recursive: true, force: true });
+		}
+	});
+
 	it("names a missing export", async () => {
 		await expect(
 			startPreview({ entry, export: "film" }, { open: false, port: 0 }),

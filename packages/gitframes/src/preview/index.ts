@@ -354,6 +354,21 @@ export async function startPreview(
 				res.end(audioWav);
 				return;
 			}
+			// Fonts referenced by family only resolve to assets/fonts/<Family>.ttf,
+			// read from the project's folder, as the export engine does.
+			const fontMatch = /^\/assets\/fonts\/([^/]+)$/.exec(url.pathname);
+			if (fontMatch && (req.method === "GET" || req.method === "HEAD")) {
+				const file = path.join(
+					process.cwd(),
+					"assets",
+					"fonts",
+					decodeURIComponent(fontMatch[1]),
+				);
+				if (await isFile(file)) {
+					await sendFile(req, res, file);
+					return;
+				}
+			}
 			// The composition's files, by absolute path: what the program
 			// references loads as-is.
 			if (req.method === "GET" || req.method === "HEAD") {

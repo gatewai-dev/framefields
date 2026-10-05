@@ -2,7 +2,7 @@
 
 <img src="assets/brand/banner.png" alt="gitframes — code-first video, rendered natively on WebGPU" width="100%">
 
-**Photoshop-, After Effects-, and Blender-class video tools as one npm package that AI agents drive with code.**
+**Compositing, motion graphics and 3D for code-first video — one npm package that AI agents drive with code.**
 
 [![npm](https://img.shields.io/badge/npm-gitframes-cb3837?logo=npm&logoColor=white)](https://www.npmjs.com/package/gitframes)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENCE)
@@ -16,7 +16,7 @@
 
 > **⚠️ Beta:** gitframes is under active development. APIs may change between releases and some features may be incomplete or unstable.
 
-Gitframes is built for coding agents. It packs the work people usually split across three desktop apps (Photoshop-grade compositing and VFX, After Effects-style motion, typography and keyframing, and Blender-style 3D scenes, cameras and models) into one lightweight npm package. Your agent writes a TypeScript composition, checks frames, and renders an MP4, and nobody has to install or license a multi-gigabyte creative suite.
+Gitframes is built for coding agents. It packs the work people usually split across three desktop apps (Photoshop-inspired compositing and VFX, After Effects-style motion, typography and keyframing, and Blender-style 3D scenes, cameras and models) into one lightweight npm package. Your agent writes a TypeScript composition, checks frames, and renders an MP4, and nobody has to install or license a multi-gigabyte creative suite.
 
 **Code-first video as pure software engineering** — no headless browser, no DOM reflow, no screenshot pipeline.
 Renders directly on GPU hardware via Dawn / WebGPU / Metal / Vulkan in Node.js and modern WebGPU browsers.
@@ -69,8 +69,8 @@ Every frame of these films is rendered by gitframes from TypeScript in [`example
 - [Why Gitframes](#why-gitframes)
 - [Architectural Comparison](#architectural-comparison-gitframes-vs-remotion-vs-hyperframes)
 - [Key Features & Capabilities](#key-features--capabilities)
-  - [1. Slug GPU Vector Typography & AE Parity](#1-slug-gpu-vector-typography--ae-parity)
-  - [2. Photoshop-Grade WebGPU 2D VFX](#2-photoshop-grade-webgpu-2d-vfx-50-shaders)
+  - [1. Slug GPU Vector Typography & After Effects Animators](#1-slug-gpu-vector-typography--after-effects-animators)
+  - [2. Photoshop-Inspired WebGPU 2D VFX](#2-photoshop-inspired-webgpu-2d-vfx-50-shaders)
   - [3. Unified 3D Scene Graph, Camera & Mesh Shading](#3-unified-3d-scene-graph-camera--mesh-shading)
   - [4. Audio Layers, Procedural SFX & Reactive Signals](#4-audio-layers-procedural-sfx--reactive-signals)
   - [5. Animated Charts](#5-animated-charts)
@@ -103,7 +103,7 @@ Modern automated video generation is usually constrained by the architectures of
 | 🚀 | **Zero Headless-Browser Overhead** | No Puppeteer, no Chromium IPC, no `page.screenshot()`. Gitframes talks straight to native GPU devices via Dawn/WebGPU and hardware-encodes with `@napi-rs/webcodecs`. |
 | 🎯 | **Deterministic Frame-Accurate Clock** | Absolute frame clocks, discrete sample points, and frame-accurate audio BeatGrids. No floating timers, no drift, no dropped frames. |
 | 🔠 | **Analytic, Resolution-Independent Type** | The Slug algorithm evaluates glyph contours per-pixel in WGSL — no texture atlases, no scaling artifacts, razor-sharp from 10 px to 10,000 px. |
-| 🎨 | **Photoshop-Grade Tonal & Spatial VFX** | 50+ modular GPU shaders: Curves, Levels, Selective Color, 3D LUTs, Halftone, Film Grain, Unsharp Mask, Mesh Warp, and Screen-Space Relighting. |
+| 🎨 | **Photoshop-Inspired Tonal & Spatial VFX** | 50+ modular GPU shaders: Curves, Levels, Selective Color, 3D LUTs, Halftone, Film Grain, Unsharp Mask, Mesh Warp, and Screen-Space Relighting. |
 | 🧊 | **Unified 3D & 2D Depth Compositing** | Nest 2D flex/box trees inside 3D homography planes, multiplane rigs, and meshes (OBJ, FBX, glTF/GLB, STL, PLY, VOX, 3DS, OFF), with PBR glass and SSAO. |
 | 🔊 | **Built-in Procedural Audio DSP** | Multi-track soundtracks, deterministic procedural transition SFX (whoosh, impact, riser), and reactive signals that drive visuals from audio. |
 | 👁️ | **On-Device Neural Vision** | Object tracking, instance segmentation, multi-person pose, and person mattes from Apache-2.0 ONNX models — feeding reactive signals without a round trip to disk. |
@@ -137,15 +137,15 @@ Developers generating video programmatically commonly weigh **Remotion** (React/
 
 ## Key Features & Capabilities
 
-### 1. Slug GPU Vector Typography & AE Parity
+### 1. Slug GPU Vector Typography & After Effects Animators
 Traditional text relies on CPU rasterization or low-res SDF atlases that soften under 3D camera sweeps. Gitframes integrates the **Slug algorithm** ([`SlugPipeline`](packages/webgpu-renderers/src/slug/slug-pipeline.ts)):
 - **Analytic GPU evaluation** — WGSL fragment shaders solve exact cubic/quadratic Béziers per-pixel. Glyphs stay sharp at 10 px or 10,000 px with zero CPU re-rasterization.
-- **After Effects–parity animators** — range selectors (`square`, `ramp_up`, `ramp_down`, `triangle`, `smooth`), `easeHigh`/`easeLow` curves, and seeded PRNG character shuffling ([`TextAnimator`](packages/gitframes/src/index.ts)).
+- **After Effects–style animators** — range selectors (`square`, `ramp_up`, `ramp_down`, `triangle`, `smooth`), `easeHigh`/`easeLow` curves, and seeded PRNG character shuffling ([`TextAnimator`](packages/gitframes/src/index.ts)).
 - **Human typing cadence** — weighted punctuation delays (commas 3×, sentence ends 5.5×, newlines 7×) and trailing scramble resolution ([`TypewriterAnimator`](packages/gitframes/src/index.ts)).
 - **3D volumetric formations** — map text onto cylindrical drums, logarithmic vortex spirals, and double-helix ribbons with surface-normal banking ([`evaluateVolumetricFormation`](packages/gitframes/src/index.ts)).
 - **Dynamic leading & skew** — area-preserving unimodular shear and accordion line-leading anchored to baseline, center, or top.
 
-### 2. Photoshop-Grade WebGPU 2D VFX (50+ Shaders)
+### 2. Photoshop-Inspired WebGPU 2D VFX (50+ Shaders)
 A comprehensive suite of professional image/video shader nodes in [`nodes/`](nodes) and [`packages/webgpu-renderers`](packages/webgpu-renderers):
 - **Tonal grading** — Curves (RGB/R/G/B spline), Levels (black/white point, gamma, output), Shadows/Highlights, Selective Color (CMYK gamut isolation), 3D Cube LUT ([`ApplyLUT`](packages/gitframes/src/effects)).
 - **Stylization & grain** — Film Grain (Gaussian emulsion with spatial seed variation), Halftone (mono/RGB/CMYK, adjustable dot shape & angle), Gradient Map, High Pass.

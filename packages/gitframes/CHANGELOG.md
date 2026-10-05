@@ -1,5 +1,13 @@
 # gitframes
 
+## 2.0.1
+
+### Patch Changes
+
+- Fix the browser preview failing to load from an installed package. The engine bundles the Node-only preview server, whose top-level `createRequire(import.meta.url)` ran against the stubbed `node:module`, so loading `gitframes` in the preview threw `(0, Dr.createRequire) is not a function` before the player could start. `node:module` now has a shim, and a test imports every engine entry so a missing shim is caught.
+
+  The npm page now shows the repository README: the package's README is generated from the root one at build and pack time, with its relative asset and repository links rewritten to absolute GitHub URLs so images and links resolve on npmjs.com.
+
 ## 2.0.0
 
 ### Minor Changes

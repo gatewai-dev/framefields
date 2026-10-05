@@ -1,5 +1,7 @@
 # @gitframes/node-film-grain
 
+## 2.0.1
+
 ## 2.0.0
 
 ## 1.4.3

@@ -1,7 +1,7 @@
 {
 	"name": "@gitframes/vision",
 	"description": "On-device vision for gitframes: RTMDet-Ins detection + instance masks, RTMO pose, and Selfie Segmenter mattes over ONNX Runtime.",
-	"version": "2.0.1",
+	"version": "2.0.2",
 	"private": false,
 	"publishConfig": {
 		"access": "public"

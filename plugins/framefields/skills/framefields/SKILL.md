@@ -93,7 +93,7 @@ assets/
 output/       # renders (add to .gitignore)
 ```
 
-Text needs a real font file. Ask the user which font to use, or have them drop one into `assets/fonts/`; don't download fonts on their behalf.
+Text needs a real font file. Ask the user which font to use.
 
 ```typescript
 // src/theme.ts

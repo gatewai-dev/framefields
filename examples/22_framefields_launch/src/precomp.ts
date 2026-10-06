@@ -67,6 +67,14 @@ async function render(name: string, p: Plate) {
 		"14",
 		"-preset",
 		"slow",
+		// A short GOP keeps the plate cheap to *seek*: the VFX chapter instances
+		// it dozens of times at different in-points, and x264's default 250-frame
+		// keyframe interval makes each of those seeks re-decode up to 4s before
+		// the frame it wants. A keyframe every 15 frames bounds that.
+		"-g",
+		"15",
+		"-keyint_min",
+		"15",
 		asset(p.file),
 	]);
 	console.log(

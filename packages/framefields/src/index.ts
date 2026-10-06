@@ -866,6 +866,13 @@ export interface RenderVideoOptions {
 	audioCodec?: string;
 	quality?: string;
 	concurrency?: number;
+	/**
+	 * Depth of the DMA staging ring used to overlap GPU rendering with hardware
+	 * encoding (default 2, clamped 2–8). A deeper ring hides more encoder
+	 * latency at the cost of VRAM (~8.3MB/slot at 1080p RGBA). Also settable
+	 * via `FRAMEFIELDS_RING_CAPACITY`.
+	 */
+	ringCapacity?: number;
 	outputPath?: string;
 	renderer?: HeadlessMediaRenderer;
 	/**

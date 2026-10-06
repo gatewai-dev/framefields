@@ -86,6 +86,14 @@ export class VideoDecoder extends BaseMediaDecoder<
 	private nextSample: VideoSample | null = null;
 	private headlessQueue: VideoSample[] = [];
 	private isDecoding = false;
+	/**
+	 * Reused RGBA staging array for headless decode. Only one decode is in
+	 * flight per decoder (`isDecoding` serializes them) and callers consume the
+	 * pixels synchronously (uploadFrameToTexture → writeTexture copies before
+	 * the next decode can run), so the array is never read after it is
+	 * overwritten. Avoids a full-frame allocation on every decoded frame.
+	 */
+	private decodeBuffer: Uint8Array | null = null;
 	private nextRequest: {
 		timestampSec: number;
 		resolve: (value: VideoFrameData | null) => void;
@@ -148,6 +156,7 @@ export class VideoDecoder extends BaseMediaDecoder<
 			} catch (_) {}
 		}
 		this.headlessQueue = [];
+		this.decodeBuffer = null;
 		this.iteratorStartTimestamp = -1;
 	}
 
@@ -301,7 +310,12 @@ export class VideoDecoder extends BaseMediaDecoder<
 
 		const width = currentSample.displayWidth;
 		const height = currentSample.displayHeight;
-		const buffer = new Uint8Array(width * height * 4);
+		const byteLength = width * height * 4;
+		let buffer = this.decodeBuffer;
+		if (!buffer || buffer.length !== byteLength) {
+			buffer = new Uint8Array(byteLength);
+			this.decodeBuffer = buffer;
+		}
 		await currentSample.copyTo(buffer, { format: "RGBA" });
 		if (this.currentFetchId !== fetchId || this.destroyed || !this.input)
 			return null;

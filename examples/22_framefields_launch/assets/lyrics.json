@@ -3,31 +3,31 @@
   "text": "What",
   "section": 0,
   "line": 0,
-  "start": 0.04,
-  "end": 0.16,
+  "start": 0.06,
+  "end": 0.14,
   "heard": true
  },
  {
   "text": "if",
   "section": 0,
   "line": 0,
-  "start": 0.24,
-  "end": 0.3,
+  "start": 0.18,
+  "end": 0.24,
   "heard": true
  },
  {
   "text": "video",
   "section": 0,
   "line": 0,
-  "start": 0.36,
-  "end": 0.7,
+  "start": 0.3,
+  "end": 0.68,
   "heard": true
  },
  {
   "text": "was",
   "section": 0,
   "line": 0,
-  "start": 0.74,
+  "start": 0.72,
   "end": 0.84,
   "heard": true
  },
@@ -35,71 +35,71 @@
   "text": "just",
   "section": 0,
   "line": 0,
-  "start": 0.86,
-  "end": 0.98,
+  "start": 0.88,
+  "end": 1.02,
   "heard": true
  },
  {
   "text": "code?",
   "section": 0,
   "line": 0,
-  "start": 1.04,
-  "end": 1.26,
+  "start": 1.08,
+  "end": 1.32,
   "heard": true
  },
  {
   "text": "What",
   "section": 0,
   "line": 1,
-  "start": 1.34,
-  "end": 1.4,
+  "start": 1.38,
+  "end": 1.46,
   "heard": true
  },
  {
   "text": "if",
   "section": 0,
   "line": 1,
-  "start": 1.44,
-  "end": 1.5,
+  "start": 1.5,
+  "end": 1.56,
   "heard": true
  },
  {
   "text": "motion",
   "section": 0,
   "line": 1,
-  "start": 1.54,
-  "end": 1.8,
+  "start": 1.6,
+  "end": 1.84,
   "heard": true
  },
  {
   "text": "shipped",
   "section": 0,
   "line": 1,
-  "start": 1.84,
-  "end": 2.02,
+  "start": 1.86,
+  "end": 2.04,
   "heard": true
  },
  {
   "text": "in",
   "section": 0,
   "line": 1,
-  "start": 2.06,
-  "end": 2.12,
+  "start": 2.08,
+  "end": 2.14,
   "heard": true
  },
  {
   "text": "a",
   "section": 0,
   "line": 1,
-  "start": 2.16,
-  "end": 2.2,
+  "start": 2.18,
+  "end": 2.22,
   "heard": true
  },
  {
   "text": "commit?",
   "section": 0,
   "line": 1,
-  "start": 2.24,
+  "start": 2.26,
   "end": 2.58,
   "heard": true
  },
@@ -107,88 +107,88 @@
   "text": "No",
   "section": 0,
   "line": 2,
-  "start": 2.86,
-  "end": 2.96,
+  "start": 2.72,
+  "end": 2.86,
   "heard": true
  },
  {
   "text": "timeline,",
   "section": 0,
   "line": 2,
-  "start": 3.02,
-  "end": 3.46,
+  "start": 2.92,
+  "end": 3.2,
   "heard": true
  },
  {
   "text": "no",
   "section": 0,
   "line": 2,
-  "start": 3.52,
-  "end": 3.64,
+  "start": 3.24,
+  "end": 3.36,
   "heard": true
  },
  {
   "text": "render",
   "section": 0,
   "line": 2,
-  "start": 3.68,
-  "end": 3.88,
+  "start": 3.4,
+  "end": 3.66,
   "heard": true
  },
  {
   "text": "farm,",
   "section": 0,
   "line": 2,
-  "start": 3.94,
-  "end": 4.12,
+  "start": 3.74,
+  "end": 4,
   "heard": true
  },
  {
   "text": "just",
   "section": 0,
   "line": 3,
-  "start": 4.2,
-  "end": 4.3,
+  "start": 4.059,
+  "end": 4.22,
   "heard": true
  },
  {
   "text": "type",
   "section": 0,
   "line": 3,
-  "start": 4.36,
-  "end": 4.52,
+  "start": 4.26,
+  "end": 4.46,
   "heard": true
  },
  {
   "text": "it",
   "section": 0,
   "line": 3,
-  "start": 4.56,
-  "end": 4.62,
+  "start": 4.48,
+  "end": 4.54,
   "heard": true
  },
  {
   "text": "and",
   "section": 0,
   "line": 3,
-  "start": 4.66,
-  "end": 4.74,
+  "start": 4.58,
+  "end": 4.66,
   "heard": true
  },
  {
   "text": "let",
   "section": 0,
   "line": 3,
-  "start": 4.76,
-  "end": 4.86,
+  "start": 4.7,
+  "end": 4.82,
   "heard": true
  },
  {
   "text": "it",
   "section": 0,
   "line": 3,
-  "start": 4.9,
-  "end": 4.98,
+  "start": 4.86,
+  "end": 4.96,
   "heard": true
  },
  {
@@ -196,174 +196,174 @@
   "section": 0,
   "line": 3,
   "start": 5.04,
-  "end": 5.22,
+  "end": 5.34,
   "heard": true
  },
  {
   "text": "Framefields!",
   "section": 1,
   "line": 4,
-  "start": 5.38,
-  "end": 6.08,
+  "start": 5.7,
+  "end": 6.48,
   "heard": true
  },
  {
   "text": "No",
   "section": 1,
   "line": 5,
-  "start": 6.2,
-  "end": 6.28,
+  "start": 6.54,
+  "end": 6.62,
   "heard": true
  },
  {
   "text": "browser,",
   "section": 1,
   "line": 5,
-  "start": 6.36,
-  "end": 6.72,
+  "start": 6.76,
+  "end": 7.14,
   "heard": true
  },
  {
   "text": "no",
   "section": 1,
   "line": 5,
-  "start": 6.86,
-  "end": 6.96,
+  "start": 7.2,
+  "end": 7.32,
   "heard": true
  },
  {
   "text": "Chromium,",
   "section": 1,
   "line": 5,
-  "start": 7.02,
-  "end": 7.44,
+  "start": 7.38,
+  "end": 7.9,
   "heard": true
  },
  {
   "text": "no",
   "section": 1,
   "line": 6,
-  "start": 7.5,
-  "end": 7.6,
+  "start": 8.2,
+  "end": 8.28,
   "heard": true
  },
  {
   "text": "screenshots,",
   "section": 1,
   "line": 6,
-  "start": 7.68,
-  "end": 8.26,
+  "start": 8.34,
+  "end": 8.68,
   "heard": true
  },
  {
   "text": "just",
   "section": 1,
   "line": 6,
-  "start": 8.36,
-  "end": 8.48,
+  "start": 8.72,
+  "end": 8.84,
   "heard": true
  },
  {
   "text": "the",
   "section": 1,
   "line": 6,
-  "start": 8.52,
-  "end": 8.62,
+  "start": 8.88,
+  "end": 8.96,
   "heard": true
  },
  {
   "text": "GPU.",
   "section": 1,
   "line": 6,
-  "start": 8.68,
-  "end": 9.2,
+  "start": 9.02,
+  "end": 9.54,
   "heard": true
  },
  {
   "text": "A",
   "section": 1,
   "line": 7,
-  "start": 9.46,
-  "end": 9.600000000000001,
+  "start": 9.62,
+  "end": 9.64,
   "heard": true
  },
  {
   "text": "hundred",
   "section": 1,
   "line": 7,
-  "start": 9.600000000000001,
-  "end": 9.74,
+  "start": 9.7,
+  "end": 9.96,
   "heard": true
  },
  {
   "text": "twenty",
   "section": 1,
   "line": 7,
-  "start": 9.74,
-  "end": 9.88,
+  "start": 10.04,
+  "end": 10.24,
   "heard": true
  },
  {
   "text": "frames",
   "section": 1,
   "line": 7,
-  "start": 9.92,
-  "end": 10.18,
+  "start": 10.36,
+  "end": 10.54,
   "heard": true
  },
  {
   "text": "a",
   "section": 1,
   "line": 7,
-  "start": 10.24,
-  "end": 10.28,
+  "start": 10.58,
+  "end": 10.64,
   "heard": true
  },
  {
   "text": "second,",
   "section": 1,
   "line": 7,
-  "start": 10.36,
-  "end": 10.64,
+  "start": 10.7,
+  "end": 10.98,
   "heard": true
  },
  {
   "text": "every",
   "section": 1,
   "line": 8,
-  "start": 10.74,
-  "end": 10.92,
+  "start": 11.1,
+  "end": 11.28,
   "heard": true
  },
  {
   "text": "pixel",
   "section": 1,
   "line": 8,
-  "start": 11,
-  "end": 11.28,
+  "start": 11.36,
+  "end": 11.66,
   "heard": true
  },
  {
   "text": "rendered",
   "section": 1,
   "line": 8,
-  "start": 11.36,
-  "end": 11.62,
+  "start": 11.72,
+  "end": 11.98,
   "heard": true
  },
  {
   "text": "true,",
   "section": 1,
   "line": 8,
-  "start": 11.7,
-  "end": 12.02,
+  "start": 12.06,
+  "end": 12.32,
   "heard": true
  },
  {
   "text": "watch",
   "section": 1,
   "line": 9,
-  "start": 12.34,
+  "start": 12.38,
   "end": 12.52,
   "heard": true
  },
@@ -371,16 +371,16 @@
   "text": "it",
   "section": 1,
   "line": 9,
-  "start": 12.56,
-  "end": 12.64,
+  "start": 12.6,
+  "end": 12.68,
   "heard": true
  },
  {
   "text": "move.",
   "section": 1,
   "line": 9,
-  "start": 12.72,
-  "end": 13.08,
+  "start": 12.74,
+  "end": 13.12,
   "heard": true
  },
  {
@@ -396,7 +396,7 @@
   "section": 2,
   "line": 10,
   "start": 13.9,
-  "end": 14.26,
+  "end": 14.28,
   "heard": true
  },
  {
@@ -404,47 +404,47 @@
   "section": 2,
   "line": 10,
   "start": 14.34,
-  "end": 14.82,
+  "end": 14.96,
   "heard": true
  },
  {
   "text": "Premiere,",
   "section": 2,
   "line": 11,
-  "start": 14.86,
-  "end": 15.2,
+  "start": 15.02,
+  "end": 15.4,
   "heard": true
  },
  {
   "text": "Cinema",
   "section": 2,
   "line": 11,
-  "start": 15.34,
-  "end": 15.62,
+  "start": 15.5,
+  "end": 15.82,
   "heard": true
  },
  {
   "text": "4D,",
   "section": 2,
   "line": 11,
-  "start": 15.88,
-  "end": 16.219,
+  "start": 15.96,
+  "end": 16.239,
   "heard": true
  },
  {
   "text": "Blender,",
   "section": 2,
   "line": 12,
-  "start": 16.32,
-  "end": 16.62,
+  "start": 16.34,
+  "end": 16.64,
   "heard": true
  },
  {
   "text": "Illustrator,",
   "section": 2,
   "line": 12,
-  "start": 16.74,
-  "end": 17.28,
+  "start": 16.76,
+  "end": 17.3,
   "heard": true
  },
  {
@@ -475,8 +475,8 @@
   "text": "in",
   "section": 2,
   "line": 13,
-  "start": 17.86,
-  "end": 17.96,
+  "start": 17.88,
+  "end": 17.98,
   "heard": true
  },
  {
@@ -491,7 +491,7 @@
   "text": "import,",
   "section": 2,
   "line": 13,
-  "start": 18.22,
+  "start": 18.24,
   "end": 18.64,
   "heard": true
  },
@@ -500,7 +500,7 @@
   "section": 2,
   "line": 14,
   "start": 18.72,
-  "end": 19.22,
+  "end": 19.2,
   "heard": true
  },
  {
@@ -508,30 +508,30 @@
   "section": 2,
   "line": 14,
   "start": 19.34,
-  "end": 19.52,
+  "end": 19.56,
   "heard": true
  },
  {
   "text": "and",
   "section": 2,
   "line": 14,
-  "start": 19.52,
-  "end": 19.72,
+  "start": 19.56,
+  "end": 19.74,
   "heard": false
  },
  {
   "text": "fast,",
   "section": 2,
   "line": 14,
-  "start": 19.72,
-  "end": 20,
+  "start": 19.74,
+  "end": 20.02,
   "heard": true
  },
  {
   "text": "all",
   "section": 2,
   "line": 15,
-  "start": 20.06,
+  "start": 20.08,
   "end": 20.16,
   "heard": true
  },
@@ -540,14 +540,14 @@
   "section": 2,
   "line": 15,
   "start": 20.2,
-  "end": 20.28,
+  "end": 20.3,
   "heard": true
  },
  {
   "text": "power,",
   "section": 2,
   "line": 15,
-  "start": 20.36,
+  "start": 20.38,
   "end": 20.62,
   "heard": true
  },
@@ -564,7 +564,7 @@
   "section": 2,
   "line": 15,
   "start": 20.82,
-  "end": 20.86,
+  "end": 20.88,
   "heard": true
  },
  {
@@ -572,14 +572,14 @@
   "section": 2,
   "line": 15,
   "start": 20.9,
-  "end": 21,
+  "end": 20.98,
   "heard": true
  },
  {
   "text": "weight.",
   "section": 2,
   "line": 15,
-  "start": 21.04,
+  "start": 21.06,
   "end": 21.26,
   "heard": true
  },
@@ -595,33 +595,33 @@
   "text": "letter",
   "section": 3,
   "line": 16,
-  "start": 21.7,
-  "end": 21.94,
+  "start": 21.72,
+  "end": 21.98,
   "heard": true
  },
  {
   "text": "razor",
   "section": 3,
   "line": 16,
-  "start": 22.02,
-  "end": 22.310000000000002,
+  "start": 22.04,
+  "end": 22.3,
   "heard": true
  },
  {
   "text": "sharp,",
   "section": 3,
   "line": 16,
-  "start": 22.310000000000002,
-  "end": 22.6,
+  "start": 22.36,
+  "end": 22.62,
   "heard": true
  },
  {
   "text": "bend",
   "section": 3,
   "line": 17,
-  "start": 22.6,
-  "end": 22.88,
-  "heard": false
+  "start": 22.7,
+  "end": 22.84,
+  "heard": true
  },
  {
   "text": "the",
@@ -635,15 +635,15 @@
   "text": "words",
   "section": 3,
   "line": 17,
-  "start": 23.02,
-  "end": 23.2,
+  "start": 23.04,
+  "end": 23.22,
   "heard": true
  },
  {
   "text": "around",
   "section": 3,
   "line": 17,
-  "start": 23.28,
+  "start": 23.3,
   "end": 23.52,
   "heard": true
  },
@@ -651,15 +651,15 @@
   "text": "the",
   "section": 3,
   "line": 17,
-  "start": 23.54,
-  "end": 23.66,
+  "start": 23.56,
+  "end": 23.68,
   "heard": true
  },
  {
   "text": "arc,",
   "section": 3,
   "line": 17,
-  "start": 23.74,
+  "start": 23.76,
   "end": 23.96,
   "heard": true
  },
@@ -676,15 +676,15 @@
   "section": 3,
   "line": 18,
   "start": 24.22,
-  "end": 24.3,
+  "end": 24.32,
   "heard": true
  },
  {
   "text": "moves",
   "section": 3,
   "line": 18,
-  "start": 24.36,
-  "end": 24.52,
+  "start": 24.38,
+  "end": 24.54,
   "heard": true
  },
  {
@@ -692,22 +692,22 @@
   "section": 3,
   "line": 18,
   "start": 24.56,
-  "end": 24.64,
+  "end": 24.66,
   "heard": true
  },
  {
   "text": "way",
   "section": 3,
   "line": 18,
-  "start": 24.68,
-  "end": 24.78,
+  "start": 24.7,
+  "end": 24.8,
   "heard": true
  },
  {
   "text": "you",
   "section": 3,
   "line": 18,
-  "start": 24.82,
+  "start": 24.84,
   "end": 24.92,
   "heard": true
  },
@@ -715,15 +715,15 @@
   "text": "speak,",
   "section": 3,
   "line": 18,
-  "start": 25,
-  "end": 25.2,
+  "start": 25.02,
+  "end": 25.22,
   "heard": true
  },
  {
   "text": "split",
   "section": 3,
   "line": 19,
-  "start": 25.32,
+  "start": 25.3,
   "end": 25.48,
   "heard": true
  },
@@ -731,16 +731,16 @@
   "text": "it,",
   "section": 3,
   "line": 19,
-  "start": 25.52,
-  "end": 25.56,
+  "start": 25.5,
+  "end": 25.54,
   "heard": true
  },
  {
   "text": "stagger",
   "section": 3,
   "line": 19,
-  "start": 25.64,
-  "end": 25.86,
+  "start": 25.6,
+  "end": 25.84,
   "heard": true
  },
  {
@@ -748,7 +748,7 @@
   "section": 3,
   "line": 19,
   "start": 25.88,
-  "end": 25.92,
+  "end": 25.94,
   "heard": true
  },
  {
@@ -756,7 +756,7 @@
   "section": 3,
   "line": 19,
   "start": 26.02,
-  "end": 26.14,
+  "end": 26.16,
   "heard": true
  },
  {
@@ -764,22 +764,22 @@
   "section": 3,
   "line": 19,
   "start": 26.18,
-  "end": 26.26,
+  "end": 26.28,
   "heard": true
  },
  {
   "text": "sweet,",
   "section": 3,
   "line": 19,
-  "start": 26.34,
-  "end": 26.66,
+  "start": 26.36,
+  "end": 26.68,
   "heard": true
  },
  {
   "text": "every",
   "section": 3,
   "line": 20,
-  "start": 26.74,
+  "start": 26.76,
   "end": 26.96,
   "heard": true
  },
@@ -787,7 +787,7 @@
   "text": "font",
   "section": 3,
   "line": 20,
-  "start": 27.02,
+  "start": 27.04,
   "end": 27.18,
   "heard": true
  },
@@ -795,8 +795,8 @@
   "text": "a",
   "section": 3,
   "line": 20,
-  "start": 27.24,
-  "end": 27.3,
+  "start": 27.26,
+  "end": 27.32,
   "heard": true
  },
  {
@@ -804,7 +804,7 @@
   "section": 3,
   "line": 20,
   "start": 27.36,
-  "end": 27.64,
+  "end": 27.66,
   "heard": true
  },
  {
@@ -812,14 +812,14 @@
   "section": 3,
   "line": 20,
   "start": 27.72,
-  "end": 27.9,
+  "end": 27.94,
   "heard": true
  },
  {
   "text": "kinetic",
   "section": 3,
   "line": 21,
-  "start": 28.02,
+  "start": 28.04,
   "end": 28.5,
   "heard": true
  },
@@ -827,7 +827,7 @@
   "text": "on",
   "section": 3,
   "line": 21,
-  "start": 28.56,
+  "start": 28.58,
   "end": 28.68,
   "heard": true
  },
@@ -835,84 +835,100 @@
   "text": "every",
   "section": 3,
   "line": 21,
-  "start": 28.74,
-  "end": 28.92,
+  "start": 28.76,
+  "end": 28.94,
   "heard": true
  },
  {
   "text": "beat.",
   "section": 3,
   "line": 21,
-  "start": 29.04,
-  "end": 29.26,
+  "start": 29.06,
+  "end": 29.32,
   "heard": true
  },
  {
   "text": "Step",
   "section": 4,
   "line": 22,
-  "start": 29.66,
-  "end": 29.84,
+  "start": 29.34,
+  "end": 29.52,
   "heard": true
  },
  {
   "text": "inside",
   "section": 4,
   "line": 22,
-  "start": 29.88,
-  "end": 30.18,
+  "start": 29.56,
+  "end": 29.84,
   "heard": true
  },
  {
   "text": "the",
   "section": 4,
   "line": 22,
-  "start": 30.2,
-  "end": 30.3,
+  "start": 29.88,
+  "end": 29.96,
   "heard": true
  },
  {
   "text": "camera,",
   "section": 4,
   "line": 22,
-  "start": 30.36,
-  "end": 30.7,
+  "start": 30.04,
+  "end": 30.38,
   "heard": true
  },
  {
   "text": "fly",
   "section": 4,
   "line": 23,
-  "start": 31,
-  "end": 31.16,
+  "start": 30.68,
+  "end": 30.84,
   "heard": true
  },
  {
   "text": "the",
   "section": 4,
   "line": 23,
-  "start": 31.2,
-  "end": 31.3,
+  "start": 30.88,
+  "end": 30.98,
   "heard": true
  },
  {
   "text": "third",
   "section": 4,
   "line": 23,
-  "start": 31.34,
-  "end": 31.5,
+  "start": 31.02,
+  "end": 31.16,
   "heard": true
  },
  {
   "text": "dimension,",
   "section": 4,
   "line": 23,
-  "start": 31.56,
-  "end": 32.06,
+  "start": 31.22,
+  "end": 31.74,
   "heard": true
  },
  {
   "text": "paths",
+  "section": 4,
+  "line": 24,
+  "start": 32.02,
+  "end": 32.2,
+  "heard": true
+ },
+ {
+  "text": "and",
+  "section": 4,
+  "line": 24,
+  "start": 32.24,
+  "end": 32.299,
+  "heard": true
+ },
+ {
+  "text": "planes",
   "section": 4,
   "line": 24,
   "start": 32.36,
@@ -920,67 +936,51 @@
   "heard": true
  },
  {
-  "text": "and",
-  "section": 4,
-  "line": 24,
-  "start": 32.56,
-  "end": 32.64,
-  "heard": true
- },
- {
-  "text": "planes",
-  "section": 4,
-  "line": 24,
-  "start": 32.68,
-  "end": 32.88,
-  "heard": true
- },
- {
   "text": "in",
   "section": 4,
   "line": 24,
-  "start": 32.92,
-  "end": 32.98,
-  "heard": true
+  "start": 32.54,
+  "end": 32.7,
+  "heard": false
  },
  {
   "text": "motion,",
   "section": 4,
   "line": 24,
-  "start": 33.04,
-  "end": 33.32,
+  "start": 32.7,
+  "end": 32.98,
   "heard": true
  },
  {
   "text": "cubes",
   "section": 4,
   "line": 25,
-  "start": 33.54,
-  "end": 33.72,
+  "start": 33.04,
+  "end": 33.36,
   "heard": true
  },
  {
   "text": "in",
   "section": 4,
   "line": 25,
-  "start": 33.78,
-  "end": 33.86,
+  "start": 33.42,
+  "end": 33.52,
   "heard": true
  },
  {
   "text": "every",
   "section": 4,
   "line": 25,
-  "start": 33.92,
-  "end": 34.14,
+  "start": 33.6,
+  "end": 33.8,
   "heard": true
  },
  {
   "text": "direction,",
   "section": 4,
   "line": 25,
-  "start": 34.2,
-  "end": 34.66,
+  "start": 33.86,
+  "end": 34.44,
   "heard": true
  },
  {
@@ -988,14 +988,14 @@
   "section": 4,
   "line": 26,
   "start": 34.74,
-  "end": 34.98,
+  "end": 35,
   "heard": true
  },
  {
   "text": "round",
   "section": 4,
   "line": 26,
-  "start": 35.06,
+  "start": 35.04,
   "end": 35.2,
   "heard": true
  },
@@ -1012,15 +1012,15 @@
   "section": 4,
   "line": 26,
   "start": 35.38,
-  "end": 35.6,
+  "end": 35.64,
   "heard": true
  },
  {
   "text": "through,",
   "section": 4,
   "line": 26,
-  "start": 35.7,
-  "end": 35.96,
+  "start": 35.68,
+  "end": 35.98,
   "heard": true
  },
  {
@@ -1035,7 +1035,7 @@
   "text": "it",
   "section": 4,
   "line": 27,
-  "start": 36.26,
+  "start": 36.24,
   "end": 36.32,
   "heard": true
  },
@@ -1052,15 +1052,15 @@
   "section": 4,
   "line": 27,
   "start": 36.56,
-  "end": 36.66,
+  "end": 36.68,
   "heard": true
  },
  {
   "text": "depth.",
   "section": 4,
   "line": 27,
-  "start": 36.72,
-  "end": 37.02,
+  "start": 36.74,
+  "end": 37,
   "heard": true
  },
  {
@@ -1076,7 +1076,7 @@
   "section": 5,
   "line": 28,
   "start": 37.6,
-  "end": 37.64,
+  "end": 37.66,
   "heard": true
  },
  {
@@ -1084,14 +1084,14 @@
   "section": 5,
   "line": 28,
   "start": 37.7,
-  "end": 37.86,
+  "end": 37.88,
   "heard": true
  },
  {
   "text": "and",
   "section": 5,
   "line": 28,
-  "start": 37.9,
+  "start": 37.92,
   "end": 38,
   "heard": true
  },
@@ -1107,7 +1107,7 @@
   "text": "it",
   "section": 5,
   "line": 28,
-  "start": 38.22,
+  "start": 38.24,
   "end": 38.34,
   "heard": true
  },
@@ -1116,7 +1116,7 @@
   "section": 5,
   "line": 28,
   "start": 38.4,
-  "end": 38.6,
+  "end": 38.66,
   "heard": true
  },
  {
@@ -1124,39 +1124,39 @@
   "section": 5,
   "line": 29,
   "start": 38.7,
-  "end": 38.84,
+  "end": 38.82,
   "heard": true
  },
  {
   "text": "the",
   "section": 5,
   "line": 29,
-  "start": 38.88,
-  "end": 38.96,
+  "start": 38.86,
+  "end": 38.92,
   "heard": true
  },
  {
   "text": "vertices",
   "section": 5,
   "line": 29,
-  "start": 39.04,
-  "end": 39.46,
+  "start": 38.98,
+  "end": 39.34,
   "heard": true
  },
  {
   "text": "to",
   "section": 5,
   "line": 29,
-  "start": 39.5,
-  "end": 39.56,
+  "start": 39.4,
+  "end": 39.48,
   "heard": true
  },
  {
   "text": "the",
   "section": 5,
   "line": 29,
-  "start": 39.6,
-  "end": 39.68,
+  "start": 39.54,
+  "end": 39.66,
   "heard": true
  },
  {
@@ -1188,7 +1188,7 @@
   "section": 5,
   "line": 30,
   "start": 40.56,
-  "end": 40.64,
+  "end": 40.66,
   "heard": true
  },
  {
@@ -1203,31 +1203,31 @@
   "text": "the",
   "section": 5,
   "line": 30,
-  "start": 40.86,
-  "end": 40.92,
+  "start": 40.88,
+  "end": 40.96,
   "heard": true
  },
  {
   "text": "space,",
   "section": 5,
   "line": 30,
-  "start": 41.02,
-  "end": 41.24,
+  "start": 41.04,
+  "end": 41.34,
   "heard": true
  },
  {
   "text": "every",
   "section": 5,
   "line": 31,
-  "start": 41.4,
-  "end": 41.62,
+  "start": 41.42,
+  "end": 41.64,
   "heard": true
  },
  {
   "text": "frame",
   "section": 5,
   "line": 31,
-  "start": 41.68,
+  "start": 41.7,
   "end": 41.86,
   "heard": true
  },
@@ -1236,30 +1236,30 @@
   "section": 5,
   "line": 31,
   "start": 41.92,
-  "end": 41.98,
+  "end": 42,
   "heard": true
  },
  {
   "text": "different",
   "section": 5,
   "line": 31,
-  "start": 42.02,
-  "end": 42.3,
+  "start": 42.04,
+  "end": 42.32,
   "heard": true
  },
  {
   "text": "shape.",
   "section": 5,
   "line": 31,
-  "start": 42.36,
-  "end": 42.66,
+  "start": 42.38,
+  "end": 42.6,
   "heard": true
  },
  {
   "text": "It's",
   "section": 6,
   "line": 32,
-  "start": 42.72,
+  "start": 42.74,
   "end": 42.82,
   "heard": true
  },
@@ -1267,16 +1267,16 @@
   "text": "just",
   "section": 6,
   "line": 32,
-  "start": 42.86,
-  "end": 42.98,
+  "start": 42.88,
+  "end": 43.02,
   "heard": true
  },
  {
   "text": "code,",
   "section": 6,
   "line": 32,
-  "start": 43.04,
-  "end": 43.3,
+  "start": 43.08,
+  "end": 43.32,
   "heard": true
  },
  {
@@ -1291,7 +1291,7 @@
   "text": "it",
   "section": 6,
   "line": 32,
-  "start": 43.56,
+  "start": 43.58,
   "end": 43.66,
   "heard": true
  },
@@ -1299,8 +1299,8 @@
   "text": "once,",
   "section": 6,
   "line": 32,
-  "start": 43.76,
-  "end": 43.98,
+  "start": 43.78,
+  "end": 44,
   "heard": true
  },
  {
@@ -1308,7 +1308,7 @@
   "section": 6,
   "line": 33,
   "start": 44.04,
-  "end": 44.16,
+  "end": 44.18,
   "heard": true
  },
  {
@@ -1316,7 +1316,7 @@
   "section": 6,
   "line": 33,
   "start": 44.22,
-  "end": 44.28,
+  "end": 44.3,
   "heard": true
  },
  {
@@ -1324,15 +1324,15 @@
   "section": 6,
   "line": 33,
   "start": 44.36,
-  "end": 44.52,
+  "end": 44.54,
   "heard": true
  },
  {
   "text": "it,",
   "section": 6,
   "line": 33,
-  "start": 44.58,
-  "end": 44.64,
+  "start": 44.6,
+  "end": 44.66,
   "heard": true
  },
  {
@@ -1356,23 +1356,23 @@
   "section": 6,
   "line": 33,
   "start": 45.04,
-  "end": 45.24,
+  "end": 45.26,
   "heard": true
  },
  {
   "text": "stack",
   "section": 6,
   "line": 34,
-  "start": 45.32,
-  "end": 45.5,
+  "start": 45.34,
+  "end": 45.52,
   "heard": true
  },
  {
   "text": "the",
   "section": 6,
   "line": 34,
-  "start": 45.54,
-  "end": 45.62,
+  "start": 45.56,
+  "end": 45.64,
   "heard": true
  },
  {
@@ -1387,24 +1387,24 @@
   "text": "comp",
   "section": 6,
   "line": 34,
-  "start": 46.02,
-  "end": 46.18,
+  "start": 46.04,
+  "end": 46.2,
   "heard": true
  },
  {
   "text": "it",
   "section": 6,
   "line": 34,
-  "start": 46.22,
-  "end": 46.32,
+  "start": 46.24,
+  "end": 46.34,
   "heard": true
  },
  {
   "text": "through,",
   "section": 6,
   "line": 34,
-  "start": 46.34,
-  "end": 46.64,
+  "start": 46.38,
+  "end": 46.66,
   "heard": true
  },
  {
@@ -1419,8 +1419,8 @@
   "text": "true",
   "section": 6,
   "line": 35,
-  "start": 47.04,
-  "end": 47.32,
+  "start": 47.06,
+  "end": 47.34,
   "heard": true
  },
  {
@@ -1428,15 +1428,15 @@
   "section": 6,
   "line": 35,
   "start": 47.42,
-  "end": 47.64,
+  "end": 47.66,
   "heard": true
  },
  {
   "text": "night.",
   "section": 6,
   "line": 35,
-  "start": 47.7,
-  "end": 48,
+  "start": 47.72,
+  "end": 47.98,
   "heard": true
  },
  {
@@ -1444,7 +1444,7 @@
   "section": 7,
   "line": 36,
   "start": 48.04,
-  "end": 48.34,
+  "end": 48.32,
   "heard": true
  },
  {
@@ -1452,7 +1452,7 @@
   "section": 7,
   "line": 36,
   "start": 48.38,
-  "end": 48.62,
+  "end": 48.58,
   "heard": true
  },
  {
@@ -1460,31 +1460,31 @@
   "section": 7,
   "line": 36,
   "start": 48.7,
-  "end": 49.02,
+  "end": 49,
   "heard": true
  },
  {
   "text": "shader",
   "section": 7,
   "line": 37,
-  "start": 49.34,
-  "end": 49.64,
+  "start": 49.32,
+  "end": 49.66,
   "heard": true
  },
  {
   "text": "by",
   "section": 7,
   "line": 37,
-  "start": 49.7,
-  "end": 49.82,
+  "start": 49.72,
+  "end": 49.9,
   "heard": true
  },
  {
   "text": "shader,",
   "section": 7,
   "line": 37,
-  "start": 49.88,
-  "end": 50.42,
+  "start": 50,
+  "end": 50.4,
   "heard": true
  },
  {
@@ -1500,54 +1500,54 @@
   "section": 7,
   "line": 38,
   "start": 50.94,
-  "end": 51.02,
+  "end": 51,
   "heard": true
  },
  {
   "text": "grain",
   "section": 7,
   "line": 38,
-  "start": 51.18,
-  "end": 51.4,
+  "start": 51.36,
+  "end": 51.58,
   "heard": true
  },
  {
   "text": "it,",
   "section": 7,
   "line": 38,
-  "start": 51.46,
-  "end": 51.54,
+  "start": 51.64,
+  "end": 51.7,
   "heard": true
  },
  {
   "text": "glitch",
   "section": 7,
   "line": 38,
-  "start": 51.66,
-  "end": 51.9,
+  "start": 52,
+  "end": 52.2,
   "heard": true
  },
  {
   "text": "it,",
   "section": 7,
   "line": 38,
-  "start": 51.98,
-  "end": 52.04,
+  "start": 52.26,
+  "end": 52.3,
   "heard": true
  },
  {
   "text": "make",
   "section": 7,
   "line": 38,
-  "start": 52.34,
-  "end": 52.5,
+  "start": 52.36,
+  "end": 52.52,
   "heard": true
  },
  {
   "text": "it",
   "section": 7,
   "line": 38,
-  "start": 52.56,
+  "start": 52.58,
   "end": 52.64,
   "heard": true
  },
@@ -1595,40 +1595,40 @@
   "text": "and",
   "section": 7,
   "line": 40,
-  "start": 55.06,
-  "end": 55.18,
+  "start": 55.1,
+  "end": 55.3,
   "heard": true
  },
  {
   "text": "faster!",
   "section": 7,
   "line": 40,
-  "start": 55.24,
-  "end": 55.9,
+  "start": 55.36,
+  "end": 55.84,
   "heard": true
  },
  {
   "text": "Framefields.",
   "section": 8,
   "line": 41,
-  "start": 55.98,
-  "end": 56.88,
+  "start": 56.26,
+  "end": 56.9,
   "heard": true
  },
  {
   "text": "Motion,",
   "section": 8,
   "line": 42,
-  "start": 57.36,
-  "end": 57.78,
+  "start": 57.34,
+  "end": 57.8,
   "heard": true
  },
  {
   "text": "compiled.",
   "section": 8,
   "line": 42,
-  "start": 57.84,
-  "end": 58.52,
+  "start": 57.86,
+  "end": 58.5,
   "heard": true
  }
 ]

@@ -1,4 +1,4 @@
-import { execSync, spawn } from "node:child_process";
+import { exec, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -64,9 +64,9 @@ import {
 	mediaDecoderCache,
 	NodeSurfaceProvider,
 	type RenderContextValue,
-	Renderer2D,
-	shaderStore,
+	type Renderer2D,
 	SlugFontCache,
+	shaderStore,
 	textureCache,
 	WebGPUAudioProcessor,
 } from "@framefields/webgpu-renderers";
@@ -371,6 +371,131 @@ function resolveQuality(quality?: string) {
 	}
 }
 
+// ─── VRAM telemetry ────────────────────────────────────────────────────────────
+//
+// nvidia-smi is probed asynchronously and cached. The previous implementation
+// ran `execSync` from inside the 5s stats interval, which blocked the event
+// loop — and therefore the frame loop and DMA map callbacks — for tens of ms on
+// exactly the NVIDIA hosts that render the most. `getVramUsage()` now returns
+// the latest sample; `refreshVramUsage()` refreshes it off the event loop.
+
+let cachedVramUsage = "N/A";
+let vramProbeInFlight = false;
+
+function refreshVramUsage(): void {
+	if (vramProbeInFlight) return;
+	vramProbeInFlight = true;
+	exec(
+		"nvidia-smi --query-gpu=memory.used,memory.total --format=csv,noheader,nounits",
+		{ encoding: "utf-8", timeout: 2000 },
+		(err, stdout) => {
+			vramProbeInFlight = false;
+			if (err || !stdout) return;
+			const [used, total] = stdout
+				.trim()
+				.split(",")
+				.map((s) => s.trim());
+			if (used && total) {
+				cachedVramUsage = `${used}MB / ${total}MB`;
+			}
+		},
+	);
+}
+
+function getVramUsage(): string {
+	return cachedVramUsage;
+}
+
+// ─── DMA staging ring depth ────────────────────────────────────────────────────
+//
+// The ring overlaps GPU rendering of frame i+1 with the DMA readback and
+// hardware encode of frame i. A deeper ring hides more encoder variance at the
+// cost of VRAM (~8.3MB/slot at 1080p RGBA). Default stays at 2 so behavior is
+// unchanged unless a caller or the environment opts in.
+
+const DEFAULT_RING_CAPACITY = 2;
+const MIN_RING_CAPACITY = 2;
+const MAX_RING_CAPACITY = 8;
+
+function resolveRingCapacity(explicit?: number): number {
+	const fromEnv = Number(process.env.FRAMEFIELDS_RING_CAPACITY);
+	const requested =
+		explicit ?? (Number.isFinite(fromEnv) && fromEnv > 0 ? fromEnv : NaN);
+	if (!Number.isFinite(requested) || requested <= 0) {
+		return DEFAULT_RING_CAPACITY;
+	}
+	return Math.max(
+		MIN_RING_CAPACITY,
+		Math.min(MAX_RING_CAPACITY, Math.floor(requested)),
+	);
+}
+
+// ─── Reusable render surface pool ──────────────────────────────────────────────
+//
+// `renderImage` is called once per still frame (frame-by-frame exports,
+// scrubbing, the renderer-service image path). Allocating and destroying the
+// native render target + readback staging buffer on every call is pure overhead:
+// the surface is cleared at the start of each frame, so it can be reused.
+// Surfaces are only checked out while the render semaphore is held, so two
+// concurrent renders never share one.
+
+class NodeSurfacePool {
+	private readonly idle: Array<{
+		device: GPUDevice;
+		surface: NodeSurfaceProvider;
+	}> = [];
+	private readonly maxIdle = 2;
+
+	acquire(
+		device: GPUDevice,
+		width: number,
+		height: number,
+	): NodeSurfaceProvider {
+		const index = this.idle.findIndex(
+			(entry) =>
+				entry.device === device &&
+				entry.surface.width === width &&
+				entry.surface.height === height,
+		);
+		if (index >= 0) {
+			const [entry] = this.idle.splice(index, 1);
+			if (entry) return entry.surface;
+		}
+		// Drop any surfaces belonging to a previous device (it was lost and
+		// `ensureDevice` created a new one); they are no longer usable.
+		for (let i = this.idle.length - 1; i >= 0; i--) {
+			const entry = this.idle[i];
+			if (entry && entry.device !== device) {
+				this.idle.splice(i, 1);
+				try {
+					entry.surface.destroy();
+				} catch {}
+			}
+		}
+		return new NodeSurfaceProvider(device, width, height);
+	}
+
+	release(device: GPUDevice, surface: NodeSurfaceProvider): void {
+		if (this.idle.length >= this.maxIdle) {
+			try {
+				surface.destroy();
+			} catch {}
+			return;
+		}
+		this.idle.push({ device, surface });
+	}
+
+	destroy(): void {
+		for (const entry of this.idle.splice(0)) {
+			try {
+				entry.surface.destroy();
+			} catch {}
+		}
+	}
+}
+
+const nodeSurfacePool = new NodeSurfacePool();
+
 function formatLutAsCube(lut: {
 	points: Array<[number, number, number]>;
 	size: number;
@@ -491,7 +616,7 @@ export class HeadlessWebGPURenderer {
 
 		try {
 			await preloadFonts(virtualMedia, device);
-			surface = new NodeSurfaceProvider(device, width, height);
+			surface = nodeSurfacePool.acquire(device, width, height);
 			renderer = getRenderer2D(device, surface.colorFormat);
 			const ctx: RenderContextValue = { device, renderer, surface };
 			updateClockSignals(
@@ -610,10 +735,10 @@ export class HeadlessWebGPURenderer {
 			// "UnsupportedInputFormatError". renderImage is called repeatedly for
 			// multi-frame exports, so keep the decoder (and the singleton WebGPU
 			// device) alive to reuse + seek across frames — mirroring renderVideo.
-			// Per-frame textures / surfaces are still released to bound VRAM.
-			try {
-				surface?.destroy();
-			} catch {}
+			// The render surface (target texture + readback buffer) returns to the
+			// pool instead of being destroyed, so repeated stills skip the native
+			// allocation. Cached media textures are still released to bound VRAM.
+			if (surface) nodeSurfacePool.release(device, surface);
 			try {
 				textureCache.destroy();
 			} catch {}
@@ -896,6 +1021,13 @@ export class HeadlessWebGPURenderer {
 			quality?: string;
 			concurrency?: number;
 			/**
+			 * Depth of the DMA staging ring (default 2, clamped 2–8). A deeper
+			 * ring overlaps more encoder latency at the cost of VRAM
+			 * (~8.3MB/slot at 1080p RGBA). Also settable via
+			 * `FRAMEFIELDS_RING_CAPACITY`.
+			 */
+			ringCapacity?: number;
+			/**
 			 * Measure the output while it renders (black and frozen frames,
 			 * dropped frames, loudness, clipping, silence, document warnings)
 			 * and return the findings as `qa`. `true` uses default thresholds.
@@ -1008,29 +1140,12 @@ export class HeadlessWebGPURenderer {
 			return `Process: ${rssMb}MB RSS (${heapUsedMb}MB/${heapTotalMb}MB Heap), System: ${sysUsedMb}MB/${sysTotalMb}MB`;
 		};
 
-		const getVramUsage = () => {
-			try {
-				const out = execSync(
-					"nvidia-smi --query-gpu=memory.used,memory.total --format=csv,noheader,nounits",
-					{
-						encoding: "utf-8",
-						stdio: ["ignore", "pipe", "ignore"],
-					},
-				);
-				const [used, total] = out
-					.trim()
-					.split(",")
-					.map((s) => s.trim());
-				if (used && total) {
-					return `${used}MB / ${total}MB`;
-				}
-			} catch {}
-			return "N/A";
-		};
-
 		let statsInterval: NodeJS.Timeout | undefined;
 		if (process.env.NODE_ENV === "production") {
 			statsInterval = setInterval(() => {
+				// Kick off an async sample; the log line reports the previous one
+				// rather than blocking the event loop to gather a fresh value.
+				refreshVramUsage();
 				rendererLogger.info(
 					{
 						renderId,
@@ -1095,7 +1210,7 @@ export class HeadlessWebGPURenderer {
 					height,
 					fps,
 					videoSource,
-					ringCapacity: 2,
+					ringCapacity: resolveRingCapacity(options?.ringCapacity),
 					onFrame: inspector
 						? (rgba) => inspector.inspect(rgba, width, height)
 						: undefined,

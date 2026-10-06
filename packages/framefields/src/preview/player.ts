@@ -174,6 +174,7 @@ async function createPlayer(
 		durationMs,
 		frameCount: Math.max(1, Math.round((durationMs / 1000) * fps)),
 	};
+	const hasVision = containsOp(vm as VirtualMediaData, "Vision");
 
 	const device = await acquireDevice();
 	const canvas =
@@ -191,6 +192,69 @@ async function createPlayer(
 	let waiters: Array<(f: number) => void> = [];
 
 	let offscreen: GPUTexture | undefined;
+
+	// Frames drawn on screen are kept so stepping or scrubbing back to one is a
+	// blit, not a re-render. Full resolution, bounded by a byte budget; playback
+	// still uses the reduced-res ring below. Vision compositions are excluded:
+	// their frames depend on the one before, so a hit would skip that work.
+	const renderCache = new Map<number, { tex: GPUTexture; used: number }>();
+	const renderCacheMax = Math.max(
+		1,
+		Math.min(
+			240,
+			Math.floor(
+				(128 * 1024 * 1024) / Math.max(1, canvas.width * canvas.height * 4),
+			),
+		),
+	);
+	let renderCacheClock = 0;
+
+	function newRenderCacheTexture(): GPUTexture {
+		return device.createTexture({
+			size: [canvas.width, canvas.height],
+			format: surface.colorFormat,
+			usage:
+				GPUTextureUsage.RENDER_ATTACHMENT |
+				GPUTextureUsage.TEXTURE_BINDING |
+				GPUTextureUsage.COPY_DST,
+			label: "preview_frame_cache",
+		});
+	}
+
+	function takeRenderCache(frame: number): GPUTexture | undefined {
+		if (hasVision) return undefined;
+		const hit = renderCache.get(frame);
+		if (!hit) return undefined;
+		hit.used = ++renderCacheClock;
+		return hit.tex;
+	}
+
+	function storeRenderCache(frame: number, tex: GPUTexture): void {
+		if (hasVision) {
+			tex.destroy();
+			return;
+		}
+		const existing = renderCache.get(frame);
+		if (existing) {
+			if (existing.tex !== tex) existing.tex.destroy();
+			renderCache.delete(frame);
+		}
+		renderCache.set(frame, { tex, used: ++renderCacheClock });
+		while (renderCache.size > renderCacheMax) {
+			let oldestKey: number | undefined;
+			let oldestUsed = Number.POSITIVE_INFINITY;
+			for (const [key, entry] of renderCache) {
+				if (entry.used < oldestUsed) {
+					oldestUsed = entry.used;
+					oldestKey = key;
+				}
+			}
+			if (oldestKey === undefined) break;
+			const evicted = renderCache.get(oldestKey);
+			renderCache.delete(oldestKey);
+			evicted?.tex.destroy();
+		}
+	}
 
 	async function draw(frame: number, toScreen = true): Promise<void> {
 		const renderer = getRenderer2D(device, surface.colorFormat);
@@ -261,9 +325,18 @@ async function createPlayer(
 			vm as VirtualMediaData,
 			props,
 		);
+		let cacheTex: GPUTexture | undefined;
+		if (toScreen) {
+			cacheTex = newRenderCacheTexture();
+			encoder.copyTextureToTexture({ texture: tex }, { texture: cacheTex }, [
+				w,
+				h,
+			]);
+		}
 		device.queue.submit([encoder.finish()]);
 		if (toScreen) surface.present();
 		await device.queue.onSubmittedWorkDone();
+		if (cacheTex) storeRenderCache(frame, cacheTex);
 	}
 
 	// One frame at a time. Requests made while a frame draws collapse to the
@@ -276,7 +349,13 @@ async function createPlayer(
 				wanted = null;
 				const started = performance.now();
 				try {
-					await draw(f);
+					const cached = takeRenderCache(f);
+					if (cached) {
+						blitter.blit(cached, surface.getCurrentTexture());
+						surface.present();
+					} else {
+						await draw(f);
+					}
 				} catch (err) {
 					console.error("[framefields] frame", f, err);
 				}
@@ -343,6 +422,15 @@ async function createPlayer(
 			if (token !== bufferToken) return;
 			const frame = produced;
 			const slot = frame % capacity;
+			const cached = takeRenderCache(frame);
+			if (cached) {
+				blitter.blit(cached, ringTexture(slot));
+				ringFrames[slot] = frame;
+				produced = frame + 1;
+				// Yield so a run of cached frames can't starve the page.
+				await new Promise((r) => setTimeout(r, 0));
+				continue;
+			}
 			drawing = draw(frame, false)
 				.then(() => {
 					if (offscreen) blitter.blit(offscreen, ringTexture(slot));
@@ -403,7 +491,7 @@ async function createPlayer(
 		meta,
 		canvas,
 		lastRenderMs: 0,
-		hasVision: containsOp(vm as VirtualMediaData, "Vision"),
+		hasVision,
 		render(frame) {
 			wanted = frame;
 			const done = new Promise<number>((resolve) => waiters.push(resolve));

@@ -209,7 +209,7 @@ Each track represents animatable property modifications:
 - **glTF scenes:** a glTF/GLB `model3d` keeps its node hierarchy, every skin and its animation clips (translation, rotation, scale; linear, step and cubic-spline). Skinned meshes are posed per frame from the clip (`animationName`, `animationTime`/`animationProgress`, `loop`); base-colour textures (with mipmaps), alpha `MASK`/`BLEND` and VRM MToon materials (`material: "toon"`, picked automatically when `material` is unset) render as authored. `center`/`normalizeSize` apply above the scene graph, so skinning stays intact.
 
 ## Don't Forget
-- If text rendering required, you must include a font in spec (CLI TOOL only). By default emoji font is not loaded. NotoColorEmoji seems to be working well. Try to use NotoColorEmoji as default font for emojis.
+- If text rendering required, you must include a font in spec (CLI TOOL only). No emoji font ships with framefields: to draw emoji, provide a color emoji font yourself with `FontManager.registerEmojiFont(path)` (a CBDT/CBLC bitmap font such as Noto Color Emoji).
 - The `layout` tree IS the composition — there is no other layer model. Every **media** node
   needs a valid `inputHandleId` matching a connected input, and every node needs a `kind`.
 - `type` is an input DataType — never put it on layout nodes; use `kind`.

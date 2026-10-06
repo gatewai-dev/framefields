@@ -7,7 +7,6 @@
  */
 
 import { BUILTIN_NODE_RENDERERS } from "framefields-preview:renderers";
-import { GetFontAssetUrl } from "@framefields/client-utils";
 import {
 	compositionStateStore,
 	drawCompositionTree,
@@ -18,7 +17,7 @@ import {
 	type NodeRendererPlugin,
 	registerWebGPURenderer,
 } from "@framefields/node-sdk";
-import { preloadFont } from "@framefields/renderers";
+import { preloadCompositionFonts } from "@framefields/renderers";
 import {
 	type OrtWebModule,
 	setDefaultSessionProvider,
@@ -27,7 +26,6 @@ import {
 import {
 	acquireDevice,
 	BrowserSurfaceProvider,
-	getHeadlessFontPath,
 	getRenderer2D,
 	lutStore,
 	type RenderContextValue,
@@ -175,6 +173,8 @@ async function createPlayer(
 		frameCount: Math.max(1, Math.round((durationMs / 1000) * fps)),
 	};
 	const hasVision = containsOp(vm as VirtualMediaData, "Vision");
+	// As the export decides it, so text entrances play the same.
+	const isVideoMode = vm.operation?.dataType === "Video";
 
 	const device = await acquireDevice();
 	const canvas =
@@ -183,7 +183,7 @@ async function createPlayer(
 	canvas.width = width % 2 ? width + 1 : width;
 	canvas.height = height % 2 ? height + 1 : height;
 	const surface = new BrowserSurfaceProvider(device, canvas);
-	await preloadFonts(vm, device);
+	await preloadCompositionFonts(vm, device);
 
 	const renderId = `preview-${Math.random().toString(36).slice(2)}`;
 	let first = true;
@@ -269,7 +269,10 @@ async function createPlayer(
 			virtualMedia: vm as VirtualMediaData,
 			containerWidth: w,
 			containerHeight: h,
-			isVideoMode: true,
+			isVideoMode,
+			// Every drawn frame is cached or buffered, so it waits for its LUTs
+			// and exact video frame as the export does, never a stand-in.
+			forceWait: true,
 		};
 		updateClockSignals(frame, fps, durationMs || undefined);
 
@@ -594,38 +597,6 @@ async function registerRenderers(renderers: readonly BuiltinRenderer[]) {
 					err,
 				);
 			}
-		}),
-	);
-}
-
-/** Loads every font the program's text uses, for layout and for drawing. */
-async function preloadFonts(vm: VirtualMediaData, device: GPUDevice) {
-	const families = new Set<string>();
-	(function walk(node: VirtualMediaData) {
-		const op = node.operation as Record<string, unknown> | undefined;
-		if (op) {
-			const isText =
-				op.op === "text" ||
-				op.kind === "text" ||
-				op.op === "caption" ||
-				op.kind === "caption" ||
-				typeof op.text === "string";
-			const family = (op.fontFamily as string) || (isText ? "Inter" : "");
-			if (family) families.add(family);
-		}
-		for (const child of node.children ?? []) walk(child);
-	})(vm);
-	await Promise.all(
-		[...families].map(async (family) => {
-			const url = getHeadlessFontPath(family) ?? GetFontAssetUrl(family);
-			await Promise.all([
-				preloadFont(family, url).catch((err: unknown) =>
-					console.warn(`[framefields] font "${family}"`, err),
-				),
-				SlugFontCache.preloadSlugFont(device, family, url).catch(
-					(err: unknown) => console.warn(`[framefields] font "${family}"`, err),
-				),
-			]);
 		}),
 	);
 }

@@ -235,7 +235,7 @@ Anything else (a number, `undefined`) throws. Signals are sampled at the **compo
 1. **Local Keyframe Coordinates:** Keyframes are strictly relative to the node's own timeline window (`0` = node appearance). Never offset keyframe frames by the parent's `startFrame`.
 2. **Coordinate Overrides:** Animating `y` overrides the node's layout `y`. If a node is placed at `y: 400`, animate `fromTo("y", 440, 400)`, NOT `fromTo("y", 40, 0)`.
 3. **No String Styles for Borders:** Use `borderColor` and `borderWidth`. CSS `border: "1px solid red"` is silently ignored.
-4. **Font Registration is Mandatory:** In headless WebGPU, system fonts do not exist. Every font must be registered via `FontManager.register()` and listed in `comp.fonts`.
+4. **Font Registration is Mandatory:** In headless WebGPU, system fonts do not exist. Every font must be registered via `FontManager.register()` and listed in `comp.fonts`. Emoji need a color emoji font too: framefields ships none, so register one with `FontManager.registerEmojiFont("assets/fonts/NotoColorEmoji.ttf")` (a CBDT/CBLC bitmap font such as Noto Color Emoji). Without it exports draw nothing for emoji.
 5. **Integer Frames Only:** Keyframe frames, start frames, and durations must be integers. Decimal frames cause schema validation errors.
 6. **Relative vs. Absolute:** Providing `x` or `y` without `position: "relative"` turns the node into an absolute-positioned layer removed from flex flow.
 7. **Audio Layer Duration:** Every `Layer.audio()` must be assigned `durationFrames` to prevent audio truncation in headless rendering.

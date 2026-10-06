@@ -1,6 +1,6 @@
 {
 	"name": "@framefields/node-sdk",
-	"version": "2.0.2",
+	"version": "2.0.3",
 	"private": false,
 	"publishConfig": {
 		"access": "public"
@@ -42,10 +42,10 @@
 		"webgpu": "^0.4.0"
 	},
 	"peerDependencies": {
-		"@framefields/core": "workspace:*",
 		"zod": "^4.3.6"
 	},
 	"dependencies": {
+		"@framefields/core": "workspace:*",
 		"@framefields/webgpu-renderers": "workspace:*"
 	}
 }

@@ -1,5 +1,24 @@
 # framefields
 
+## 2.0.3
+
+### Patch Changes
+
+- 4bf477c: Preview: the page's errors and the server's lifecycle are printed where the preview runs, `session.closed` resolves with why it stopped, the playhead survives reloads and `#t=` links, and `window.framefieldsPreview` lets scripts seek, play and read state. The audio mixer no longer prints its progress at info level.
+
+  Preview notes: pause and click the picture (or drag an area) to pin a note to that spot and moment. Notes are saved in `.framefields/preview-notes/` (`notes.json` plus the frame with the spot marked), printed in the preview's output, listed in a Notes panel and on the timeline, and can be ticked off or copied for a chat. `notesDir` moves them, `false` turns them off.
+
+  Preview playback: pausing keeps the frames rendered ahead (and keeps filling them), so playing on starts at once; moving the playhead clears them. Fixes a seek that could wait forever when it landed while a buffered frame was drawing.
+
+- ea9edc3: Preview: drawn frames are cached, so stepping or scrubbing back to a frame you have already seen is a blit instead of a re-render. The cache is full-resolution and bounded by a byte budget, and is disabled for compositions that use vision (whose frames depend on the one before them).
+- 52c2e8b: The live preview now works from the published package. The browser engine (framefields, the player and the Node shims) is prebuilt into `dist/preview-engine` (about 3 MB) and served to the page as separate modules. At preview time only the project's own files are bundled, against that engine. onnxruntime-web, needed only for vision effects, comes from the project's install when present and otherwise from a pinned CDN build, so its WebAssembly isn't shipped. Fonts referenced by family only (`assets/fonts/<Family>.ttf`) are served from the project folder, as the export engine reads them.
+- 51b0daf: Rendering performance for the headless / server-GPU path:
+
+  - VRAM telemetry no longer blocks the event loop. The renderer's 5-second stats probe ran `nvidia-smi` with `execSync`; it is now sampled asynchronously and cached, so it can no longer stall the frame loop and DMA callbacks on NVIDIA hosts.
+  - `renderVideo` accepts `ringCapacity` (also `FRAMEFIELDS_RING_CAPACITY`, clamped 2–8) to tune the DMA staging ring depth. The default stays at 2.
+  - `renderImage` reuses render surfaces across stills instead of allocating and destroying the native render target and readback staging buffer on every call.
+  - Headless video decode reuses a single RGBA staging buffer per decoder instead of allocating a full-frame buffer for every decoded frame.
+
 ## 2.0.2
 
 ### Patch Changes

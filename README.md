@@ -50,6 +50,8 @@ Every frame of these films is rendered by framefields from TypeScript in [`examp
 > [!NOTE]
 > **Using an AI coding agent?** Install the framefields skills in one line.
 >
+> **Note:** Framefields plugin in claude takes a bit long... Please use the alternative skills installation for now.
+>
 > **Claude Code**
 > ```text
 > /plugin install framefields

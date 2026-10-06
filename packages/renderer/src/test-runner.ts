@@ -10,11 +10,7 @@ async function runTests() {
 	globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
 		const url =
 			typeof input === "string" ? input : (input as { url?: string }).url || "";
-		if (
-			url.includes("fonts/load") ||
-			url.includes("NotoColorEmoji") ||
-			url.includes("example.com")
-		) {
+		if (url.includes("fonts/load") || url.includes("example.com")) {
 			throw new Error("Network requests are disabled in unit tests");
 		}
 		return originalFetch(input, init);

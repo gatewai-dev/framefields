@@ -1576,6 +1576,12 @@ export class Composition {
 		return this;
 	}
 
+	/** Sets the color emoji font; see {@link FontManager.registerEmojiFont}. */
+	public async registerEmojiFont(source: string | Uint8Array): Promise<this> {
+		await FontManager.registerEmojiFont(source);
+		return this;
+	}
+
 	public toSpec(): CompositorProgramConfig {
 		const layoutItems: LayoutNode[] = [...this.children, ...this.audioTracks];
 		const registeredPaths = FontManager.getRegisteredFontPaths();

@@ -187,6 +187,22 @@ export class FontManager {
 	}
 
 	/**
+	 * Sets the color emoji font text draws emoji with, for the preview and the
+	 * export alike: a CBDT/CBLC bitmap font such as Noto Color Emoji, as a file
+	 * path, URL or bytes. framefields ships none; without one, exports draw
+	 * nothing for emoji.
+	 */
+	public static async registerEmojiFont(
+		source: string | Uint8Array,
+	): Promise<void> {
+		const { buffer, filePath } = await resolveSourceBuffer(source);
+		const label =
+			filePath ?? (typeof source === "string" ? source : "Uint8Array");
+		validateFontBinaryHeader(buffer, label);
+		SlugFontCache.setEmojiFont(buffer, filePath);
+	}
+
+	/**
 	 * Retrieves registered font metadata by family name.
 	 */
 	public static get(family: string): RegisteredFont | undefined {

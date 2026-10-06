@@ -1219,44 +1219,46 @@ export class HeadlessWebGPURenderer {
 				const ctx: RenderContextValue | null =
 					surface && renderer ? { device, renderer, surface } : null;
 
-				if (ctx && renderer) {
-					// Pre-pass: trigger and await all LUT extractions
-					{
-						const preEncoder = device.createCommandEncoder();
-						const dummyTex = renderer.getTemporaryTexture(width, height);
-						const dummyView = dummyTex.createView();
-						const preClear = renderer.beginFrame(
-							preEncoder,
-							dummyView,
-							{ r: 0, g: 0, b: 0, a: 0 },
-							width,
-							height,
-							"clear",
-						);
-						preClear.end();
-						await drawCompositionTree(
-							ctx,
-							preEncoder,
-							dummyView,
-							dummyTex,
-							width,
-							height,
+				// Pre-pass: draws a frame whose output is dropped so the LUT
+				// extractions and glyph uploads it starts finish before the frame
+				// is drawn for real.
+				const prePass = async (frame: number) => {
+					if (!ctx || !renderer) return;
+					const preEncoder = device.createCommandEncoder();
+					const dummyTex = renderer.getTemporaryTexture(width, height);
+					const dummyView = dummyTex.createView();
+					const preClear = renderer.beginFrame(
+						preEncoder,
+						dummyView,
+						{ r: 0, g: 0, b: 0, a: 0 },
+						width,
+						height,
+						"clear",
+					);
+					preClear.end();
+					await drawCompositionTree(
+						ctx,
+						preEncoder,
+						dummyView,
+						dummyTex,
+						width,
+						height,
+						virtualMedia,
+						{
+							frame,
+							fps,
+							isHeadless: true,
+							renderId,
 							virtualMedia,
-							{
-								frame: 0,
-								fps,
-								isHeadless: true,
-								renderId,
-								virtualMedia,
-								containerWidth: width,
-								containerHeight: height,
-								isVideoMode: virtualMedia.operation?.dataType === "Video",
-							},
-						);
-						device.queue.submit([preEncoder.finish()]);
-						await lutStore.awaitAllPending(device);
-					}
-				}
+							containerWidth: width,
+							containerHeight: height,
+							isVideoMode: virtualMedia.operation?.dataType === "Video",
+						},
+					);
+					device.queue.submit([preEncoder.finish()]);
+					await lutStore.awaitAllPending(device);
+				};
+				await prePass(0);
 
 				// Render and encode frames using pipelined double-buffered DMA staging ring
 				for (let i = 0; i < totalFrames; i++) {
@@ -1268,6 +1270,15 @@ export class HeadlessWebGPURenderer {
 					}
 
 					if (ctx && surface && renderer && pipeline) {
+						// Assets first used on a later frame (a LUT, a glyph) get the
+						// same pre-pass as frame 0, as renderImage and the preview do.
+						if (
+							i > 0 &&
+							(lutStore.hasPending(device) || SlugFontCache.hasPending())
+						) {
+							updateClockSignals(i, fps, durationMs);
+							await prePass(i);
+						}
 						compositionStateStore.setState(renderId, i, fps, true);
 						updateClockSignals(i, fps, durationMs);
 

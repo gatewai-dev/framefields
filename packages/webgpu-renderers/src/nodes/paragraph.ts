@@ -155,7 +155,7 @@ function getOrCreateEmojiTexture(
 	const canvas = new OffscreenCanvas(size, size);
 	const c2d = canvas.getContext("2d");
 	if (c2d) {
-		c2d.font = `${fontSize * resolutionScale}px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "NotoColorEmoji", sans-serif`;
+		c2d.font = `${fontSize * resolutionScale}px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif`;
 		c2d.textBaseline = "middle";
 		c2d.textAlign = "center";
 		c2d.fillText(char, size / 2, size / 2);

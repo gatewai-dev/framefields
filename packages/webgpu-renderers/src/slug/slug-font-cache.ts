@@ -182,11 +182,43 @@ export class SlugFontCache {
 	private static cbdtOffset = 0;
 
 	/**
+	 * Sets the color emoji font text draws emoji with: a CBDT/CBLC bitmap font
+	 * such as Noto Color Emoji. framefields ships none, so without one emoji
+	 * draw nothing in exports (the browser preview falls back to the system's).
+	 */
+	public static setEmojiFont(bytes: Uint8Array, filePath?: string): void {
+		SlugFontCache.parseTableDirectory(bytes);
+		if (!SlugFontCache.cblcOffset || !SlugFontCache.cbdtOffset) {
+			SlugFontCache.emojiFontBuffer = null;
+			throw new Error(
+				`Emoji font ${filePath ? `"${filePath}" ` : ""}has no CBDT/CBLC color bitmaps. Use a bitmap color emoji font such as Noto Color Emoji.`,
+			);
+		}
+		SlugFontCache.emojiFontPath = filePath ?? null;
+		SlugFontCache.emojiFontLoadPromise = null;
+		// Emoji drawn before the font was set are stale.
+		for (const tex of SlugFontCache.emojiTextureCache.values()) tex.destroy();
+		SlugFontCache.emojiTextureCache.clear();
+	}
+
+	/** True once an emoji font is set or a path / URL to load one from is. */
+	public static hasEmojiFont(): boolean {
+		return !!(
+			SlugFontCache.emojiFontBuffer ||
+			SlugFontCache.emojiFontPath ||
+			SlugFontCache.emojiFontUrl
+		);
+	}
+
+	/**
 	 * Parse the SFNT table directory from a raw font buffer and cache
 	 * the offsets for cmap, CBLC, and CBDT tables.
 	 */
 	private static parseTableDirectory(uint8: Uint8Array): void {
 		SlugFontCache.emojiFontBuffer = uint8;
+		SlugFontCache.cmapOffset = 0;
+		SlugFontCache.cblcOffset = 0;
+		SlugFontCache.cbdtOffset = 0;
 		const view = new DataView(uint8.buffer, uint8.byteOffset, uint8.byteLength);
 		const numTables = view.getUint16(4);
 		let offset = 12;
@@ -373,22 +405,27 @@ export class SlugFontCache {
 			!!(globalThis as Record<string, unknown>).__IS_HEADLESS_RENDERER__ ||
 			typeof window === "undefined" ||
 			typeof globalThis.document === "undefined";
+		const codePoint = char.codePointAt(0);
+		if (!codePoint) throw new Error("No codepoint");
+		const resolutionScale = 4.0;
+		const targetSize = Math.max(
+			16,
+			Math.ceil(fontSize * 1.5 * resolutionScale),
+		);
+		// Preview and export draw the same glyph from the set emoji font.
+		const pngInfo = SlugFontCache.hasEmojiFont()
+			? await SlugFontCache.getEmojiPngBuffer(codePoint)
+			: null;
 		if (isNode) {
-			const codePoint = char.codePointAt(0);
-			if (!codePoint) throw new Error("No codepoint");
-
-			const pngInfo = await SlugFontCache.getEmojiPngBuffer(codePoint);
 			if (!pngInfo) {
-				throw new Error(`Emoji glyph not found in font for ${char}`);
+				throw new Error(
+					SlugFontCache.hasEmojiFont()
+						? `Emoji glyph not found in font for ${char}`
+						: `No emoji font is set for ${char}; register one with FontManager.registerEmojiFont()`,
+				);
 			}
 
 			const sharp = (await import(/* webpackIgnore: true */ "sharp")).default;
-
-			const resolutionScale = 4.0;
-			const targetSize = Math.max(
-				16,
-				Math.ceil(fontSize * 1.5 * resolutionScale),
-			);
 
 			const { data, info } = await sharp(Buffer.from(pngInfo.buffer))
 				.ensureAlpha()
@@ -425,18 +462,48 @@ export class SlugFontCache {
 				{ bytesPerRow: info.width * 4 },
 				[info.width, info.height],
 			);
-		} else {
-			const resolutionScale = 4.0;
-			const emojiSize = Math.max(
-				16,
-				Math.ceil(fontSize * 1.5 * resolutionScale),
+		} else if (pngInfo) {
+			// The glyph's own bitmap, fitted like the export's resize.
+			const bitmap = await createImageBitmap(
+				new Blob([pngInfo.buffer as Uint8Array<ArrayBuffer>], {
+					type: "image/png",
+				}),
 			);
-			const size = Math.ceil(emojiSize / 4) * 4;
+			const canvas = new OffscreenCanvas(targetSize, targetSize);
+			const c2d = canvas.getContext("2d");
+			if (c2d) {
+				const fit = Math.min(
+					targetSize / bitmap.width,
+					targetSize / bitmap.height,
+				);
+				const w = bitmap.width * fit;
+				const h = bitmap.height * fit;
+				c2d.imageSmoothingQuality = "high";
+				c2d.drawImage(bitmap, (targetSize - w) / 2, (targetSize - h) / 2, w, h);
+			}
+			bitmap.close();
+
+			tex = device.createTexture({
+				label: `Emoji-${char}`,
+				size: [targetSize, targetSize],
+				format: "rgba8unorm",
+				usage:
+					GPUTextureUsage.TEXTURE_BINDING |
+					GPUTextureUsage.COPY_DST |
+					GPUTextureUsage.RENDER_ATTACHMENT,
+			});
+			device.queue.copyExternalImageToTexture(
+				{ source: canvas },
+				{ texture: tex, premultipliedAlpha: true },
+				[targetSize, targetSize],
+			);
+		} else {
+			const size = Math.ceil(targetSize / 4) * 4;
 
 			const canvas = new OffscreenCanvas(size, size);
 			const c2d = canvas.getContext("2d");
 			if (c2d) {
-				c2d.font = `${fontSize * resolutionScale}px "NotoColorEmoji", "Emoji", "Apple Color Emoji", "Segoe UI Emoji", sans-serif`;
+				c2d.font = `${fontSize * resolutionScale}px "Apple Color Emoji", "Segoe UI Emoji", sans-serif`;
 				c2d.textBaseline = "middle";
 				c2d.textAlign = "center";
 				c2d.fillText(char, size / 2, size / 2);
@@ -836,7 +903,7 @@ export class SlugFontCache {
 				SlugFontCache.parseTableDirectory(new Uint8Array(arrayBuffer));
 
 				// Register as a FontFace so OffscreenCanvas/canvas 2D can use it
-				const fontFace = new FontFace("NotoColorEmoji", arrayBuffer);
+				const fontFace = new FontFace("FramefieldsEmoji", arrayBuffer);
 				const loadedFace = await fontFace.load();
 				document.fonts.add(loadedFace);
 				await document.fonts.ready;
@@ -848,7 +915,7 @@ export class SlugFontCache {
 				// Notify listeners that the emoji font is ready so that canvas compositions redraw
 				SlugFontCache.listeners.forEach((l) => {
 					try {
-						l("NotoColorEmoji");
+						l("FramefieldsEmoji");
 					} catch (e) {
 						console.error("[SlugFontCache] Error in listener:", e);
 					}

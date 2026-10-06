@@ -1,3 +1,5 @@
+import { NodeWebGPUProvider } from "./node-webgpu-provider.js";
+
 /**
  * Minimal ONNX Runtime surface — isolates the ORT API to exactly two files so the decode
  * and signals layers never touch it. Node path uses onnxruntime-node (CPU EP); the web
@@ -41,9 +43,41 @@ export function setDefaultSessionProvider(
 	defaultProvider = factory;
 }
 
-/** The provider for a runner created without one. */
+/**
+ * Prefers the GPU (onnxruntime-web's WebGPU EP on the process's WebGPU device —
+ * the Dawn device the renderer already creates, or one this ensures) and falls
+ * back to the CPU provider (onnxruntime-node) when a WebGPU session cannot be
+ * created: no device, no Dawn, or the EP unavailable. The choice is made on the
+ * first session and reused for the runner's lifetime.
+ */
+export class AutoSessionProvider implements SessionProvider {
+	private _resolved?: SessionProvider;
+
+	public get kind(): "node" | "webgpu" {
+		return this._resolved?.kind ?? "webgpu";
+	}
+
+	public async createSession(modelBytes: Uint8Array): Promise<VisionSession> {
+		if (!this._resolved) {
+			const webgpu = new NodeWebGPUProvider({ wasmFallback: false });
+			try {
+				const session = await webgpu.createSession(modelBytes);
+				this._resolved = webgpu;
+				return session;
+			} catch {
+				// WebGPU isn't possible here — use CPU from now on.
+				this._resolved = new NodeSessionProvider();
+			}
+		}
+		return this._resolved.createSession(modelBytes);
+	}
+}
+
+/**
+ * The provider for a runner created without one: GPU if possible, otherwise CPU.
+ */
 export function createDefaultSessionProvider(): SessionProvider {
-	return defaultProvider?.() ?? new NodeSessionProvider();
+	return defaultProvider?.() ?? new AutoSessionProvider();
 }
 
 /** onnxruntime-node provider. The native module is imported lazily on first session. */

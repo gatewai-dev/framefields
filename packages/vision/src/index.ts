@@ -10,6 +10,7 @@ export * from "./model/registry.js";
 export * from "./pose/keypoints.js";
 export * from "./runner/canonical-baselines.js";
 export * from "./runner/vision-runner.js";
+export * from "./runtime/node-webgpu-provider.js";
 export * from "./runtime/session-provider.js";
 export * from "./segmentation/subject.js";
 export * from "./signals/vision-bundle.js";

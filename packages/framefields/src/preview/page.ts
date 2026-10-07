@@ -136,6 +136,7 @@ export const previewPage = /* html */ `<!doctype html>
   .timecode { display: flex; align-items: baseline; gap: 5px; margin-left: 8px; font-size: 13px; white-space: nowrap; }
   .timecode .dim { color: var(--ink-3); }
   .timecode .frame { color: var(--ink-3); font-size: 11.5px; margin-left: 6px; }
+  .fps { margin-left: 10px; color: var(--ink-3); font-size: 11.5px; white-space: nowrap; }
   input[type="range"].slider { -webkit-appearance: none; appearance: none; width: 72px; height: 4px; border-radius: 2px; background: var(--line-2); margin: 0 8px 0 0; }
   input[type="range"].slider::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; border-radius: 50%; background: var(--ink); border: 0; }
   input[type="range"].slider::-moz-range-thumb { width: 12px; height: 12px; border-radius: 50%; background: var(--ink); border: 0; }
@@ -148,11 +149,6 @@ export const previewPage = /* html */ `<!doctype html>
   }
   .tl-inner { position: relative; }
   .ruler { position: relative; height: 22px; border-bottom: 1px solid var(--line); }
-  /* Rendered ahead of the playhead while playing, like a video's loaded range. */
-  .buffered {
-    position: absolute; top: 20px; height: 3px; border-radius: 2px; background: var(--ink-3);
-    opacity: .55; pointer-events: none; z-index: 2; display: none;
-  }
   .tick { position: absolute; bottom: 0; width: 1px; height: 4px; background: var(--line-2); }
   .tick.major { height: 8px; background: var(--ink-3); }
   .tick span { position: absolute; bottom: 9px; left: 4px; font-size: 10.5px; line-height: 1; color: var(--ink-3); white-space: nowrap; font-variant-numeric: tabular-nums; }
@@ -324,6 +320,7 @@ export const previewPage = /* html */ `<!doctype html>
       <span id="tcNow">0:00.00</span><span class="dim">/</span><span class="dim" id="tcDur">0:00.00</span>
       <span class="frame" id="tcFrame">frame 0</span>
     </div>
+    <span class="fps tnum" id="fps" role="status" hidden></span>
     <span class="grow"></span>
     <button class="btn notes-btn" id="notesBtn" title="Notes" aria-haspopup="dialog" aria-expanded="false" hidden>
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><path d="M3 2.75h10a1.25 1.25 0 0 1 1.25 1.25v6.5A1.25 1.25 0 0 1 13 11.75H7.5L4.5 14v-2.25H3A1.25 1.25 0 0 1 1.75 10.5V4A1.25 1.25 0 0 1 3 2.75z"/></svg>
@@ -351,7 +348,6 @@ export const previewPage = /* html */ `<!doctype html>
   <div class="timeline" id="timeline" aria-label="Timeline">
     <div class="tl-inner" id="tlInner">
       <div class="ruler" id="ruler"></div>
-      <div class="buffered" id="buffered"></div>
       <div class="note-marks" id="noteMarks"></div>
       <div class="wave-lane">
         <canvas id="wave"></canvas>
@@ -441,9 +437,6 @@ export const previewPage = /* html */ `<!doctype html>
   }
   function seek(f) {
     stop();
-    // The playhead moved: frames rendered ahead of the old spot are stale.
-    if (player) player.buffer.clear();
-    $("buffered").style.display = "none";
     var done = show(clampFrame(f));
     keepPosition();
     scheduleWarm();
@@ -594,76 +587,86 @@ export const previewPage = /* html */ `<!doctype html>
     if (draft && !draft.text.trim()) cancelDraft();
     if (notesOn) renderPins();
     if (frame >= last()) frame = 0;
-    playRealtime(alive).finally(function () { if (token === playToken && playing) pause(); });
+    playFrames(alive).finally(function () { if (token === playToken && playing) pause(); });
   }
   function stop() {
     playing = false;
     stopClock();
     setStalled(false);
     setPlayingUi(false);
+    meter.stop();
+    renderFps();
   }
+
+  // ── Frame rate reached: distinct frames shown per second while playing,
+  // over the last 2 s, stalls included. The film's own rate is in meta ──
+  var meter = (function () {
+    var started = null, lastFrame = null, samples = [], lastFps = null;
+    function read() {
+      if (started === null) return { state: "paused", fps: lastFps };
+      var now = performance.now(), elapsed = Math.min(2000, now - started);
+      samples = samples.filter(function (t) { return t > now - 2000; });
+      if (elapsed < 1000) return { state: "measuring", fps: null };
+      // Counting whole frames in the window can overshoot the film's rate.
+      return { state: "playing", fps: Math.min(meta ? meta.fps : Infinity, (samples.length * 1000) / elapsed) };
+    }
+    return {
+      read: read,
+      start: function () { started = performance.now(); lastFrame = null; samples = []; },
+      stop: function () {
+        if (started === null) return;
+        // A playback too short to measure leaves no rate, not an older one.
+        var r = read();
+        lastFps = r.state === "playing" ? r.fps : null;
+        started = null;
+        samples = [];
+      },
+      record: function (f) {
+        if (started === null || f === lastFrame) return;
+        lastFrame = f;
+        samples.push(performance.now());
+      }
+    };
+  })();
+  function renderFps() {
+    var r = meter.read(), out = $("fps");
+    out.hidden = r.state === "paused" && r.fps === null;
+    if (out.hidden) return;
+    out.textContent = r.state === "measuring" ? "… fps" : r.fps.toFixed(1) + " fps";
+    out.title = (r.state === "paused" ? "Frame rate the last playback reached" : "Frame rate playback reaches") + (meta ? "; the film runs at " + meta.fps + " fps" : "");
+  }
+  setInterval(function () { if (playing) renderFps(); }, 500);
   // Pausing settles on exactly the frame the timecode shows.
   function pause() { stop(); keepPosition(); show(frame).then(scheduleWarm); }
   function togglePlay() { playing ? pause() : play(); }
 
-  // Like a video player: frames are rendered ahead into a buffer, in order,
-  // and every one is shown at the film's frame rate. Playback starts once
-  // three seconds (or the rest of the film) are ready; when rendering falls
-  // behind, the clock and the sound hold until the buffer is full again.
-  // Pausing keeps the buffer (and it keeps filling), so playing on starts at
-  // once; moving the playhead clears it.
-  var BUFFER_SEC = 3;
-  async function playRealtime(alive) {
-    player.buffer.start(frame);
-    while (alive() && frame < last()) {
-      if (!(await fillBuffer(alive))) return;
-      if (!(await runClock(alive))) return;
+  // Real time: nothing is rendered ahead. Each turn draws the frame due on
+  // the clock straight to the screen, and frames that drawing missed are
+  // skipped. Playback starts at once and the sound keeps its speed; a device
+  // that can't keep up shows fewer frames, and the frame rate says how many.
+  async function playFrames(alive) {
+    meter.start();
+    renderFps();
+    // A soundtrack still downloading would start late: wait for it.
+    if (audio.state === "loading") {
+      setStalled(true);
+      while (alive() && audio.state === "loading") await sleep(50);
+      // A newer playback may be waiting too: only this one's own stall ends here.
+      if (!alive()) return;
+      setStalled(false);
     }
-  }
-  // While paused, the loaded range keeps growing on the timeline.
-  setInterval(function () {
-    if (!player || playing) return;
-    if (player.buffer.ahead(frame) > 0) showBufferedRange();
-    else $("buffered").style.display = "none";
-  }, 250);
-  function showBufferedRange() {
-    var bar = $("buffered"), end = Math.max(frame, Math.min(last(), player.buffer.end - 1));
-    bar.style.display = "block";
-    bar.style.left = pct(frame) + "%";
-    bar.style.width = Math.max(0, pct(end) - pct(frame)) + "%";
-  }
-  async function fillBuffer(alive) {
-    var need = Math.max(1, Math.min(Math.round(meta.fps * BUFFER_SEC), last() - frame + 1, player.buffer.capacity - 2));
-    if (player.buffer.ahead(frame) >= need) return true;
-    setStalled(true);
-    while (alive() && player.buffer.ahead(frame) < need) {
-      showBufferedRange();
-      await sleep(30);
-    }
-    if (!alive()) return false;
-    setStalled(false);
-    return true;
-  }
-  // Resolves true when the buffer ran dry, false at the end or when stopped.
-  async function runClock(alive) {
-    var f0 = frame, clock = startClock(f0), onScreen = -1;
+    var f0 = frame, clock = startClock(f0), presented = -1;
     while (alive()) {
       var due = Math.min(last(), f0 + Math.floor(clock() * meta.fps));
-      if (due !== onScreen) {
-        if (!player.buffer.show(due)) {
-          stopClock();
-          setTime(onScreen >= 0 ? onScreen : f0);
-          return true;
-        }
-        onScreen = shown = due;
-      }
+      if (due === presented) { await sleep(4); continue; }
       setTime(due);
-      showBufferedRange();
-      if (due >= last()) return false;
-      // A timer, not rAF: embedded or occluded views throttle rAF to ~1 Hz.
-      await sleep(4);
+      // Each frame is drawn once; caching it would cost a texture and a copy per frame.
+      var drawn = await player.render(due, { cache: false });
+      if (!alive()) return;
+      presented = shown = drawn;
+      meter.record(drawn);
+      if (drawn >= last()) return;
     }
-    return false;
   }
 
   // ── Timeline ──
@@ -1124,6 +1127,7 @@ export const previewPage = /* html */ `<!doctype html>
     pause: function () { if (playing) pause(); },
     /** Where the preview is: loading, ready or error, and what it shows. */
     state: function () {
+      var rate = meter.read().fps;
       return {
         state: pageState,
         error: pageState === "error" ? $("stageMsg").textContent : null,
@@ -1133,6 +1137,10 @@ export const previewPage = /* html */ `<!doctype html>
         buffering: stalled,
         audio: audio.state,
         connected: !offline,
+        // Frames shown per second over the last 2 s of playback (the last
+        // playback's while paused), and how long the last frame took to draw.
+        playbackFps: rate == null ? null : Number(rate.toFixed(1)),
+        renderMs: player ? Math.round(player.lastRenderMs) : null,
         meta: meta && { title: meta.title, width: meta.width, height: meta.height, fps: meta.fps, frameCount: meta.frameCount, duration: Number((last() / meta.fps).toFixed(3)) }
       };
     }

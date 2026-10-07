@@ -237,12 +237,13 @@ Project normalized landmarks to screen space with a configurable camera FOV, the
 - **FrameGrid contact sheets** — `comp.renderFrameGrid(...)` outputs sequential-frame contact sheets for instant review of easing, kinetic type, and transitions.
 
 ### 8. Live Preview in the Browser
-- **Runs your composition, not a video** — `startPreview({ entry, export })` serves a localhost WebGPU player that loads the composition's own module and renders every frame live in the browser. Nothing is streamed: the server only hands over the bundle, the project's assets, and the soundtrack mixed by the export engine.
+- **Runs your composition, not a video** — `startPreview({ entry, export })` serves a localhost WebGPU player that loads the composition's own module and renders its frames live in the browser. Nothing is streamed: the server only hands over the bundle, the project's assets, and the soundtrack mixed by the export engine.
 - **Timeline, waveform & frame stepping** — play/pause, scrub, step frame by frame, and read resolution, FPS, duration, and audio status at a glance.
 - **One stable URL per project** — the port is derived from the working directory, so re-running the preview replaces the running server and any open tab reloads into the new version by itself. Close the tab and the server shuts down about five seconds later. A reload comes back at the same moment, and `#t=12.5` links to one.
 - **Notes pinned on the picture** — pause, click a spot (or drag an area) and write what should change. Each note keeps its moment, its spot and a picture of the frame with the spot marked, in `.framefields/preview-notes/`, and prints where the preview runs, so an agent can apply exactly what you meant. Tick notes off as you check them.
 - **Tells you what happened** — the page's errors (a failed build, a frame that threw, a missing font) and why the server stopped are printed where the preview runs, so whoever started it, person or agent, sees them without opening devtools. Scripts can drive the page through `window.framefieldsPreview` (`seek`, `play`, `pause`, `state`).
 - **Shown where you are** — `startPreview` serves the page and returns its URL instead of opening a browser, so an agent can show it in its own pane (Claude Code, Codex); pass `open: true` to open the system browser.
+- **Plays in real time, even on a slow device** — Play draws the frame due on the soundtrack's clock and skips the ones it missed, so playback starts at once and the sound never waits. A device that can't keep up shows fewer frames, and the page shows the frame rate it reaches.
 
 ```typescript
 import { startPreview } from "framefields";

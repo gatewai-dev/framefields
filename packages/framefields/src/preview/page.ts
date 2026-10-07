@@ -136,6 +136,7 @@ export const previewPage = /* html */ `<!doctype html>
   .timecode { display: flex; align-items: baseline; gap: 5px; margin-left: 8px; font-size: 13px; white-space: nowrap; }
   .timecode .dim { color: var(--ink-3); }
   .timecode .frame { color: var(--ink-3); font-size: 11.5px; margin-left: 6px; }
+  .fps { margin-left: 10px; color: var(--ink-3); font-size: 11.5px; white-space: nowrap; }
   input[type="range"].slider { -webkit-appearance: none; appearance: none; width: 72px; height: 4px; border-radius: 2px; background: var(--line-2); margin: 0 8px 0 0; }
   input[type="range"].slider::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; border-radius: 50%; background: var(--ink); border: 0; }
   input[type="range"].slider::-moz-range-thumb { width: 12px; height: 12px; border-radius: 50%; background: var(--ink); border: 0; }
@@ -319,6 +320,7 @@ export const previewPage = /* html */ `<!doctype html>
       <span id="tcNow">0:00.00</span><span class="dim">/</span><span class="dim" id="tcDur">0:00.00</span>
       <span class="frame" id="tcFrame">frame 0</span>
     </div>
+    <span class="fps tnum" id="fps" role="status" hidden></span>
     <span class="grow"></span>
     <button class="btn notes-btn" id="notesBtn" title="Notes" aria-haspopup="dialog" aria-expanded="false" hidden>
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><path d="M3 2.75h10a1.25 1.25 0 0 1 1.25 1.25v6.5A1.25 1.25 0 0 1 13 11.75H7.5L4.5 14v-2.25H3A1.25 1.25 0 0 1 1.75 10.5V4A1.25 1.25 0 0 1 3 2.75z"/></svg>
@@ -592,7 +594,48 @@ export const previewPage = /* html */ `<!doctype html>
     stopClock();
     setStalled(false);
     setPlayingUi(false);
+    meter.stop();
+    renderFps();
   }
+
+  // ── Frame rate reached: distinct frames shown per second while playing,
+  // over the last 2 s, stalls included. The film's own rate is in meta ──
+  var meter = (function () {
+    var started = null, lastFrame = null, samples = [], lastFps = null;
+    function read() {
+      if (started === null) return { state: "paused", fps: lastFps };
+      var now = performance.now(), elapsed = Math.min(2000, now - started);
+      samples = samples.filter(function (t) { return t > now - 2000; });
+      if (elapsed < 1000) return { state: "measuring", fps: null };
+      // Counting whole frames in the window can overshoot the film's rate.
+      return { state: "playing", fps: Math.min(meta ? meta.fps : Infinity, (samples.length * 1000) / elapsed) };
+    }
+    return {
+      read: read,
+      start: function () { started = performance.now(); lastFrame = null; samples = []; },
+      stop: function () {
+        if (started === null) return;
+        // A playback too short to measure leaves no rate, not an older one.
+        var r = read();
+        lastFps = r.state === "playing" ? r.fps : null;
+        started = null;
+        samples = [];
+      },
+      record: function (f) {
+        if (started === null || f === lastFrame) return;
+        lastFrame = f;
+        samples.push(performance.now());
+      }
+    };
+  })();
+  function renderFps() {
+    var r = meter.read(), out = $("fps");
+    out.hidden = r.state === "paused" && r.fps === null;
+    if (out.hidden) return;
+    out.textContent = r.state === "measuring" ? "… fps" : r.fps.toFixed(1) + " fps";
+    out.title = (r.state === "paused" ? "Frame rate the last playback reached" : "Frame rate playback reaches") + (meta ? "; the film runs at " + meta.fps + " fps" : "");
+  }
+  setInterval(function () { if (playing) renderFps(); }, 500);
   // Pausing settles on exactly the frame the timecode shows.
   function pause() { stop(); keepPosition(); show(frame).then(scheduleWarm); }
   function togglePlay() { playing ? pause() : play(); }
@@ -600,8 +643,10 @@ export const previewPage = /* html */ `<!doctype html>
   // Real time: nothing is rendered ahead. Each turn draws the frame due on
   // the clock straight to the screen, and frames that drawing missed are
   // skipped. Playback starts at once and the sound keeps its speed; a device
-  // that can't keep up shows fewer frames.
+  // that can't keep up shows fewer frames, and the frame rate says how many.
   async function playFrames(alive) {
+    meter.start();
+    renderFps();
     // A soundtrack still downloading would start late: wait for it.
     if (audio.state === "loading") {
       setStalled(true);
@@ -619,6 +664,7 @@ export const previewPage = /* html */ `<!doctype html>
       var drawn = await player.render(due, { cache: false });
       if (!alive()) return;
       presented = shown = drawn;
+      meter.record(drawn);
       if (drawn >= last()) return;
     }
   }
@@ -1081,6 +1127,7 @@ export const previewPage = /* html */ `<!doctype html>
     pause: function () { if (playing) pause(); },
     /** Where the preview is: loading, ready or error, and what it shows. */
     state: function () {
+      var rate = meter.read().fps;
       return {
         state: pageState,
         error: pageState === "error" ? $("stageMsg").textContent : null,
@@ -1090,6 +1137,10 @@ export const previewPage = /* html */ `<!doctype html>
         buffering: stalled,
         audio: audio.state,
         connected: !offline,
+        // Frames shown per second over the last 2 s of playback (the last
+        // playback's while paused), and how long the last frame took to draw.
+        playbackFps: rate == null ? null : Number(rate.toFixed(1)),
+        renderMs: player ? Math.round(player.lastRenderMs) : null,
         meta: meta && { title: meta.title, width: meta.width, height: meta.height, fps: meta.fps, frameCount: meta.frameCount, duration: Number((last() / meta.fps).toFixed(3)) }
       };
     }

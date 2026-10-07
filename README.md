@@ -268,7 +268,7 @@ Project normalized landmarks to screen space with a configurable camera FOV, the
 - **Notes pinned on the picture** — pause, click a spot (or drag an area) and write what should change. Each note keeps its moment, its spot and a picture of the frame with the spot marked, in `.framefields/preview-notes/`, and prints where the preview runs, so an agent can apply exactly what you meant. Tick notes off as you check them.
 - **Tells you what happened** — the page's errors (a failed build, a frame that threw, a missing font) and why the server stopped are printed where the preview runs, so whoever started it, person or agent, sees them without opening devtools. Scripts can drive the page through `window.framefieldsPreview` (`seek`, `play`, `pause`, `state`).
 - **Shown where you are** — `startPreview` serves the page and returns its URL instead of opening a browser, so an agent can show it in its own pane (Claude Code, Codex); pass `open: true` to open the system browser.
-- **Plays in real time, even on a slow device** — Play draws the frame due on the soundtrack's clock and skips the ones it missed, so playback starts at once and the sound never waits. A device that can't keep up shows fewer frames.
+- **Plays in real time, even on a slow device** — Play draws the frame due on the soundtrack's clock and skips the ones it missed, so playback starts at once and the sound never waits. A device that can't keep up shows fewer frames, and the page shows the frame rate it reaches.
 
 ```typescript
 import { startPreview } from "framefields";

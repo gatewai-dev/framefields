@@ -1,6 +1,6 @@
 {
 	"name": "@framefields/node-halftone-screen",
-	"version": "2.0.4",
+	"version": "2.0.5",
 	"private": false,
 	"framefields": {
 		"type": "HalftoneScreen",

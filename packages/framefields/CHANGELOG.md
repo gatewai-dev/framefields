@@ -1,5 +1,11 @@
 # framefields
 
+## 2.0.5
+
+### Patch Changes
+
+- Fix homepage URL and bump packages.
+
 ## 2.0.4
 
 ### Patch Changes

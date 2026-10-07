@@ -1,6 +1,6 @@
 {
 	"name": "@framefields/node-relight-3d",
-	"version": "2.0.4",
+	"version": "2.0.5",
 	"private": false,
 	"framefields": {
 		"type": "Relight3D",

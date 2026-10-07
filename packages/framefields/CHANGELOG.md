@@ -1,5 +1,13 @@
 # framefields
 
+## 2.0.4
+
+### Patch Changes
+
+- cf04e38: Preview: drawing no longer stops for good after a frame is shown from the frame cache (stepping or scrubbing back to a frame drawn before).
+- 7ce675d: Preview: the page shows the frame rate playback reaches next to the timecode, and `window.framefieldsPreview.state()` reports it as `playbackFps`, with `renderMs` for the last frame drawn.
+- d70a58b: Preview: Play runs in real time. It draws the frame due on the soundtrack's clock and skips the ones it missed, so playback starts at once and the sound never waits, however slow the device; it no longer renders 3 s ahead first and stalls whenever rendering falls behind.
+
 ## 2.0.3
 
 ### Patch Changes

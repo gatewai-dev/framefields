@@ -69,7 +69,6 @@ Every frame of these films is rendered by framefields from TypeScript in [`examp
 ## Table of Contents
 
 - [Why Framefields](#why-framefields)
-- [Architectural Comparison](#architectural-comparison-framefields-vs-remotion-vs-hyperframes)
 - [Key Features & Capabilities](#key-features--capabilities)
   - [1. Slug GPU Vector Typography & After Effects Animators](#1-slug-gpu-vector-typography--after-effects-animators)
   - [2. Photoshop-Inspired WebGPU 2D VFX](#2-photoshop-inspired-webgpu-2d-vfx-50-shaders)
@@ -110,30 +109,6 @@ Modern automated video generation is usually constrained by the architectures of
 | 🔊 | **Built-in Procedural Audio DSP** | Multi-track soundtracks, deterministic procedural transition SFX (whoosh, impact, riser), and reactive signals that drive visuals from audio. |
 | 👁️ | **On-Device Neural Vision** | Object tracking, instance segmentation, multi-person pose, and person mattes from Apache-2.0 ONNX models — feeding reactive signals without a round trip to disk. |
 | ☁️ | **Cloud-Native & CI/CD Ready** | ~200–400 MB RAM per worker (vs. 2–4 GB for Chromium), ideal for serverless GPU render clusters (AWS G4/G5, Modal, RunPod, Kubernetes). |
-
----
-
-## Architectural Comparison: Framefields vs. Remotion vs. Hyperframes
-
-Developers generating video programmatically commonly weigh **Remotion** (React/Chromium) or **Hyperframes** (Canvas2D/SVG web animation). The matrix below compares the fundamental engineering dimensions.
-
-### Detailed Comparison Matrix
-
-| Capability / Dimension | **Framefields** | **Remotion** | **Hyperframes** |
-|---|---|---|---|
-| **Underlying Engine** | **Native WebGPU** (WGSL compute & render pipelines via Dawn / Metal / Vulkan) | **Chromium / Puppeteer** (React DOM, HTML/CSS layout) | **Canvas2D / WebGL / SVG** (browser or Node Skia) |
-| **Rendering Architecture** | Direct hardware framebuffer rendering & hardware video encoding (`@napi-rs/webcodecs`) | Spawns headless Chrome; captures frames via CDP / `page.screenshot()` | Software or hardware 2D canvas context |
-| **Throughput** | **60–120+ FPS** (real-time to faster-than-real-time GPU execution) | **5–20 FPS** (DOM reflow, IPC, rasterization) | **20–40 FPS** (CPU draw commands / JS) |
-| **Memory Footprint** | **~200–400 MB** per render (zero browser) | **1.5–4.0 GB+** per worker (Chromium + V8 DOM heap) | **~500 MB–1 GB** (Skia/Canvas bindings) |
-| **Typography Engine** | **Slug GPU** — analytic Bézier evaluation in WGSL, infinite zoom, After Effects selectors | Browser DOM text (CSS fonts, rasterized, blurry under 3D transforms) | Canvas2D / path text (CPU-rasterized glyphs) |
-| **2D VFX & Post-Processing** | **50+ WebGPU shaders** (Curves, Levels, Selective Color, 3D LUT, Film Grain, Halftone, Liquify, PBR Glass, Relight) | CSS Filters or custom WebGL canvas wrappers | Basic Canvas2D composites and 2D filters |
-| **3D Graphics & Depth** | **Native 3D scene graph** — LookAt/Turntable camera, multiplane, skinning (OBJ/FBX/glTF), SSAO, PCSS, DoF | None built-in (embed Three.js/Fiber inside React DOM) | Minimal 2.5D layers; no unified mesh pipeline |
-| **Motion Blur & Physics** | Physical 180° shutter velocity buffers in MRT + closed-form spring kinematics | CSS transitions / JS interpolation; synthetic blur hacks | Frame interpolation or manual multipass |
-| **Audio Engine & DSP** | Native audio DSP & procedural SFX (multi-track mixing, beat grids, reactive signals) | `<Audio>` playback; basic volume curves | Basic static audio playback |
-| **Charts & Data Viz** | **`Layer.chart`** — line, area, bar, scatter, candlestick, pie and donut charts built from native vector nodes, with staggered reveal animations | DOM chart libraries (Recharts, Chart.js) | Custom canvas draw operations |
-| **AI & Computer Vision** | **On-device ONNX vision** — COCO-80 detection + instance masks (RTMDet-Ins), COCO-17 pose (RTMO), person mattes (Selfie Segmenter); WebGPU tensor conditioning (Canny, depth-to-normals, optical flow, deflicker) | External pre-rendered assets; no native GPU tensor conditioning | External pre-rendered assets |
-| **Headless Verification** | **FrameGrid contact sheets**, single-frame snapshots, Skia MSE pixel-invariant assertions | Playwright/Puppeteer visual snapshots | Manual frame inspection / canvas diffing |
-| **Docker / Cloud Portability** | **Compact** (~500 MB slim image with native GPU/Vulkan drivers) | **Heavy** (~2–3 GB with Chromium, fonts, X11/Mesa) | Moderate container size |
 
 ---
 

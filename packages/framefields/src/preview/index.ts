@@ -131,7 +131,7 @@ const PLAYER_PATH = "/@framefields/player.js";
 
 /**
  * Serves a localhost player for a composition. The page loads the
- * composition's own code, bundled with the engine, and renders every frame
+ * composition's own code, bundled with the engine, and renders its frames
  * with WebGPU in the browser, like the editor's player; nothing is streamed.
  * The server provides the bundle, the project's files, and the soundtrack,
  * which it mixes with the export engine.

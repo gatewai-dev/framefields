@@ -148,11 +148,6 @@ export const previewPage = /* html */ `<!doctype html>
   }
   .tl-inner { position: relative; }
   .ruler { position: relative; height: 22px; border-bottom: 1px solid var(--line); }
-  /* Rendered ahead of the playhead while playing, like a video's loaded range. */
-  .buffered {
-    position: absolute; top: 20px; height: 3px; border-radius: 2px; background: var(--ink-3);
-    opacity: .55; pointer-events: none; z-index: 2; display: none;
-  }
   .tick { position: absolute; bottom: 0; width: 1px; height: 4px; background: var(--line-2); }
   .tick.major { height: 8px; background: var(--ink-3); }
   .tick span { position: absolute; bottom: 9px; left: 4px; font-size: 10.5px; line-height: 1; color: var(--ink-3); white-space: nowrap; font-variant-numeric: tabular-nums; }
@@ -351,7 +346,6 @@ export const previewPage = /* html */ `<!doctype html>
   <div class="timeline" id="timeline" aria-label="Timeline">
     <div class="tl-inner" id="tlInner">
       <div class="ruler" id="ruler"></div>
-      <div class="buffered" id="buffered"></div>
       <div class="note-marks" id="noteMarks"></div>
       <div class="wave-lane">
         <canvas id="wave"></canvas>
@@ -441,9 +435,6 @@ export const previewPage = /* html */ `<!doctype html>
   }
   function seek(f) {
     stop();
-    // The playhead moved: frames rendered ahead of the old spot are stale.
-    if (player) player.buffer.clear();
-    $("buffered").style.display = "none";
     var done = show(clampFrame(f));
     keepPosition();
     scheduleWarm();
@@ -594,7 +585,7 @@ export const previewPage = /* html */ `<!doctype html>
     if (draft && !draft.text.trim()) cancelDraft();
     if (notesOn) renderPins();
     if (frame >= last()) frame = 0;
-    playRealtime(alive).finally(function () { if (token === playToken && playing) pause(); });
+    playFrames(alive).finally(function () { if (token === playToken && playing) pause(); });
   }
   function stop() {
     playing = false;
@@ -606,64 +597,30 @@ export const previewPage = /* html */ `<!doctype html>
   function pause() { stop(); keepPosition(); show(frame).then(scheduleWarm); }
   function togglePlay() { playing ? pause() : play(); }
 
-  // Like a video player: frames are rendered ahead into a buffer, in order,
-  // and every one is shown at the film's frame rate. Playback starts once
-  // three seconds (or the rest of the film) are ready; when rendering falls
-  // behind, the clock and the sound hold until the buffer is full again.
-  // Pausing keeps the buffer (and it keeps filling), so playing on starts at
-  // once; moving the playhead clears it.
-  var BUFFER_SEC = 3;
-  async function playRealtime(alive) {
-    player.buffer.start(frame);
-    while (alive() && frame < last()) {
-      if (!(await fillBuffer(alive))) return;
-      if (!(await runClock(alive))) return;
+  // Real time: nothing is rendered ahead. Each turn draws the frame due on
+  // the clock straight to the screen, and frames that drawing missed are
+  // skipped. Playback starts at once and the sound keeps its speed; a device
+  // that can't keep up shows fewer frames.
+  async function playFrames(alive) {
+    // A soundtrack still downloading would start late: wait for it.
+    if (audio.state === "loading") {
+      setStalled(true);
+      while (alive() && audio.state === "loading") await sleep(50);
+      // A newer playback may be waiting too: only this one's own stall ends here.
+      if (!alive()) return;
+      setStalled(false);
     }
-  }
-  // While paused, the loaded range keeps growing on the timeline.
-  setInterval(function () {
-    if (!player || playing) return;
-    if (player.buffer.ahead(frame) > 0) showBufferedRange();
-    else $("buffered").style.display = "none";
-  }, 250);
-  function showBufferedRange() {
-    var bar = $("buffered"), end = Math.max(frame, Math.min(last(), player.buffer.end - 1));
-    bar.style.display = "block";
-    bar.style.left = pct(frame) + "%";
-    bar.style.width = Math.max(0, pct(end) - pct(frame)) + "%";
-  }
-  async function fillBuffer(alive) {
-    var need = Math.max(1, Math.min(Math.round(meta.fps * BUFFER_SEC), last() - frame + 1, player.buffer.capacity - 2));
-    if (player.buffer.ahead(frame) >= need) return true;
-    setStalled(true);
-    while (alive() && player.buffer.ahead(frame) < need) {
-      showBufferedRange();
-      await sleep(30);
-    }
-    if (!alive()) return false;
-    setStalled(false);
-    return true;
-  }
-  // Resolves true when the buffer ran dry, false at the end or when stopped.
-  async function runClock(alive) {
-    var f0 = frame, clock = startClock(f0), onScreen = -1;
+    var f0 = frame, clock = startClock(f0), presented = -1;
     while (alive()) {
       var due = Math.min(last(), f0 + Math.floor(clock() * meta.fps));
-      if (due !== onScreen) {
-        if (!player.buffer.show(due)) {
-          stopClock();
-          setTime(onScreen >= 0 ? onScreen : f0);
-          return true;
-        }
-        onScreen = shown = due;
-      }
+      if (due === presented) { await sleep(4); continue; }
       setTime(due);
-      showBufferedRange();
-      if (due >= last()) return false;
-      // A timer, not rAF: embedded or occluded views throttle rAF to ~1 Hz.
-      await sleep(4);
+      // Each frame is drawn once; caching it would cost a texture and a copy per frame.
+      var drawn = await player.render(due, { cache: false });
+      if (!alive()) return;
+      presented = shown = drawn;
+      if (drawn >= last()) return;
     }
-    return false;
   }
 
   // ── Timeline ──

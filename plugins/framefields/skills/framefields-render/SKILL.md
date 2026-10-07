@@ -112,7 +112,7 @@ describe("Hero Scene Conformance", () => {
 ---
 
 ### Step 4.5: Show the User Before Exporting (`preview`)
-When a person is in the loop, let them watch the composition before you spend time on the final render. `startPreview` serves a localhost player with the soundtrack, a timeline with the waveform, and frame stepping. The page loads the composition's own code and renders it with WebGPU in the browser, so playback runs at or near full frame rate; the server only serves that code, the project's files, and the soundtrack mixed by the export engine. Point it at the module that builds the composition:
+When a person is in the loop, let them watch the composition before you spend time on the final render. `startPreview` serves a localhost player with the soundtrack, a timeline with the waveform, and frame stepping. The page loads the composition's own code and renders it with WebGPU in the browser, in real time: a device that can't draw every frame in time skips some, and the sound keeps its speed; the server only serves that code, the project's files, and the soundtrack mixed by the export engine. Point it at the module that builds the composition:
 
 ```typescript
 import { startPreview } from "framefields";
@@ -132,7 +132,8 @@ await session.closed; // keep the process alive while the user watches
 - **Point at a moment.** `#t=12.5` in the URL opens the player at 12.5 s (`#frame=750` by frame), and the address follows the playhead when it stops, so a link you give the user lands where you mean.
 - **Drive it from a script, not with clicks.** If you can run JavaScript in the page (an agent browser), use `window.framefieldsPreview`: `await seek(seconds)` or `await seekFrame(n)` resolve once that frame is drawn (take the screenshot then), `play()` and `pause()` control playback, `notes()` lists the notes, and `state()` returns `{ state: "loading" | "ready" | "error", error, frame, time, playing, buffering, audio, connected, meta }`. `<html data-preview="ready">` marks the first frame drawn. A hidden tab pauses playback, since browsers throttle it.
 - **Show it where the user is.** `startPreview` only serves the page and returns the URL. If your app has a built-in browser (Claude Code's browser pane, Codex's), open the URL there. Otherwise give the user the link, or pass `open: true` to open their default browser (skipped when an open tab reconnects on its own). The page needs WebGPU (current Chrome, Edge or Safari).
-- Audio is the same mix `renderVideo` muxes (`audio: false` skips it). Playback uses the soundtrack as its clock; when a frame takes long (a video seek, a heavy shot), the clock and the sound hold until the picture catches up.
+- **Playback runs in real time, on any device.** Play draws the frame due on the clock and skips the ones it missed, so it starts at once and the sound keeps its speed; a slow device shows fewer frames. Paused, the page draws the exact frame under the playhead. Vision effects analyse each frame from the one drawn before it: while paused, the page analyses up to 20 s ahead so that stretch plays exactly, but past it a device that skips frames shows cutouts and tracking from the last frame it drew. Check them paused, or in the export.
+- Audio is the same mix `renderVideo` muxes (`audio: false` skips it). Playback uses the soundtrack as its clock; when a frame takes long (a video seek, a heavy shot), the picture skips ahead to catch up with the sound.
 
 ---
 

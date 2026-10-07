@@ -49,8 +49,13 @@ export interface PlayerMeta {
 export interface PreviewPlayer {
 	meta: PlayerMeta;
 	canvas: HTMLCanvasElement;
-	/** Draws a frame. Calls made while one is drawing collapse to the latest. */
-	render(frame: number): Promise<number>;
+	/**
+	 * Draws a frame. Calls made while one is drawing collapse to the latest.
+	 * `cache: false` leaves the drawn frame out of the step/scrub cache: for
+	 * real-time playback, which draws every frame once and would otherwise pay
+	 * a texture and a copy per frame.
+	 */
+	render(frame: number, options?: { cache?: boolean }): Promise<number>;
 	/** Milliseconds the last frame took to draw. */
 	lastRenderMs: number;
 	/** True when the program runs vision models (worth analysing ahead). */
@@ -60,28 +65,8 @@ export interface PreviewPlayer {
 	 * before it plays. Skipped (resolves false) while a frame is being drawn.
 	 */
 	warm(frame: number): Promise<boolean>;
-	/** Frames rendered ahead in order, for playback at full frame rate. */
-	buffer: PlaybackBuffer;
 	/** A frame at full size as an image, e.g. to attach to a note. */
 	snapshot(frame: number): Promise<ImageBitmap>;
-}
-
-export interface PlaybackBuffer {
-	/** Most frames it holds at once. */
-	readonly capacity: number;
-	/**
-	 * Plays on from `frame`: frames already rendered from there are kept and
-	 * rendering continues after them; anywhere else starts over.
-	 */
-	start(frame: number): void;
-	/** Drops every rendered frame, e.g. when the playhead moves elsewhere. */
-	clear(): void;
-	/** Frames ready in a row from `frame` (0 when `frame` isn't buffered). */
-	ahead(frame: number): number;
-	/** The first frame not rendered yet. */
-	readonly end: number;
-	/** Shows a buffered frame; false when it isn't ready. */
-	show(frame: number): boolean;
 }
 
 type Renderable = {
@@ -189,14 +174,15 @@ async function createPlayer(
 	let first = true;
 	let drawing: Promise<void> | null = null;
 	let wanted: number | null = null;
+	let wantedCached = true;
 	let waiters: Array<(f: number) => void> = [];
 
 	let offscreen: GPUTexture | undefined;
 
 	// Frames drawn on screen are kept so stepping or scrubbing back to one is a
-	// blit, not a re-render. Full resolution, bounded by a byte budget; playback
-	// still uses the reduced-res ring below. Vision compositions are excluded:
-	// their frames depend on the one before, so a hit would skip that work.
+	// blit, not a re-render. Full resolution, bounded by a byte budget. Vision
+	// compositions are excluded: their frames depend on the one before, so a
+	// hit would skip that work.
 	const renderCache = new Map<number, { tex: GPUTexture; used: number }>();
 	const renderCacheMax = Math.max(
 		1,
@@ -256,7 +242,11 @@ async function createPlayer(
 		}
 	}
 
-	async function draw(frame: number, toScreen = true): Promise<void> {
+	async function draw(
+		frame: number,
+		toScreen = true,
+		cache = toScreen,
+	): Promise<void> {
 		const renderer = getRenderer2D(device, surface.colorFormat);
 		const ctx: RenderContextValue = { device, renderer, surface };
 		const w = surface.width;
@@ -270,7 +260,7 @@ async function createPlayer(
 			containerWidth: w,
 			containerHeight: h,
 			isVideoMode,
-			// Every drawn frame is cached or buffered, so it waits for its LUTs
+			// A drawn frame can be cached, so it waits for its LUTs
 			// and exact video frame as the export does, never a stand-in.
 			forceWait: true,
 		};
@@ -329,7 +319,7 @@ async function createPlayer(
 			props,
 		);
 		let cacheTex: GPUTexture | undefined;
-		if (toScreen) {
+		if (cache) {
 			cacheTex = newRenderCacheTexture();
 			encoder.copyTextureToTexture({ texture: tex }, { texture: cacheTex }, [
 				w,
@@ -355,6 +345,7 @@ async function createPlayer(
 		void (async () => {
 			while (wanted !== null) {
 				const f = wanted;
+				const cache = wantedCached;
 				wanted = null;
 				const started = performance.now();
 				try {
@@ -363,7 +354,7 @@ async function createPlayer(
 						blitter.blit(cached, surface.getCurrentTexture());
 						surface.present();
 					} else {
-						await draw(f);
+						await draw(f, true, cache);
 					}
 				} catch (err) {
 					console.error("[framefields] frame", f, err);
@@ -380,130 +371,16 @@ async function createPlayer(
 		})();
 	}
 
-	// ── Playback buffer: a ring of frames rendered ahead, shown at full rate.
-	// Frames are kept below native size to bound memory (~400 MB at most);
-	// a paused frame is drawn at full resolution.
-	const lastFrame = meta.frameCount - 1;
-	const capacity = Math.ceil(fps * 3.5) + 2;
-	const budget = 400 * 1024 * 1024;
-	const scale = Math.min(
-		1,
-		Math.sqrt(budget / capacity / 4 / (width * height)),
-	);
-	const even = (n: number) => Math.max(2, Math.round(n / 2) * 2);
-	const ringSize = { w: even(width * scale), h: even(height * scale) };
-	const ring: GPUTexture[] = [];
-	const ringFrames = new Int32Array(capacity).fill(-1);
 	const blitter = new Blitter(device, surface.colorFormat);
-	let bufferToken = 0;
-	let producing = false;
-	let produced = 0;
-	let shown = -1;
-
-	function ringTexture(slot: number): GPUTexture {
-		ring[slot] ??= device.createTexture({
-			size: [ringSize.w, ringSize.h],
-			format: surface.colorFormat,
-			usage:
-				GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
-			label: `preview_buffer_${slot}`,
-		});
-		return ring[slot];
-	}
-
-	async function produce(token: number): Promise<void> {
-		producing = true;
-		try {
-			await produceFrames(token);
-		} finally {
-			if (token === bufferToken) producing = false;
-		}
-	}
-
-	async function produceFrames(token: number): Promise<void> {
-		while (token === bufferToken && produced <= lastFrame) {
-			// The slot holds a frame not shown yet, or the one on screen (kept,
-			// so playing on after a pause starts from the buffer).
-			if (produced - capacity >= shown) {
-				await new Promise((r) => setTimeout(r, 4));
-				continue;
-			}
-			while (drawing) await drawing;
-			if (token !== bufferToken) return;
-			const frame = produced;
-			const slot = frame % capacity;
-			const cached = takeRenderCache(frame);
-			if (cached) {
-				blitter.blit(cached, ringTexture(slot));
-				ringFrames[slot] = frame;
-				produced = frame + 1;
-				// Yield so a run of cached frames can't starve the page.
-				await new Promise((r) => setTimeout(r, 0));
-				continue;
-			}
-			drawing = draw(frame, false)
-				.then(() => {
-					if (offscreen) blitter.blit(offscreen, ringTexture(slot));
-				})
-				.catch((err: unknown) =>
-					console.error("[framefields] frame", frame, err),
-				);
-			await drawing;
-			drawing = null;
-			if (token !== bufferToken) {
-				// Stopped mid-frame: a frame asked for meanwhile still draws.
-				pump();
-				return;
-			}
-			ringFrames[slot] = frame;
-			produced = frame + 1;
-			pump();
-		}
-	}
-
-	const buffer: PlaybackBuffer = {
-		capacity,
-		get end() {
-			return produced;
-		},
-		start(frame) {
-			shown = frame - 1;
-			// Resuming where playback paused: keep what is rendered ahead.
-			if (ringFrames[frame % capacity] === frame && frame < produced) {
-				if (!producing) void produce(++bufferToken);
-				return;
-			}
-			ringFrames.fill(-1);
-			produced = frame;
-			void produce(++bufferToken);
-		},
-		clear() {
-			bufferToken++;
-			producing = false;
-			ringFrames.fill(-1);
-			produced = 0;
-		},
-		ahead(frame) {
-			if (ringFrames[frame % capacity] !== frame) return 0;
-			return produced - frame;
-		},
-		show(frame) {
-			const slot = frame % capacity;
-			if (ringFrames[slot] !== frame) return false;
-			blitter.blit(ringTexture(slot), surface.getCurrentTexture());
-			surface.present();
-			shown = frame;
-			return true;
-		},
-	};
 
 	const player: PreviewPlayer = {
 		meta,
 		canvas,
 		lastRenderMs: 0,
 		hasVision,
-		render(frame) {
+		render(frame, options) {
 			wanted = frame;
+			wantedCached = options?.cache ?? true;
 			const done = new Promise<number>((resolve) => waiters.push(resolve));
 			pump();
 			return done;
@@ -518,7 +395,6 @@ async function createPlayer(
 			pump();
 			return true;
 		},
-		buffer,
 		async snapshot(frame) {
 			while (drawing) await drawing;
 			const done = (async () => {

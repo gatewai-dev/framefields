@@ -2,8 +2,8 @@
 /// <reference types="webgpu" />
 /**
  * Copies one texture onto another of any size, with linear filtering. Kept
- * apart from the 2D renderer on purpose: buffered frames are shown while the
- * next frame is being drawn, and the renderer's pools must not be touched then.
+ * apart from the 2D renderer on purpose: showing a cached frame must not
+ * touch the renderer's pools.
  */
 
 const WGSL = /* wgsl */ `

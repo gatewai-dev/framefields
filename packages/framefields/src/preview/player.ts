@@ -346,7 +346,13 @@ async function createPlayer(
 	// latest; warm-ups only run when nothing else is drawing.
 	function pump(): void {
 		if (drawing || wanted === null) return;
-		drawing = (async () => {
+		// `drawing` is set before the loop runs: a frame from the cache is drawn
+		// without awaiting, so the loop can finish (and clear it) synchronously.
+		let finished!: () => void;
+		drawing = new Promise<void>((resolve) => {
+			finished = resolve;
+		});
+		void (async () => {
 			while (wanted !== null) {
 				const f = wanted;
 				wanted = null;
@@ -370,6 +376,7 @@ async function createPlayer(
 				}
 			}
 			drawing = null;
+			finished();
 		})();
 	}
 

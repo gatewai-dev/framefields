@@ -277,9 +277,13 @@ export class SlugGeometry {
 					}
 					currentLineWidth += tokenWidth;
 				} else {
+					const tokenVisualWidth =
+						tokenGlyphs.length > 0 && letterSpacing > 0
+							? tokenWidth - letterSpacing
+							: tokenWidth;
 					if (
 						currentLineWidth > 0 &&
-						currentLineWidth + tokenWidth > maxWidth
+						currentLineWidth + tokenVisualWidth > maxWidth
 					) {
 						lines.push({
 							glyphs: currentLineGlyphs,
@@ -489,14 +493,9 @@ export class SlugGeometry {
 			if (w > contentWidth) contentWidth = w;
 		}
 
-		// Add trailing letterSpacing like the text-measurer does
-		if (letterSpacing > 0) {
-			contentWidth += letterSpacing;
-		}
-
 		return {
-			width: Math.ceil(contentWidth) + 2,
-			height: Math.ceil(layout.totalHeight) + 2,
+			width: Math.ceil(contentWidth),
+			height: Math.ceil(layout.totalHeight),
 			layout,
 		};
 	}
@@ -734,7 +733,14 @@ export class SlugGeometry {
 				}
 			} else {
 				// Word token: wrap if exceeding maxWidth
-				if (currentLineWidth > 0 && currentLineWidth + token.width > maxWidth) {
+				const lastG = token.glyphs[token.glyphs.length - 1];
+				const trailingLs =
+					lastG && lastG.letterSpacing > 0 ? lastG.letterSpacing : 0;
+				const tokenVisualWidth = token.width - trailingLs;
+				if (
+					currentLineWidth > 0 &&
+					currentLineWidth + tokenVisualWidth > maxWidth
+				) {
 					lines.push({
 						glyphs: currentLineGlyphs,
 						width: currentLineWidth,

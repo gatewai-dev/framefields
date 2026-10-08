@@ -1,6 +1,6 @@
 {
 	"name": "@framefields/node-deflicker",
-	"version": "2.0.7",
+	"version": "2.0.8",
 	"private": false,
 	"framefields": {
 		"type": "TemporalDeflicker",

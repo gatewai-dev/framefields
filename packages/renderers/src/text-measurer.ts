@@ -81,22 +81,19 @@ export function measureText(
 				totalWrappedLines += 1;
 			}
 		}
+		const letterGaps = Math.max(0, safeText.length - 1);
 		const result = {
 			width:
 				style.width !== undefined
 					? style.width
 					: Math.ceil(
-							safeText.length * fontSize * 0.6 +
-								letterSpacing * safeText.length,
+							safeText.length * fontSize * 0.6 + letterSpacing * letterGaps,
 						) +
-						2 +
 						padding * 2,
 			height:
 				style.height !== undefined
 					? style.height
-					: Math.ceil(totalWrappedLines * calculatedLineHeight) +
-						2 +
-						padding * 2,
+					: Math.ceil(totalWrappedLines * calculatedLineHeight) + padding * 2,
 		};
 		cache.set(cacheKey, result);
 		return result;
@@ -118,7 +115,7 @@ export function measureText(
 		width:
 			style.width !== undefined && !style.keepNaturalWidth
 				? style.width
-				: Math.ceil(measured.width) + padding * 2 + 8,
+				: Math.ceil(measured.width) + padding * 2,
 		height:
 			style.height !== undefined
 				? style.height

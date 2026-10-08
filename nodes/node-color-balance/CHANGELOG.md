@@ -1,5 +1,7 @@
 # @framefields/node-color-balance
 
+## 2.0.8
+
 ## 2.0.7
 
 ## 2.0.6

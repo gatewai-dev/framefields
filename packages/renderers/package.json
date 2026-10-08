@@ -1,6 +1,6 @@
 {
 	"name": "@framefields/renderers",
-	"version": "2.0.7",
+	"version": "2.0.8",
 	"private": false,
 	"type": "module",
 	"sideEffects": false,

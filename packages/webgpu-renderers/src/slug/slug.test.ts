@@ -147,8 +147,8 @@ describe("SlugGeometry Layout", () => {
 			100, // maxWidth
 		);
 
-		// 'A' = 6px. Emoji = 10px. 'A' = 6px. Total = 22px + padding (2) = 24px.
-		expect(result.width).toBe(24);
+		// 'A' = 6px. Emoji = 10px. 'A' = 6px. Total = 22px.
+		expect(result.width).toBe(22);
 	});
 
 	it("should map animation units based on applyBy settings", () => {
@@ -626,14 +626,29 @@ describe("SlugGeometry text on a path", () => {
 	// A straight 100 px path along y = 0: positions along it are x coordinates.
 	const line = { type: "svg" as const, d: "M 0 0 L 100 0" };
 	const layoutOn = (text: string, options: Record<string, unknown>) =>
-		SlugGeometry.layout(text, mockFont, 10, 0, 12, 1000, "left", "char", undefined, {
-			path: line,
-			...options,
-		} as never);
+		SlugGeometry.layout(
+			text,
+			mockFont,
+			10,
+			0,
+			12,
+			1000,
+			"left",
+			"char",
+			undefined,
+			{
+				path: line,
+				...options,
+			} as never,
+		);
 
 	it("insets the last margin from the end of the path", () => {
 		// 'A' advances 6 px; force-aligned between 10 and 100 - 20 = 80.
-		const result = layoutOn("AAAA", { firstMargin: 10, lastMargin: 20, forceAlignment: true });
+		const result = layoutOn("AAAA", {
+			firstMargin: 10,
+			lastMargin: 20,
+			forceAlignment: true,
+		});
 		const xs = result.glyphs.map((g) => g.x);
 		expect(xs[0]).toBeCloseTo(10);
 		// The last glyph's own width (6 px) ends on the end margin.

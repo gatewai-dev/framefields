@@ -4,27 +4,34 @@
  * 1. Step 1: Baseline / Initial Audio (score.mp3 without effects)
  * 2. Step 2: Faded Audio (with WebGPU AudioFade effect)
  * 3. Step 3: Faded + Reverb Audio (AudioFade + AudioReverb DSP chain)
+ * 4. Step 4: Ping-Pong Delay (AudioDelay spatial stereo echo)
+ * 5. Step 5: Parametric EQ Filter (AudioParametricEq biquad low-pass filter)
+ * 6. Step 6: Dynamics Compressor (AudioCompressor dynamics limiter & makeup gain)
+ * 7. Step 7: Stereo Panning (StereoPanning spatial soundstage balance)
  *
  * Exports both uncompressed 16-bit WAV PCM files and encoded MP4 videos.
  *
  * Usage:
- *   pnpm render          # Renders all 3 audio steps (.wav) and videos (.mp4)
+ *   pnpm render          # Renders all audio steps (.wav) and videos (.mp4)
  *   pnpm render wav      # Renders only WAV audio files
  */
 import fs from "node:fs/promises";
 import path from "node:path";
-import { HeadlessMediaRenderer } from "framefields";
+import { encodeStereoWav, HeadlessMediaRenderer } from "framefields";
 import {
 	buildStep1InitialAudio,
 	buildStep2FadedAudio,
 	buildStep3FadedReverbAudio,
+	buildStep4DelayAudio,
+	buildStep5ParametricEqAudio,
+	buildStep6CompressorAudio,
+	buildStep7StereoPanningAudio,
 	DURATION_FRAMES,
 	DURATION_MS,
 	DURATION_SEC,
 	FPS,
 	SAMPLE_RATE,
 } from "./audio-pipeline.js";
-import { pcmToWav } from "./wav.js";
 
 const OUTPUT_DIR = path.resolve(import.meta.dirname, "../output");
 const mode = process.argv[2] ?? "all";
@@ -67,6 +74,34 @@ async function main() {
 			description:
 				"Multi-stage chain: AudioFade → AudioReverb (room 0.85, wet 0.6)",
 		},
+		{
+			name: "Step 4: Ping-Pong Delay",
+			slug: "step4_delay",
+			builder: buildStep4DelayAudio,
+			description:
+				"WebGPU AudioDelay: spatial ping-pong stereo echo (0.28s, 45% feedback)",
+		},
+		{
+			name: "Step 5: Parametric EQ Filter",
+			slug: "step5_parametric_eq",
+			builder: buildStep5ParametricEqAudio,
+			description:
+				"WebGPU AudioParametricEq: 750 Hz biquad low-pass filter (Q: 1.2)",
+		},
+		{
+			name: "Step 6: Dynamics Compressor",
+			slug: "step6_compressor",
+			builder: buildStep6CompressorAudio,
+			description:
+				"WebGPU AudioCompressor: -22 dB threshold, 6:1 ratio, +4 dB makeup gain",
+		},
+		{
+			name: "Step 7: Stereo Panning",
+			slug: "step7_stereo_pan",
+			builder: buildStep7StereoPanningAudio,
+			description:
+				"WebGPU StereoPanning: dynamic signal sweep from left to right (pan: -1.0 → +1.0)",
+		},
 	];
 
 	console.log("=========================================================");
@@ -91,20 +126,23 @@ async function main() {
 		const pcmDuration = ((Date.now() - pcmStart) / 1000).toFixed(2);
 
 		// 2. Export 16-bit WAV
-		const wavBuffer = pcmToWav(pcm.channels, SAMPLE_RATE);
+		const left = pcm.channels[0] ?? new Float32Array(0);
+		const right = pcm.channels[1] ?? left;
+		const wavBuffer = encodeStereoWav([left, right], {
+			sampleRate: SAMPLE_RATE,
+		});
 		const wavPath = path.join(OUTPUT_DIR, `${step.slug}_audio.wav`);
 		await fs.writeFile(wavPath, wavBuffer);
 
 		// Compute RMS metrics across key timeline windows
-		const ch0 = pcm.channels[0] ?? new Float32Array(0);
-		const fadeInRms = calculateRms(ch0, 0, Math.round(1.5 * SAMPLE_RATE));
+		const fadeInRms = calculateRms(left, 0, Math.round(1.5 * SAMPLE_RATE));
 		const sustainRms = calculateRms(
-			ch0,
+			left,
 			Math.round(2.5 * SAMPLE_RATE),
 			Math.round(3.5 * SAMPLE_RATE),
 		);
 		const fadeOutRms = calculateRms(
-			ch0,
+			left,
 			Math.round(4.5 * SAMPLE_RATE),
 			Math.round(6.0 * SAMPLE_RATE),
 		);

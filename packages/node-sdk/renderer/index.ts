@@ -74,6 +74,7 @@ export type AudioProcessor = (
 ) => void | Promise<void>;
 
 export {
+	isSignal,
 	resolveBoolean,
 	resolveNumber,
 	resolveParam,

@@ -599,7 +599,7 @@ new StereoPanning({ pan: 0 });
 
 | Prop | Type | Default | Notes |
 | --- | --- | --- | --- |
-| `pan` | `number` | `0` | Range -1 to 1. Stereo panning value: -1 (full left) to 1 (full right), 0 is center |
+| `pan` | `EffectProp<number>` | `0` | Range -1 to 1. Stereo panning value: -1 (full left) to 1 (full right), 0 is center. Can be modulated by a static number or dynamic signal. |
 
 ### Vignette
 

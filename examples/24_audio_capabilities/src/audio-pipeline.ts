@@ -1,5 +1,5 @@
 import path from "node:path";
-import { Composition, Effect, Layer } from "framefields";
+import { Composition, Effect, Layer, Signal } from "framefields";
 
 export const FPS = 30;
 export const DURATION_SEC = 6;
@@ -165,6 +165,165 @@ export function buildStep3FadedReverbAudio(): Composition {
 					width: 1.0,
 				}),
 			),
+	);
+
+	return comp;
+}
+
+/**
+ * Step 4: Ping-Pong Delay.
+ * Applies WebGPU AudioDelay with spatial bouncing echoes.
+ */
+export function buildStep4DelayAudio(): Composition {
+	const comp = new Composition({
+		width: W,
+		height: H,
+		fps: FPS,
+		durationMs: DURATION_MS,
+		backgroundColor: "#0d0f12",
+	});
+
+	comp.add(
+		createCard(
+			"Step 4: Ping-Pong Delay",
+			"WebGPU AudioDelay: 0.28s stereo delay time, 45% feedback, 55% wet",
+			"SPATIAL ECHO DSP",
+		),
+	);
+
+	comp.addAudio(
+		Layer.audio(SCORE_PATH, {
+			id: "audio-step4-delay",
+			durationFrames: DURATION_FRAMES,
+			volume: 1.0,
+		}).apply(
+			Effect.audioDelay({
+				delayTime: 0.28,
+				feedback: 0.45,
+				wet: 0.55,
+				dry: 0.85,
+				pingPong: true,
+			}),
+		),
+	);
+
+	return comp;
+}
+
+/**
+ * Step 5: Parametric EQ Filter.
+ * Applies WebGPU AudioParametricEq low-pass biquad filter.
+ */
+export function buildStep5ParametricEqAudio(): Composition {
+	const comp = new Composition({
+		width: W,
+		height: H,
+		fps: FPS,
+		durationMs: DURATION_MS,
+		backgroundColor: "#0d0f12",
+	});
+
+	comp.add(
+		createCard(
+			"Step 5: Parametric Low-Pass EQ",
+			"WebGPU AudioParametricEq: 750 Hz cutoff biquad low-pass filter (Q: 1.2)",
+			"BIQUAD FILTER DSP",
+		),
+	);
+
+	comp.addAudio(
+		Layer.audio(SCORE_PATH, {
+			id: "audio-step5-eq",
+			durationFrames: DURATION_FRAMES,
+			volume: 1.0,
+		}).apply(
+			Effect.audioParametricEq({
+				type: "lowPass",
+				frequency: 750,
+				q: 1.2,
+				gain: 0,
+			}),
+		),
+	);
+
+	return comp;
+}
+
+/**
+ * Step 6: Dynamics Compressor.
+ * Applies WebGPU AudioCompressor for punchy dynamics with soft-knee and makeup gain.
+ */
+export function buildStep6CompressorAudio(): Composition {
+	const comp = new Composition({
+		width: W,
+		height: H,
+		fps: FPS,
+		durationMs: DURATION_MS,
+		backgroundColor: "#0d0f12",
+	});
+
+	comp.add(
+		createCard(
+			"Step 6: Dynamics Compressor",
+			"WebGPU AudioCompressor: -22 dB threshold, 6:1 ratio, +4 dB makeup gain",
+			"DYNAMICS DSP",
+		),
+	);
+
+	comp.addAudio(
+		Layer.audio(SCORE_PATH, {
+			id: "audio-step6-compressor",
+			durationFrames: DURATION_FRAMES,
+			volume: 1.0,
+		}).apply(
+			Effect.audioCompressor({
+				threshold: -22,
+				ratio: 6,
+				attack: 0.005,
+				release: 0.15,
+				knee: 8,
+				makeupGain: 4,
+			}),
+		),
+	);
+
+	return comp;
+}
+
+/**
+ * Step 7: Stereo Panning.
+ * Dynamic signal modulation sweeping soundstage from left to right (-1.0 to +1.0).
+ */
+export function buildStep7StereoPanningAudio(): Composition {
+	const comp = new Composition({
+		width: W,
+		height: H,
+		fps: FPS,
+		durationMs: DURATION_MS,
+		backgroundColor: "#0d0f12",
+	});
+
+	// Smooth linear progress sweep from hard left (-1.0) to hard right (+1.0)
+	const panSignal = Signal.programmatic((ctx) => -1.0 + 2.0 * ctx.progress);
+
+	comp.add(
+		createCard(
+			"Step 7: Stereo Panning",
+			"WebGPU StereoPanning: dynamic signal sweep from left to right (pan: -1.0 → +1.0)",
+			"STEREO PANNING",
+		),
+	);
+
+	comp.addAudio(
+		Layer.audio(SCORE_PATH, {
+			id: "audio-step7-pan",
+			durationFrames: DURATION_FRAMES,
+			volume: 1.0,
+		}).apply(
+			Effect.stereoPanning({
+				pan: panSignal,
+			}),
+		),
 	);
 
 	return comp;

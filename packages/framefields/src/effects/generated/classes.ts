@@ -2561,11 +2561,11 @@ export class ResizerScaler extends Effect<ResizerScalerProps> {
 
 export interface StereoPanningProps {
 	/**
-	 * Stereo panning value: -1 (full left) to 1 (full right), 0 is center
-	 * Range -1 to 1.
+	 * Stereo panning value: -1 (full left) to 1 (full right), 0 is center. Can be modulated by a static number or dynamic signal.
+	 * Range -1 to 1. Accepts a signal.
 	 * @default 0
 	 */
-	pan?: number;
+	pan?: EffectProp<number>;
 }
 
 const stereoPanningDefaults: StereoPanningProps = {

@@ -1,6 +1,6 @@
 {
 	"name": "@framefields/node-vignette",
-	"version": "2.0.5",
+	"version": "2.0.6",
 	"private": false,
 	"framefields": {
 		"type": "Vignette",

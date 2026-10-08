@@ -1,5 +1,11 @@
 # framefields
 
+## 2.0.6
+
+### Patch Changes
+
+- 7ddb9d9: Register all remaining effect and audio DSP nodes with the effects generator and catalog, bundle them in the `framefields` SDK, and expose their strongly-typed classes, factories, and props for agents and composers.
+
 ## 2.0.5
 
 ### Patch Changes

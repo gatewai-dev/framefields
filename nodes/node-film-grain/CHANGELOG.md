@@ -1,5 +1,7 @@
 # @framefields/node-film-grain
 
+## 2.0.6
+
 ## 2.0.5
 
 ## 2.0.4

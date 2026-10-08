@@ -4,7 +4,8 @@
 	"private": false,
 	"framefields": {
 		"type": "Liquify",
-		"kind": "effect"
+		"kind": "effect",
+		"schema": "LiquifyNodeConfigSchema"
 	},
 	"type": "module",
 	"license": "Apache-2.0",

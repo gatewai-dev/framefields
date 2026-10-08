@@ -4,7 +4,8 @@
 	"private": false,
 	"framefields": {
 		"type": "ChannelMerger",
-		"kind": "effect"
+		"kind": "effect",
+		"schema": "ChannelMergerNodeConfigSchema"
 	},
 	"type": "module",
 	"license": "Apache-2.0",

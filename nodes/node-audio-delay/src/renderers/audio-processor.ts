@@ -1,4 +1,8 @@
-import type { AudioProcessor } from "@framefields/node-sdk";
+import {
+	type AudioProcessor,
+	resolveBoolean,
+	resolveNumber,
+} from "@framefields/node-sdk";
 import { WebGPUAudioProcessor } from "@framefields/webgpu-renderers";
 
 const PARAM_ORDER = ["delayTime", "feedback", "wet", "dry"];
@@ -179,7 +183,11 @@ export const delayAudioProcessor: AudioProcessor = async (
 	}
 
 	const op = (virtualMedia.operation as Record<string, unknown>) || {};
-	const inputs = (op.inputs as Record<string, any>) || {};
+	const inputs =
+		(op.inputs as Record<
+			string,
+			{ connectionValid?: boolean; outputItem?: { type?: string } }
+		>) || {};
 
 	const numChannels = channels.length;
 	if (numChannels === 0) return;
@@ -189,22 +197,15 @@ export const delayAudioProcessor: AudioProcessor = async (
 	// Clamp and extract parameters
 	const delaySec = Math.max(
 		0.001,
-		Math.min(typeof op.delayTime === "number" ? op.delayTime : 0.25, 5.0),
+		Math.min(resolveNumber(op.delayTime, 0.25), 5.0),
 	);
 	const feedbackInternal = Math.max(
 		0.0,
-		Math.min(typeof op.feedback === "number" ? op.feedback : 0.4, 0.95),
+		Math.min(resolveNumber(op.feedback, 0.4), 0.95),
 	);
-	const wetInternal = Math.max(
-		0.0,
-		Math.min(typeof op.wet === "number" ? op.wet : 0.3, 1.0),
-	);
-	const dryInternal = Math.max(
-		0.0,
-		Math.min(typeof op.dry === "number" ? op.dry : 1.0, 1.0),
-	);
-	const pingPongInternal =
-		typeof op.pingPong === "boolean" ? op.pingPong : false;
+	const wetInternal = Math.max(0.0, Math.min(resolveNumber(op.wet, 0.3), 1.0));
+	const dryInternal = Math.max(0.0, Math.min(resolveNumber(op.dry, 1.0), 1.0));
+	const pingPongInternal = resolveBoolean(op.pingPong, false);
 
 	const isHandleConnected = (handleIdKey: string): boolean => {
 		const handleId = op[handleIdKey];

@@ -7,6 +7,413 @@ import type { EffectProp } from "../types.js";
 import { withDefaults } from "../with-defaults.js";
 import { effectMeta } from "./meta.js";
 
+export interface CornerPinPointsItem {
+	/** Range 0 to 100. */
+	x: number;
+	/** Range 0 to 100. */
+	y: number;
+}
+
+export interface KenBurnsKeyframesItem {
+	id?: string;
+	/** Range 0 to 20000. */
+	durationMs: number;
+	/**
+	 * Range 0 to 20000.
+	 * @default 1000
+	 */
+	holdMs: number;
+	/** Range 1 to 20. */
+	scale: number;
+	/** Range 0 to 100. */
+	x: number;
+	/** Range 0 to 100. */
+	y: number;
+	/**
+	 * @default "ease-in-out"
+	 */
+	easing: "linear" | "ease-in" | "ease-out" | "ease-in-out" | "spring";
+}
+
+export interface LayerStyleBevelEmboss {
+	/**
+	 * @default false
+	 */
+	enabled: boolean;
+	/**
+	 * @default "InnerBevel"
+	 */
+	style: "InnerBevel" | "OuterBevel" | "Emboss" | "PillowEmboss";
+	/**
+	 * @default "Smooth"
+	 */
+	technique: "Smooth" | "ChiselHard" | "ChiselSoft";
+	/**
+	 * Range 1 to 1000.
+	 * @default 100
+	 */
+	depth: number;
+	/**
+	 * @default "Up"
+	 */
+	direction: "Up" | "Down";
+	/**
+	 * Range 0 to 250.
+	 * @default 5
+	 */
+	size: number;
+	/**
+	 * Range 0 to 50.
+	 * @default 0
+	 */
+	soften: number;
+	/**
+	 * Range 0 to 360.
+	 * @default 120
+	 */
+	angle: number;
+	/**
+	 * Range 0 to 90.
+	 * @default 30
+	 */
+	altitude: number;
+	/**
+	 * @default "#ffffff"
+	 */
+	highlightColor: string;
+	/**
+	 * Range 0 to 1.
+	 * @default 0.75
+	 */
+	highlightOpacity: number;
+	/**
+	 * @default "#000000"
+	 */
+	shadowColor: string;
+	/**
+	 * Range 0 to 1.
+	 * @default 0.75
+	 */
+	shadowOpacity: number;
+}
+
+export interface LayerStyleColorOverlay {
+	/**
+	 * @default false
+	 */
+	enabled: boolean;
+	/**
+	 * @default "#ff0000"
+	 */
+	color: string;
+	/**
+	 * Range 0 to 1.
+	 * @default 1
+	 */
+	opacity: number;
+	/**
+	 * @default "normal"
+	 */
+	blendMode: string;
+}
+
+export interface LayerStyleDropShadow {
+	/**
+	 * @default false
+	 */
+	enabled: boolean;
+	/**
+	 * @default "#000000"
+	 */
+	color: string;
+	/**
+	 * Range 0 to 1.
+	 * @default 0.75
+	 */
+	opacity: number;
+	/**
+	 * Range 0 to 360.
+	 * @default 120
+	 */
+	angle: number;
+	/**
+	 * Range 0 to 500.
+	 * @default 10
+	 */
+	distance: number;
+	/**
+	 * Range 0 to 100.
+	 * @default 0
+	 */
+	spread: number;
+	/**
+	 * Range 0 to 250.
+	 * @default 10
+	 */
+	size: number;
+	/**
+	 * @default "multiply"
+	 */
+	blendMode: string;
+}
+
+export interface LayerStyleInnerGlow {
+	/**
+	 * @default false
+	 */
+	enabled: boolean;
+	/**
+	 * @default "#ffffff"
+	 */
+	color: string;
+	/**
+	 * Range 0 to 1.
+	 * @default 0.75
+	 */
+	opacity: number;
+	/**
+	 * Range 0 to 250.
+	 * @default 15
+	 */
+	size: number;
+	/**
+	 * Range 0 to 100.
+	 * @default 0
+	 */
+	spread: number;
+	/**
+	 * @default "screen"
+	 */
+	blendMode: string;
+}
+
+export interface LayerStyleInnerShadow {
+	/**
+	 * @default false
+	 */
+	enabled: boolean;
+	/**
+	 * @default "#000000"
+	 */
+	color: string;
+	/**
+	 * Range 0 to 1.
+	 * @default 0.75
+	 */
+	opacity: number;
+	/**
+	 * Range 0 to 360.
+	 * @default 120
+	 */
+	angle: number;
+	/**
+	 * Range 0 to 500.
+	 * @default 5
+	 */
+	distance: number;
+	/**
+	 * Range 0 to 100.
+	 * @default 0
+	 */
+	choke: number;
+	/**
+	 * Range 0 to 250.
+	 * @default 5
+	 */
+	size: number;
+	/**
+	 * @default "multiply"
+	 */
+	blendMode: string;
+}
+
+export interface LayerStyleOuterGlow {
+	/**
+	 * @default false
+	 */
+	enabled: boolean;
+	/**
+	 * @default "#ffffff"
+	 */
+	color: string;
+	/**
+	 * Range 0 to 1.
+	 * @default 0.75
+	 */
+	opacity: number;
+	/**
+	 * Range 0 to 250.
+	 * @default 15
+	 */
+	size: number;
+	/**
+	 * Range 0 to 100.
+	 * @default 0
+	 */
+	spread: number;
+	/**
+	 * @default "screen"
+	 */
+	blendMode: string;
+}
+
+export interface LayerStyleStroke {
+	/**
+	 * @default false
+	 */
+	enabled: boolean;
+	/**
+	 * Range 0 to 100.
+	 * @default 2
+	 */
+	size: number;
+	/**
+	 * @default "outside"
+	 */
+	position: "inside" | "center" | "outside";
+	/**
+	 * @default "#ffffff"
+	 */
+	color: string;
+	/**
+	 * Range 0 to 1.
+	 * @default 1
+	 */
+	opacity: number;
+	/**
+	 * @default "normal"
+	 */
+	blendMode: string;
+}
+
+export interface LiquifyOperationsItem {
+	/**
+	 * @default "Bloat"
+	 */
+	type: "Push" | "Pull" | "Bloat" | "Pucker" | "TwirlCW" | "TwirlCCW";
+	/** Range 0 to 1. */
+	x: number;
+	/** Range 0 to 1. */
+	y: number;
+	/**
+	 * Range 0.01 to 1.
+	 * @default 0.15
+	 */
+	radius: number;
+	/**
+	 * Range 0 to 1.
+	 * @default 0.5
+	 */
+	strength: number;
+	/**
+	 * Range -1 to 1.
+	 * @default 0
+	 */
+	dx: number;
+	/**
+	 * Range -1 to 1.
+	 * @default 0
+	 */
+	dy: number;
+}
+
+export interface MeshWarpPointsItem {
+	/** Range 0 to 100. */
+	x: number;
+	/** Range 0 to 100. */
+	y: number;
+}
+
+export interface PaintStrokesItemOption1 {
+	/**
+	 * @default "brush"
+	 */
+	id: string;
+	tool: "brush";
+	path: string;
+	color: string;
+	size: number;
+	/**
+	 * Range 0 to 1.
+	 * @default 1
+	 */
+	opacity: number;
+}
+
+export interface PaintStrokesItemOption2 {
+	/**
+	 * @default "eraser"
+	 */
+	id: string;
+	tool: "eraser";
+	path: string;
+	size: number;
+}
+
+export interface PaintStrokesItemOption3 {
+	/**
+	 * @default "fill"
+	 */
+	id: string;
+	tool: "fill";
+	imageData: string;
+	/** Maximum 16384. */
+	width: number;
+	/** Maximum 16384. */
+	height: number;
+}
+
+export interface PatchHealPatchesItem {
+	/**
+	 * @default "patch"
+	 */
+	id: string;
+	/**
+	 * Range 0 to 1.
+	 * @default 0.5
+	 */
+	centerX: number;
+	/**
+	 * Range 0 to 1.
+	 * @default 0.5
+	 */
+	centerY: number;
+	/**
+	 * Range -4096 to 4096.
+	 * @default 50
+	 */
+	offsetX: number;
+	/**
+	 * Range -4096 to 4096.
+	 * @default 0
+	 */
+	offsetY: number;
+	/**
+	 * Range 1 to 500.
+	 * @default 25
+	 */
+	radius: number;
+	/**
+	 * Range 1 to 500.
+	 * @default 25
+	 */
+	sourceRadius: number;
+	/**
+	 * Range 0 to 100.
+	 * @default 50
+	 */
+	feather: number;
+	/**
+	 * Range 0 to 1.
+	 * @default 1
+	 */
+	opacity: number;
+	/**
+	 * @default "SeamlessHeal"
+	 */
+	mode: "Clone" | "SeamlessHeal" | "TextureTransfer";
+}
+
 export interface TonalShift {
 	/**
 	 * Range -100 to 100.
@@ -23,6 +430,372 @@ export interface TonalShift {
 	 * @default 0
 	 */
 	yellowBlue: number;
+}
+
+export interface AudioCompressorProps {
+	/**
+	 * Level (dBFS) above which gain reduction begins (-60 to 0 dB). Can be modulated by a static number or dynamic signal.
+	 * Range -60 to 0. Accepts a signal.
+	 * @default -24
+	 */
+	threshold?: EffectProp<number>;
+	/**
+	 * Input-to-output ratio above threshold (1 to 100). Can be modulated by a static number or dynamic signal.
+	 * Range 1 to 100. Accepts a signal.
+	 * @default 4
+	 */
+	ratio?: EffectProp<number>;
+	/**
+	 * Seconds to reach full gain reduction (0.0001 to 1.0s). Can be modulated by a static number or dynamic signal.
+	 * Range 0.0001 to 1. Accepts a signal.
+	 * @default 0.003
+	 */
+	attack?: EffectProp<number>;
+	/**
+	 * Seconds to recover gain after signal drops (0.01 to 5.0s). Can be modulated by a static number or dynamic signal.
+	 * Range 0.01 to 5. Accepts a signal.
+	 * @default 0.25
+	 */
+	release?: EffectProp<number>;
+	/**
+	 * dB range for soft-knee transition around threshold (0 to 24 dB). Can be modulated by a static number or dynamic signal.
+	 * Range 0 to 24. Accepts a signal.
+	 * @default 6
+	 */
+	knee?: EffectProp<number>;
+	/**
+	 * dBFS of gain applied after compression (0 to 24 dB). Can be modulated by a static number or dynamic signal.
+	 * Range 0 to 24. Accepts a signal.
+	 * @default 0
+	 */
+	makeupGain?: EffectProp<number>;
+}
+
+const audioCompressorDefaults: AudioCompressorProps = {
+	threshold: -24,
+	ratio: 4,
+	attack: 0.003,
+	release: 0.25,
+	knee: 6,
+	makeupGain: 0,
+};
+
+export class AudioCompressor extends Effect<AudioCompressorProps> {
+	public readonly op = "AudioCompressor";
+
+	public declare threshold: number;
+	public declare ratio: number;
+	public declare attack: number;
+	public declare release: number;
+	public declare knee: number;
+	public declare makeupGain: number;
+
+	constructor(config: AudioCompressorProps = {}) {
+		super(
+			withDefaults(
+				"AudioCompressor",
+				audioCompressorDefaults,
+				config,
+				effectMeta.AudioCompressor,
+			),
+		);
+	}
+}
+
+export interface AudioDelayProps {
+	/**
+	 * Delay time in seconds (0.001 to 5.0s). Can be modulated by a static number or dynamic signal.
+	 * Range 0.001 to 5. Accepts a signal.
+	 * @default 0.25
+	 */
+	delayTime?: EffectProp<number>;
+	/**
+	 * Amount of delayed signal fed back into delay line (0.0 to 0.95). Can be modulated by a static number or dynamic signal.
+	 * Range 0 to 0.95. Accepts a signal.
+	 * @default 0.4
+	 */
+	feedback?: EffectProp<number>;
+	/**
+	 * Mix level of the wet delayed signal (0.0 to 1.0). Can be modulated by a static number or dynamic signal.
+	 * Range 0 to 1. Accepts a signal.
+	 * @default 0.3
+	 */
+	wet?: EffectProp<number>;
+	/**
+	 * Mix level of the original dry signal (0.0 to 1.0). Can be modulated by a static number or dynamic signal.
+	 * Range 0 to 1. Accepts a signal.
+	 * @default 1
+	 */
+	dry?: EffectProp<number>;
+	/**
+	 * Alternates echo reflections between left and right channels
+	 * @default false
+	 */
+	pingPong?: boolean;
+}
+
+const audioDelayDefaults: AudioDelayProps = {
+	delayTime: 0.25,
+	feedback: 0.4,
+	wet: 0.3,
+	dry: 1,
+	pingPong: false,
+};
+
+export class AudioDelay extends Effect<AudioDelayProps> {
+	public readonly op = "AudioDelay";
+
+	public declare delayTime: number;
+	public declare feedback: number;
+	public declare wet: number;
+	public declare dry: number;
+	public declare pingPong: boolean;
+
+	constructor(config: AudioDelayProps = {}) {
+		super(
+			withDefaults(
+				"AudioDelay",
+				audioDelayDefaults,
+				config,
+				effectMeta.AudioDelay,
+			),
+		);
+	}
+}
+
+export interface AudioFadeProps {
+	/**
+	 * Duration in seconds of fade in from silence (0 to 60s). Can be modulated by a static number or dynamic signal.
+	 * Range 0 to 60. Accepts a signal.
+	 * @default 0
+	 */
+	fadeInDuration?: EffectProp<number>;
+	/**
+	 * Duration in seconds of fade out to silence (0 to 60s). Can be modulated by a static number or dynamic signal.
+	 * Range 0 to 60. Accepts a signal.
+	 * @default 0
+	 */
+	fadeOutDuration?: EffectProp<number>;
+	/**
+	 * Envelope shape for fade in
+	 * @default "linear"
+	 */
+	fadeInCurve?: "linear" | "exponential" | "scurve";
+	/**
+	 * Envelope shape for fade out
+	 * @default "linear"
+	 */
+	fadeOutCurve?: "linear" | "exponential" | "scurve";
+}
+
+const audioFadeDefaults: AudioFadeProps = {
+	fadeInDuration: 0,
+	fadeOutDuration: 0,
+	fadeInCurve: "linear",
+	fadeOutCurve: "linear",
+};
+
+export class AudioFade extends Effect<AudioFadeProps> {
+	public readonly op = "AudioFade";
+
+	public declare fadeInDuration: number;
+	public declare fadeOutDuration: number;
+	public declare fadeInCurve: "linear" | "exponential" | "scurve";
+	public declare fadeOutCurve: "linear" | "exponential" | "scurve";
+
+	constructor(config: AudioFadeProps = {}) {
+		super(
+			withDefaults(
+				"AudioFade",
+				audioFadeDefaults,
+				config,
+				effectMeta.AudioFade,
+			),
+		);
+	}
+}
+
+export interface AudioNoiseGateProps {
+	/**
+	 * dBFS level below which the gate closes (-120 to 0 dB). Can be modulated by a static number or dynamic signal.
+	 * Range -120 to 0. Accepts a signal.
+	 * @default -40
+	 */
+	threshold?: EffectProp<number>;
+	/**
+	 * Seconds to open (fade in) when signal exceeds threshold (0.0001 to 1.0s). Can be modulated by a static number or dynamic signal.
+	 * Range 0.0001 to 1. Accepts a signal.
+	 * @default 0.005
+	 */
+	attack?: EffectProp<number>;
+	/**
+	 * Seconds to stay open after signal drops below threshold (0.001 to 5.0s). Can be modulated by a static number or dynamic signal.
+	 * Range 0.001 to 5. Accepts a signal.
+	 * @default 0.05
+	 */
+	hold?: EffectProp<number>;
+	/**
+	 * Seconds to close (fade out) after hold expires (0.01 to 5.0s). Can be modulated by a static number or dynamic signal.
+	 * Range 0.01 to 5. Accepts a signal.
+	 * @default 0.1
+	 */
+	release?: EffectProp<number>;
+	/**
+	 * dBFS floor when gate is closed (-120 to 0 dB). Can be modulated by a static number or dynamic signal.
+	 * Range -120 to 0. Accepts a signal.
+	 * @default -80
+	 */
+	range?: EffectProp<number>;
+}
+
+const audioNoiseGateDefaults: AudioNoiseGateProps = {
+	threshold: -40,
+	attack: 0.005,
+	hold: 0.05,
+	release: 0.1,
+	range: -80,
+};
+
+export class AudioNoiseGate extends Effect<AudioNoiseGateProps> {
+	public readonly op = "AudioNoiseGate";
+
+	public declare threshold: number;
+	public declare attack: number;
+	public declare hold: number;
+	public declare release: number;
+	public declare range: number;
+
+	constructor(config: AudioNoiseGateProps = {}) {
+		super(
+			withDefaults(
+				"AudioNoiseGate",
+				audioNoiseGateDefaults,
+				config,
+				effectMeta.AudioNoiseGate,
+			),
+		);
+	}
+}
+
+export interface AudioParametricEqProps {
+	/**
+	 * Type of biquad filter
+	 * @default "peak"
+	 */
+	type?: "lowShelf" | "highShelf" | "peak" | "lowPass" | "highPass" | "notch";
+	/**
+	 * Cutoff or center frequency in Hz (20 to 20000 Hz). Can be modulated by a static number or dynamic signal.
+	 * Range 20 to 20000. Accepts a signal.
+	 * @default 1000
+	 */
+	frequency?: EffectProp<number>;
+	/**
+	 * Gain boost or cut in dB (-24 to 24 dB). Can be modulated by a static number or dynamic signal.
+	 * Range -24 to 24. Accepts a signal.
+	 * @default 0
+	 */
+	gain?: EffectProp<number>;
+	/**
+	 * Filter bandwidth / Q factor (0.01 to 10.0). Can be modulated by a static number or dynamic signal.
+	 * Range 0.01 to 10. Accepts a signal.
+	 * @default 1
+	 */
+	q?: EffectProp<number>;
+}
+
+const audioParametricEqDefaults: AudioParametricEqProps = {
+	type: "peak",
+	frequency: 1000,
+	gain: 0,
+	q: 1,
+};
+
+export class AudioParametricEq extends Effect<AudioParametricEqProps> {
+	public readonly op = "AudioParametricEq";
+
+	public declare type:
+		| "lowShelf"
+		| "highShelf"
+		| "peak"
+		| "lowPass"
+		| "highPass"
+		| "notch";
+	public declare frequency: number;
+	public declare gain: number;
+	public declare q: number;
+
+	constructor(config: AudioParametricEqProps = {}) {
+		super(
+			withDefaults(
+				"AudioParametricEq",
+				audioParametricEqDefaults,
+				config,
+				effectMeta.AudioParametricEq,
+			),
+		);
+	}
+}
+
+export interface AudioReverbProps {
+	/**
+	 * Room decay, size of simulated space (0 to 0.98). Can be modulated by a static number or dynamic signal.
+	 * Range 0 to 0.98. Accepts a signal.
+	 * @default 0.5
+	 */
+	roomSize?: EffectProp<number>;
+	/**
+	 * High-frequency absorption (0 to 1.0). Can be modulated by a static number or dynamic signal.
+	 * Range 0 to 1. Accepts a signal.
+	 * @default 0.5
+	 */
+	damping?: EffectProp<number>;
+	/**
+	 * Mix level of the wet reverberated signal (0 to 1.0). Can be modulated by a static number or dynamic signal.
+	 * Range 0 to 1. Accepts a signal.
+	 * @default 0.3
+	 */
+	wet?: EffectProp<number>;
+	/**
+	 * Mix level of the original dry signal (0 to 1.0). Can be modulated by a static number or dynamic signal.
+	 * Range 0 to 1. Accepts a signal.
+	 * @default 1
+	 */
+	dry?: EffectProp<number>;
+	/**
+	 * Stereo spread of the reverb tail (0 to 1.0). Can be modulated by a static number or dynamic signal.
+	 * Range 0 to 1. Accepts a signal.
+	 * @default 1
+	 */
+	width?: EffectProp<number>;
+}
+
+const audioReverbDefaults: AudioReverbProps = {
+	roomSize: 0.5,
+	damping: 0.5,
+	wet: 0.3,
+	dry: 1,
+	width: 1,
+};
+
+export class AudioReverb extends Effect<AudioReverbProps> {
+	public readonly op = "AudioReverb";
+
+	public declare roomSize: number;
+	public declare damping: number;
+	public declare wet: number;
+	public declare dry: number;
+	public declare width: number;
+
+	constructor(config: AudioReverbProps = {}) {
+		super(
+			withDefaults(
+				"AudioReverb",
+				audioReverbDefaults,
+				config,
+				effectMeta.AudioReverb,
+			),
+		);
+	}
 }
 
 export interface BlurBaseProps {
@@ -135,6 +908,184 @@ export class BlurBase extends Effect<BlurBaseProps> {
 	}
 }
 
+export interface CameraParallax3DProps {
+	/**
+	 * Motion Preset
+	 * @default "DollyZoom"
+	 */
+	motionPreset?:
+		| "Custom"
+		| "DollyZoom"
+		| "Orbit"
+		| "FlyThrough"
+		| "HandheldShake"
+		| "RackFocus";
+	/**
+	 * Horizontal camera pan angle / position offset (-1.0 to 1.0). Can be modulated by a static number or dynamic signal.
+	 * Range -1 to 1. Accepts a signal.
+	 * @default 0
+	 */
+	panX?: EffectProp<number>;
+	/**
+	 * Vertical camera tilt angle / position offset (-1.0 to 1.0). Can be modulated by a static number or dynamic signal.
+	 * Range -1 to 1. Accepts a signal.
+	 * @default 0
+	 */
+	panY?: EffectProp<number>;
+	/**
+	 * Camera forward/backward zoom position (-1.0 to 1.0). Can be modulated by a static number or dynamic signal.
+	 * Range -1 to 1. Accepts a signal.
+	 * @default 0
+	 */
+	dollyZ?: EffectProp<number>;
+	/**
+	 * Camera Field of View in degrees (15° to 120°). Can be modulated by a static number or dynamic signal.
+	 * Range 15 to 120. Accepts a signal.
+	 * @default 50
+	 */
+	fov?: EffectProp<number>;
+	/**
+	 * Strength of 3D spatial displacement depth relief. Can be modulated by a static number or dynamic signal.
+	 * Range 0 to 2. Accepts a signal.
+	 * @default 0.6
+	 */
+	parallaxAmount?: EffectProp<number>;
+	/**
+	 * Lens aperture size / Circle of Confusion bokeh blur radius. Can be modulated by a static number or dynamic signal.
+	 * Range 0 to 1. Accepts a signal.
+	 * @default 0.3
+	 */
+	dofAperture?: EffectProp<number>;
+	/**
+	 * Focal plane depth in scene (0.0=foreground, 1.0=background). Can be modulated by a static number or dynamic signal.
+	 * Range 0 to 1. Accepts a signal.
+	 * @default 0.4
+	 */
+	focusPlane?: EffectProp<number>;
+	/**
+	 * Inpainting border bleed to eliminate border occlusion tearing.
+	 * Range 0 to 1. Accepts a signal.
+	 * @default 0.5
+	 */
+	edgeDilation?: EffectProp<number>;
+	/**
+	 * Invert depth polarity (white = near vs black = near).
+	 * @default false
+	 */
+	depthInvert?: boolean;
+}
+
+const cameraParallax3DDefaults: CameraParallax3DProps = {
+	motionPreset: "DollyZoom",
+	panX: 0,
+	panY: 0,
+	dollyZ: 0,
+	fov: 50,
+	parallaxAmount: 0.6,
+	dofAperture: 0.3,
+	focusPlane: 0.4,
+	edgeDilation: 0.5,
+	depthInvert: false,
+};
+
+export class CameraParallax3D extends Effect<CameraParallax3DProps> {
+	public readonly op = "CameraParallax3D";
+
+	public declare motionPreset:
+		| "Custom"
+		| "DollyZoom"
+		| "Orbit"
+		| "FlyThrough"
+		| "HandheldShake"
+		| "RackFocus";
+	public declare panX: number;
+	public declare panY: number;
+	public declare dollyZ: number;
+	public declare fov: number;
+	public declare parallaxAmount: number;
+	public declare dofAperture: number;
+	public declare focusPlane: number;
+	public declare edgeDilation: number;
+	public declare depthInvert: boolean;
+
+	constructor(config: CameraParallax3DProps = {}) {
+		super(
+			withDefaults(
+				"CameraParallax3D",
+				cameraParallax3DDefaults,
+				config,
+				effectMeta.CameraParallax3D,
+			),
+		);
+	}
+}
+
+export interface ChannelMergerProps {
+	/**
+	 * Color space used for channel recombination (RGBA, HSLA, CMYK, or LAB).
+	 * @default "RGBA"
+	 */
+	colorSpace?: "RGBA" | "HSLA" | "CMYK" | "LAB";
+	/**
+	 * Fallback value used when Channel 4 is unconnected (Alpha=1.0, Black=0.0 in CMYK).
+	 * Range 0 to 1. Accepts a signal.
+	 * @default 1
+	 */
+	defaultChannel4?: EffectProp<number>;
+}
+
+const channelMergerDefaults: ChannelMergerProps = {
+	colorSpace: "RGBA",
+	defaultChannel4: 1,
+};
+
+export class ChannelMerger extends Effect<ChannelMergerProps> {
+	public readonly op = "ChannelMerger";
+
+	public declare colorSpace: "RGBA" | "HSLA" | "CMYK" | "LAB";
+	public declare defaultChannel4: number;
+
+	constructor(config: ChannelMergerProps = {}) {
+		super(
+			withDefaults(
+				"ChannelMerger",
+				channelMergerDefaults,
+				config,
+				effectMeta.ChannelMerger,
+			),
+		);
+	}
+}
+
+export interface ChannelSplitterProps {
+	/**
+	 * Color space used for channel decomposition (RGBA, HSLA, CMYK, or LAB).
+	 * @default "RGBA"
+	 */
+	colorSpace?: "RGBA" | "HSLA" | "CMYK" | "LAB";
+}
+
+const channelSplitterDefaults: ChannelSplitterProps = {
+	colorSpace: "RGBA",
+};
+
+export class ChannelSplitter extends Effect<ChannelSplitterProps> {
+	public readonly op = "ChannelSplitter";
+
+	public declare colorSpace: "RGBA" | "HSLA" | "CMYK" | "LAB";
+
+	constructor(config: ChannelSplitterProps = {}) {
+		super(
+			withDefaults(
+				"ChannelSplitter",
+				channelSplitterDefaults,
+				config,
+				effectMeta.ChannelSplitter,
+			),
+		);
+	}
+}
+
 export interface ColorBalanceProps {
 	/**
 	 * @default {"cyanRed":0,"magentaGreen":0,"yellowBlue":0}
@@ -239,6 +1190,1401 @@ export class ColorKey extends Effect<ColorKeyProps> {
 	constructor(config: ColorKeyProps = {}) {
 		super(
 			withDefaults("ColorKey", colorKeyDefaults, config, effectMeta.ColorKey),
+		);
+	}
+}
+
+export interface CornerPinProps {
+	points?: CornerPinPointsItem[];
+}
+
+const cornerPinDefaults: CornerPinProps = {};
+
+export class CornerPin extends Effect<CornerPinProps> {
+	public readonly op = "CornerPin";
+
+	public declare points: CornerPinPointsItem[] | undefined;
+
+	constructor(config: CornerPinProps = {}) {
+		super(
+			withDefaults(
+				"CornerPin",
+				cornerPinDefaults,
+				config,
+				effectMeta.CornerPin,
+			),
+		);
+	}
+}
+
+export interface DisplacementMapProps {
+	/**
+	 * Horizontal displacement strength in pixels. Can be modulated by a static number or a dynamic signal.
+	 * Range 0 to 500. Accepts a signal.
+	 * @default 50
+	 */
+	strengthX?: EffectProp<number>;
+	/**
+	 * Vertical displacement strength in pixels. Can be modulated by a static number or a dynamic signal.
+	 * Range 0 to 500. Accepts a signal.
+	 * @default 50
+	 */
+	strengthY?: EffectProp<number>;
+	/**
+	 * X Channel
+	 * @default "Red"
+	 */
+	xChannel?: "Red" | "Green" | "Blue" | "Alpha" | "Luminance";
+	/**
+	 * Y Channel
+	 * @default "Green"
+	 */
+	yChannel?: "Red" | "Green" | "Blue" | "Alpha" | "Luminance";
+	/**
+	 * Wrap Mode
+	 * @default "Clamp"
+	 */
+	wrapMode?: "Clamp" | "Repeat" | "Mirror";
+}
+
+const displacementMapDefaults: DisplacementMapProps = {
+	strengthX: 50,
+	strengthY: 50,
+	xChannel: "Red",
+	yChannel: "Green",
+	wrapMode: "Clamp",
+};
+
+export class DisplacementMap extends Effect<DisplacementMapProps> {
+	public readonly op = "DisplacementMap";
+
+	public declare strengthX: number;
+	public declare strengthY: number;
+	public declare xChannel: "Red" | "Green" | "Blue" | "Alpha" | "Luminance";
+	public declare yChannel: "Red" | "Green" | "Blue" | "Alpha" | "Luminance";
+	public declare wrapMode: "Clamp" | "Repeat" | "Mirror";
+
+	constructor(config: DisplacementMapProps = {}) {
+		super(
+			withDefaults(
+				"DisplacementMap",
+				displacementMapDefaults,
+				config,
+				effectMeta.DisplacementMap,
+			),
+		);
+	}
+}
+
+export interface ExtractLUTProps {
+	/**
+	 * Extraction Strategy
+	 * @default "deterministic"
+	 */
+	strategy?: "deterministic" | "statistical";
+	/**
+	 * Sample Points
+	 * Range 10 to 500. Accepts a signal.
+	 * @default 150
+	 */
+	samplePoints?: EffectProp<number>;
+}
+
+const extractLUTDefaults: ExtractLUTProps = {
+	strategy: "deterministic",
+	samplePoints: 150,
+};
+
+export class ExtractLUT extends Effect<ExtractLUTProps> {
+	public readonly op = "ExtractLUT";
+
+	public declare strategy: "deterministic" | "statistical";
+	public declare samplePoints: number;
+
+	constructor(config: ExtractLUTProps = {}) {
+		super(
+			withDefaults(
+				"ExtractLUT",
+				extractLUTDefaults,
+				config,
+				effectMeta.ExtractLUT,
+			),
+		);
+	}
+}
+
+export interface FlipProps {
+	/**
+	 * Mirror horizontally along the vertical center axis.
+	 * @default true
+	 */
+	horizontal?: boolean;
+	/**
+	 * Mirror vertically along the horizontal center axis.
+	 * @default false
+	 */
+	vertical?: boolean;
+	/**
+	 * Swap horizontal and vertical axes (diagonal transposition).
+	 * @default false
+	 */
+	diagonal?: boolean;
+	/**
+	 * Quick preset mode for flipping or transposition.
+	 * @default "horizontal"
+	 */
+	mode?:
+		| "horizontal"
+		| "vertical"
+		| "both"
+		| "diagonal"
+		| "antiDiagonal"
+		| "custom";
+	/**
+	 * Split-mirror reflection and symmetry effects.
+	 * @default "none"
+	 */
+	symmetry?:
+		| "none"
+		| "leftToRight"
+		| "rightToLeft"
+		| "topToBottom"
+		| "bottomToTop"
+		| "quadrant";
+}
+
+const flipDefaults: FlipProps = {
+	horizontal: true,
+	vertical: false,
+	diagonal: false,
+	mode: "horizontal",
+	symmetry: "none",
+};
+
+export class Flip extends Effect<FlipProps> {
+	public readonly op = "Flip";
+
+	public declare horizontal: boolean;
+	public declare vertical: boolean;
+	public declare diagonal: boolean;
+	public declare mode:
+		| "horizontal"
+		| "vertical"
+		| "both"
+		| "diagonal"
+		| "antiDiagonal"
+		| "custom";
+	public declare symmetry:
+		| "none"
+		| "leftToRight"
+		| "rightToLeft"
+		| "topToBottom"
+		| "bottomToTop"
+		| "quadrant";
+
+	constructor(config: FlipProps = {}) {
+		super(withDefaults("Flip", flipDefaults, config, effectMeta.Flip));
+	}
+}
+
+export interface KenBurnsProps {
+	/**
+	 * @default []
+	 */
+	keyframes?: KenBurnsKeyframesItem[];
+	/**
+	 * Range 0 to 10.
+	 * @default 1.5
+	 */
+	motionBlurSize?: number;
+	/**
+	 * @default "spline"
+	 */
+	movementStyle?: "spline" | "direct";
+	/**
+	 * @default "input"
+	 */
+	aspectRatio?:
+		| "input"
+		| "16:9"
+		| "9:16"
+		| "21:9"
+		| "9:21"
+		| "1:1"
+		| "4:3"
+		| "3:2"
+		| "2:3"
+		| "4:5"
+		| "5:4";
+}
+
+const kenBurnsDefaults: KenBurnsProps = {
+	keyframes: [],
+	motionBlurSize: 1.5,
+	movementStyle: "spline",
+	aspectRatio: "input",
+};
+
+export class KenBurns extends Effect<KenBurnsProps> {
+	public readonly op = "KenBurns";
+
+	public declare keyframes: KenBurnsKeyframesItem[];
+	public declare motionBlurSize: number;
+	public declare movementStyle: "spline" | "direct";
+	public declare aspectRatio:
+		| "input"
+		| "16:9"
+		| "9:16"
+		| "21:9"
+		| "9:21"
+		| "1:1"
+		| "4:3"
+		| "3:2"
+		| "2:3"
+		| "4:5"
+		| "5:4";
+
+	constructor(config: KenBurnsProps = {}) {
+		super(
+			withDefaults("KenBurns", kenBurnsDefaults, config, effectMeta.KenBurns),
+		);
+	}
+}
+
+export interface LayerStyleProps {
+	/**
+	 * @default {"enabled":false,"color":"#000000","opacity":0.75,"angle":120,"distance":10,"spread":0,"size":10,"blendMode":"multiply"}
+	 */
+	dropShadow?: Partial<LayerStyleDropShadow>;
+	/**
+	 * @default {"enabled":false,"color":"#000000","opacity":0.75,"angle":120,"distance":5,"choke":0,"size":5,"blendMode":"multiply"}
+	 */
+	innerShadow?: Partial<LayerStyleInnerShadow>;
+	/**
+	 * @default {"enabled":false,"color":"#ffffff","opacity":0.75,"size":15,"spread":0,"blendMode":"screen"}
+	 */
+	outerGlow?: Partial<LayerStyleOuterGlow>;
+	/**
+	 * @default {"enabled":false,"color":"#ffffff","opacity":0.75,"size":15,"spread":0,"blendMode":"screen"}
+	 */
+	innerGlow?: Partial<LayerStyleInnerGlow>;
+	/**
+	 * @default {"enabled":false,"size":2,"position":"outside","color":"#ffffff","opacity":1,"blendMode":"normal"}
+	 */
+	stroke?: Partial<LayerStyleStroke>;
+	/**
+	 * @default {"enabled":false,"style":"InnerBevel","technique":"Smooth","depth":100,"direction":"Up","size":5,"soften":0,"angle":120,"altitude":30,"highlightColor":"#ffffff","highlightOpacity":0.75,"shadowColor":"#000000","shadowOpacity":0.75}
+	 */
+	bevelEmboss?: Partial<LayerStyleBevelEmboss>;
+	/**
+	 * @default {"enabled":false,"color":"#ff0000","opacity":1,"blendMode":"normal"}
+	 */
+	colorOverlay?: Partial<LayerStyleColorOverlay>;
+	dropShadowAngleHandleId?: string | null;
+	dropShadowDistanceHandleId?: string | null;
+	dropShadowSpreadHandleId?: string | null;
+	dropShadowSizeHandleId?: string | null;
+	dropShadowOpacityHandleId?: string | null;
+	innerShadowAngleHandleId?: string | null;
+	innerShadowDistanceHandleId?: string | null;
+	innerShadowChokeHandleId?: string | null;
+	innerShadowSizeHandleId?: string | null;
+	innerShadowOpacityHandleId?: string | null;
+	outerGlowSizeHandleId?: string | null;
+	outerGlowSpreadHandleId?: string | null;
+	outerGlowOpacityHandleId?: string | null;
+	innerGlowSizeHandleId?: string | null;
+	innerGlowSpreadHandleId?: string | null;
+	innerGlowOpacityHandleId?: string | null;
+	strokeSizeHandleId?: string | null;
+	strokeOpacityHandleId?: string | null;
+	bevelEmbossDepthHandleId?: string | null;
+	bevelEmbossSizeHandleId?: string | null;
+	bevelEmbossSoftenHandleId?: string | null;
+	bevelEmbossAngleHandleId?: string | null;
+	bevelEmbossAltitudeHandleId?: string | null;
+	bevelEmbossHighlightOpacityHandleId?: string | null;
+	bevelEmbossShadowOpacityHandleId?: string | null;
+	colorOverlayOpacityHandleId?: string | null;
+}
+
+const layerStyleDefaults: LayerStyleProps = {
+	dropShadow: {
+		enabled: false,
+		color: "#000000",
+		opacity: 0.75,
+		angle: 120,
+		distance: 10,
+		spread: 0,
+		size: 10,
+		blendMode: "multiply",
+	},
+	innerShadow: {
+		enabled: false,
+		color: "#000000",
+		opacity: 0.75,
+		angle: 120,
+		distance: 5,
+		choke: 0,
+		size: 5,
+		blendMode: "multiply",
+	},
+	outerGlow: {
+		enabled: false,
+		color: "#ffffff",
+		opacity: 0.75,
+		size: 15,
+		spread: 0,
+		blendMode: "screen",
+	},
+	innerGlow: {
+		enabled: false,
+		color: "#ffffff",
+		opacity: 0.75,
+		size: 15,
+		spread: 0,
+		blendMode: "screen",
+	},
+	stroke: {
+		enabled: false,
+		size: 2,
+		position: "outside",
+		color: "#ffffff",
+		opacity: 1,
+		blendMode: "normal",
+	},
+	bevelEmboss: {
+		enabled: false,
+		style: "InnerBevel",
+		technique: "Smooth",
+		depth: 100,
+		direction: "Up",
+		size: 5,
+		soften: 0,
+		angle: 120,
+		altitude: 30,
+		highlightColor: "#ffffff",
+		highlightOpacity: 0.75,
+		shadowColor: "#000000",
+		shadowOpacity: 0.75,
+	},
+	colorOverlay: {
+		enabled: false,
+		color: "#ff0000",
+		opacity: 1,
+		blendMode: "normal",
+	},
+};
+
+export class LayerStyle extends Effect<LayerStyleProps> {
+	public readonly op = "LayerStyle";
+
+	public declare dropShadow: Partial<LayerStyleDropShadow>;
+	public declare innerShadow: Partial<LayerStyleInnerShadow>;
+	public declare outerGlow: Partial<LayerStyleOuterGlow>;
+	public declare innerGlow: Partial<LayerStyleInnerGlow>;
+	public declare stroke: Partial<LayerStyleStroke>;
+	public declare bevelEmboss: Partial<LayerStyleBevelEmboss>;
+	public declare colorOverlay: Partial<LayerStyleColorOverlay>;
+	public declare dropShadowAngleHandleId: string | null | undefined;
+	public declare dropShadowDistanceHandleId: string | null | undefined;
+	public declare dropShadowSpreadHandleId: string | null | undefined;
+	public declare dropShadowSizeHandleId: string | null | undefined;
+	public declare dropShadowOpacityHandleId: string | null | undefined;
+	public declare innerShadowAngleHandleId: string | null | undefined;
+	public declare innerShadowDistanceHandleId: string | null | undefined;
+	public declare innerShadowChokeHandleId: string | null | undefined;
+	public declare innerShadowSizeHandleId: string | null | undefined;
+	public declare innerShadowOpacityHandleId: string | null | undefined;
+	public declare outerGlowSizeHandleId: string | null | undefined;
+	public declare outerGlowSpreadHandleId: string | null | undefined;
+	public declare outerGlowOpacityHandleId: string | null | undefined;
+	public declare innerGlowSizeHandleId: string | null | undefined;
+	public declare innerGlowSpreadHandleId: string | null | undefined;
+	public declare innerGlowOpacityHandleId: string | null | undefined;
+	public declare strokeSizeHandleId: string | null | undefined;
+	public declare strokeOpacityHandleId: string | null | undefined;
+	public declare bevelEmbossDepthHandleId: string | null | undefined;
+	public declare bevelEmbossSizeHandleId: string | null | undefined;
+	public declare bevelEmbossSoftenHandleId: string | null | undefined;
+	public declare bevelEmbossAngleHandleId: string | null | undefined;
+	public declare bevelEmbossAltitudeHandleId: string | null | undefined;
+	public declare bevelEmbossHighlightOpacityHandleId: string | null | undefined;
+	public declare bevelEmbossShadowOpacityHandleId: string | null | undefined;
+	public declare colorOverlayOpacityHandleId: string | null | undefined;
+
+	constructor(config: LayerStyleProps = {}) {
+		super(
+			withDefaults(
+				"LayerStyle",
+				layerStyleDefaults,
+				config,
+				effectMeta.LayerStyle,
+			),
+		);
+	}
+}
+
+export interface LiquifyProps {
+	/**
+	 * List of localized liquify deformation operations.
+	 * @default []
+	 */
+	operations?: LiquifyOperationsItem[];
+}
+
+const liquifyDefaults: LiquifyProps = {
+	operations: [],
+};
+
+export class Liquify extends Effect<LiquifyProps> {
+	public readonly op = "Liquify";
+
+	public declare operations: LiquifyOperationsItem[];
+
+	constructor(config: LiquifyProps = {}) {
+		super(withDefaults("Liquify", liquifyDefaults, config, effectMeta.Liquify));
+	}
+}
+
+export interface MaskMathProps {
+	/**
+	 * Morphological or Boolean set operation applied to input alpha masks.
+	 * @default "Union"
+	 */
+	operation?:
+		| "Union"
+		| "Intersect"
+		| "Subtract"
+		| "Difference"
+		| "Invert"
+		| "Dilate"
+		| "Erode"
+		| "Choke"
+		| "Feather";
+	/**
+	 * Kernel radius in pixels for Dilate, Erode, Choke, or Feather operations.
+	 * Range 0 to 200. Accepts a signal.
+	 * @default 0
+	 */
+	radius?: EffectProp<number>;
+	/**
+	 * Cutoff threshold level (0.0–1.0) for binarization step or non-linear choke.
+	 * Range 0 to 1. Accepts a signal.
+	 * @default 0.5
+	 */
+	threshold?: EffectProp<number>;
+	/**
+	 * Minimum alpha matte cutoff limit (0.0–1.0).
+	 * Range 0 to 1. Accepts a signal.
+	 * @default 0
+	 */
+	clampMin?: EffectProp<number>;
+	/**
+	 * Maximum alpha matte cutoff limit (0.0–1.0).
+	 * Range 0 to 1. Accepts a signal.
+	 * @default 1
+	 */
+	clampMax?: EffectProp<number>;
+	/**
+	 * Source channel to extract mask from Mask A (Alpha, Luminance, Red, Green, Blue).
+	 * @default "Alpha"
+	 */
+	channelA?: "Alpha" | "Luminance" | "Red" | "Green" | "Blue";
+	/**
+	 * Source channel to extract mask from Mask B (Alpha, Luminance, Red, Green, Blue).
+	 * @default "Alpha"
+	 */
+	channelB?: "Alpha" | "Luminance" | "Red" | "Green" | "Blue";
+	/**
+	 * When enabled, outputs crisp 1-bit binary matte based on threshold.
+	 * @default false
+	 */
+	binarize?: boolean;
+	/**
+	 * Inverts final matte output.
+	 * @default false
+	 */
+	invertResult?: boolean;
+	/**
+	 * WhiteWithAlpha (rgba(1,1,1,a)), GrayscaleRGB (rgba(a,a,a,1)), AlphaOnly (rgba(0,0,0,a)), PassthroughRGB (Mask A RGB with new alpha).
+	 * @default "WhiteWithAlpha"
+	 */
+	outputFormat?:
+		| "WhiteWithAlpha"
+		| "GrayscaleRGB"
+		| "AlphaOnly"
+		| "PassthroughRGB";
+}
+
+const maskMathDefaults: MaskMathProps = {
+	operation: "Union",
+	radius: 0,
+	threshold: 0.5,
+	clampMin: 0,
+	clampMax: 1,
+	channelA: "Alpha",
+	channelB: "Alpha",
+	binarize: false,
+	invertResult: false,
+	outputFormat: "WhiteWithAlpha",
+};
+
+export class MaskMath extends Effect<MaskMathProps> {
+	public readonly op = "MaskMath";
+
+	public declare operation:
+		| "Union"
+		| "Intersect"
+		| "Subtract"
+		| "Difference"
+		| "Invert"
+		| "Dilate"
+		| "Erode"
+		| "Choke"
+		| "Feather";
+	public declare radius: number;
+	public declare threshold: number;
+	public declare clampMin: number;
+	public declare clampMax: number;
+	public declare channelA: "Alpha" | "Luminance" | "Red" | "Green" | "Blue";
+	public declare channelB: "Alpha" | "Luminance" | "Red" | "Green" | "Blue";
+	public declare binarize: boolean;
+	public declare invertResult: boolean;
+	public declare outputFormat:
+		| "WhiteWithAlpha"
+		| "GrayscaleRGB"
+		| "AlphaOnly"
+		| "PassthroughRGB";
+
+	constructor(config: MaskMathProps = {}) {
+		super(
+			withDefaults("MaskMath", maskMathDefaults, config, effectMeta.MaskMath),
+		);
+	}
+}
+
+export interface MeshWarpProps {
+	/**
+	 * Range 2 to 12.
+	 * @default 3
+	 */
+	cols?: number;
+	/**
+	 * Range 2 to 12.
+	 * @default 3
+	 */
+	rows?: number;
+	points?: MeshWarpPointsItem[];
+}
+
+const meshWarpDefaults: MeshWarpProps = {
+	cols: 3,
+	rows: 3,
+};
+
+export class MeshWarp extends Effect<MeshWarpProps> {
+	public readonly op = "MeshWarp";
+
+	public declare cols: number;
+	public declare rows: number;
+	public declare points: MeshWarpPointsItem[] | undefined;
+
+	constructor(config: MeshWarpProps = {}) {
+		super(
+			withDefaults("MeshWarp", meshWarpDefaults, config, effectMeta.MeshWarp),
+		);
+	}
+}
+
+export interface NoiseGeneratorProps {
+	/**
+	 * Noise Type
+	 * @default "Perlin"
+	 */
+	noiseType?: "Perlin" | "Simplex" | "Voronoi";
+	/**
+	 * Output Type
+	 * @default "Image"
+	 */
+	outputType?: "Image" | "Video";
+	/**
+	 * Width
+	 * Range 16 to 4096.
+	 * @default 512
+	 */
+	width?: number;
+	/**
+	 * Height
+	 * Range 16 to 4096.
+	 * @default 512
+	 */
+	height?: number;
+	/**
+	 * Scale of the noise pattern. Can be modulated by a static number or a dynamic signal.
+	 * Range 0.1 to 100. Accepts a signal.
+	 * @default 10
+	 */
+	scale?: EffectProp<number>;
+	/**
+	 * Fractal detail depth of the noise.
+	 * Range 1 to 8. Accepts a signal.
+	 * @default 4
+	 */
+	octaves?: EffectProp<number>;
+	/**
+	 * Roughness multiplier for each fractal octave.
+	 * Range 0 to 1. Accepts a signal.
+	 * @default 0.5
+	 */
+	persistence?: EffectProp<number>;
+	/**
+	 * Frequency spacing multiplier for each fractal octave.
+	 * Range 1 to 4. Accepts a signal.
+	 * @default 2
+	 */
+	lacunarity?: EffectProp<number>;
+	/**
+	 * Speed of time-based noise animation in Video mode.
+	 * Range 0 to 10. Accepts a signal.
+	 * @default 1
+	 */
+	speed?: EffectProp<number>;
+	/**
+	 * Color Start
+	 * @default "#000000"
+	 */
+	colorStart?: string;
+	/**
+	 * Color End
+	 * @default "#ffffff"
+	 */
+	colorEnd?: string;
+	/**
+	 * Duration (ms)
+	 * Range 1 to 60000.
+	 * @default 5000
+	 */
+	durationMs?: number;
+	/**
+	 * FPS
+	 * Range 1 to 120.
+	 * @default 30
+	 */
+	fps?: number;
+}
+
+const noiseGeneratorDefaults: NoiseGeneratorProps = {
+	noiseType: "Perlin",
+	outputType: "Image",
+	width: 512,
+	height: 512,
+	scale: 10,
+	octaves: 4,
+	persistence: 0.5,
+	lacunarity: 2,
+	speed: 1,
+	colorStart: "#000000",
+	colorEnd: "#ffffff",
+	durationMs: 5000,
+	fps: 30,
+};
+
+export class NoiseGenerator extends Effect<NoiseGeneratorProps> {
+	public readonly op = "NoiseGenerator";
+
+	public declare noiseType: "Perlin" | "Simplex" | "Voronoi";
+	public declare outputType: "Image" | "Video";
+	public declare width: number;
+	public declare height: number;
+	public declare scale: number;
+	public declare octaves: number;
+	public declare persistence: number;
+	public declare lacunarity: number;
+	public declare speed: number;
+	public declare colorStart: string;
+	public declare colorEnd: string;
+	public declare durationMs: number;
+	public declare fps: number;
+
+	constructor(config: NoiseGeneratorProps = {}) {
+		super(
+			withDefaults(
+				"NoiseGenerator",
+				noiseGeneratorDefaults,
+				config,
+				effectMeta.NoiseGenerator,
+			),
+		);
+	}
+}
+
+export interface PaintProps {
+	/**
+	 * Range 1 to 16384.
+	 * @default 1080
+	 */
+	width?: number;
+	/**
+	 * Range 1 to 16384.
+	 * @default 1080
+	 */
+	height?: number;
+	/**
+	 * @default true
+	 */
+	maintainAspect?: boolean;
+	aspectRatio?: number;
+	/**
+	 * @default "#ffffff"
+	 */
+	backgroundColor?: string;
+	strokes?: (
+		| PaintStrokesItemOption1
+		| PaintStrokesItemOption2
+		| PaintStrokesItemOption3
+	)[];
+}
+
+const paintDefaults: PaintProps = {
+	width: 1080,
+	height: 1080,
+	maintainAspect: true,
+	backgroundColor: "#ffffff",
+};
+
+export class Paint extends Effect<PaintProps> {
+	public readonly op = "Paint";
+
+	public declare width: number;
+	public declare height: number;
+	public declare maintainAspect: boolean;
+	public declare aspectRatio: number | undefined;
+	public declare backgroundColor: string;
+	public declare strokes:
+		| (
+				| PaintStrokesItemOption1
+				| PaintStrokesItemOption2
+				| PaintStrokesItemOption3
+		  )[]
+		| undefined;
+
+	constructor(config: PaintProps = {}) {
+		super(withDefaults("Paint", paintDefaults, config, effectMeta.Paint));
+	}
+}
+
+export interface PatchHealProps {
+	/** List of patch healing operations applied sequentially. */
+	patches?: PatchHealPatchesItem[];
+	/**
+	 * Horizontal normalized position of destination patch (0.0 to 1.0).
+	 * Range 0 to 1. Accepts a signal.
+	 * @default 0.5
+	 */
+	centerX?: EffectProp<number>;
+	/**
+	 * Vertical normalized position of destination patch (0.0 to 1.0).
+	 * Range 0 to 1. Accepts a signal.
+	 * @default 0.5
+	 */
+	centerY?: EffectProp<number>;
+	/**
+	 * Horizontal pixel distance from destination to sample source patch.
+	 * Range -4096 to 4096. Accepts a signal.
+	 * @default 50
+	 */
+	offsetX?: EffectProp<number>;
+	/**
+	 * Vertical pixel distance from destination to sample source patch.
+	 * Range -4096 to 4096. Accepts a signal.
+	 * @default 0
+	 */
+	offsetY?: EffectProp<number>;
+	/**
+	 * Radius of the destination circular patch in pixels (used when no explicit Mask input is connected).
+	 * Range 1 to 500. Accepts a signal.
+	 * @default 25
+	 */
+	radius?: EffectProp<number>;
+	/**
+	 * Radius of the source sample circular patch in pixels.
+	 * Range 1 to 500. Accepts a signal.
+	 * @default 25
+	 */
+	sourceRadius?: EffectProp<number>;
+	/**
+	 * Softness edge falloff percentage (0–100%).
+	 * Range 0 to 100. Accepts a signal.
+	 * @default 50
+	 */
+	feather?: EffectProp<number>;
+	/**
+	 * Blending opacity of the healed patch (0.0–1.0).
+	 * Range 0 to 1. Accepts a signal.
+	 * @default 1
+	 */
+	opacity?: EffectProp<number>;
+	/**
+	 * Healing algorithm: Clone (direct stamp), SeamlessHeal (Poisson color/lighting blend), TextureTransfer (luminance structure matching).
+	 * @default "SeamlessHeal"
+	 */
+	mode?: "Clone" | "SeamlessHeal" | "TextureTransfer";
+}
+
+const patchHealDefaults: PatchHealProps = {
+	centerX: 0.5,
+	centerY: 0.5,
+	offsetX: 50,
+	offsetY: 0,
+	radius: 25,
+	sourceRadius: 25,
+	feather: 50,
+	opacity: 1,
+	mode: "SeamlessHeal",
+};
+
+export class PatchHeal extends Effect<PatchHealProps> {
+	public readonly op = "PatchHeal";
+
+	public declare patches: PatchHealPatchesItem[] | undefined;
+	public declare centerX: number;
+	public declare centerY: number;
+	public declare offsetX: number;
+	public declare offsetY: number;
+	public declare radius: number;
+	public declare sourceRadius: number;
+	public declare feather: number;
+	public declare opacity: number;
+	public declare mode: "Clone" | "SeamlessHeal" | "TextureTransfer";
+
+	constructor(config: PatchHealProps = {}) {
+		super(
+			withDefaults(
+				"PatchHeal",
+				patchHealDefaults,
+				config,
+				effectMeta.PatchHeal,
+			),
+		);
+	}
+}
+
+export interface ProceduralVFXProps {
+	/**
+	 * Which procedural particle / light effect to synthesize.
+	 * @default "Smoke"
+	 */
+	effectType?:
+		| "Smoke"
+		| "Fire"
+		| "Rain"
+		| "Sparks"
+		| "Snow"
+		| "Dust"
+		| "Lightning"
+		| "Magic"
+		| "LensFlare"
+		| "Embers"
+		| "EnergyBeam";
+	/**
+	 * Image renders a static frame; Video animates over time.
+	 * @default "Video"
+	 */
+	outputType?: "Image" | "Video";
+	/**
+	 * Width
+	 * Range 16 to 4096.
+	 * @default 1080
+	 */
+	width?: number;
+	/**
+	 * Height
+	 * Range 16 to 4096.
+	 * @default 1080
+	 */
+	height?: number;
+	/**
+	 * Amount of particles / coverage of the effect. Can be modulated by a static number or dynamic signal.
+	 * Range 0 to 1. Accepts a signal.
+	 * @default 0.6
+	 */
+	density?: EffectProp<number>;
+	/**
+	 * Spatial frequency / particle size of the effect. Can be modulated by a signal.
+	 * Range 0.001 to 10. Accepts a signal.
+	 * @default 0.01
+	 */
+	scale?: EffectProp<number>;
+	/**
+	 * Animation speed in Video mode. Can be modulated by a signal.
+	 * Range 0 to 10. Accepts a signal.
+	 * @default 1
+	 */
+	speed?: EffectProp<number>;
+	/**
+	 * Brightness / alpha gain of the effect. Can be modulated by a signal.
+	 * Range 0 to 1. Accepts a signal.
+	 * @default 0.8
+	 */
+	intensity?: EffectProp<number>;
+	/**
+	 * Deterministic shuffle of the random pattern. Can be modulated by a signal.
+	 * Range 0 to 1000000. Accepts a signal.
+	 * @default 1234
+	 */
+	seed?: EffectProp<number>;
+	/**
+	 * Color Start
+	 * @default "#ffffff"
+	 */
+	colorStart?: string;
+	/**
+	 * Color End
+	 * @default "#ff5500"
+	 */
+	colorEnd?: string;
+	/**
+	 * Duration (ms)
+	 * Range 100 to 100000.
+	 * @default 5000
+	 */
+	durationMs?: number;
+	/**
+	 * FPS
+	 * Range 1 to 120.
+	 * @default 30
+	 */
+	fps?: number;
+}
+
+const proceduralVFXDefaults: ProceduralVFXProps = {
+	effectType: "Smoke",
+	outputType: "Video",
+	width: 1080,
+	height: 1080,
+	density: 0.6,
+	scale: 0.01,
+	speed: 1,
+	intensity: 0.8,
+	seed: 1234,
+	colorStart: "#ffffff",
+	colorEnd: "#ff5500",
+	durationMs: 5000,
+	fps: 30,
+};
+
+export class ProceduralVFX extends Effect<ProceduralVFXProps> {
+	public readonly op = "ProceduralVFX";
+
+	public declare effectType:
+		| "Smoke"
+		| "Fire"
+		| "Rain"
+		| "Sparks"
+		| "Snow"
+		| "Dust"
+		| "Lightning"
+		| "Magic"
+		| "LensFlare"
+		| "Embers"
+		| "EnergyBeam";
+	public declare outputType: "Image" | "Video";
+	public declare width: number;
+	public declare height: number;
+	public declare density: number;
+	public declare scale: number;
+	public declare speed: number;
+	public declare intensity: number;
+	public declare seed: number;
+	public declare colorStart: string;
+	public declare colorEnd: string;
+	public declare durationMs: number;
+	public declare fps: number;
+
+	constructor(config: ProceduralVFXProps = {}) {
+		super(
+			withDefaults(
+				"ProceduralVFX",
+				proceduralVFXDefaults,
+				config,
+				effectMeta.ProceduralVFX,
+			),
+		);
+	}
+}
+
+export interface RefineEdgeProps {
+	/**
+	 * Amount of edge color spill decontamination/defringing (0.0–1.0).
+	 * Range 0 to 1. Accepts a signal.
+	 * @default 0.7
+	 */
+	decontaminateAmount?: EffectProp<number>;
+	/**
+	 * Radius in pixels around alpha transitions to refine and decontaminate.
+	 * Range 0.5 to 50. Accepts a signal.
+	 * @default 2
+	 */
+	radius?: EffectProp<number>;
+	/**
+	 * Matte edge smoothing curve intensity (0–100).
+	 * Range 0 to 100. Accepts a signal.
+	 * @default 5
+	 */
+	smooth?: EffectProp<number>;
+	/**
+	 * Sub-pixel gaussian softness along the matte boundary.
+	 * Range 0 to 50. Accepts a signal.
+	 * @default 0.5
+	 */
+	feather?: EffectProp<number>;
+	/**
+	 * Contract (<0) or expand (>0) the edge boundary (-100% to +100%).
+	 * Range -100 to 100. Accepts a signal.
+	 * @default 0
+	 */
+	shiftEdge?: EffectProp<number>;
+	/**
+	 * Channel to extract matte from (Alpha, Luminance, Red, Green, Blue).
+	 * @default "Alpha"
+	 */
+	matteChannel?: "Alpha" | "Luminance" | "Red" | "Green" | "Blue";
+	/**
+	 * Composite (decontaminated RGB + refined alpha), MatteOnly (grayscale mask), DecontaminatedRGB (clean RGB with full alpha).
+	 * @default "Composite"
+	 */
+	outputMode?: "Composite" | "MatteOnly" | "DecontaminatedRGB";
+}
+
+const refineEdgeDefaults: RefineEdgeProps = {
+	decontaminateAmount: 0.7,
+	radius: 2,
+	smooth: 5,
+	feather: 0.5,
+	shiftEdge: 0,
+	matteChannel: "Alpha",
+	outputMode: "Composite",
+};
+
+export class RefineEdge extends Effect<RefineEdgeProps> {
+	public readonly op = "RefineEdge";
+
+	public declare decontaminateAmount: number;
+	public declare radius: number;
+	public declare smooth: number;
+	public declare feather: number;
+	public declare shiftEdge: number;
+	public declare matteChannel: "Alpha" | "Luminance" | "Red" | "Green" | "Blue";
+	public declare outputMode: "Composite" | "MatteOnly" | "DecontaminatedRGB";
+
+	constructor(config: RefineEdgeProps = {}) {
+		super(
+			withDefaults(
+				"RefineEdge",
+				refineEdgeDefaults,
+				config,
+				effectMeta.RefineEdge,
+			),
+		);
+	}
+}
+
+export interface RefractionCaustics3DProps {
+	/**
+	 * Index of Refraction (1.0=Air, 1.33=Water, 1.52=Crown Glass, 2.42=Diamond). Controls ray bending according to Snell's Law.
+	 * Range 1 to 2.5. Accepts a signal.
+	 * @default 1.52
+	 */
+	ior?: EffectProp<number>;
+	/**
+	 * Chromatic dispersion (RGB wavelength splitting) creating prismatic rainbow fringing.
+	 * Range 0 to 0.2. Accepts a signal.
+	 * @default 0.04
+	 */
+	dispersion?: EffectProp<number>;
+	/**
+	 * Depth displacement scale and effective glass thickness factor.
+	 * Range 0 to 2. Accepts a signal.
+	 * @default 0.5
+	 */
+	refractionScale?: EffectProp<number>;
+	/**
+	 * Brightness multiplier for photometric caustic light rays focusing through curved glass.
+	 * Range 0 to 2. Accepts a signal.
+	 * @default 0.6
+	 */
+	causticBrightness?: EffectProp<number>;
+	/**
+	 * Spatial frequency scale of photometric caustic patterns.
+	 * Range 0.1 to 5. Accepts a signal.
+	 * @default 1
+	 */
+	causticScale?: EffectProp<number>;
+	/**
+	 * Dynamic liquid wave perturbation strength across the refractive surface.
+	 * Range 0 to 1. Accepts a signal.
+	 * @default 0
+	 */
+	fluidRipples?: EffectProp<number>;
+	/**
+	 * Speed of dynamic fluid wave animation.
+	 * Range 0 to 5. Accepts a signal.
+	 * @default 1
+	 */
+	rippleSpeed?: EffectProp<number>;
+	/**
+	 * Microfacet frosted glass roughness and optical diffusion blur.
+	 * Range 0 to 1. Accepts a signal.
+	 * @default 0
+	 */
+	roughness?: EffectProp<number>;
+	/**
+	 * Fresnel specular reflection gleam intensity.
+	 * Range 0 to 2. Accepts a signal.
+	 * @default 0.8
+	 */
+	specularIntensity?: EffectProp<number>;
+	/**
+	 * Horizontal normalized coordinate (0.0 to 1.0) of incident light source.
+	 * Range 0 to 1. Accepts a signal.
+	 * @default 0.5
+	 */
+	lightPosX?: EffectProp<number>;
+	/**
+	 * Vertical normalized coordinate (0.0 to 1.0) of incident light source.
+	 * Range 0 to 1. Accepts a signal.
+	 * @default 0.2
+	 */
+	lightPosY?: EffectProp<number>;
+	/**
+	 * Internal glass color tint and absorption.
+	 * @default "#ffffff"
+	 */
+	tintColor?: string;
+	/**
+	 * Strength of internal glass color tint absorption.
+	 * Range 0 to 1. Accepts a signal.
+	 * @default 0
+	 */
+	tintStrength?: EffectProp<number>;
+	/**
+	 * Invert depth polarity (white = near vs black = near).
+	 * @default false
+	 */
+	depthInvert?: boolean;
+	/**
+	 * Height-field surface normal extrusion exaggeration.
+	 * Range 0.1 to 5. Accepts a signal.
+	 * @default 1
+	 */
+	depthScale?: EffectProp<number>;
+}
+
+const refractionCaustics3DDefaults: RefractionCaustics3DProps = {
+	ior: 1.52,
+	dispersion: 0.04,
+	refractionScale: 0.5,
+	causticBrightness: 0.6,
+	causticScale: 1,
+	fluidRipples: 0,
+	rippleSpeed: 1,
+	roughness: 0,
+	specularIntensity: 0.8,
+	lightPosX: 0.5,
+	lightPosY: 0.2,
+	tintColor: "#ffffff",
+	tintStrength: 0,
+	depthInvert: false,
+	depthScale: 1,
+};
+
+export class RefractionCaustics3D extends Effect<RefractionCaustics3DProps> {
+	public readonly op = "RefractionCaustics3D";
+
+	public declare ior: number;
+	public declare dispersion: number;
+	public declare refractionScale: number;
+	public declare causticBrightness: number;
+	public declare causticScale: number;
+	public declare fluidRipples: number;
+	public declare rippleSpeed: number;
+	public declare roughness: number;
+	public declare specularIntensity: number;
+	public declare lightPosX: number;
+	public declare lightPosY: number;
+	public declare tintColor: string;
+	public declare tintStrength: number;
+	public declare depthInvert: boolean;
+	public declare depthScale: number;
+
+	constructor(config: RefractionCaustics3DProps = {}) {
+		super(
+			withDefaults(
+				"RefractionCaustics3D",
+				refractionCaustics3DDefaults,
+				config,
+				effectMeta.RefractionCaustics3D,
+			),
+		);
+	}
+}
+
+export interface ResizerScalerProps {
+	/**
+	 * @default "16:9"
+	 */
+	aspectRatioPreset?: "9:16" | "16:9" | "1:1" | "4:5" | "21:9" | "custom";
+	/**
+	 * @default "1080p"
+	 */
+	resolutionPreset?: "4k" | "1080p" | "720p" | "480p" | "custom";
+	/**
+	 * Range 1 to 8192.
+	 * @default 1920
+	 */
+	targetWidth?: number;
+	/**
+	 * Range 1 to 8192.
+	 * @default 1080
+	 */
+	targetHeight?: number;
+	/**
+	 * @default "contain"
+	 */
+	fitMode?: "cover" | "contain" | "stretch" | "manual";
+	/**
+	 * Range 1 to 1000.
+	 * @default 100
+	 */
+	zoom?: number;
+	/**
+	 * Range -8192 to 8192.
+	 * @default 0
+	 */
+	offsetX?: number;
+	/**
+	 * Range -8192 to 8192.
+	 * @default 0
+	 */
+	offsetY?: number;
+	/**
+	 * @default "solid"
+	 */
+	backgroundMode?: "solid" | "blurred" | "gradient" | "transparent";
+	/**
+	 * @default "#000000FF"
+	 */
+	backgroundColor?: string;
+	/**
+	 * @default "#000000FF"
+	 */
+	backgroundColor2?: string;
+	/**
+	 * Range 0 to 100.
+	 * @default 40
+	 */
+	blurRadius?: number;
+	/**
+	 * Range 0 to 1.
+	 * @default 0.6
+	 */
+	backgroundBrightness?: number;
+	/**
+	 * @default "center"
+	 */
+	anchorX?: "left" | "center" | "right";
+	/**
+	 * @default "center"
+	 */
+	anchorY?: "top" | "center" | "bottom";
+}
+
+const resizerScalerDefaults: ResizerScalerProps = {
+	aspectRatioPreset: "16:9",
+	resolutionPreset: "1080p",
+	targetWidth: 1920,
+	targetHeight: 1080,
+	fitMode: "contain",
+	zoom: 100,
+	offsetX: 0,
+	offsetY: 0,
+	backgroundMode: "solid",
+	backgroundColor: "#000000FF",
+	backgroundColor2: "#000000FF",
+	blurRadius: 40,
+	backgroundBrightness: 0.6,
+	anchorX: "center",
+	anchorY: "center",
+};
+
+export class ResizerScaler extends Effect<ResizerScalerProps> {
+	public readonly op = "ResizerScaler";
+
+	public declare aspectRatioPreset:
+		| "9:16"
+		| "16:9"
+		| "1:1"
+		| "4:5"
+		| "21:9"
+		| "custom";
+	public declare resolutionPreset: "4k" | "1080p" | "720p" | "480p" | "custom";
+	public declare targetWidth: number;
+	public declare targetHeight: number;
+	public declare fitMode: "cover" | "contain" | "stretch" | "manual";
+	public declare zoom: number;
+	public declare offsetX: number;
+	public declare offsetY: number;
+	public declare backgroundMode:
+		| "solid"
+		| "blurred"
+		| "gradient"
+		| "transparent";
+	public declare backgroundColor: string;
+	public declare backgroundColor2: string;
+	public declare blurRadius: number;
+	public declare backgroundBrightness: number;
+	public declare anchorX: "left" | "center" | "right";
+	public declare anchorY: "top" | "center" | "bottom";
+
+	constructor(config: ResizerScalerProps = {}) {
+		super(
+			withDefaults(
+				"ResizerScaler",
+				resizerScalerDefaults,
+				config,
+				effectMeta.ResizerScaler,
+			),
+		);
+	}
+}
+
+export interface StereoPanningProps {
+	/**
+	 * Stereo panning value: -1 (full left) to 1 (full right), 0 is center
+	 * Range -1 to 1.
+	 * @default 0
+	 */
+	pan?: number;
+}
+
+const stereoPanningDefaults: StereoPanningProps = {
+	pan: 0,
+};
+
+export class StereoPanning extends Effect<StereoPanningProps> {
+	public readonly op = "StereoPanning";
+
+	public declare pan: number;
+
+	constructor(config: StereoPanningProps = {}) {
+		super(
+			withDefaults(
+				"StereoPanning",
+				stereoPanningDefaults,
+				config,
+				effectMeta.StereoPanning,
+			),
 		);
 	}
 }

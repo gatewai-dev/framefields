@@ -1,4 +1,4 @@
-import type { AudioProcessor } from "@framefields/node-sdk";
+import { type AudioProcessor, resolveNumber } from "@framefields/node-sdk";
 import { WebGPUAudioProcessor } from "@framefields/webgpu-renderers";
 
 const PARAM_ORDER = [
@@ -211,14 +211,18 @@ export const compressorAudioProcessor: AudioProcessor = async (
 	}
 
 	const op = (virtualMedia.operation as Record<string, unknown>) || {};
-	const inputs = (op.inputs as Record<string, any>) || {};
+	const inputs =
+		(op.inputs as Record<
+			string,
+			{ connectionValid?: boolean; outputItem?: { type?: string } }
+		>) || {};
 
-	const threshold = typeof op.threshold === "number" ? op.threshold : -24;
-	const ratio = typeof op.ratio === "number" ? op.ratio : 4;
-	const attack = typeof op.attack === "number" ? op.attack : 0.003;
-	const release = typeof op.release === "number" ? op.release : 0.25;
-	const knee = typeof op.knee === "number" ? op.knee : 6;
-	const makeupGain = typeof op.makeupGain === "number" ? op.makeupGain : 0;
+	const threshold = resolveNumber(op.threshold, -24);
+	const ratio = resolveNumber(op.ratio, 4);
+	const attack = resolveNumber(op.attack, 0.003);
+	const release = resolveNumber(op.release, 0.25);
+	const knee = resolveNumber(op.knee, 6);
+	const makeupGain = resolveNumber(op.makeupGain, 0);
 
 	const isHandleConnected = (handleIdKey: string): boolean => {
 		const handleId = op[handleIdKey];

@@ -5,7 +5,8 @@
 	"private": false,
 	"framefields": {
 		"type": "AudioCompressor",
-		"kind": "audio"
+		"kind": "audio",
+		"schema": "CompressorNodeConfigSchema"
 	},
 	"type": "module",
 	"module": "./dist/index.mjs",

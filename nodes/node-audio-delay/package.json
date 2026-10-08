@@ -5,7 +5,8 @@
 	"private": false,
 	"framefields": {
 		"type": "AudioDelay",
-		"kind": "audio"
+		"kind": "audio",
+		"schema": "DelayNodeConfigSchema"
 	},
 	"type": "module",
 	"module": "./dist/index.mjs",

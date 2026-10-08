@@ -4,7 +4,8 @@
 	"private": false,
 	"framefields": {
 		"type": "ResizerScaler",
-		"kind": "effect"
+		"kind": "effect",
+		"schema": "ResizerScalerNodeConfigSchema"
 	},
 	"type": "module",
 	"license": "Apache-2.0",

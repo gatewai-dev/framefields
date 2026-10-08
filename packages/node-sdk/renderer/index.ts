@@ -73,6 +73,13 @@ export type AudioProcessor = (
 	ctx?: AudioProcessorContext,
 ) => void | Promise<void>;
 
+export {
+	resolveBoolean,
+	resolveNumber,
+	resolveParam,
+	resolveString,
+} from "@framefields/core";
+
 export interface NodeRendererPlugin {
 	WebGPURenderer?: WebGPUNodeRenderer;
 	audioProcessor?: AudioProcessor;

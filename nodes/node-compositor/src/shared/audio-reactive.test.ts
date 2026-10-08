@@ -166,11 +166,10 @@ describe("Audio-Reactive Motion Graphics Engine Pipeline", () => {
 		expect(signals.audio_beat_handle).toBe(beatSamples);
 
 		// 2. Compile into timeline
-		const { tl, targetsById } = compileTimeline(
-			"audio-reactive-session",
-			vm,
-			{ fps: 24, durationSec: 2 },
-		);
+		const { tl, targetsById } = compileTimeline("audio-reactive-session", vm, {
+			fps: 24,
+			durationSec: 2,
+		});
 
 		const logoStub = targetsById["bouncing-logo-star"];
 		expect(logoStub).toBeDefined();

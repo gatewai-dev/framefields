@@ -8,10 +8,7 @@ import { z } from "zod";
 // ─── Stroke schemas ────────────────────────────────────────────────────────────
 
 export const BrushStrokeSchema = z.object({
-	id: z
-		.string()
-		.min(1)
-		.default(() => Math.random().toString(36).substring(7)),
+	id: z.string().min(1).default("brush"),
 	tool: z.literal("brush"),
 	path: z.string(),
 	color: z
@@ -25,20 +22,14 @@ export const BrushStrokeSchema = z.object({
 });
 
 export const EraserStrokeSchema = z.object({
-	id: z
-		.string()
-		.min(1)
-		.default(() => Math.random().toString(36).substring(7)),
+	id: z.string().min(1).default("eraser"),
 	tool: z.literal("eraser"),
 	path: z.string(),
 	size: z.number().positive(),
 });
 
 export const FillStrokeSchema = z.object({
-	id: z
-		.string()
-		.min(1)
-		.default(() => Math.random().toString(36).substring(7)),
+	id: z.string().min(1).default("fill"),
 	tool: z.literal("fill"),
 	imageData: z.string().min(1),
 	width: z.number().int().positive().max(16384),

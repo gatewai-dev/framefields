@@ -51,15 +51,12 @@ export function solveCubicBezier(
 		const oneMinusU2 = oneMinusU * oneMinusU;
 		const u2 = u * u;
 
-		const currentX =
-			3 * oneMinusU2 * u * x1 + 3 * oneMinusU * u2 * x2 + u2 * u;
+		const currentX = 3 * oneMinusU2 * u * x1 + 3 * oneMinusU * u2 * x2 + u2 * u;
 		const diff = currentX - t;
 		if (Math.abs(diff) < 1e-6) break;
 
 		const dx =
-			3 * oneMinusU2 * x1 +
-			6 * oneMinusU * u * (x2 - x1) +
-			3 * u2 * (1 - x2);
+			3 * oneMinusU2 * x1 + 6 * oneMinusU * u * (x2 - x1) + 3 * u2 * (1 - x2);
 
 		if (Math.abs(dx) < 1e-6) break;
 		u -= diff / dx;
@@ -69,9 +66,7 @@ export function solveCubicBezier(
 	// Bisection fallback if Newton didn't converge within bounds
 	const oneMinusU = 1 - u;
 	const checkX =
-		3 * oneMinusU * oneMinusU * u * x1 +
-		3 * oneMinusU * u * u * x2 +
-		u * u * u;
+		3 * oneMinusU * oneMinusU * u * x1 + 3 * oneMinusU * u * u * x2 + u * u * u;
 
 	if (Math.abs(checkX - t) > 1e-3) {
 		let low = 0;
@@ -96,11 +91,7 @@ export function solveCubicBezier(
 
 	// Evaluate y(u)
 	const oU = 1 - u;
-	return (
-		3 * oU * oU * u * y1 +
-		3 * oU * u * u * y2 +
-		u * u * u
-	);
+	return 3 * oU * oU * u * y1 + 3 * oU * u * u * y2 + u * u * u;
 }
 
 /**
@@ -241,16 +232,8 @@ export function sampleCubicBezierSegment(
 		const u2 = u * u;
 		const u3 = u2 * u;
 
-		const x =
-			oU3 * p0.x +
-			3 * oU2 * u * c1.x +
-			3 * oU * u2 * c2.x +
-			u3 * p1.x;
-		const y =
-			oU3 * p0.y +
-			3 * oU2 * u * c1.y +
-			3 * oU * u2 * c2.y +
-			u3 * p1.y;
+		const x = oU3 * p0.x + 3 * oU2 * u * c1.x + 3 * oU * u2 * c2.x + u3 * p1.x;
+		const y = oU3 * p0.y + 3 * oU2 * u * c1.y + 3 * oU * u2 * c2.y + u3 * p1.y;
 		pts.push({ x, y });
 	}
 	return pts;

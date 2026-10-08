@@ -1,4 +1,4 @@
-import type { AudioProcessor } from "@framefields/node-sdk";
+import { type AudioProcessor, resolveNumber } from "@framefields/node-sdk";
 import { WebGPUAudioProcessor } from "@framefields/webgpu-renderers";
 
 const PANNING_SHADER_TEMPLATE = () => `
@@ -59,7 +59,10 @@ export const stereoPanningAudioProcessor: AudioProcessor = async (
 		throw new Error("GPUDevice is required for WebGPU Stereo Panning.");
 	}
 
-	const pan = (node.operation as any)?.pan ?? 0;
+	const pan = resolveNumber(
+		(node.operation as Record<string, unknown> | undefined)?.pan,
+		0,
+	);
 	const clampedPan = Math.max(-1, Math.min(1, pan));
 
 	if (channels.length === 0) return;
@@ -74,8 +77,9 @@ export const stereoPanningAudioProcessor: AudioProcessor = async (
 
 	const numChannels = channels.length;
 
-	// 100% WebGPU Compute Path
-	const nodeId = (node.operation as any)?.id || "stereo-panning";
+	const nodeId =
+		((node.operation as Record<string, unknown> | undefined)?.id as string) ||
+		"stereo-panning";
 	const frame = ctx.frame ?? 0;
 	const fps = ctx.fps ?? 24;
 

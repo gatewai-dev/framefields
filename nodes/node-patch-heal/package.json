@@ -4,7 +4,8 @@
 	"private": false,
 	"framefields": {
 		"type": "PatchHeal",
-		"kind": "effect"
+		"kind": "effect",
+		"schema": "PatchHealNodeConfigSchema"
 	},
 	"type": "module",
 	"license": "Apache-2.0",

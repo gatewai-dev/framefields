@@ -4,7 +4,8 @@
 	"private": false,
 	"framefields": {
 		"type": "LayerStyle",
-		"kind": "effect"
+		"kind": "effect",
+		"schema": "LayerStyleNodeConfigSchema"
 	},
 	"type": "module",
 	"license": "Apache-2.0",

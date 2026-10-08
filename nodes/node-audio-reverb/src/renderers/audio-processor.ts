@@ -1,4 +1,4 @@
-import type { AudioProcessor } from "@framefields/node-sdk";
+import { type AudioProcessor, resolveNumber } from "@framefields/node-sdk";
 import { WebGPUAudioProcessor } from "@framefields/webgpu-renderers";
 
 const PARAM_ORDER = ["roomSize", "damping", "wet", "dry", "width"];
@@ -289,7 +289,11 @@ export const reverbAudioProcessor: AudioProcessor = async (
 	}
 
 	const op = (virtualMedia.operation as Record<string, unknown>) || {};
-	const inputs = (op.inputs as Record<string, any>) || {};
+	const inputs =
+		(op.inputs as Record<
+			string,
+			{ connectionValid?: boolean; outputItem?: { type?: string } }
+		>) || {};
 
 	const numChannels = channels.length;
 	if (numChannels === 0) return;
@@ -299,23 +303,17 @@ export const reverbAudioProcessor: AudioProcessor = async (
 	// Scale parameters based on Freeverb tuning specs
 	const roomSizeInternal = Math.max(
 		0,
-		Math.min(typeof op.roomSize === "number" ? op.roomSize : 0.5, 0.98),
+		Math.min(resolveNumber(op.roomSize, 0.5), 0.98),
 	);
 	const dampingInternal = Math.max(
 		0,
-		Math.min(typeof op.damping === "number" ? op.damping : 0.5, 1.0),
+		Math.min(resolveNumber(op.damping, 0.5), 1.0),
 	);
-	const wetInternal = Math.max(
-		0,
-		Math.min(typeof op.wet === "number" ? op.wet : 0.3, 1.0),
-	);
-	const dryInternal = Math.max(
-		0,
-		Math.min(typeof op.dry === "number" ? op.dry : 1.0, 1.0),
-	);
+	const wetInternal = Math.max(0, Math.min(resolveNumber(op.wet, 0.3), 1.0));
+	const dryInternal = Math.max(0, Math.min(resolveNumber(op.dry, 1.0), 1.0));
 	const widthInternal = Math.max(
 		0,
-		Math.min(typeof op.width === "number" ? op.width : 1.0, 1.0),
+		Math.min(resolveNumber(op.width, 1.0), 1.0),
 	);
 
 	const isHandleConnected = (handleIdKey: string): boolean => {

@@ -190,6 +190,7 @@ import {
 	type DeflickerProps,
 	DepthOfField,
 	type DepthOfFieldProps,
+	effectFactories,
 	FilmGrain,
 	type FilmGrainProps,
 	GradientMap,
@@ -631,14 +632,34 @@ export {
 export {
 	ApplyLUT,
 	type ApplyLUTProps,
+	AudioCompressor,
+	type AudioCompressorProps,
+	AudioDelay,
+	type AudioDelayProps,
+	AudioFade,
+	type AudioFadeProps,
+	AudioNoiseGate,
+	type AudioNoiseGateProps,
+	AudioParametricEq,
+	type AudioParametricEqProps,
+	AudioReverb,
+	type AudioReverbProps,
 	AudioSignalExtractor,
 	type AudioSignalExtractorProps,
 	Blur,
 	type BlurProps,
+	CameraParallax3D,
+	type CameraParallax3DProps,
+	ChannelMerger,
+	type ChannelMergerProps,
+	ChannelSplitter,
+	type ChannelSplitterProps,
 	ColorBalance,
 	type ColorBalanceProps,
 	ColorKey,
 	type ColorKeyProps,
+	CornerPin,
+	type CornerPinProps,
 	Crop,
 	type CropProps,
 	Curves,
@@ -648,8 +669,16 @@ export {
 	type DeflickerProps,
 	DepthOfField,
 	type DepthOfFieldProps,
+	DisplacementMap,
+	type DisplacementMapProps,
+	ExtractLUT,
+	type ExtractLUTProps,
+	effectFactories,
+	effectMeta,
 	FilmGrain,
 	type FilmGrainProps,
+	Flip,
+	type FlipProps,
 	GradientMap,
 	type GradientMapProps,
 	type GradientMapStop,
@@ -659,17 +688,41 @@ export {
 	type HalftoneScreenProps,
 	HighPass,
 	type HighPassProps,
+	KenBurns,
+	type KenBurnsProps,
+	LayerStyle,
+	type LayerStyleProps,
 	type LevelChannel,
 	Levels,
 	type LevelsProps,
+	Liquify,
+	type LiquifyProps,
+	MaskMath,
+	type MaskMathProps,
+	MeshWarp,
+	type MeshWarpProps,
 	Modulate,
 	type ModulateProps,
 	MotionBlur,
 	type MotionBlurProps,
+	NoiseGenerator,
+	type NoiseGeneratorProps,
+	Paint,
+	type PaintProps,
+	PatchHeal,
+	type PatchHealProps,
 	PBRGlass,
 	type PBRGlassProps,
+	ProceduralVFX,
+	type ProceduralVFXProps,
+	RefineEdge,
+	type RefineEdgeProps,
+	RefractionCaustics3D,
+	type RefractionCaustics3DProps,
 	Relight3D,
 	type Relight3DProps,
+	ResizerScaler,
+	type ResizerScalerProps,
 	SelectiveColor,
 	type SelectiveColorAdjustment,
 	type SelectiveColorProps,
@@ -677,6 +730,8 @@ export {
 	type ShadowsHighlightsProps,
 	SSAO,
 	type SSAOProps,
+	StereoPanning,
+	type StereoPanningProps,
 	TemporalDeflicker,
 	TileOffset,
 	type TileOffsetEdgeMode,
@@ -1366,7 +1421,10 @@ export class Composition {
 			volume: options.muted ? 0 : (options.volume ?? 1),
 		});
 
-		(container.children ??= []).push(videoPlate);
+		if (!container.children) {
+			container.children = [];
+		}
+		container.children.push(videoPlate);
 		this.add(container);
 		return this;
 	}
@@ -1419,7 +1477,10 @@ export class Composition {
 				mode: "mask",
 				enableSegmentation: true,
 			});
-			(outlineLayer.children ??= []).push(maskVideo);
+			if (!outlineLayer.children) {
+				outlineLayer.children = [];
+			}
+			outlineLayer.children.push(maskVideo);
 		}
 
 		outlineLayer.apply(
@@ -2712,7 +2773,7 @@ export function editTrackedRegion(
 	return Layer.section(source, target, options);
 }
 
-export const Effect = Object.assign(CoreEffect, {
+export const Effect = Object.assign(CoreEffect, effectFactories, {
 	blur: (config?: BlurProps) => new Blur(config),
 	vignette: (config?: VignetteProps) => new Vignette(config),
 	colorBalance: (config?: ColorBalanceProps) => new ColorBalance(config),

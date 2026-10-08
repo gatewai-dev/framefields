@@ -17,7 +17,11 @@
  */
 import fs from "node:fs/promises";
 import path from "node:path";
-import { encodeStereoWav, HeadlessMediaRenderer } from "framefields";
+import {
+	encodeStereoWav,
+	HeadlessMediaRenderer,
+	startPreview,
+} from "framefields";
 import {
 	buildStep1InitialAudio,
 	buildStep2FadedAudio,
@@ -35,6 +39,43 @@ import {
 
 const OUTPUT_DIR = path.resolve(import.meta.dirname, "../output");
 const mode = process.argv[2] ?? "all";
+
+if (mode === "preview") {
+	const stepArg = process.argv[3];
+	let targetExport = "buildAudioShowcase";
+	let title = "Audio Capabilities Showcase";
+
+	if (stepArg && !stepArg.startsWith("-")) {
+		const stepNum = Number.parseInt(stepArg, 10);
+		if (stepNum >= 1 && stepNum <= 7) {
+			const stepNames = [
+				"buildStep1InitialAudio",
+				"buildStep2FadedAudio",
+				"buildStep3FadedReverbAudio",
+				"buildStep4DelayAudio",
+				"buildStep5ParametricEqAudio",
+				"buildStep6CompressorAudio",
+				"buildStep7StereoPanningAudio",
+			];
+			targetExport = stepNames[stepNum - 1];
+			title = `Audio Capabilities - Step ${stepNum}`;
+		}
+	}
+
+	const session = await startPreview(
+		{
+			entry: new URL("./audio-pipeline.ts", import.meta.url),
+			export: targetExport,
+		},
+		{
+			title,
+			open: true,
+		},
+	);
+	console.log(`[preview] Preview running at ${session.url}`);
+	await session.closed;
+	process.exit(0);
+}
 
 function calculateRms(
 	channel: Float32Array,

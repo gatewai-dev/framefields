@@ -4,6 +4,7 @@
 	"private": true,
 	"type": "module",
 	"scripts": {
+		"preview": "tsx src/render.ts preview",
 		"render": "tsx src/render.ts",
 		"test": "vitest run",
 		"typecheck": "tsc --noEmit -p ."

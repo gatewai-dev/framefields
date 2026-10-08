@@ -1,4 +1,5 @@
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { Composition, Effect, Layer, Signal } from "framefields";
 
 export const FPS = 30;
@@ -9,7 +10,8 @@ export const SAMPLE_RATE = 48000;
 export const W = 1280;
 export const H = 720;
 
-export const ASSETS_DIR = path.resolve(import.meta.dirname, "../assets");
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+export const ASSETS_DIR = path.resolve(HERE, "../assets");
 export const SCORE_PATH = path.join(ASSETS_DIR, "score.mp3");
 
 function createCard(title: string, subtitle: string, badge: string) {
@@ -328,3 +330,193 @@ export function buildStep7StereoPanningAudio(): Composition {
 
 	return comp;
 }
+
+/**
+ * Complete showcase assembling all 7 steps into a sequential timeline.
+ * Perfect for previewing the full audio DSP capabilities suite.
+ */
+export function buildAudioShowcase(): Composition {
+	const totalDurationFrames = DURATION_FRAMES * 7;
+	const comp = new Composition({
+		width: W,
+		height: H,
+		fps: FPS,
+		durationFrames: totalDurationFrames,
+		backgroundColor: "#0d0f12",
+	});
+
+	const steps = [
+		{
+			badge: "PASS-THROUGH",
+			title: "Step 1: Initial Audio",
+			subtitle: "Raw soundtrack at baseline gain without DSP modification",
+			audio: () =>
+				Layer.audio(SCORE_PATH, {
+					id: "audio-step1",
+					startFrame: 0,
+					durationFrames: DURATION_FRAMES,
+					volume: 1.0,
+				}),
+		},
+		{
+			badge: "AUDIO FADE",
+			title: "Step 2: Faded Audio",
+			subtitle:
+				"WebGPU AudioFade: 2.0s linear fade-in and 2.0s scurve fade-out",
+			audio: () =>
+				Layer.audio(SCORE_PATH, {
+					id: "audio-step2",
+					startFrame: DURATION_FRAMES,
+					durationFrames: DURATION_FRAMES,
+					volume: 1.0,
+				}).apply(
+					Effect.audioFade({
+						fadeInDuration: 2.0,
+						fadeOutDuration: 2.0,
+						fadeInCurve: "linear",
+						fadeOutCurve: "scurve",
+					}),
+				),
+		},
+		{
+			badge: "REVERBERATION",
+			title: "Step 3: Faded + Reverb Audio",
+			subtitle:
+				"WebGPU AudioReverb: spatial acoustics (room size 0.85, 60% wet mix)",
+			audio: () =>
+				Layer.audio(SCORE_PATH, {
+					id: "audio-step3",
+					startFrame: DURATION_FRAMES * 2,
+					durationFrames: DURATION_FRAMES,
+					volume: 1.0,
+				})
+					.apply(
+						Effect.audioFade({
+							fadeInDuration: 2.0,
+							fadeOutDuration: 2.0,
+							fadeInCurve: "linear",
+							fadeOutCurve: "scurve",
+						}),
+					)
+					.apply(
+						Effect.audioReverb({
+							roomSize: 0.85,
+							damping: 0.2,
+							wet: 0.6,
+							dry: 0.7,
+							width: 1.0,
+						}),
+					),
+		},
+		{
+			badge: "STEREO DELAY",
+			title: "Step 4: Ping-Pong Delay",
+			subtitle:
+				"WebGPU AudioDelay: spatial stereo echo (0.28s delay, 45% feedback)",
+			audio: () =>
+				Layer.audio(SCORE_PATH, {
+					id: "audio-step4",
+					startFrame: DURATION_FRAMES * 3,
+					durationFrames: DURATION_FRAMES,
+					volume: 1.0,
+				}).apply(
+					Effect.audioDelay({
+						delayTime: 0.28,
+						feedback: 0.45,
+						wet: 0.55,
+						dry: 0.85,
+						pingPong: true,
+					}),
+				),
+		},
+		{
+			badge: "PARAMETRIC EQ",
+			title: "Step 5: Parametric EQ Filter",
+			subtitle:
+				"WebGPU AudioParametricEq: 750 Hz low-pass filter (warm cutoff, Q: 1.2)",
+			audio: () =>
+				Layer.audio(SCORE_PATH, {
+					id: "audio-step5",
+					startFrame: DURATION_FRAMES * 4,
+					durationFrames: DURATION_FRAMES,
+					volume: 1.0,
+				}).apply(
+					Effect.audioParametricEq({
+						type: "lowPass",
+						frequency: 750,
+						q: 1.2,
+						gain: 0,
+					}),
+				),
+		},
+		{
+			badge: "COMPRESSOR",
+			title: "Step 6: Dynamics Compressor",
+			subtitle:
+				"WebGPU AudioCompressor: -22 dB threshold, 6:1 ratio limiter with +4 dB makeup gain",
+			audio: () =>
+				Layer.audio(SCORE_PATH, {
+					id: "audio-step6",
+					startFrame: DURATION_FRAMES * 5,
+					durationFrames: DURATION_FRAMES,
+					volume: 1.0,
+				}).apply(
+					Effect.audioCompressor({
+						threshold: -22,
+						ratio: 6,
+						attack: 0.005,
+						release: 0.15,
+						knee: 8,
+						makeupGain: 4,
+					}),
+				),
+		},
+		{
+			badge: "STEREO PANNING",
+			title: "Step 7: Stereo Panning",
+			subtitle:
+				"WebGPU StereoPanning: dynamic signal sweep from left to right (pan: -1.0 → +1.0)",
+			audio: () => {
+				const panSignal = Signal.programmatic((ctx) => {
+					const localProgress = Math.max(
+						0,
+						Math.min(1, (ctx.frame - DURATION_FRAMES * 6) / DURATION_FRAMES),
+					);
+					return -1.0 + 2.0 * localProgress;
+				});
+				return Layer.audio(SCORE_PATH, {
+					id: "audio-step7",
+					startFrame: DURATION_FRAMES * 6,
+					durationFrames: DURATION_FRAMES,
+					volume: 1.0,
+				}).apply(
+					Effect.stereoPanning({
+						pan: panSignal,
+					}),
+				);
+			},
+		},
+	];
+
+	for (let i = 0; i < steps.length; i++) {
+		const step = steps[i];
+		const startFrame = i * DURATION_FRAMES;
+		comp.add(
+			Layer.box({
+				position: "absolute",
+				x: 0,
+				y: 0,
+				width: W,
+				height: H,
+				startFrame,
+				durationFrames: DURATION_FRAMES,
+				children: [createCard(step.title, step.subtitle, step.badge)],
+			}),
+		);
+		comp.addAudio(step.audio());
+	}
+
+	return comp;
+}
+
+export default buildAudioShowcase;

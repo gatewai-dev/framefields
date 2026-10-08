@@ -154,14 +154,22 @@ export const fadeAudioProcessor: AudioProcessor = async (
 	const fadeInCurve = resolveString(op.fadeInCurve, "linear");
 	const fadeOutCurve = resolveString(op.fadeOutCurve, "linear");
 
-	// Get duration
-	const durationMs = virtualMedia.metadata?.durationMs ?? 0;
-	const clipDuration = durationMs / 1000;
+	// Get duration: prefer metadata, fallback to context duration, durationFrames, or actual buffer length
+	const durationMs =
+		virtualMedia.metadata?.durationMs ??
+		ctx?.durationMs ??
+		(typeof op.durationFrames === "number" && (ctx.fps ?? 24) > 0
+			? ((op.durationFrames as number) / (ctx.fps ?? 24)) * 1000
+			: undefined);
+	const clipDuration =
+		durationMs !== undefined && durationMs > 0
+			? durationMs / 1000
+			: numSamples / sampleRate;
 
 	// Clamp durations so they share the midpoint if they overlap
 	let fadeIn = fadeInDuration;
 	let fadeOut = fadeOutDuration;
-	if (fadeIn + fadeOut > clipDuration) {
+	if (clipDuration > 0 && fadeIn + fadeOut > clipDuration) {
 		const half = clipDuration / 2;
 		fadeIn = Math.min(fadeIn, half);
 		fadeOut = Math.min(fadeOut, half);
@@ -201,12 +209,9 @@ export const fadeAudioProcessor: AudioProcessor = async (
 		fps,
 		FADE_SHADER_TEMPLATE,
 		(chunkTimeSec) => {
-			const startFrame =
-				typeof op.startFrame === "number" ? op.startFrame : frame;
-			const localTimeSec =
-				ctx.elapsedMs !== undefined
-					? ctx.elapsedMs / 1000 + (chunkTimeSec - frame / fps)
-					: Math.max(0, chunkTimeSec - startFrame / fps);
+			// chunkTimeSec is (frame / fps + chunkOffset / sampleRate).
+			// Subtracting frame / fps yields chunkOffset / sampleRate, which is time local to clip buffer.
+			const localTimeSec = Math.max(0, chunkTimeSec - frame / fps);
 			return [
 				sampleRate,
 				fadeIn,

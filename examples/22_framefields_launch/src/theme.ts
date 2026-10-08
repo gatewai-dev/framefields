@@ -151,14 +151,27 @@ export interface LabelOptions {
 	size?: number;
 	inAt: number;
 	outAt?: number;
+	/** Frame (relative to container) the label's clip ends: entrance is shortened to finish by then. */
+	until?: number;
 }
 
 /** The machine voice: small tracked mono caps that decode in from scrambled glyphs. */
 export function label(o: LabelOptions): Node {
 	const size = o.size ?? 22;
+	const until = o.until ?? o.outAt;
+	const clampSpan = (frames: number) =>
+		until === undefined
+			? frames
+			: Math.max(1, Math.min(frames, until - 1 - o.inAt));
 	const anim = LayerAnimation.create()
-		.fadeIn(o.inAt, o.inAt + 4, "power2.out")
-		.letterSpacing(size * 0.7, size * 0.32, o.inAt, o.inAt + 24, EASE_OUT);
+		.fadeIn(o.inAt, o.inAt + Math.min(4, clampSpan(4)), "power2.out")
+		.letterSpacing(
+			size * 0.7,
+			size * 0.32,
+			o.inAt,
+			o.inAt + clampSpan(24),
+			EASE_OUT,
+		);
 	if (o.outAt !== undefined) anim.fadeOut(o.outAt, o.outAt + 6, "power2.in");
 	return Layer.text(o.text.toUpperCase(), {
 		id: o.id,
@@ -303,7 +316,7 @@ export function sungLine(o: SungLineOptions): Node {
 		const text = o.upper === false ? bare(w) : bare(w).toUpperCase();
 		const anim = LayerAnimation.create();
 		// A word sung just before the cut still lands at rest on its last frame.
-		const fit = (frames: number) =>
+		const clampSpan = (frames: number) =>
 			o.until === undefined
 				? frames
 				: Math.max(1, Math.min(frames, o.until - 1 - at));
@@ -311,18 +324,26 @@ export function sungLine(o: SungLineOptions): Node {
 			anim
 				.fromTo("scale", 1.35, 1, {
 					start: at,
-					end: at + fit(8),
+					end: at + clampSpan(8),
 					ease: EASE_OUT,
 				})
-				.fromTo("opacity", 0, 1, { start: at, end: at + fit(2), ease: "none" });
+				.fromTo("opacity", 0, 1, {
+					start: at,
+					end: at + clampSpan(2),
+					ease: "none",
+				});
 		} else {
 			anim
 				.fromTo("y", size * 0.45, 0, {
 					start: at,
-					end: at + fit(10),
+					end: at + clampSpan(10),
 					ease: EASE_OUT,
 				})
-				.fromTo("opacity", 0, 1, { start: at, end: at + fit(3), ease: "none" });
+				.fromTo("opacity", 0, 1, {
+					start: at,
+					end: at + clampSpan(3),
+					ease: "none",
+				});
 		}
 		return Layer.text(text, {
 			id: `${o.id}-${i}`,

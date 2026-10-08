@@ -143,6 +143,7 @@ export function notScene() {
 			inAt: answer[2].at - from + 8,
 			color: BG,
 			size: 24,
+			until: to - from,
 		}),
 		plane("not-drop", FG, "difference").animate(
 			flashes([{ at: 0, peak: 1 }], 8),

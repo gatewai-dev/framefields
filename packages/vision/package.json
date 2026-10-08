@@ -1,7 +1,7 @@
 {
 	"name": "@framefields/vision",
 	"description": "On-device vision for framefields: RTMDet-Ins detection + instance masks, RTMO pose, and Selfie Segmenter mattes over ONNX Runtime.",
-	"version": "2.0.6",
+	"version": "2.0.7",
 	"private": false,
 	"publishConfig": {
 		"access": "public"

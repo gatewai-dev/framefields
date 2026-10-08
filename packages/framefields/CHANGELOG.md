@@ -1,5 +1,11 @@
 # framefields
 
+## 2.0.7
+
+### Patch Changes
+
+- Remove node-svg and node-lottie.
+
 ## 2.0.6
 
 ### Patch Changes

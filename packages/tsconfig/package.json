@@ -1,6 +1,6 @@
 {
 	"name": "@framefields/tsconfig",
-	"version": "2.0.6",
+	"version": "2.0.7",
 	"private": false,
 	"license": "Apache-2.0",
 	"publishConfig": {

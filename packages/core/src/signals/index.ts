@@ -580,3 +580,5 @@ export const Signal = {
 	sine: sineSignal,
 	cosine: cosineSignal,
 };
+
+export * from "./resolve.js";

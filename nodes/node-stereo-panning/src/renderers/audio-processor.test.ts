@@ -112,4 +112,38 @@ describe("Stereo Panning Audio Processor", () => {
 			expect(channels[1][0]).toBeCloseTo(0.5, 5);
 		});
 	});
+
+	it("should dynamically modulate panning from left to right when pan is driven by a signal", async () => {
+		await runWithDevice(async (device) => {
+			const numSamples = 200;
+			const channels = createChannels(numSamples, 0.5, true);
+
+			// Signal sweeping pan from -1.0 (full left) to +1.0 (full right)
+			const panSignal = {
+				value: -1.0,
+				peek: () => -1.0,
+				get: (ctx?: { progress?: number }) => {
+					const p = ctx?.progress ?? 0;
+					return -1.0 + 2.0 * p;
+				},
+			};
+
+			const virtualMedia = createVirtualMedia({ pan: panSignal });
+
+			await stereoPanningAudioProcessor(channels, SAMPLE_RATE, virtualMedia, {
+				device,
+				frame: 0,
+				fps: 24,
+				renderId: "test-panning-signal-sweep",
+			});
+
+			// At start (sample 0): pan ~ -1.0 -> Left gain = 1.0 (0.5), Right gain = 0.0 (0.0)
+			expect(channels[0][0]).toBeCloseTo(0.5, 4);
+			expect(channels[1][0]).toBeCloseTo(0.0, 4);
+
+			// At end (sample numSamples - 1): pan ~ +1.0 -> Left gain = 0.0 (0.0), Right gain = 1.0 (0.5)
+			expect(channels[0][numSamples - 1]).toBeCloseTo(0.0, 4);
+			expect(channels[1][numSamples - 1]).toBeCloseTo(0.5, 4);
+		});
+	});
 });

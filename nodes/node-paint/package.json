@@ -5,7 +5,8 @@
 	"private": false,
 	"framefields": {
 		"type": "Paint",
-		"kind": "effect"
+		"kind": "effect",
+		"schema": "PaintNodeConfigSchema"
 	},
 	"type": "module",
 	"module": "./dist/index.mjs",

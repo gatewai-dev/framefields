@@ -10,7 +10,7 @@ export const MAX_FEATHER = 100;
 export const MAX_OFFSET = 4096;
 
 export const PatchItemSchema = z.object({
-	id: z.string().default(() => Math.random().toString(36).substring(7)),
+	id: z.string().default("patch"),
 	centerX: z.number().min(0).max(1).default(0.5),
 	centerY: z.number().min(0).max(1).default(0.5),
 	offsetX: z.number().min(-MAX_OFFSET).max(MAX_OFFSET).default(50),

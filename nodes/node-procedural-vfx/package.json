@@ -4,7 +4,8 @@
 	"private": false,
 	"framefields": {
 		"type": "ProceduralVFX",
-		"kind": "effect"
+		"kind": "effect",
+		"schema": "ProceduralVFXNodeConfigSchema"
 	},
 	"gatewai": {
 		"enabled": false

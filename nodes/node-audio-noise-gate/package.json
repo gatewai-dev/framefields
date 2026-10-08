@@ -5,7 +5,8 @@
 	"private": false,
 	"framefields": {
 		"type": "AudioNoiseGate",
-		"kind": "audio"
+		"kind": "audio",
+		"schema": "NoiseGateNodeConfigSchema"
 	},
 	"type": "module",
 	"module": "./dist/index.mjs",

@@ -4,7 +4,8 @@
 	"private": false,
 	"framefields": {
 		"type": "MaskMath",
-		"kind": "effect"
+		"kind": "effect",
+		"schema": "MaskMathNodeConfigSchema"
 	},
 	"type": "module",
 	"license": "Apache-2.0",

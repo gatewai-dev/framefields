@@ -4,7 +4,8 @@
 	"private": false,
 	"framefields": {
 		"type": "NoiseGenerator",
-		"kind": "effect"
+		"kind": "effect",
+		"schema": "NoiseGeneratorNodeConfigSchema"
 	},
 	"type": "module",
 	"license": "Apache-2.0",

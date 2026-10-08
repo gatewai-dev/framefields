@@ -5,7 +5,8 @@
 	"private": false,
 	"framefields": {
 		"type": "CornerPin",
-		"kind": "effect"
+		"kind": "effect",
+		"schema": "CornerPinNodeConfigSchema"
 	},
 	"type": "module",
 	"module": "./dist/index.mjs",

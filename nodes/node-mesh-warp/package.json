@@ -5,7 +5,8 @@
 	"private": false,
 	"framefields": {
 		"type": "MeshWarp",
-		"kind": "effect"
+		"kind": "effect",
+		"schema": "MeshWarpNodeConfigSchema"
 	},
 	"type": "module",
 	"module": "./dist/index.mjs",

@@ -1,4 +1,8 @@
-import type { AudioProcessor } from "@framefields/node-sdk";
+import {
+	type AudioProcessor,
+	resolveNumber,
+	resolveString,
+} from "@framefields/node-sdk";
 import { WebGPUAudioProcessor } from "@framefields/webgpu-renderers";
 
 const PARAM_ORDER = ["fadeInDuration", "fadeOutDuration"];
@@ -133,7 +137,11 @@ export const fadeAudioProcessor: AudioProcessor = async (
 	}
 
 	const op = (virtualMedia.operation as Record<string, unknown>) || {};
-	const inputs = (op.inputs as Record<string, any>) || {};
+	const inputs =
+		(op.inputs as Record<
+			string,
+			{ connectionValid?: boolean; outputItem?: { type?: string } }
+		>) || {};
 
 	const numChannels = channels.length;
 	if (numChannels === 0) return;
@@ -141,18 +149,10 @@ export const fadeAudioProcessor: AudioProcessor = async (
 	if (numSamples === 0) return;
 
 	// Extract parameters
-	const fadeInDuration = Math.max(
-		0.0,
-		typeof op.fadeInDuration === "number" ? op.fadeInDuration : 0.0,
-	);
-	const fadeOutDuration = Math.max(
-		0.0,
-		typeof op.fadeOutDuration === "number" ? op.fadeOutDuration : 0.0,
-	);
-	const fadeInCurve =
-		typeof op.fadeInCurve === "string" ? op.fadeInCurve : "linear";
-	const fadeOutCurve =
-		typeof op.fadeOutCurve === "string" ? op.fadeOutCurve : "linear";
+	const fadeInDuration = Math.max(0.0, resolveNumber(op.fadeInDuration, 0.0));
+	const fadeOutDuration = Math.max(0.0, resolveNumber(op.fadeOutDuration, 0.0));
+	const fadeInCurve = resolveString(op.fadeInCurve, "linear");
+	const fadeOutCurve = resolveString(op.fadeOutCurve, "linear");
 
 	// Get duration
 	const durationMs = virtualMedia.metadata?.durationMs ?? 0;

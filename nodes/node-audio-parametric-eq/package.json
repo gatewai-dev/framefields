@@ -5,7 +5,8 @@
 	"private": false,
 	"framefields": {
 		"type": "AudioParametricEq",
-		"kind": "audio"
+		"kind": "audio",
+		"schema": "ParametricEqNodeConfigSchema"
 	},
 	"type": "module",
 	"module": "./dist/index.mjs",

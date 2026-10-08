@@ -4,7 +4,8 @@
 	"private": false,
 	"framefields": {
 		"type": "RefineEdge",
-		"kind": "effect"
+		"kind": "effect",
+		"schema": "RefineEdgeNodeConfigSchema"
 	},
 	"type": "module",
 	"license": "Apache-2.0",

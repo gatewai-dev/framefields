@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-	compileTimeline,
 	type CompilerVirtualMedia,
+	compileTimeline,
 } from "../shared/compiler.js";
 import {
 	has3DTransform,

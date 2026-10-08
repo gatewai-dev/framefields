@@ -1,7 +1,11 @@
 import type { LayerAnimation } from "@framefields/compositions/program";
 import type { VirtualMediaData } from "@framefields/core";
-import type { AudioProcessor } from "@framefields/node-sdk";
-import { audioRegistry } from "@framefields/node-sdk";
+import {
+	type AudioProcessor,
+	audioRegistry,
+	resolveBoolean,
+	resolveNumber,
+} from "@framefields/node-sdk";
 import { compileLayerTimeline } from "../shared/compiler.js";
 
 interface CompositorOperation {
@@ -33,7 +37,7 @@ export const compositorLayerAudioProcessor: AudioProcessor = async (
 	// once by the program-level `volume` — the per-layer path below handles
 	// each CompositorLayer op's own volume/mute animation.
 	if (op.op === "Compositor") {
-		const master = typeof op.volume === "number" ? op.volume : 1;
+		const master = resolveNumber(op.volume, 1);
 		if (master === 1) return;
 		for (let c = 0; c < numChannels; c++) {
 			const ch = channels[c];
@@ -42,8 +46,8 @@ export const compositorLayerAudioProcessor: AudioProcessor = async (
 		return;
 	}
 
-	const volume = typeof op.volume === "number" ? op.volume : 1;
-	const muted = !!op.muted;
+	const volume = resolveNumber(op.volume, 1);
+	const muted = resolveBoolean(op.muted, false);
 	const animation = op.animation;
 	const fps = ctx?.fps ?? 24;
 

@@ -4,7 +4,8 @@
 	"private": false,
 	"framefields": {
 		"type": "ExtractLUT",
-		"kind": "effect"
+		"kind": "effect",
+		"schema": "ExtractLutNodeConfigSchema"
 	},
 	"type": "module",
 	"license": "Apache-2.0",

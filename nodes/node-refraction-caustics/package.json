@@ -4,7 +4,8 @@
 	"private": false,
 	"framefields": {
 		"type": "RefractionCaustics3D",
-		"kind": "effect"
+		"kind": "effect",
+		"schema": "RefractionCaustics3DNodeConfigSchema"
 	},
 	"type": "module",
 	"license": "Apache-2.0",

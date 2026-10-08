@@ -1,4 +1,4 @@
-import type { AudioProcessor } from "@framefields/node-sdk";
+import { type AudioProcessor, resolveNumber } from "@framefields/node-sdk";
 import { WebGPUAudioProcessor } from "@framefields/webgpu-renderers";
 
 const PARAM_ORDER = ["threshold", "attack", "hold", "release", "range"];
@@ -238,13 +238,17 @@ export const noiseGateAudioProcessor: AudioProcessor = async (
 	}
 
 	const op = (virtualMedia.operation as Record<string, unknown>) || {};
-	const inputs = (op.inputs as Record<string, any>) || {};
+	const inputs =
+		(op.inputs as Record<
+			string,
+			{ connectionValid?: boolean; outputItem?: { type?: string } }
+		>) || {};
 
-	const threshold = typeof op.threshold === "number" ? op.threshold : -40;
-	const attack = typeof op.attack === "number" ? op.attack : 0.005;
-	const hold = typeof op.hold === "number" ? op.hold : 0.05;
-	const release = typeof op.release === "number" ? op.release : 0.1;
-	const range = typeof op.range === "number" ? op.range : -80;
+	const threshold = resolveNumber(op.threshold, -40);
+	const attack = resolveNumber(op.attack, 0.005);
+	const hold = resolveNumber(op.hold, 0.05);
+	const release = resolveNumber(op.release, 0.1);
+	const range = resolveNumber(op.range, -80);
 
 	const closedGain = range <= -96 ? 0 : 10 ** (range / 20);
 

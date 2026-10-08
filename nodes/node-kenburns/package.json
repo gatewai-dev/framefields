@@ -5,7 +5,8 @@
 	"private": false,
 	"framefields": {
 		"type": "KenBurns",
-		"kind": "effect"
+		"kind": "effect",
+		"schema": "KenBurnsConfigSchema"
 	},
 	"type": "module",
 	"module": "./dist/index.mjs",

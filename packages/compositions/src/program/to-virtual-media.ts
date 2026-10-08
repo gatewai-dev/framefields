@@ -234,11 +234,23 @@ function nodeToVirtualMedia(
 	const durationMs = (dur / fps) * 1000;
 
 	if (node.kind === "media" && media) {
-		if (!media.metadata?.durationMs || media.metadata.durationMs <= 0) {
-			if (!media.metadata)
-				(media as unknown as { metadata: Record<string, unknown> }).metadata =
-					{};
-			media.metadata.durationMs = durationMs;
+		let curr: VirtualMediaData | undefined = media;
+		while (curr) {
+			if (!curr.metadata?.durationMs || curr.metadata.durationMs <= 0) {
+				if (!curr.metadata) {
+					(curr as unknown as { metadata: Record<string, unknown> }).metadata =
+						{};
+				}
+				curr.metadata.durationMs = durationMs;
+			}
+			if (
+				curr.operation?.sourceMeta &&
+				!(curr.operation.sourceMeta as Record<string, unknown>).durationMs
+			) {
+				(curr.operation.sourceMeta as Record<string, unknown>).durationMs =
+					durationMs;
+			}
+			curr = curr.children?.[0];
 		}
 	}
 

@@ -1306,4 +1306,3 @@ describe("Compositor timeline cache lifecycle", () => {
 		expect(count() - before).toBeLessThanOrEqual(50);
 	});
 });
-

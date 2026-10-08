@@ -5,7 +5,8 @@
 	"private": false,
 	"framefields": {
 		"type": "AudioReverb",
-		"kind": "audio"
+		"kind": "audio",
+		"schema": "ReverbNodeConfigSchema"
 	},
 	"type": "module",
 	"module": "./dist/index.mjs",

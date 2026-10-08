@@ -1,4 +1,4 @@
-import type { VirtualMediaData } from "@framefields/core";
+import { isSignal, type VirtualMediaData } from "@framefields/core";
 import { shaderStore } from "../shader-store.js";
 import { signalRegistry } from "../signals/signal-registry.js";
 
@@ -273,6 +273,53 @@ export class WebGPUAudioProcessor {
 		const hasBinding = (idx: number) =>
 			new RegExp(`@binding\\s*\\(\\s*${idx}\\s*\\)`).test(fullShaderCode);
 
+		const createdBuffers: GPUBuffer[] = [];
+
+		if (isStatic && paramOrder && paramOrder.length > 0) {
+			for (const p of paramOrder) {
+				if (signalBufferMap.has(p)) continue;
+				const directVal =
+					op?.[p] ?? (op?.signals as Record<string, unknown> | undefined)?.[p];
+				if (isSignal(directVal)) {
+					const signalData = new Float32Array(numSamples);
+					const durationSec =
+						durationSeconds > 0 ? durationSeconds : numSamples / _sampleRate;
+					for (let s = 0; s < numSamples; s++) {
+						const t = elapsedSeconds + s / _sampleRate;
+						const f = t * fps;
+						const progress = durationSec > 0 ? t / durationSec : 0;
+						signalData[s] =
+							Number(
+								directVal.get({
+									frame: f,
+									fps,
+									time: t,
+									duration: durationSec * fps,
+									durationMs: durationSec * 1000,
+									progress,
+									deltaTime: 1 / _sampleRate,
+								}),
+							) || 0;
+					}
+					const buf = device.createBuffer({
+						size: Math.max(16, Math.ceil(signalData.byteLength / 16) * 16),
+						usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+						mappedAtCreation: true,
+						label: `audio_direct_signal_${nodeId}_${p}`,
+					});
+					new Float32Array(buf.getMappedRange()).set(signalData);
+					buf.unmap();
+					signalBufferMap.set(p, buf);
+					createdBuffers.push(buf);
+					activeBindings.push({
+						parameterName: p,
+						signalNodeId: `direct_${p}`,
+						signalFnName: "direct_sig",
+					});
+				}
+			}
+		}
+
 		if (isStatic) {
 			if (paramOrder && paramOrder.length > 0) {
 				for (let i = 0; i < paramOrder.length; i++) {
@@ -354,190 +401,196 @@ export class WebGPUAudioProcessor {
 		// 3. Process in chunks to prevent GPU driver timeout (TDR) and browser freezing
 		const CHUNK_SIZE = 65536;
 
-		for (let offset = 0; offset < numSamples; offset += CHUNK_SIZE) {
-			const chunkSamples = Math.min(CHUNK_SIZE, numSamples - offset);
+		try {
+			for (let offset = 0; offset < numSamples; offset += CHUNK_SIZE) {
+				const chunkSamples = Math.min(CHUNK_SIZE, numSamples - offset);
 
-			// Determine if we can reuse the cached storage and uniform buffers
-			const canReuse =
-				cached.inputBuffer &&
-				cached.outputBuffer &&
-				cached.uniformBuffer &&
-				cached.allocatedSamples &&
-				cached.allocatedSamples >= chunkSamples &&
-				cached.allocatedChannels &&
-				cached.allocatedChannels >= numChannels &&
-				cached.allocatedUniformsFloatCount &&
-				cached.allocatedUniformsFloatCount >= uniformsFloatCount;
+				// Determine if we can reuse the cached storage and uniform buffers
+				const canReuse =
+					cached.inputBuffer &&
+					cached.outputBuffer &&
+					cached.uniformBuffer &&
+					cached.allocatedSamples &&
+					cached.allocatedSamples >= chunkSamples &&
+					cached.allocatedChannels &&
+					cached.allocatedChannels >= numChannels &&
+					cached.allocatedUniformsFloatCount &&
+					cached.allocatedUniformsFloatCount >= uniformsFloatCount;
 
-			let inputBuffer: GPUBuffer;
-			let outputBuffer: GPUBuffer;
-			let uniformBuffer: GPUBuffer;
+				let inputBuffer: GPUBuffer;
+				let outputBuffer: GPUBuffer;
+				let uniformBuffer: GPUBuffer;
 
-			if (canReuse) {
-				inputBuffer = cached.inputBuffer!;
-				outputBuffer = cached.outputBuffer!;
-				uniformBuffer = cached.uniformBuffer!;
-			} else {
-				const allocSamples = Math.max(chunkSamples, CHUNK_SIZE);
-				const allocChannels = numChannels;
-				const allocUniforms = uniformsFloatCount;
+				if (canReuse) {
+					inputBuffer = cached.inputBuffer!;
+					outputBuffer = cached.outputBuffer!;
+					uniformBuffer = cached.uniformBuffer!;
+				} else {
+					const allocSamples = Math.max(chunkSamples, CHUNK_SIZE);
+					const allocChannels = numChannels;
+					const allocUniforms = uniformsFloatCount;
 
-				const freshInput = device.createBuffer({
-					size: allocChannels * allocSamples * 4,
-					usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-					label: `audio_input_temp_${nodeId}_chunk_${offset}`,
+					const freshInput = device.createBuffer({
+						size: allocChannels * allocSamples * 4,
+						usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+						label: `audio_input_temp_${nodeId}_chunk_${offset}`,
+					});
+
+					const freshOutput = device.createBuffer({
+						size: allocChannels * allocSamples * 4,
+						usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
+						label: `audio_output_temp_${nodeId}_chunk_${offset}`,
+					});
+
+					const freshUniform = device.createBuffer({
+						size: allocUniforms * 4,
+						usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+						label: `audio_uniforms_temp_${nodeId}_chunk_${offset}`,
+					});
+
+					inputBuffer = freshInput;
+					outputBuffer = freshOutput;
+					uniformBuffer = freshUniform;
+
+					cached.inputBuffer?.destroy();
+					cached.outputBuffer?.destroy();
+					cached.uniformBuffer?.destroy();
+
+					cached.inputBuffer = freshInput;
+					cached.outputBuffer = freshOutput;
+					cached.uniformBuffer = freshUniform;
+					cached.allocatedSamples = allocSamples;
+					cached.allocatedChannels = allocChannels;
+					cached.allocatedUniformsFloatCount = allocUniforms;
+				}
+
+				// stagingBuffer is ALWAYS allocated fresh for this chunk to prevent reuse/mapping bugs
+				const stagingBuffer = device.createBuffer({
+					size: numChannels * chunkSamples * 4,
+					usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
+					label: `audio_staging_temp_${nodeId}_chunk_${offset}`,
 				});
 
-				const freshOutput = device.createBuffer({
-					size: allocChannels * allocSamples * 4,
-					usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
-					label: `audio_output_temp_${nodeId}_chunk_${offset}`,
-				});
+				const entries: GPUBindGroupEntry[] = [
+					{ binding: 0, resource: { buffer: uniformBuffer } },
+					{ binding: 1, resource: { buffer: inputBuffer } },
+					{ binding: 2, resource: { buffer: outputBuffer } },
+					{ binding: 3, resource: { buffer: cached.stateBuffer } },
+				];
 
-				const freshUniform = device.createBuffer({
-					size: allocUniforms * 4,
-					usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-					label: `audio_uniforms_temp_${nodeId}_chunk_${offset}`,
-				});
-
-				inputBuffer = freshInput;
-				outputBuffer = freshOutput;
-				uniformBuffer = freshUniform;
-
-				cached.inputBuffer?.destroy();
-				cached.outputBuffer?.destroy();
-				cached.uniformBuffer?.destroy();
-
-				cached.inputBuffer = freshInput;
-				cached.outputBuffer = freshOutput;
-				cached.uniformBuffer = freshUniform;
-				cached.allocatedSamples = allocSamples;
-				cached.allocatedChannels = allocChannels;
-				cached.allocatedUniformsFloatCount = allocUniforms;
-			}
-
-			// stagingBuffer is ALWAYS allocated fresh for this chunk to prevent reuse/mapping bugs
-			const stagingBuffer = device.createBuffer({
-				size: numChannels * chunkSamples * 4,
-				usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
-				label: `audio_staging_temp_${nodeId}_chunk_${offset}`,
-			});
-
-			const entries: GPUBindGroupEntry[] = [
-				{ binding: 0, resource: { buffer: uniformBuffer } },
-				{ binding: 1, resource: { buffer: inputBuffer } },
-				{ binding: 2, resource: { buffer: outputBuffer } },
-				{ binding: 3, resource: { buffer: cached.stateBuffer } },
-			];
-
-			if (isStatic) {
-				for (let i = 0; i < signalBuffers.length; i++) {
-					const bindingIndex = 4 + i;
-					if (hasBinding(bindingIndex)) {
-						const sigBuf = signalBuffers[i];
-						if (sigBuf.size >= (offset + chunkSamples) * 4) {
-							entries.push({
-								binding: bindingIndex,
-								resource: {
-									buffer: sigBuf,
-									offset: offset * 4,
-									size: chunkSamples * 4,
-								},
-							});
-						} else {
-							entries.push({
-								binding: bindingIndex,
-								resource: {
-									buffer: sigBuf,
-									offset: 0,
-									size: sigBuf.size,
-								},
-							});
+				if (isStatic) {
+					for (let i = 0; i < signalBuffers.length; i++) {
+						const bindingIndex = 4 + i;
+						if (hasBinding(bindingIndex)) {
+							const sigBuf = signalBuffers[i];
+							if (sigBuf.size >= (offset + chunkSamples) * 4) {
+								entries.push({
+									binding: bindingIndex,
+									resource: {
+										buffer: sigBuf,
+										offset: offset * 4,
+										size: chunkSamples * 4,
+									},
+								});
+							} else {
+								entries.push({
+									binding: bindingIndex,
+									resource: {
+										buffer: sigBuf,
+										offset: 0,
+										size: sigBuf.size,
+									},
+								});
+							}
 						}
 					}
 				}
-			}
 
-			const bindGroup = device.createBindGroup({
-				layout: cached.pipeline.getBindGroupLayout(0),
-				entries,
-			});
+				const bindGroup = device.createBindGroup({
+					layout: cached.pipeline.getBindGroupLayout(0),
+					entries,
+				});
 
-			// Upload Input Channels
-			const flatInput = new Float32Array(numChannels * chunkSamples);
-			for (let c = 0; c < numChannels; c++) {
-				flatInput.set(
-					channels[c].subarray(offset, offset + chunkSamples),
-					c * chunkSamples,
-				);
-			}
-			device.queue.writeBuffer(
-				inputBuffer,
-				0,
-				flatInput as unknown as GPUAllowSharedBufferSource,
-			);
-
-			// Compute uniforms for this chunk
-			const chunkBaseTime = frame / fps + offset / _sampleRate;
-			const uniforms = getUniforms(chunkBaseTime);
-
-			// Replace numSamples with chunkSamples inside the uniforms array
-			let numSamplesIndex = -1;
-			for (let i = uniforms.length - 2; i >= 0; i--) {
-				if (uniforms[i] === numSamples && uniforms[i + 1] === numChannels) {
-					numSamplesIndex = i;
-					break;
+				// Upload Input Channels
+				const flatInput = new Float32Array(numChannels * chunkSamples);
+				for (let c = 0; c < numChannels; c++) {
+					flatInput.set(
+						channels[c].subarray(offset, offset + chunkSamples),
+						c * chunkSamples,
+					);
 				}
-			}
-			if (numSamplesIndex === -1) {
-				numSamplesIndex = uniforms.indexOf(numSamples);
-			}
-			if (numSamplesIndex !== -1) {
-				uniforms[numSamplesIndex] = chunkSamples;
-			}
-
-			device.queue.writeBuffer(
-				uniformBuffer,
-				0,
-				new Float32Array(uniforms) as unknown as GPUAllowSharedBufferSource,
-			);
-
-			// Execute Compute Pass and Copy to Staging
-			const commandEncoder = device.createCommandEncoder({
-				label: `audio_encoder_${nodeId}_chunk_${offset}`,
-			});
-			const passEncoder = commandEncoder.beginComputePass({
-				label: `audio_pass_${nodeId}_chunk_${offset}`,
-			});
-			passEncoder.setPipeline(cached.pipeline);
-			passEncoder.setBindGroup(0, bindGroup);
-			passEncoder.dispatchWorkgroups(1);
-			passEncoder.end();
-
-			commandEncoder.copyBufferToBuffer(
-				outputBuffer,
-				0,
-				stagingBuffer,
-				0,
-				numChannels * chunkSamples * 4,
-			);
-
-			device.queue.submit([commandEncoder.finish()]);
-
-			// Map & Read back
-			await stagingBuffer.mapAsync(GPUMapMode.READ);
-			const mappedRange = new Float32Array(stagingBuffer.getMappedRange());
-
-			for (let c = 0; c < numChannels; c++) {
-				channels[c].set(
-					mappedRange.subarray(c * chunkSamples, (c + 1) * chunkSamples),
-					offset,
+				device.queue.writeBuffer(
+					inputBuffer,
+					0,
+					flatInput as unknown as GPUAllowSharedBufferSource,
 				);
+
+				// Compute uniforms for this chunk
+				const chunkBaseTime = frame / fps + offset / _sampleRate;
+				const uniforms = getUniforms(chunkBaseTime);
+
+				// Replace numSamples with chunkSamples inside the uniforms array
+				let numSamplesIndex = -1;
+				for (let i = uniforms.length - 2; i >= 0; i--) {
+					if (uniforms[i] === numSamples && uniforms[i + 1] === numChannels) {
+						numSamplesIndex = i;
+						break;
+					}
+				}
+				if (numSamplesIndex === -1) {
+					numSamplesIndex = uniforms.indexOf(numSamples);
+				}
+				if (numSamplesIndex !== -1) {
+					uniforms[numSamplesIndex] = chunkSamples;
+				}
+
+				device.queue.writeBuffer(
+					uniformBuffer,
+					0,
+					new Float32Array(uniforms) as unknown as GPUAllowSharedBufferSource,
+				);
+
+				// Execute Compute Pass and Copy to Staging
+				const commandEncoder = device.createCommandEncoder({
+					label: `audio_encoder_${nodeId}_chunk_${offset}`,
+				});
+				const passEncoder = commandEncoder.beginComputePass({
+					label: `audio_pass_${nodeId}_chunk_${offset}`,
+				});
+				passEncoder.setPipeline(cached.pipeline);
+				passEncoder.setBindGroup(0, bindGroup);
+				passEncoder.dispatchWorkgroups(1);
+				passEncoder.end();
+
+				commandEncoder.copyBufferToBuffer(
+					outputBuffer,
+					0,
+					stagingBuffer,
+					0,
+					numChannels * chunkSamples * 4,
+				);
+
+				device.queue.submit([commandEncoder.finish()]);
+
+				// Map & Read back
+				await stagingBuffer.mapAsync(GPUMapMode.READ);
+				const mappedRange = new Float32Array(stagingBuffer.getMappedRange());
+
+				for (let c = 0; c < numChannels; c++) {
+					channels[c].set(
+						mappedRange.subarray(c * chunkSamples, (c + 1) * chunkSamples),
+						offset,
+					);
+				}
+
+				stagingBuffer.unmap();
+
+				await yieldToMain();
 			}
-
-			stagingBuffer.unmap();
-
-			await yieldToMain();
+		} finally {
+			for (const b of createdBuffers) {
+				b.destroy();
+			}
 		}
 	}
 }

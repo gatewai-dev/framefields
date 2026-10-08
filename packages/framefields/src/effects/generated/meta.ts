@@ -6,6 +6,128 @@ import type { EffectMeta } from "../with-defaults.js";
 
 /** Ranges and allowed values per effect prop, used by `withDefaults()` checks. */
 export const effectMeta = {
+	AudioCompressor: {
+		threshold: {
+			min: -60,
+			max: 0,
+		},
+		ratio: {
+			min: 1,
+			max: 100,
+		},
+		attack: {
+			min: 0.0001,
+			max: 1,
+		},
+		release: {
+			min: 0.01,
+			max: 5,
+		},
+		knee: {
+			min: 0,
+			max: 24,
+		},
+		makeupGain: {
+			min: 0,
+			max: 24,
+		},
+	},
+	AudioDelay: {
+		delayTime: {
+			min: 0.001,
+			max: 5,
+		},
+		feedback: {
+			min: 0,
+			max: 0.95,
+		},
+		wet: {
+			min: 0,
+			max: 1,
+		},
+		dry: {
+			min: 0,
+			max: 1,
+		},
+		pingPong: {},
+	},
+	AudioFade: {
+		fadeInDuration: {
+			min: 0,
+			max: 60,
+		},
+		fadeOutDuration: {
+			min: 0,
+			max: 60,
+		},
+		fadeInCurve: {
+			enum: ["linear", "exponential", "scurve"],
+		},
+		fadeOutCurve: {
+			enum: ["linear", "exponential", "scurve"],
+		},
+	},
+	AudioNoiseGate: {
+		threshold: {
+			min: -120,
+			max: 0,
+		},
+		attack: {
+			min: 0.0001,
+			max: 1,
+		},
+		hold: {
+			min: 0.001,
+			max: 5,
+		},
+		release: {
+			min: 0.01,
+			max: 5,
+		},
+		range: {
+			min: -120,
+			max: 0,
+		},
+	},
+	AudioParametricEq: {
+		type: {
+			enum: ["lowShelf", "highShelf", "peak", "lowPass", "highPass", "notch"],
+		},
+		frequency: {
+			min: 20,
+			max: 20000,
+		},
+		gain: {
+			min: -24,
+			max: 24,
+		},
+		q: {
+			min: 0.01,
+			max: 10,
+		},
+	},
+	AudioReverb: {
+		roomSize: {
+			min: 0,
+			max: 0.98,
+		},
+		damping: {
+			min: 0,
+			max: 1,
+		},
+		wet: {
+			min: 0,
+			max: 1,
+		},
+		dry: {
+			min: 0,
+			max: 1,
+		},
+		width: {
+			min: 0,
+			max: 1,
+		},
+	},
 	Blur: {
 		blurType: {
 			enum: [
@@ -50,6 +172,65 @@ export const effectMeta = {
 		},
 		shape: {
 			enum: ["ellipse", "circle", "rect"],
+		},
+	},
+	CameraParallax3D: {
+		motionPreset: {
+			enum: [
+				"Custom",
+				"DollyZoom",
+				"Orbit",
+				"FlyThrough",
+				"HandheldShake",
+				"RackFocus",
+			],
+		},
+		panX: {
+			min: -1,
+			max: 1,
+		},
+		panY: {
+			min: -1,
+			max: 1,
+		},
+		dollyZ: {
+			min: -1,
+			max: 1,
+		},
+		fov: {
+			min: 15,
+			max: 120,
+		},
+		parallaxAmount: {
+			min: 0,
+			max: 2,
+		},
+		dofAperture: {
+			min: 0,
+			max: 1,
+		},
+		focusPlane: {
+			min: 0,
+			max: 1,
+		},
+		edgeDilation: {
+			min: 0,
+			max: 1,
+		},
+		depthInvert: {},
+	},
+	ChannelMerger: {
+		colorSpace: {
+			enum: ["RGBA", "HSLA", "CMYK", "LAB"],
+		},
+		defaultChannel4: {
+			min: 0,
+			max: 1,
+		},
+	},
+	ChannelSplitter: {
+		colorSpace: {
+			enum: ["RGBA", "HSLA", "CMYK", "LAB"],
 		},
 	},
 	ColorBalance: {
@@ -122,6 +303,632 @@ export const effectMeta = {
 		},
 		spillSuppressionType: {
 			enum: ["Desaturate", "Neutralize", "None"],
+		},
+	},
+	CornerPin: {
+		points: {},
+	},
+	DisplacementMap: {
+		strengthX: {
+			min: 0,
+			max: 500,
+		},
+		strengthY: {
+			min: 0,
+			max: 500,
+		},
+		xChannel: {
+			enum: ["Red", "Green", "Blue", "Alpha", "Luminance"],
+		},
+		yChannel: {
+			enum: ["Red", "Green", "Blue", "Alpha", "Luminance"],
+		},
+		wrapMode: {
+			enum: ["Clamp", "Repeat", "Mirror"],
+		},
+	},
+	ExtractLUT: {
+		strategy: {
+			enum: ["deterministic", "statistical"],
+		},
+		samplePoints: {
+			min: 10,
+			max: 500,
+		},
+	},
+	Flip: {
+		horizontal: {},
+		vertical: {},
+		diagonal: {},
+		mode: {
+			enum: [
+				"horizontal",
+				"vertical",
+				"both",
+				"diagonal",
+				"antiDiagonal",
+				"custom",
+			],
+		},
+		symmetry: {
+			enum: [
+				"none",
+				"leftToRight",
+				"rightToLeft",
+				"topToBottom",
+				"bottomToTop",
+				"quadrant",
+			],
+		},
+	},
+	KenBurns: {
+		keyframes: {},
+		motionBlurSize: {
+			min: 0,
+			max: 10,
+		},
+		movementStyle: {
+			enum: ["spline", "direct"],
+		},
+		aspectRatio: {
+			enum: [
+				"input",
+				"16:9",
+				"9:16",
+				"21:9",
+				"9:21",
+				"1:1",
+				"4:3",
+				"3:2",
+				"2:3",
+				"4:5",
+				"5:4",
+			],
+		},
+	},
+	LayerStyle: {
+		dropShadow: {
+			props: {
+				enabled: {},
+				color: {},
+				opacity: {
+					min: 0,
+					max: 1,
+				},
+				angle: {
+					min: 0,
+					max: 360,
+				},
+				distance: {
+					min: 0,
+					max: 500,
+				},
+				spread: {
+					min: 0,
+					max: 100,
+				},
+				size: {
+					min: 0,
+					max: 250,
+				},
+				blendMode: {},
+			},
+		},
+		innerShadow: {
+			props: {
+				enabled: {},
+				color: {},
+				opacity: {
+					min: 0,
+					max: 1,
+				},
+				angle: {
+					min: 0,
+					max: 360,
+				},
+				distance: {
+					min: 0,
+					max: 500,
+				},
+				choke: {
+					min: 0,
+					max: 100,
+				},
+				size: {
+					min: 0,
+					max: 250,
+				},
+				blendMode: {},
+			},
+		},
+		outerGlow: {
+			props: {
+				enabled: {},
+				color: {},
+				opacity: {
+					min: 0,
+					max: 1,
+				},
+				size: {
+					min: 0,
+					max: 250,
+				},
+				spread: {
+					min: 0,
+					max: 100,
+				},
+				blendMode: {},
+			},
+		},
+		innerGlow: {
+			props: {
+				enabled: {},
+				color: {},
+				opacity: {
+					min: 0,
+					max: 1,
+				},
+				size: {
+					min: 0,
+					max: 250,
+				},
+				spread: {
+					min: 0,
+					max: 100,
+				},
+				blendMode: {},
+			},
+		},
+		stroke: {
+			props: {
+				enabled: {},
+				size: {
+					min: 0,
+					max: 100,
+				},
+				position: {
+					enum: ["inside", "center", "outside"],
+				},
+				color: {},
+				opacity: {
+					min: 0,
+					max: 1,
+				},
+				blendMode: {},
+			},
+		},
+		bevelEmboss: {
+			props: {
+				enabled: {},
+				style: {
+					enum: ["InnerBevel", "OuterBevel", "Emboss", "PillowEmboss"],
+				},
+				technique: {
+					enum: ["Smooth", "ChiselHard", "ChiselSoft"],
+				},
+				depth: {
+					min: 1,
+					max: 1000,
+				},
+				direction: {
+					enum: ["Up", "Down"],
+				},
+				size: {
+					min: 0,
+					max: 250,
+				},
+				soften: {
+					min: 0,
+					max: 50,
+				},
+				angle: {
+					min: 0,
+					max: 360,
+				},
+				altitude: {
+					min: 0,
+					max: 90,
+				},
+				highlightColor: {},
+				highlightOpacity: {
+					min: 0,
+					max: 1,
+				},
+				shadowColor: {},
+				shadowOpacity: {
+					min: 0,
+					max: 1,
+				},
+			},
+		},
+		colorOverlay: {
+			props: {
+				enabled: {},
+				color: {},
+				opacity: {
+					min: 0,
+					max: 1,
+				},
+				blendMode: {},
+			},
+		},
+		dropShadowAngleHandleId: {},
+		dropShadowDistanceHandleId: {},
+		dropShadowSpreadHandleId: {},
+		dropShadowSizeHandleId: {},
+		dropShadowOpacityHandleId: {},
+		innerShadowAngleHandleId: {},
+		innerShadowDistanceHandleId: {},
+		innerShadowChokeHandleId: {},
+		innerShadowSizeHandleId: {},
+		innerShadowOpacityHandleId: {},
+		outerGlowSizeHandleId: {},
+		outerGlowSpreadHandleId: {},
+		outerGlowOpacityHandleId: {},
+		innerGlowSizeHandleId: {},
+		innerGlowSpreadHandleId: {},
+		innerGlowOpacityHandleId: {},
+		strokeSizeHandleId: {},
+		strokeOpacityHandleId: {},
+		bevelEmbossDepthHandleId: {},
+		bevelEmbossSizeHandleId: {},
+		bevelEmbossSoftenHandleId: {},
+		bevelEmbossAngleHandleId: {},
+		bevelEmbossAltitudeHandleId: {},
+		bevelEmbossHighlightOpacityHandleId: {},
+		bevelEmbossShadowOpacityHandleId: {},
+		colorOverlayOpacityHandleId: {},
+	},
+	Liquify: {
+		operations: {},
+	},
+	MaskMath: {
+		operation: {
+			enum: [
+				"Union",
+				"Intersect",
+				"Subtract",
+				"Difference",
+				"Invert",
+				"Dilate",
+				"Erode",
+				"Choke",
+				"Feather",
+			],
+		},
+		radius: {
+			min: 0,
+			max: 200,
+		},
+		threshold: {
+			min: 0,
+			max: 1,
+		},
+		clampMin: {
+			min: 0,
+			max: 1,
+		},
+		clampMax: {
+			min: 0,
+			max: 1,
+		},
+		channelA: {
+			enum: ["Alpha", "Luminance", "Red", "Green", "Blue"],
+		},
+		channelB: {
+			enum: ["Alpha", "Luminance", "Red", "Green", "Blue"],
+		},
+		binarize: {},
+		invertResult: {},
+		outputFormat: {
+			enum: ["WhiteWithAlpha", "GrayscaleRGB", "AlphaOnly", "PassthroughRGB"],
+		},
+	},
+	MeshWarp: {
+		cols: {
+			min: 2,
+			max: 12,
+		},
+		rows: {
+			min: 2,
+			max: 12,
+		},
+		points: {},
+	},
+	NoiseGenerator: {
+		noiseType: {
+			enum: ["Perlin", "Simplex", "Voronoi"],
+		},
+		outputType: {
+			enum: ["Image", "Video"],
+		},
+		width: {
+			min: 16,
+			max: 4096,
+		},
+		height: {
+			min: 16,
+			max: 4096,
+		},
+		scale: {
+			min: 0.1,
+			max: 100,
+		},
+		octaves: {
+			min: 1,
+			max: 8,
+		},
+		persistence: {
+			min: 0,
+			max: 1,
+		},
+		lacunarity: {
+			min: 1,
+			max: 4,
+		},
+		speed: {
+			min: 0,
+			max: 10,
+		},
+		colorStart: {},
+		colorEnd: {},
+		durationMs: {
+			min: 1,
+			max: 60000,
+		},
+		fps: {
+			min: 1,
+			max: 120,
+		},
+	},
+	Paint: {
+		width: {
+			min: 1,
+			max: 16384,
+		},
+		height: {
+			min: 1,
+			max: 16384,
+		},
+		maintainAspect: {},
+		aspectRatio: {},
+		backgroundColor: {},
+		strokes: {},
+	},
+	PatchHeal: {
+		patches: {},
+		centerX: {
+			min: 0,
+			max: 1,
+		},
+		centerY: {
+			min: 0,
+			max: 1,
+		},
+		offsetX: {
+			min: -4096,
+			max: 4096,
+		},
+		offsetY: {
+			min: -4096,
+			max: 4096,
+		},
+		radius: {
+			min: 1,
+			max: 500,
+		},
+		sourceRadius: {
+			min: 1,
+			max: 500,
+		},
+		feather: {
+			min: 0,
+			max: 100,
+		},
+		opacity: {
+			min: 0,
+			max: 1,
+		},
+		mode: {
+			enum: ["Clone", "SeamlessHeal", "TextureTransfer"],
+		},
+	},
+	ProceduralVFX: {
+		effectType: {
+			enum: [
+				"Smoke",
+				"Fire",
+				"Rain",
+				"Sparks",
+				"Snow",
+				"Dust",
+				"Lightning",
+				"Magic",
+				"LensFlare",
+				"Embers",
+				"EnergyBeam",
+			],
+		},
+		outputType: {
+			enum: ["Image", "Video"],
+		},
+		width: {
+			min: 16,
+			max: 4096,
+		},
+		height: {
+			min: 16,
+			max: 4096,
+		},
+		density: {
+			min: 0,
+			max: 1,
+		},
+		scale: {
+			min: 0.001,
+			max: 10,
+		},
+		speed: {
+			min: 0,
+			max: 10,
+		},
+		intensity: {
+			min: 0,
+			max: 1,
+		},
+		seed: {
+			min: 0,
+			max: 1000000,
+		},
+		colorStart: {},
+		colorEnd: {},
+		durationMs: {
+			min: 100,
+			max: 100000,
+		},
+		fps: {
+			min: 1,
+			max: 120,
+		},
+	},
+	RefineEdge: {
+		decontaminateAmount: {
+			min: 0,
+			max: 1,
+		},
+		radius: {
+			min: 0.5,
+			max: 50,
+		},
+		smooth: {
+			min: 0,
+			max: 100,
+		},
+		feather: {
+			min: 0,
+			max: 50,
+		},
+		shiftEdge: {
+			min: -100,
+			max: 100,
+		},
+		matteChannel: {
+			enum: ["Alpha", "Luminance", "Red", "Green", "Blue"],
+		},
+		outputMode: {
+			enum: ["Composite", "MatteOnly", "DecontaminatedRGB"],
+		},
+	},
+	RefractionCaustics3D: {
+		ior: {
+			min: 1,
+			max: 2.5,
+		},
+		dispersion: {
+			min: 0,
+			max: 0.2,
+		},
+		refractionScale: {
+			min: 0,
+			max: 2,
+		},
+		causticBrightness: {
+			min: 0,
+			max: 2,
+		},
+		causticScale: {
+			min: 0.1,
+			max: 5,
+		},
+		fluidRipples: {
+			min: 0,
+			max: 1,
+		},
+		rippleSpeed: {
+			min: 0,
+			max: 5,
+		},
+		roughness: {
+			min: 0,
+			max: 1,
+		},
+		specularIntensity: {
+			min: 0,
+			max: 2,
+		},
+		lightPosX: {
+			min: 0,
+			max: 1,
+		},
+		lightPosY: {
+			min: 0,
+			max: 1,
+		},
+		tintColor: {},
+		tintStrength: {
+			min: 0,
+			max: 1,
+		},
+		depthInvert: {},
+		depthScale: {
+			min: 0.1,
+			max: 5,
+		},
+	},
+	ResizerScaler: {
+		aspectRatioPreset: {
+			enum: ["9:16", "16:9", "1:1", "4:5", "21:9", "custom"],
+		},
+		resolutionPreset: {
+			enum: ["4k", "1080p", "720p", "480p", "custom"],
+		},
+		targetWidth: {
+			min: 1,
+			max: 8192,
+		},
+		targetHeight: {
+			min: 1,
+			max: 8192,
+		},
+		fitMode: {
+			enum: ["cover", "contain", "stretch", "manual"],
+		},
+		zoom: {
+			min: 1,
+			max: 1000,
+		},
+		offsetX: {
+			min: -8192,
+			max: 8192,
+		},
+		offsetY: {
+			min: -8192,
+			max: 8192,
+		},
+		backgroundMode: {
+			enum: ["solid", "blurred", "gradient", "transparent"],
+		},
+		backgroundColor: {},
+		backgroundColor2: {},
+		blurRadius: {
+			min: 0,
+			max: 100,
+		},
+		backgroundBrightness: {
+			min: 0,
+			max: 1,
+		},
+		anchorX: {
+			enum: ["left", "center", "right"],
+		},
+		anchorY: {
+			enum: ["top", "center", "bottom"],
+		},
+	},
+	StereoPanning: {
+		pan: {
+			min: -1,
+			max: 1,
 		},
 	},
 	Vignette: {

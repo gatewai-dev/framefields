@@ -4,7 +4,8 @@
 	"private": false,
 	"framefields": {
 		"type": "CameraParallax3D",
-		"kind": "effect"
+		"kind": "effect",
+		"schema": "CameraParallax3DNodeConfigSchema"
 	},
 	"type": "module",
 	"license": "Apache-2.0",

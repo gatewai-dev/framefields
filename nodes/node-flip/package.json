@@ -4,7 +4,8 @@
 	"private": false,
 	"framefields": {
 		"type": "Flip",
-		"kind": "effect"
+		"kind": "effect",
+		"schema": "FlipNodeConfigSchema"
 	},
 	"type": "module",
 	"license": "Apache-2.0",

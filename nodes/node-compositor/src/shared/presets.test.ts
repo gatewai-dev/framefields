@@ -214,4 +214,3 @@ describe("Compositor Presets", () => {
 		expect(swTracks[0].keyframes[1].value).toBe(100);
 	});
 });
-

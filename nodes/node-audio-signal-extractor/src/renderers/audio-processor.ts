@@ -1,4 +1,8 @@
-import type { AudioProcessor } from "@framefields/node-sdk";
+import {
+	type AudioProcessor,
+	resolveNumber,
+	resolveString,
+} from "@framefields/node-sdk";
 import {
 	type AudioSignalComputeConfig,
 	AudioSignalComputePipeline,
@@ -20,33 +24,20 @@ export const audioSignalExtractorAudioProcessor: AudioProcessor = async (
 		(op.nodeId as string) || (op.id as string) || "audio-signal-extractor";
 	const fps = ctx.fps ?? 24;
 
+	const mode = resolveString(op.extractionMode, "");
+	const curveStr = resolveString(op.curve, "");
 	const config: AudioSignalComputeConfig = {
-		extractionMode: op.extractionMode as
-			| "rms_envelope"
-			| "transient_beat"
-			| "sub_bass"
-			| "bass"
-			| "mid"
-			| "high"
-			| "spectral_flux"
-			| undefined,
-		attackMs: typeof op.attackMs === "number" ? op.attackMs : 10,
-		releaseMs: typeof op.releaseMs === "number" ? op.releaseMs : 120,
-		sensitivity: typeof op.sensitivity === "number" ? op.sensitivity : 1.0,
-		noiseFloorDb: typeof op.noiseFloorDb === "number" ? op.noiseFloorDb : -45,
-		dynamicRangeDb:
-			typeof op.dynamicRangeDb === "number" ? op.dynamicRangeDb : 36,
-		smoothing: typeof op.smoothing === "number" ? op.smoothing : 0.15,
-		curve: op.curve as
-			| "linear"
-			| "exponential"
-			| "logarithmic"
-			| "square"
-			| "smoothstep"
-			| undefined,
-		beatThreshold:
-			typeof op.beatThreshold === "number" ? op.beatThreshold : 0.55,
-		beatDecayMs: typeof op.beatDecayMs === "number" ? op.beatDecayMs : 80,
+		extractionMode: (mode ||
+			undefined) as AudioSignalComputeConfig["extractionMode"],
+		attackMs: resolveNumber(op.attackMs, 10),
+		releaseMs: resolveNumber(op.releaseMs, 120),
+		sensitivity: resolveNumber(op.sensitivity, 1.0),
+		noiseFloorDb: resolveNumber(op.noiseFloorDb, -45),
+		dynamicRangeDb: resolveNumber(op.dynamicRangeDb, 36),
+		smoothing: resolveNumber(op.smoothing, 0.15),
+		curve: (curveStr || undefined) as AudioSignalComputeConfig["curve"],
+		beatThreshold: resolveNumber(op.beatThreshold, 0.55),
+		beatDecayMs: resolveNumber(op.beatDecayMs, 80),
 	};
 
 	// 1. WebGPU feature extraction on the audio channels produced by the pipeline

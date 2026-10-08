@@ -1,4 +1,8 @@
-import type { AudioProcessor } from "@framefields/node-sdk";
+import {
+	type AudioProcessor,
+	resolveNumber,
+	resolveString,
+} from "@framefields/node-sdk";
 import { WebGPUAudioProcessor } from "@framefields/webgpu-renderers";
 import type { ParametricEqNodeConfig } from "../shared";
 
@@ -217,21 +221,30 @@ export const parametricEqAudioProcessor: AudioProcessor = async (
 	}
 
 	const op = (virtualMedia.operation as Record<string, unknown>) || {};
-	const inputs = (op.inputs as Record<string, any>) || {};
+	const inputs =
+		(op.inputs as Record<
+			string,
+			{ connectionValid?: boolean; outputItem?: { type?: string } }
+		>) || {};
 
+	const rawType = resolveString(op.type, "peak");
 	const config: ParametricEqNodeConfig = {
-		type: (typeof op.type === "string" &&
-		["lowShelf", "highShelf", "peak", "lowPass", "highPass", "notch"].includes(
-			op.type,
-		)
-			? op.type
+		type: ([
+			"lowShelf",
+			"highShelf",
+			"peak",
+			"lowPass",
+			"highPass",
+			"notch",
+		].includes(rawType)
+			? rawType
 			: "peak") as ParametricEqNodeConfig["type"],
-		frequency: typeof op.frequency === "number" ? op.frequency : 1000,
+		frequency: resolveNumber(op.frequency, 1000),
 		frequencyHandleId:
 			typeof op.frequencyHandleId === "string" ? op.frequencyHandleId : null,
-		gain: typeof op.gain === "number" ? op.gain : 0,
+		gain: resolveNumber(op.gain, 0),
 		gainHandleId: typeof op.gainHandleId === "string" ? op.gainHandleId : null,
-		q: typeof op.q === "number" ? op.q : 1.0,
+		q: resolveNumber(op.q, 1.0),
 		qHandleId: typeof op.qHandleId === "string" ? op.qHandleId : null,
 	};
 

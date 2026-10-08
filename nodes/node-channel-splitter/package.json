@@ -4,7 +4,8 @@
 	"private": false,
 	"framefields": {
 		"type": "ChannelSplitter",
-		"kind": "effect"
+		"kind": "effect",
+		"schema": "ChannelSplitterNodeConfigSchema"
 	},
 	"type": "module",
 	"license": "Apache-2.0",

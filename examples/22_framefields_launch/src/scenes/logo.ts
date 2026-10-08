@@ -99,6 +99,7 @@ export function logoScene() {
 			inAt: land + 6,
 			color: FG,
 			size: 26,
+			until: len,
 		}),
 		// The flood from the hook drains away as the camera swings in.
 		plane("logo-flood", ACCENT).animate(

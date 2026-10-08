@@ -4,7 +4,8 @@
 	"private": false,
 	"framefields": {
 		"type": "DisplacementMap",
-		"kind": "effect"
+		"kind": "effect",
+		"schema": "DisplacementMapNodeConfigSchema"
 	},
 	"type": "module",
 	"license": "Apache-2.0",

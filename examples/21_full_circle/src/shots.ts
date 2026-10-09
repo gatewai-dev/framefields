@@ -80,7 +80,7 @@ export const SHOTS: Shot[] = [
 		circle: {
 			polarity: "light",
 			threshold: 0.3,
-			seed: [940, 510],
+			seed: [940, 450],
 			maxR: 340,
 			minR: 150,
 		},

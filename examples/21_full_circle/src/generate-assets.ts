@@ -85,9 +85,10 @@ async function images(fal: FalClient) {
 }
 
 /** fal accepts data URIs for image inputs, so the local still is sent as-is. */
-async function videos(fal: FalClient) {
+async function videos(fal: FalClient, target?: string) {
+	const shotList = target ? SHOTS.filter((s) => s.id === target) : SHOTS;
 	await Promise.all(
-		SHOTS.map(async (shot) => {
+		shotList.map(async (shot) => {
 			const dest = path.join(ASSETS, `${shot.id}.mp4`);
 			if (await exists(dest)) return;
 			const still = await fs.readFile(path.join(ASSETS, `${shot.id}.png`));
@@ -161,10 +162,15 @@ function grayFrames(file: string): Promise<Buffer> {
 }
 
 /** Tracks every shot's circle frame to frame: each sample seeds the next. */
-async function circles() {
-	const tracks: Record<string, CircleTrack> = {};
+async function circles(target?: string) {
+	let tracks: Record<string, CircleTrack> = {};
+	const jsonPath = path.join(ASSETS, "circles.json");
+	if (target && (await exists(jsonPath))) {
+		tracks = JSON.parse(await fs.readFile(jsonPath, "utf8"));
+	}
+	const shotList = target ? SHOTS.filter((s) => s.id === target) : SHOTS;
 	const size = FRAME.w * FRAME.h;
-	for (const shot of SHOTS) {
+	for (const shot of shotList) {
 		const spec = shot.circle;
 		const raw = await grayFrames(path.join(ASSETS, `${shot.id}.mp4`));
 		const found: (Circle | null)[] = [];
@@ -182,7 +188,7 @@ async function circles() {
 							seed,
 						);
 			found.push(c);
-			if (c) seed = [c.cx, c.cy];
+			if (c) seed = "seed" in spec && spec.seed ? spec.seed : [c.cx, c.cy];
 		}
 		const samples = cleanTrack(found).map((c) => ({
 			cx: Math.round(c.cx),
@@ -212,6 +218,7 @@ function cost() {
 }
 
 const step = process.argv[2];
+const target = process.argv[3];
 const runs = (...names: string[]) => !step || names.includes(step);
 await fs.mkdir(ASSETS, { recursive: true });
 if (step === "cost") {
@@ -223,11 +230,11 @@ if (step === "cost") {
 	if (fal && runs("images")) await images(fal);
 	// Music and motion are independent; run them side by side.
 	await Promise.all([
-		fal && runs("videos") ? videos(fal) : undefined,
+		fal && runs("videos") ? videos(fal, target) : undefined,
 		fal && runs("music") ? music(fal) : undefined,
 	]);
 	if (runs("music", "grid")) await grid();
-	if (runs("videos", "circles")) await circles();
+	if (runs("videos", "circles")) await circles(target);
 	if (fal && fal.totalUsd > 0)
 		console.log(`spent  ~$${fal.totalUsd.toFixed(3)}`);
 }

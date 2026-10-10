@@ -71,21 +71,13 @@
 			"development": "./src/preview/index.ts",
 			"import": "./dist/preview/index.mjs",
 			"default": "./dist/preview/index.mjs"
-		},
-		"./project": {
-			"types": "./dist/project/index.d.mts",
-			"development": "./src/project/index.ts",
-			"import": "./dist/project/index.mjs",
-			"default": "./dist/project/index.mjs"
-		},
-		"./schemas/project.v1.json": "./schemas/project.v1.json"
+		}
 	},
 	"files": [
-		"dist/**",
-		"schemas/**"
+		"dist/**"
 	],
 	"scripts": {
-		"build": "tsdown && node scripts/generate-project-schema.mjs && node ../../scripts/sync-readme.mjs && node scripts/check-dts-bundle.mjs",
+		"build": "tsdown && node ../../scripts/sync-readme.mjs && node scripts/check-dts-bundle.mjs",
 		"dev": "tsdown --watch",
 		"clean": "rm -rf dist .turbo",
 		"prepack": "node ../../scripts/sync-readme.mjs",

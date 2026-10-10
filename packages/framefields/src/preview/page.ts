@@ -62,12 +62,6 @@ export const previewPage = /* html */ `<!doctype html>
   .sep { width: 1px; height: 18px; background: var(--line-2); flex: none; margin: 0 2px; }
   .top h1 { font-size: 14px; font-weight: 600; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .spec { color: var(--ink-3); font-size: 12px; white-space: nowrap; }
-  .comp {
-    height: 28px; max-width: 260px; padding: 0 8px; border: 1px solid var(--line); border-radius: 8px;
-    background: var(--surface); color: var(--ink); font: inherit; font-size: 12.5px; flex: none; cursor: pointer;
-  }
-  .comp:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-  .comp:disabled { opacity: .6; cursor: progress; }
   @media (max-width: 640px) { .spec { display: none; } }
   .chip {
     display: inline-flex; align-items: center; gap: 8px; height: 26px; padding: 0 10px; white-space: nowrap;
@@ -292,7 +286,6 @@ export const previewPage = /* html */ `<!doctype html>
   <svg class="logo" viewBox="0 0 512 512" aria-label="framefields" role="img"><g fill="none" stroke="currentColor" stroke-linecap="round"><path d="M184 56H86q-30 0-30 30v98M328 56h98q30 0 30 30v98M184 456H86q-30 0-30-30v-98M328 456h98q30 0 30-30v-98" stroke-width="34" stroke-linejoin="round"/><path d="M176 182v148m0-148c0 74 60 74 100 74" stroke-width="28"/></g><g fill="currentColor"><circle cx="176" cy="172" r="32"/><circle cx="176" cy="340" r="32"/><path d="M284 200l78 56-78 56z" stroke="currentColor" stroke-width="34" stroke-linejoin="round"/></g></svg>
   <span class="sep" aria-hidden="true"></span>
   <h1 id="title">framefields preview</h1>
-  <select class="comp" id="comp" aria-label="Composition" title="Composition" hidden></select>
   <span class="grow"></span>
   <span class="spec tnum" id="spec"></span>
   <span class="chip" id="chip" data-state="mixing" role="status" aria-live="polite"><span class="spinner"></span><span>Mixing audio</span></span>
@@ -1168,50 +1161,10 @@ export const previewPage = /* html */ `<!doctype html>
     $("title").textContent = m.title;
     $("spec").textContent = m.width + "×" + m.height + " · " + m.fps + " fps · " + fmt(last());
     $("tcDur").textContent = fmt(last());
-    renderPicker(m);
     stage.style.setProperty("--ar", m.width + " / " + m.height);
     stage.style.setProperty("--ar-n", String(m.width / m.height));
     renderRuler();
   }
-
-  // A project's compositions: switching asks the server to load the other one,
-  // and its hello with a new session reloads this tab into it.
-  function renderPicker(m) {
-    var sel = $("comp"), list = m.compositions || [];
-    sel.hidden = list.length < 2;
-    if (sel.hidden) return;
-    sel.textContent = "";
-    var groups = {};
-    list.forEach(function (c) {
-      var opt = document.createElement("option");
-      opt.value = c.id;
-      opt.textContent = c.title === c.id ? c.id : c.title + " (" + c.id + ")";
-      opt.selected = c.id === m.composition;
-      if (!c.group) { sel.appendChild(opt); return; }
-      if (!groups[c.group]) {
-        groups[c.group] = document.createElement("optgroup");
-        groups[c.group].label = c.group;
-        sel.appendChild(groups[c.group]);
-      }
-      groups[c.group].appendChild(opt);
-    });
-  }
-  $("comp").addEventListener("change", function () {
-    var sel = $("comp");
-    sel.disabled = true;
-    fetch("/@framefields/composition", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ id: sel.value })
-    }).then(function (r) { return r.json().then(function (b) { return [r.ok, b]; }); }).then(function (res) {
-      if (!res[0]) throw new Error(res[1].error || "could not switch");
-      location.reload();
-    }).catch(function (err) {
-      sel.disabled = false;
-      sel.value = meta.composition;
-      showError(err);
-    });
-  });
 
   new ResizeObserver(function () {
     if (!meta) return;

@@ -337,6 +337,7 @@ if (parentPort) {
 							virtualMedia,
 							{
 								frame: startFrame,
+								compositionFrame: startFrame,
 								fps,
 								isHeadless: true,
 								renderId,
@@ -435,6 +436,7 @@ if (parentPort) {
 							virtualMedia,
 							{
 								frame: i,
+								compositionFrame: i,
 								fps,
 								isHeadless: true,
 								renderId,

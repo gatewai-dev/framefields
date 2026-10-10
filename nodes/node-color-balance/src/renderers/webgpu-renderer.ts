@@ -305,6 +305,7 @@ export const ColorBalanceWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 	pass.end();
 
 	const frame = props.frame ?? 0;
+	const compositionFrame = props.compositionFrame ?? frame;
 	const fps = props.fps || 30;
 	const childMedia = props.virtualMedia.children[0];
 	const width = targetWidth;
@@ -355,10 +356,22 @@ export const ColorBalanceWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 
 	const resolveVal = (val: unknown): number => {
 		if (val !== undefined && val !== null) {
-			if (typeof val === "object" && "value" in (val as Record<string, unknown>)) {
-				val = (val as { value: unknown }).value;
+			if (typeof val === "object" && val !== null) {
+				if (
+					"get" in (val as Record<string, unknown>) &&
+					typeof (val as { get: unknown }).get === "function"
+				) {
+					val = (
+						val as { get: (ctx: { frame: number; fps: number }) => unknown }
+					).get({ frame: compositionFrame, fps });
+				} else if ("value" in (val as Record<string, unknown>)) {
+					val = (val as { value: unknown }).value;
+				}
 			} else if (typeof val === "function") {
-				val = (val as (f: number, fps: number) => unknown)(frame, fps);
+				val = (val as (f: number, fps: number) => unknown)(
+					compositionFrame,
+					fps,
+				);
 			}
 		}
 		const n = Number(val ?? 0);

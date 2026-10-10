@@ -654,6 +654,7 @@ export class HeadlessWebGPURenderer {
 					virtualMedia,
 					{
 						frame,
+						compositionFrame: frame,
 						fps,
 						isHeadless: true,
 						renderId,
@@ -694,6 +695,7 @@ export class HeadlessWebGPURenderer {
 				virtualMedia,
 				{
 					frame,
+					compositionFrame: frame,
 					fps,
 					isHeadless: true,
 					renderId,
@@ -872,6 +874,7 @@ export class HeadlessWebGPURenderer {
 					virtualMedia,
 					{
 						frame,
+						compositionFrame: frame,
 						fps,
 						isHeadless: true,
 						renderId,
@@ -912,6 +915,7 @@ export class HeadlessWebGPURenderer {
 				virtualMedia,
 				{
 					frame,
+					compositionFrame: frame,
 					fps,
 					isHeadless: true,
 					renderId,
@@ -1246,6 +1250,7 @@ export class HeadlessWebGPURenderer {
 						virtualMedia,
 						{
 							frame,
+							compositionFrame: frame,
 							fps,
 							isHeadless: true,
 							renderId,
@@ -1306,6 +1311,7 @@ export class HeadlessWebGPURenderer {
 							virtualMedia,
 							{
 								frame: i,
+								compositionFrame: i,
 								fps,
 								isHeadless: true,
 								renderId,

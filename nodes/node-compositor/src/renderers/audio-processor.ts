@@ -90,7 +90,7 @@ export const compositorLayerAudioProcessor: AudioProcessor = async (
 
 	for (let i = 0; i < numSamples; i += subChunkSize) {
 		const nextI = Math.min(numSamples, i + subChunkSize);
-		const tNext = startTimeSec + (nextI - i) / sampleRate;
+		const tNext = startTimeSec + nextI / sampleRate;
 		tl.seek(tNext);
 		const nextVol = stub.volume;
 		const nextMuted = stub.muted;

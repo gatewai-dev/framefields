@@ -833,6 +833,7 @@ export const BlurWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 		drawChild,
 	} = args;
 	const frame = props.frame ?? 0;
+	const compositionFrame = props.compositionFrame ?? frame;
 	const fps = props.fps || 30;
 	const op = props.virtualMedia?.operation as BlurOp | undefined;
 	if (op?.op !== "Blur" || !op) return;
@@ -856,7 +857,13 @@ export const BlurWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 	const nodeId = op.inputs ? Object.keys(op.inputs)[0] : "blur_node";
 
 	const resolveBindable = (
-		configKey: "strength" | "sigmaColor" | "centerX" | "centerY" | "radius" | "radiusY",
+		configKey:
+			| "strength"
+			| "sigmaColor"
+			| "centerX"
+			| "centerY"
+			| "radius"
+			| "radiusY",
 		defaultValue: number,
 		minVal: number,
 		maxVal: number,
@@ -880,7 +887,7 @@ export const BlurWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 		let val = defaultValue;
 		let hasStaticSig = false;
 
-		let gpuTextureView: GPUTextureView | undefined = undefined;
+		let gpuTextureView: GPUTextureView | undefined;
 
 		if (!hasSignal) {
 			if (input?.connectionValid && input.outputItem?.type === "Number") {
@@ -891,10 +898,20 @@ export const BlurWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				let rawVal = op[configKey] as unknown;
 				if (rawVal !== undefined && rawVal !== null) {
 					if (typeof rawVal === "object") {
-						if ("get" in (rawVal as Record<string, unknown>) && typeof (rawVal as Record<string, unknown>).get === "function") {
-							rawVal = (rawVal as { get: (ctx: { frame: number; fps: number }) => unknown }).get({ frame, fps });
+						if (
+							"get" in (rawVal as Record<string, unknown>) &&
+							typeof (rawVal as Record<string, unknown>).get === "function"
+						) {
+							rawVal = (
+								rawVal as {
+									get: (ctx: { frame: number; fps: number }) => unknown;
+								}
+							).get({ frame: compositionFrame, fps });
 						} else if ("value" in (rawVal as Record<string, unknown>)) {
-							const sig = rawVal as { value: unknown; gpuBinding?: { textureView?: GPUTextureView } };
+							const sig = rawVal as {
+								value: unknown;
+								gpuBinding?: { textureView?: GPUTextureView };
+							};
 							if (sig.gpuBinding?.textureView) {
 								gpuTextureView = sig.gpuBinding.textureView;
 								hasStaticSig = true;
@@ -902,11 +919,17 @@ export const BlurWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 							rawVal = sig.value;
 						}
 					} else if (typeof rawVal === "function") {
-						rawVal = (rawVal as (f: number, fps: number) => unknown)(frame, fps);
+						rawVal = (rawVal as (f: number, fps: number) => unknown)(
+							compositionFrame,
+							fps,
+						);
 					}
 				}
 				const numVal = Number(rawVal ?? defaultValue);
-				val = Math.max(minVal, Math.min(maxVal, isNaN(numVal) ? defaultValue : numVal));
+				val = Math.max(
+					minVal,
+					Math.min(maxVal, isNaN(numVal) ? defaultValue : numVal),
+				);
 				if (scaleByDpi) val *= dpiScale;
 			}
 		} else if (sd) {
@@ -1049,8 +1072,8 @@ export const BlurWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 	// Prepare uniform template (64 bytes / 16 floats)
 	const isPartial = Boolean(
 		op.partialBlur &&
-		(op.partialBlur as unknown) !== "false" &&
-		(op.partialBlur as unknown) !== 0,
+			(op.partialBlur as unknown) !== "false" &&
+			(op.partialBlur as unknown) !== 0,
 	);
 	blurData[2] = strengthRes.val;
 	blurData[3] = Number(op.angle ?? 0.0);

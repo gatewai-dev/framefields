@@ -73,6 +73,8 @@ export {
 	type RefractionCaustics3DProps,
 	ResizerScaler,
 	type ResizerScalerProps,
+	Rotate,
+	type RotateProps,
 	StereoPanning,
 	type StereoPanningProps,
 	type TonalShift,

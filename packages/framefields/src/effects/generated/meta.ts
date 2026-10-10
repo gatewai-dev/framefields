@@ -925,6 +925,16 @@ export const effectMeta = {
 			enum: ["top", "center", "bottom"],
 		},
 	},
+	Rotate: {
+		angle: {},
+		fit: {
+			enum: ["cover", "contain", "fill"],
+		},
+		scale: {
+			min: 0.01,
+			max: 20,
+		},
+	},
 	StereoPanning: {
 		pan: {
 			min: -1,

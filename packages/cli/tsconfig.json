@@ -1,0 +1,10 @@
+{
+	"extends": "@framefields/tsconfig/base.json",
+	"compilerOptions": {
+		"module": "NodeNext",
+		"moduleResolution": "NodeNext",
+		"types": ["node"],
+		"noEmit": true
+	},
+	"include": ["src/**/*", "test/**/*"]
+}

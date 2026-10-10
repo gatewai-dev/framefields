@@ -1,0 +1,49 @@
+{
+	"name": "@framefields/cli",
+	"version": "2.0.8",
+	"private": false,
+	"description": "ff: the command line for Framefields projects. Preview, inspect and render compositions locally; sync, render and collaborate on Framefields Cloud.",
+	"license": "Apache-2.0",
+	"homepage": "https://gatewai.studio",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/gatewai-dev/framefields.git",
+		"directory": "packages/cli"
+	},
+	"publishConfig": {
+		"access": "public"
+	},
+	"type": "module",
+	"bin": {
+		"ff": "./dist/bin.mjs",
+		"framefields": "./dist/bin.mjs"
+	},
+	"files": [
+		"dist/**",
+		"SPEC.md"
+	],
+	"engines": {
+		"node": ">=22"
+	},
+	"scripts": {
+		"build": "tsdown",
+		"dev": "tsdown --watch",
+		"clean": "rm -rf dist .turbo",
+		"typecheck": "tsc --noEmit -p .",
+		"test": "vitest run"
+	},
+	"dependencies": {
+		"@clack/prompts": "^1.8.1",
+		"commander": "^14.0.0",
+		"tsx": "^4.20.3",
+		"zod": "^4.3.6"
+	},
+	"devDependencies": {
+		"@framefields/tsconfig": "workspace:*",
+		"@types/node": "^24.1.0",
+		"framefields": "workspace:*",
+		"tsdown": "^0.19.0",
+		"typescript": "^5.8.3",
+		"vitest": "4.1.5"
+	}
+}

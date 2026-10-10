@@ -19,6 +19,18 @@ Because video rendering is resource-intensive and native GPU pipelines run async
 
 Always proceed through the ladder in order. Catching a layout or timing bug at step 1 or 2 takes seconds; catching it after a 30-second 4K video render wastes minutes.
 
+**With the `ff` CLI.** When the project has `@framefields/cli` (`npx ff --version` succeeds), run the ladder with it instead of inline scripts. It reads the compositions from `framefields.json` (`npx ff ls`; without a manifest, `src/film.ts#buildFilm` is the `film` composition), prints the files it wrote relative to the project root, and with `--json` prints one JSON value on stdout:
+
+| Step | Command |
+|---|---|
+| 1 | `npx ff check [<composition>…]`: `tsc --noEmit`, then builds each composition and validates `toSpec()` against `CompositorProgramSchema` |
+| 2 | `npx ff frames [<composition>] 0 2.5s 00:00:04`: `output/frames/<id>/f0000.png` … |
+| 3 | `npx ff grid [<composition>] --count 16`: `output/<id>-grid.png` |
+| 4.5 | `npx ff preview [<composition>]`: prints the player URL |
+| 5 | `npx ff render [<composition>] --local`: `output/<id>.mp4` |
+
+`<composition>` is a manifest id, or `src/probe.ts#buildProbe` for an unlisted builder. Exit codes: 1 failed, 2 bad arguments or unknown composition, 4 project problem (no project, invalid manifest, framefields not installed). The sections below show the same steps in code.
+
 ### Step 1: Static Typecheck & Schema Validation
 Before touching the GPU, verify TypeScript types and parse the composition against the strict runtime schema:
 

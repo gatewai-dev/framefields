@@ -1,0 +1,82 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"type": "object",
+	"properties": {
+		"$schema": {
+			"type": "string"
+		},
+		"version": {
+			"default": 1,
+			"type": "number",
+			"const": 1
+		},
+		"compositions": {
+			"type": "object",
+			"propertyNames": {
+				"type": "string",
+				"pattern": "^[a-z0-9][a-z0-9-]{0,62}$"
+			},
+			"additionalProperties": {
+				"type": "object",
+				"properties": {
+					"entry": {
+						"type": "string",
+						"minLength": 1
+					},
+					"export": {
+						"default": "default",
+						"type": "string",
+						"pattern": "^[A-Za-z_$][\\w$]*$"
+					},
+					"title": {
+						"type": "string",
+						"maxLength": 120
+					},
+					"description": {
+						"type": "string",
+						"maxLength": 500
+					},
+					"group": {
+						"type": "string",
+						"maxLength": 60
+					},
+					"default": {
+						"type": "boolean"
+					}
+				},
+				"required": [
+					"entry"
+				],
+				"additionalProperties": {}
+			}
+		},
+		"assets": {
+			"type": "object",
+			"properties": {
+				"directory": {
+					"type": "string",
+					"minLength": 1
+				},
+				"exclude": {
+					"type": "array",
+					"items": {
+						"type": "string",
+						"minLength": 1
+					}
+				}
+			},
+			"additionalProperties": {}
+		},
+		"output": {
+			"type": "string",
+			"minLength": 1
+		}
+	},
+	"required": [
+		"compositions"
+	],
+	"additionalProperties": {},
+	"$id": "https://framefields.dev/schemas/project.v1.json",
+	"title": "framefields.json",
+	"description": "Framefields project manifest: the project's compositions, by stable id."
+}

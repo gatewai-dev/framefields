@@ -572,6 +572,7 @@ export const CameraParallax3DWebGPURenderer: WebGPUNodeRenderer = async (
 	} = args;
 
 	const frame = props.frame ?? 0;
+	const compositionFrame = props.compositionFrame ?? frame;
 	const fps = props.fps || 60;
 	const op = props.virtualMedia?.operation as CameraParallax3DOp | undefined;
 	if (op?.op !== "CameraParallax3D" || !op) return;
@@ -687,7 +688,9 @@ export const CameraParallax3DWebGPURenderer: WebGPUNodeRenderer = async (
 
 	// 4. Resolve timing and signals
 	const elapsedSeconds =
-		props.elapsedMs !== undefined ? props.elapsedMs / 1000 : frame / fps;
+		props.elapsedMs !== undefined
+			? props.elapsedMs / 1000
+			: compositionFrame / fps;
 	const durationSeconds = props.virtualMedia?.metadata?.durationMs
 		? props.virtualMedia.metadata.durationMs / 1000
 		: props.durationMs !== undefined

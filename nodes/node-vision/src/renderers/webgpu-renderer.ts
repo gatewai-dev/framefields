@@ -509,8 +509,8 @@ export const VisionWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 	const effectKey = (op as { effect?: object }).effect;
 	const hasEffectKey = effectKey !== undefined && effectKey !== null;
 	const nodeKeyStr =
-		(virtualMedia as any)?.id ??
-		(rawOp as any)?.id ??
+		(virtualMedia as { id?: string } | undefined)?.id ??
+		(rawOp as { id?: string } | undefined)?.id ??
 		`${targetWidth}x${targetHeight}_${op.mode}_${op.variant}_${op.keyBackground}_${op.backgroundKeyThreshold}`;
 	const fallbackKey = `vision-${nodeKeyStr}`;
 	let childTex = hasEffectKey
@@ -549,6 +549,7 @@ export const VisionWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 	}
 
 	const frameIdx = props.frame ?? 0;
+	const compositionFrame = props.compositionFrame ?? frameIdx;
 	const fps = props.fps ?? 24;
 	const mode = op.mode ?? "passthrough";
 	const isMatteMode = mode === "mask" || mode === "matte" || mode === "crop";
@@ -577,7 +578,7 @@ export const VisionWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 		: "";
 	const keyThresholdAt = (frame: number) =>
 		op.keyBackground === true
-			? backgroundKeyThreshold(op, frame, fps)
+			? backgroundKeyThreshold(op, compositionFrame - (frameIdx - frame), fps)
 			: undefined;
 	const lookup = (frame: number | undefined) => {
 		if (!cacheable || frame === undefined) return undefined;

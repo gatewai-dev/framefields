@@ -1,0 +1,47 @@
+{
+	"name": "@framefields/node-rotate",
+	"version": "2.0.8",
+	"private": false,
+	"framefields": {
+		"type": "Rotate",
+		"kind": "effect",
+		"schema": "RotateNodeConfigSchema"
+	},
+	"type": "module",
+	"license": "Apache-2.0",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.mts",
+			"development": "./src/index.ts",
+			"import": "./dist/index.mjs",
+			"default": "./dist/index.mjs"
+		},
+		"./renderer": {
+			"types": "./dist/renderer.d.mts",
+			"development": "./src/renderers/index.ts",
+			"import": "./dist/renderer.mjs",
+			"default": "./dist/renderer.mjs"
+		}
+	},
+	"scripts": {
+		"build": "tsdown",
+		"dev": "tsdown --watch",
+		"clean": "rm -rf dist .turbo"
+	},
+	"dependencies": {
+		"@framefields/core": "workspace:*",
+		"@framefields/node-sdk": "workspace:*",
+		"@framefields/webgpu-renderers": "workspace:*",
+		"zod": "^4.3.6"
+	},
+	"devDependencies": {
+		"@framefields/tsconfig": "workspace:*",
+		"@types/node": "^24.1.0",
+		"tsdown": "^0.19.0",
+		"typescript": "^5.8.3",
+		"webgpu": "^0.4.0"
+	},
+	"publishConfig": {
+		"access": "public"
+	}
+}

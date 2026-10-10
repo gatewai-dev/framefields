@@ -222,6 +222,11 @@ export const BUILTIN_NODE_RENDERERS: readonly BuiltinNodeRenderer[] = [
 		load: () => import("@framefields/node-resizer-scaler/renderer"),
 	},
 	{
+		packageName: "@framefields/node-rotate",
+		ops: ["Rotate"],
+		load: () => import("@framefields/node-rotate/renderer"),
+	},
+	{
 		packageName: "@framefields/node-selective-color",
 		ops: ["SelectiveColor"],
 		load: () => import("@framefields/node-selective-color/renderer"),

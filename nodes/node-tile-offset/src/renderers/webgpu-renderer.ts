@@ -231,6 +231,7 @@ export const TileOffsetWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 	} = args;
 
 	const frame = props.frame ?? 0;
+	const compositionFrame = props.compositionFrame ?? frame;
 	const fps = props.fps || 30;
 	const op = props.virtualMedia?.operation as TileOffsetOp | undefined;
 	if (op?.op !== "TileOffset" || !op) return;
@@ -272,7 +273,30 @@ export const TileOffsetWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 			if (input?.connectionValid && input.outputItem?.type === "Number") {
 				val = Number(input.outputItem.data ?? defaultValue);
 			} else {
-				val = Number(op[configKey] ?? defaultValue);
+				let rawVal = op[configKey] as unknown;
+				if (rawVal !== undefined && rawVal !== null) {
+					if (typeof rawVal === "object") {
+						if (
+							"get" in (rawVal as Record<string, unknown>) &&
+							typeof (rawVal as Record<string, unknown>).get === "function"
+						) {
+							rawVal = (
+								rawVal as {
+									get: (ctx: { frame: number; fps: number }) => unknown;
+								}
+							).get({ frame: compositionFrame, fps });
+						} else if ("value" in (rawVal as Record<string, unknown>)) {
+							rawVal = (rawVal as { value: unknown }).value;
+						}
+					} else if (typeof rawVal === "function") {
+						rawVal = (rawVal as (f: number, fps: number) => unknown)(
+							compositionFrame,
+							fps,
+						);
+					}
+				}
+				const numVal = Number(rawVal ?? defaultValue);
+				val = isNaN(numVal) ? defaultValue : numVal;
 			}
 		} else if (sd) {
 			val = Number(sd.offset ?? 0.0);

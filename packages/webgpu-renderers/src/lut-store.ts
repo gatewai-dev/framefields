@@ -418,11 +418,7 @@ export class LutStore {
 					}
 				}
 
-				const response = await fetch(src, { signal });
-				if (!response.ok) {
-					throw new Error(`Failed to load LUT file: ${response.statusText}`);
-				}
-				const text = await response.text();
+				const text = await readLutText(src, signal);
 
 				const lines = text.split(/\r?\n/);
 				let size = 33;
@@ -525,3 +521,25 @@ export const lutStore: LutStore = (() => {
 	}
 	return (globalThis as any)[globalKey];
 })();
+
+/**
+ * A `.cube` file's text. Under Node a local path or `file://` URL is read from
+ * disk (fetch cannot open either), the same sources video layers accept;
+ * everything else is fetched.
+ */
+async function readLutText(src: string, signal?: AbortSignal): Promise<string> {
+	const isNode =
+		typeof process !== "undefined" && Boolean(process.versions?.node);
+	const isLocal = src.startsWith("/") || src.startsWith("file://");
+	if (isNode && isLocal) {
+		const { readFile } = await import("node:fs/promises");
+		const { fileURLToPath } = await import("node:url");
+		const path = src.startsWith("file://") ? fileURLToPath(src) : src;
+		return readFile(path, { encoding: "utf8", signal });
+	}
+	const response = await fetch(src, { signal });
+	if (!response.ok) {
+		throw new Error(`Failed to load LUT file: ${response.statusText}`);
+	}
+	return response.text();
+}

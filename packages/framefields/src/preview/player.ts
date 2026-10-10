@@ -253,6 +253,7 @@ async function createPlayer(
 		const h = surface.height;
 		const props = {
 			frame,
+			compositionFrame: frame,
 			fps,
 			isHeadless: false,
 			renderId,

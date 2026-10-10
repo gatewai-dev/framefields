@@ -456,6 +456,7 @@ export const HalftoneScreenWebGPURenderer: WebGPUNodeRenderer = async (
 	} = args;
 
 	const frame = props.frame ?? 0;
+	const compositionFrame = props.compositionFrame ?? frame;
 	const fps = props.fps || 30;
 	const op = props.virtualMedia?.operation as unknown as
 		| HalftoneScreenOp
@@ -510,9 +511,31 @@ export const HalftoneScreenWebGPURenderer: WebGPUNodeRenderer = async (
 					Math.min(maxVal, Number(input.outputItem.data ?? defaultValue)),
 				);
 			} else {
+				let rawVal = op[configKey] as unknown;
+				if (rawVal !== undefined && rawVal !== null) {
+					if (typeof rawVal === "object") {
+						if (
+							"get" in (rawVal as Record<string, unknown>) &&
+							typeof (rawVal as Record<string, unknown>).get === "function"
+						) {
+							rawVal = (
+								rawVal as {
+									get: (ctx: { frame: number; fps: number }) => unknown;
+								}
+							).get({ frame: compositionFrame, fps });
+						} else if ("value" in (rawVal as Record<string, unknown>)) {
+							rawVal = (rawVal as { value: unknown }).value;
+						}
+					} else if (typeof rawVal === "function") {
+						rawVal = (rawVal as (f: number, fps: number) => unknown)(
+							compositionFrame,
+							fps,
+						);
+					}
+				}
 				val = Math.max(
 					minVal,
-					Math.min(maxVal, Number(op[configKey] ?? defaultValue)),
+					Math.min(maxVal, Number(rawVal ?? defaultValue)),
 				);
 			}
 		} else if (sd) {

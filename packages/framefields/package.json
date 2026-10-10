@@ -145,6 +145,7 @@
 		"@framefields/node-refine-edge": "workspace:*",
 		"@framefields/node-refraction-caustics": "workspace:*",
 		"@framefields/node-relight-3d": "workspace:*",
+		"@framefields/node-rotate": "workspace:*",
 		"@framefields/node-sdk": "workspace:*",
 		"@framefields/node-selective-color": "workspace:*",
 		"@framefields/node-shadows-highlights": "workspace:*",

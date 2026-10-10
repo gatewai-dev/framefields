@@ -28,6 +28,7 @@ export { default as paintRenderer } from "@framefields/node-paint/renderer";
 export { default as patchHealRenderer } from "@framefields/node-patch-heal/renderer";
 export { default as refineEdgeRenderer } from "@framefields/node-refine-edge/renderer";
 export { default as refractionCausticsRenderer } from "@framefields/node-refraction-caustics/renderer";
+export { default as rotateRenderer } from "@framefields/node-rotate/renderer";
 export { default as relight3dRenderer } from "@framefields/node-relight-3d/renderer";
 export { default as selectiveColorRenderer } from "@framefields/node-selective-color/renderer";
 export { default as shadowsHighlightsRenderer } from "@framefields/node-shadows-highlights/renderer";

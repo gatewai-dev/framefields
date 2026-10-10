@@ -381,6 +381,7 @@ export const PatchHealWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 	const width = targetWidth;
 	const height = targetHeight;
 	const frame = props.frame ?? 0;
+	const compositionFrame = props.compositionFrame ?? frame;
 	const fps = props.fps || 30;
 	const nodeId = op.inputs ? Object.keys(op.inputs)[0] : "patch_heal_node";
 
@@ -525,7 +526,33 @@ export const PatchHealWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 							fallbackVal);
 				val = Math.max(minVal, Math.min(maxVal, Number(numVal)));
 			} else {
-				val = Math.max(minVal, Math.min(maxVal, fallbackVal));
+				let rawVal = fallbackVal as unknown;
+				if (rawVal !== undefined && rawVal !== null) {
+					if (typeof rawVal === "object") {
+						if (
+							"get" in (rawVal as Record<string, unknown>) &&
+							typeof (rawVal as Record<string, unknown>).get === "function"
+						) {
+							rawVal = (
+								rawVal as {
+									get: (ctx: { frame: number; fps: number }) => unknown;
+								}
+							).get({ frame: compositionFrame, fps });
+						} else if ("value" in (rawVal as Record<string, unknown>)) {
+							rawVal = (rawVal as { value: unknown }).value;
+						}
+					} else if (typeof rawVal === "function") {
+						rawVal = (rawVal as (f: number, fps: number) => unknown)(
+							compositionFrame,
+							fps,
+						);
+					}
+				}
+				const numVal = Number(rawVal ?? fallbackVal);
+				val = Math.max(
+					minVal,
+					Math.min(maxVal, isNaN(numVal) ? fallbackVal : numVal),
+				);
 			}
 		} else if (sd) {
 			val = Math.max(minVal, Math.min(maxVal, Number(sd.offset ?? 0.0)));

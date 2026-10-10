@@ -21,7 +21,7 @@ This skill takes a project from nothing to a verified first render. For anything
 ## 1. Check the environment
 
 - **Node.js 22 or later.** Run `node --version`. Older versions fail at import.
-- **A WebGPU-capable GPU.** macOS uses Metal; Linux and Windows use Vulkan. Headless CI machines without a GPU can't render.
+- **A WebGPU-capable GPU.** macOS uses Metal; Linux and Windows use Vulkan. Rendering strictly requires a GPU; headless CI environments or virtual machines without a GPU cannot render (there is no CPU software rasterization fallback).
 - **An ES module project.** The project's `package.json` needs `"type": "module"`.
 
 ## 2. Install
@@ -90,6 +90,7 @@ src/
   render.ts   # renders frames for review, a live preview, or the full video
 assets/
   fonts/      # .ttf / .otf files the film uses
+  footage/    # source videos (.mp4, .mov) and audio (.mp3, .wav) tracked in Git LFS
 output/       # renders (add to .gitignore)
 ```
 
@@ -214,9 +215,37 @@ Add scripts to `package.json`:
 }
 ```
 
+### Video assets & Git LFS
+
+Video inputs (`Layer.video("assets/footage/clip.mp4")`), audio tracks (`Layer.audio(...)`), LUTs, and custom fonts belong in **Git LFS**, while render outputs in `output/` belong in `.gitignore`.
+
+1. **Initialize Git LFS:**
+   ```bash
+   git lfs install
+   ```
+
+2. **Configure `.gitattributes` at the project root:**
+   ```gitattributes
+   assets/**/*.mp4 filter=lfs diff=lfs merge=lfs -text
+   assets/**/*.mov filter=lfs diff=lfs merge=lfs -text
+   assets/**/*.webm filter=lfs diff=lfs merge=lfs -text
+   assets/**/*.mp3 filter=lfs diff=lfs merge=lfs -text
+   assets/**/*.wav filter=lfs diff=lfs merge=lfs -text
+   assets/**/*.cube filter=lfs diff=lfs merge=lfs -text
+   assets/fonts/**/*.ttf filter=lfs diff=lfs merge=lfs -text
+   assets/fonts/**/*.otf filter=lfs diff=lfs merge=lfs -text
+   ```
+
+3. **Hydrate pointers before rendering:** In freshly cloned or containerized agent environments, LFS media exist as ~130-byte text pointer files. Framefields' native WebGPU and WebCodecs demuxers cannot decode pointers and will fail or produce blank frames. Always ensure pointers are hydrated:
+   ```bash
+   git lfs pull
+   ```
+
+4. **Keep `.gitignore` targeted:** Never add `*.mp4` to `.gitignore` when tracking source footage with LFS. Ignore output directories (`output/`, `scratch/`) instead.
+
 ## 4. Verify, cheapest step first
 
-Never go straight to a full video render. Each step catches problems in seconds that a video render takes minutes to show:
+Never go straight to a full video render. Rendering strictly requires a WebGPU-capable GPU (Metal on macOS, Vulkan on Linux/Windows; CPU software rendering is not supported). Each step catches problems in seconds that a video render takes minutes to show:
 
 1. `npm run typecheck`
 2. `npm run frames -- 0 30 60` and look at the PNGs in `output/`. A black frame usually means a missing font, a layer outside the canvas, or opacity stuck at 0.

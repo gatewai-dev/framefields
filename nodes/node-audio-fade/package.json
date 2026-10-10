@@ -1,6 +1,6 @@
 {
 	"name": "@framefields/node-audio-fade",
-	"version": "2.0.9",
+	"version": "2.0.10",
 	"license": "Apache-2.0",
 	"private": false,
 	"framefields": {

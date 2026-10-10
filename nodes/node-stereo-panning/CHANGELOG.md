@@ -1,5 +1,7 @@
 # @framefields/node-stereo-panning
 
+## 2.0.10
+
 ## 2.0.9
 
 ## 2.0.8

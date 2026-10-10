@@ -1,5 +1,11 @@
 # framefields
 
+## 2.0.10
+
+### Patch Changes
+
+- Internal cleanup and maintenance.
+
 ## 2.0.9
 
 ### Patch Changes

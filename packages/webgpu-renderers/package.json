@@ -1,6 +1,6 @@
 {
 	"name": "@framefields/webgpu-renderers",
-	"version": "2.0.9",
+	"version": "2.0.10",
 	"private": false,
 	"publishConfig": {
 		"access": "public"

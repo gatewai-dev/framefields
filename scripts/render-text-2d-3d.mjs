@@ -1,3 +1,6 @@
+import fs from "node:fs/promises";
+import path from "node:path";
+import { Canvas, loadImage } from "skia-canvas";
 import {
 	CameraAnimation,
 	Composition,
@@ -6,16 +9,14 @@ import {
 	Layer3D,
 	LayerAnimation,
 } from "../packages/framefields/dist/index.mjs";
-import { loadImage, Canvas } from "skia-canvas";
-import fs from "node:fs/promises";
-import path from "node:path";
 
 async function main() {
 	console.log("=== WebGPU 2D & 3D Typography Render Engine ===");
 
-	const artifactDir =
-		"/Users/okanaslankan/.gemini/antigravity-ide/brain/b888d40e-44c5-4686-bebd-a131288bd97e";
-	const outputDir = "/Users/okanaslankan/framefields/examples/output/text_2d_3d";
+	const outputDir =
+		process.env.OUTPUT_DIR ||
+		path.resolve(process.cwd(), "examples/output/text_2d_3d");
+	const artifactDir = process.env.ARTIFACT_DIR || outputDir;
 	await fs.mkdir(artifactDir, { recursive: true });
 	await fs.mkdir(outputDir, { recursive: true });
 
@@ -250,13 +251,16 @@ async function main() {
 					fill: "#ffffff",
 					letterSpacing: 0, // Tests pair kerning: AV, VA, AT, AR
 				}),
-				Layer.text("Zero-error pair kerning verified against Skia reference rasters (Δ = 0px).", {
-					id: "card-sub-2d",
-					fontSize: 13,
-					fontWeight: 400,
-					fill: "#94a3b8",
-					lineHeight: 1.4,
-				}),
+				Layer.text(
+					"Zero-error pair kerning verified against Skia reference rasters (Δ = 0px).",
+					{
+						id: "card-sub-2d",
+						fontSize: 13,
+						fontWeight: 400,
+						fill: "#94a3b8",
+						lineHeight: 1.4,
+					},
+				),
 			],
 		}),
 	);
@@ -278,13 +282,16 @@ async function main() {
 			borderWidth: 1,
 			borderColor: "rgba(30, 41, 59, 0.7)",
 			children: [
-				Layer.text("WEBGPU PIPELINE: 0 CHURN / 0 PIPELINE REBUILDS / 120 FPS ZERO-CPU-RE-RASTER", {
-					id: "footer-left",
-					fontSize: 12,
-					fontWeight: "bold",
-					fill: "#10b981",
-					letterSpacing: 2,
-				}),
+				Layer.text(
+					"WEBGPU PIPELINE: 0 CHURN / 0 PIPELINE REBUILDS / 120 FPS ZERO-CPU-RE-RASTER",
+					{
+						id: "footer-left",
+						fontSize: 12,
+						fontWeight: "bold",
+						fill: "#10b981",
+						letterSpacing: 2,
+					},
+				),
 				Layer.text("FRAMEFIELDS CORE ENGINE", {
 					id: "footer-right",
 					fontSize: 12,
@@ -343,7 +350,11 @@ async function main() {
 	const text3DData = ctx.getImageData(width / 2 - 200, 420, 400, 100).data;
 	let has3DTextPixels = false;
 	for (let i = 0; i < text3DData.length; i += 4) {
-		if (text3DData[i] > 150 || text3DData[i + 1] > 120 || text3DData[i + 2] > 180) {
+		if (
+			text3DData[i] > 150 ||
+			text3DData[i + 1] > 120 ||
+			text3DData[i + 2] > 180
+		) {
 			has3DTextPixels = true;
 			break;
 		}
@@ -353,7 +364,9 @@ async function main() {
 	console.log(`3D Extruded Text Rasterization Verified: ${has3DTextPixels}`);
 
 	if (!has2DTextPixels || !has3DTextPixels) {
-		throw new Error("Validation failed: text pixels not detected in expected regions.");
+		throw new Error(
+			"Validation failed: text pixels not detected in expected regions.",
+		);
 	}
 
 	console.log("✅ Successfully rendered 2D & 3D text!");

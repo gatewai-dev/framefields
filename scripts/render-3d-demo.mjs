@@ -1,17 +1,18 @@
+import fs from "node:fs/promises";
+import path from "node:path";
 import {
 	CameraAnimation,
 	Composition,
 	FontManager,
 	Layer,
 } from "../packages/framefields/dist/index.mjs";
-import fs from "node:fs/promises";
-import path from "node:path";
 
 async function main() {
 	console.log("=== WebGPU 3D Camera & Multiplane Render Demonstration ===");
 
-	const artifactDir = "/Users/okanaslankan/.gemini/antigravity-ide/brain/18faf2d5-3c9b-408e-8ba7-bcbf855a7dc5";
-	const assetsDir = "/Users/okanaslankan/framefields/assets/renders-3d";
+	const assetsDir =
+		process.env.ASSETS_DIR || path.resolve(process.cwd(), "assets/renders-3d");
+	const artifactDir = process.env.ARTIFACT_DIR || assetsDir;
 	await fs.mkdir(artifactDir, { recursive: true });
 	await fs.mkdir(assetsDir, { recursive: true });
 
@@ -99,7 +100,10 @@ async function main() {
 	);
 
 	const dollyBuffer = await compDolly.renderFrame({ frame: 20 });
-	await fs.writeFile(path.join(artifactDir, "3d_camera_dolly.png"), dollyBuffer);
+	await fs.writeFile(
+		path.join(artifactDir, "3d_camera_dolly.png"),
+		dollyBuffer,
+	);
 	await fs.writeFile(path.join(assetsDir, "3d_camera_dolly.png"), dollyBuffer);
 	console.log("   Saved: 3d_camera_dolly.png");
 
@@ -150,7 +154,10 @@ async function main() {
 	);
 
 	const orbitBuffer = await compOrbit.renderFrame({ frame: 22 });
-	await fs.writeFile(path.join(artifactDir, "3d_camera_orbit.png"), orbitBuffer);
+	await fs.writeFile(
+		path.join(artifactDir, "3d_camera_orbit.png"),
+		orbitBuffer,
+	);
 	await fs.writeFile(path.join(assetsDir, "3d_camera_orbit.png"), orbitBuffer);
 	console.log("   Saved: 3d_camera_orbit.png");
 
@@ -232,7 +239,9 @@ async function main() {
 	await fs.writeFile(path.join(assetsDir, "3d_camera_dof.png"), dofBuffer);
 	console.log("   Saved: 3d_camera_dof.png");
 
-	console.log("=== All 3D Camera Render Demonstrations Generated Successfully ===");
+	console.log(
+		"=== All 3D Camera Render Demonstrations Generated Successfully ===",
+	);
 }
 
 main().catch((err) => {

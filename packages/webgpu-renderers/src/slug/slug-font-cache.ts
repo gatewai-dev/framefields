@@ -712,10 +712,37 @@ export class SlugFontCache {
 							if (isNode && !isHttp) {
 								// Node.js local file environment
 								const fs = await import(
-									/* webpackIgnore: true */ "fs/promises"
+									/* webpackIgnore: true */ "node:fs/promises"
 								);
-								const path = await import(/* webpackIgnore: true */ "path");
+								const path = await import(
+									/* webpackIgnore: true */ "node:path"
+								);
+								const fontDirs: string[] = [];
+								if (process.env.FONTS_DIR) {
+									fontDirs.push(path.resolve(process.env.FONTS_DIR));
+								}
+								if (process.env.FRAMEFIELDS_FONTS_DIR) {
+									fontDirs.push(
+										path.resolve(process.env.FRAMEFIELDS_FONTS_DIR),
+									);
+								}
+
+								// Upward traversal to locate assets/fonts in parent monorepo roots
+								let currentDir = process.cwd();
+								for (let i = 0; i < 5; i++) {
+									fontDirs.push(path.resolve(currentDir, "assets/fonts"));
+									const parent = path.dirname(currentDir);
+									if (parent === currentDir) break;
+									currentDir = parent;
+								}
+
 								const candidates: string[] = [];
+								const addCandidate = (candidatePath: string) => {
+									if (!candidates.includes(candidatePath)) {
+										candidates.push(candidatePath);
+									}
+								};
+
 								if (fontUrl && !fontUrl.startsWith("//api/")) {
 									let fontPath = fontUrl;
 									if (fontUrl.startsWith("file://")) {
@@ -725,8 +752,11 @@ export class SlugFontCache {
 											fontPath = fontUrl.replace(/^file:\/\//, "");
 										}
 									}
-									candidates.push(fontPath);
-									candidates.push(path.resolve(process.cwd(), fontPath));
+									addCandidate(fontPath);
+									addCandidate(path.resolve(process.cwd(), fontPath));
+									for (const dir of fontDirs) {
+										addCandidate(path.resolve(dir, path.basename(fontPath)));
+									}
 								}
 								const cleanFamily = fontFamily.replace(/['"]/g, "").trim();
 								const variations = [
@@ -734,29 +764,16 @@ export class SlugFontCache {
 									cleanFamily.replace(/ /g, ""),
 									cleanFamily.replace(/ /g, "_"),
 								];
-								for (const v of variations) {
-									candidates.push(
-										path.resolve(process.cwd(), "assets/fonts", v + ".ttf"),
-									);
-									candidates.push(
-										path.resolve(process.cwd(), "assets/fonts", v + ".otf"),
-									);
-									candidates.push(
-										`/Users/okanaslankan/framefields/assets/fonts/${v}.ttf`,
-									);
-									candidates.push(
-										`/Users/okanaslankan/Gatewai/apps/gatewai-artifex/assets/fonts/${v}.ttf`,
-									);
-									candidates.push(
-										`/Users/okanaslankan/Gatewai/apps/gatewai-backend/src/assets/fonts/${v}/font_file.ttf`,
-									);
+								for (const dir of fontDirs) {
+									for (const v of variations) {
+										addCandidate(path.resolve(dir, `${v}.ttf`));
+										addCandidate(path.resolve(dir, `${v}.otf`));
+									}
 								}
-								candidates.push(
-									"/Users/okanaslankan/framefields/assets/fonts/Inter.ttf",
-								);
-								candidates.push(
-									"/Users/okanaslankan/Gatewai/apps/gatewai-artifex/assets/fonts/Inter.ttf",
-								);
+								for (const dir of fontDirs) {
+									addCandidate(path.resolve(dir, "Inter.ttf"));
+									addCandidate(path.resolve(dir, "Inter.otf"));
+								}
 
 								let nodeBuffer: Buffer | null = null;
 								for (const c of candidates) {

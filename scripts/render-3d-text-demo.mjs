@@ -1,3 +1,5 @@
+import fs from "node:fs/promises";
+import path from "node:path";
 import {
 	CameraAnimation,
 	Composition,
@@ -6,14 +8,14 @@ import {
 	Layer3D,
 	LayerAnimation,
 } from "../packages/framefields/dist/index.mjs";
-import fs from "node:fs/promises";
-import path from "node:path";
 
 async function main() {
 	console.log("=== WebGPU 3D Typography Render Demonstration ===");
 
-	const artifactDir = "/Users/okanaslankan/.gemini/antigravity-ide/brain/18faf2d5-3c9b-408e-8ba7-bcbf855a7dc5";
-	const outputDir = "/Users/okanaslankan/framefields/examples/output/3d_text_demo";
+	const outputDir =
+		process.env.OUTPUT_DIR ||
+		path.resolve(process.cwd(), "examples/output/3d_text_demo");
+	const artifactDir = process.env.ARTIFACT_DIR || outputDir;
 	await fs.mkdir(artifactDir, { recursive: true });
 	await fs.mkdir(outputDir, { recursive: true });
 

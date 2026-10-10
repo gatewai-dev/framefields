@@ -500,6 +500,22 @@ export async function mixAudioTracks(
 
 		const segments = op.timeline?.segments || [];
 
+		// A layer's in-point: the source second that plays at its startFrame.
+		// Resolved as the compositor resolves it for the picture, so a clip's
+		// sound stays on its frames.
+		const layer = op as {
+			op: string;
+			mediaStartFrame?: number;
+			trimStartFrames?: number;
+			trimStartSec?: number;
+		};
+		const layerTrimSec =
+			layer.op === "CompositorLayer"
+				? (layer.mediaStartFrame ?? layer.trimStartFrames ?? null) !== null
+					? (layer.mediaStartFrame ?? layer.trimStartFrames ?? 0) / fps
+					: Math.round((layer.trimStartSec ?? 0) * fps) / fps
+				: 0;
+
 		const nodeDurationMs = getActiveMediaMetadata(node)?.durationMs ?? 0;
 		const nodeDurationFrames = Math.round((nodeDurationMs / 1000) * fps);
 		const nodeActualDurationFrames =
@@ -522,7 +538,7 @@ export async function mixAudioTracks(
 			windowStartFrameOffset: number,
 		) => {
 			const segSeekSec = seg ? seg.startSec : 0;
-			const totalSeekSec = inheritedSeekSec + segSeekSec;
+			const totalSeekSec = inheritedSeekSec + layerTrimSec + segSeekSec;
 			const totalClockFrames = localClockFrames + windowStartFrameOffset;
 
 			let segDurationFrames = 0;
@@ -675,7 +691,9 @@ export async function mixAudioTracks(
 								segmentStartSample + clipSamplesCount,
 							),
 						);
-						const elapsedMs = (totalClockFrames / fps + totalSeekSec) * 1000;
+						// The layer's own clock: its in-point moves the source, not its animation.
+						const elapsedMs =
+							(totalClockFrames / fps + totalSeekSec - layerTrimSec) * 1000;
 						const durationMs =
 							getActiveMediaMetadata(node)?.durationMs ?? undefined;
 						await pluginProcessor(slicedChannels, targetSampleRate, node, {

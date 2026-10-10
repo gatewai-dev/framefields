@@ -644,6 +644,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				? frame + Math.round(inheritedSeekOffset * fps)
 				: (frame ?? 0),
 		);
+		const compositionFrame = props.compositionFrame ?? shiftedFrame;
 
 		// 1. Create a temporary texture at native resolution
 		const compTex = ctx.renderer.getTemporaryTexture(
@@ -1219,6 +1220,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 							fps,
 							isVideoMode,
 							frame: shiftedFrame,
+							compositionFrame,
 							// The child's effect passes must not borrow textures still in use here.
 							excludeTextures: [targetTexture, ...activeExcludes],
 						},
@@ -2710,7 +2712,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 						relightOpts as Record<string, unknown>,
 						sceneLights,
 						rect,
-						shiftedFrame,
+						compositionFrame,
 						fps ?? 24,
 					);
 
@@ -2744,7 +2746,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 									relightOpts.specularRoughness ??
 									relightOpts.roughness,
 								0.35,
-								shiftedFrame,
+								compositionFrame,
 								fps ?? 24,
 							),
 							specularStrength: resolveVal(
@@ -2752,7 +2754,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 									target?.relightSpecularStrength ??
 									relightOpts.specularStrength,
 								0.7,
-								shiftedFrame,
+								compositionFrame,
 								fps ?? 24,
 							),
 							metallic: resolveVal(
@@ -2760,7 +2762,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 									target?.relightMetallic ??
 									relightOpts.metallic,
 								0.0,
-								shiftedFrame,
+								compositionFrame,
 								fps ?? 24,
 							),
 							ambientIntensity: resolveVal(
@@ -2768,7 +2770,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 									target?.relightAmbientIntensity ??
 									relightOpts.ambientIntensity,
 								0.15,
-								shiftedFrame,
+								compositionFrame,
 								fps ?? 24,
 							),
 							depthScale: resolveVal(
@@ -2776,7 +2778,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 									target?.relightDepthScale ??
 									relightOpts.depthScale,
 								1.0,
-								shiftedFrame,
+								compositionFrame,
 								fps ?? 24,
 							),
 							opacity: 1.0,
@@ -3080,6 +3082,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 											? Math.round(lop.trimStartSec * (fps ?? 24))
 											: 0)),
 							}),
+							compositionFrame,
 							...(isCaption && {
 								fontFamily: lop.fontFamily,
 								fontSize: target?.fontSize ?? lop.fontSize,
@@ -3359,7 +3362,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					relightOpts as Record<string, unknown>,
 					sceneLights,
 					{ x: sampledX, y: sampledY, width: texW, height: texH },
-					shiftedFrame,
+					compositionFrame,
 					fps ?? 24,
 				);
 				const lightsBuffer = r3dInstance.getOrCreateLightsBuffer(activeLights);
@@ -3391,7 +3394,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 								relightOpts.specularRoughness ??
 								relightOpts.roughness,
 							0.35,
-							shiftedFrame,
+							compositionFrame,
 							fps ?? 24,
 						),
 						specularStrength: resolveVal(
@@ -3399,7 +3402,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 								target?.relightSpecularStrength ??
 								relightOpts.specularStrength,
 							0.7,
-							shiftedFrame,
+							compositionFrame,
 							fps ?? 24,
 						),
 						metallic: resolveVal(
@@ -3407,7 +3410,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 								target?.relightMetallic ??
 								relightOpts.metallic,
 							0.0,
-							shiftedFrame,
+							compositionFrame,
 							fps ?? 24,
 						),
 						ambientIntensity: resolveVal(
@@ -3415,7 +3418,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 								target?.relightAmbientIntensity ??
 								relightOpts.ambientIntensity,
 							0.15,
-							shiftedFrame,
+							compositionFrame,
 							fps ?? 24,
 						),
 						depthScale: resolveVal(
@@ -3423,7 +3426,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 								target?.relightDepthScale ??
 								relightOpts.depthScale,
 							1.0,
-							shiftedFrame,
+							compositionFrame,
 							fps ?? 24,
 						),
 						opacity: 1.0,

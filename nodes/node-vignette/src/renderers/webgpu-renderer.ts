@@ -292,6 +292,7 @@ export const VignetteWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 	} = args;
 
 	const frame = props.frame ?? 0;
+	const compositionFrame = props.compositionFrame ?? frame;
 	const fps = props.fps || 30;
 	const op = props.virtualMedia?.operation as VignetteOp | undefined;
 	if (op?.op !== "Vignette" || !op) return;
@@ -337,7 +338,7 @@ export const VignetteWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 		let val = defaultValue;
 		let hasStaticSig = false;
 
-		let gpuTextureView: GPUTextureView | undefined = undefined;
+		let gpuTextureView: GPUTextureView | undefined;
 
 		if (!hasSignal) {
 			if (input?.connectionValid && input.outputItem?.type === "Number") {
@@ -348,15 +349,32 @@ export const VignetteWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 			} else {
 				let rawVal = op[configKey] as unknown;
 				if (rawVal !== undefined && rawVal !== null) {
-					if (typeof rawVal === "object" && "value" in (rawVal as Record<string, unknown>)) {
-						const sig = rawVal as { value: unknown; gpuBinding?: { textureView?: GPUTextureView } };
-						if (sig.gpuBinding?.textureView) {
-							gpuTextureView = sig.gpuBinding.textureView;
-							hasStaticSig = true;
+					if (typeof rawVal === "object") {
+						if (
+							"get" in (rawVal as Record<string, unknown>) &&
+							typeof (rawVal as Record<string, unknown>).get === "function"
+						) {
+							rawVal = (
+								rawVal as {
+									get: (ctx: { frame: number; fps: number }) => unknown;
+								}
+							).get({ frame: compositionFrame, fps });
+						} else if ("value" in (rawVal as Record<string, unknown>)) {
+							const sig = rawVal as {
+								value: unknown;
+								gpuBinding?: { textureView?: GPUTextureView };
+							};
+							if (sig.gpuBinding?.textureView) {
+								gpuTextureView = sig.gpuBinding.textureView;
+								hasStaticSig = true;
+							}
+							rawVal = sig.value;
 						}
-						rawVal = sig.value;
 					} else if (typeof rawVal === "function") {
-						rawVal = (rawVal as (f: number, fps: number) => unknown)(frame, fps);
+						rawVal = (rawVal as (f: number, fps: number) => unknown)(
+							compositionFrame,
+							fps,
+						);
 					}
 				}
 				const numVal = Number(rawVal ?? defaultValue);

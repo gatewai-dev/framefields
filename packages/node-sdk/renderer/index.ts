@@ -18,6 +18,7 @@ export interface NodeRenderProps {
 	containerHeight: number;
 	opacity?: number;
 	frame?: number;
+	compositionFrame?: number;
 	fps?: number;
 	elapsedMs?: number;
 	durationMs?: number;
@@ -60,6 +61,7 @@ export type WebGPUNodeRenderer = (args: {
 export interface AudioProcessorContext {
 	device?: GPUDevice;
 	frame?: number;
+	compositionFrame?: number;
 	fps?: number;
 	elapsedMs?: number;
 	durationMs?: number;

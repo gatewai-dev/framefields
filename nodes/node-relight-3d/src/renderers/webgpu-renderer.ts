@@ -534,7 +534,12 @@ function resolveSignalField(
 			signalInput?.connectionValid &&
 			signalInput.outputItem?.type === "Number"
 		) {
-			const raw = resolveVal(signalInput.outputItem.data, defaultValue, frame, fps);
+			const raw = resolveVal(
+				signalInput.outputItem.data,
+				defaultValue,
+				frame,
+				fps,
+			);
 			value = Math.max(minVal, Math.min(maxVal, raw));
 		} else {
 			const raw = resolveVal(op[fieldName], defaultValue, frame, fps);
@@ -562,6 +567,7 @@ export const Relight3DWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 	} = args;
 
 	const frame = props.frame ?? 0;
+	const compositionFrame = props.compositionFrame ?? frame;
 	const fps = props.fps || 30;
 	const op = props.virtualMedia?.operation as Relight3DOp | undefined;
 	if (op?.op !== "Relight3D" || !op) return;
@@ -683,26 +689,76 @@ export const Relight3DWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 
 	// 4. Resolve signal textures
 	const elapsedSeconds =
-		props.elapsedMs !== undefined ? props.elapsedMs / 1000 : frame / fps;
+		props.elapsedMs !== undefined
+			? props.elapsedMs / 1000
+			: compositionFrame / fps;
 	const durationSeconds = props.virtualMedia?.metadata?.durationMs
 		? props.virtualMedia.metadata.durationMs / 1000
 		: props.durationMs !== undefined
 			? props.durationMs / 1000
 			: 4.0;
 
-	const intensityInfo = resolveSignalField(op, "intensity", 1.0, 0.0, 10.0, frame, fps);
-	const posXInfo = resolveSignalField(op, "lightPosX", 0.5, 0.0, 1.0, frame, fps);
-	const posYInfo = resolveSignalField(op, "lightPosY", 0.5, 0.0, 1.0, frame, fps);
-	const posZInfo = resolveSignalField(op, "lightPosZ", 0.3, -2.0, 2.0, frame, fps);
-	const radiusInfo = resolveSignalField(op, "lightRadius", 0.8, 0.05, 5.0, frame, fps);
-	const spotConeInfo = resolveSignalField(op, "spotConeAngle", 45, 5, 90, frame, fps);
+	const intensityInfo = resolveSignalField(
+		op,
+		"intensity",
+		1.0,
+		0.0,
+		10.0,
+		compositionFrame,
+		fps,
+	);
+	const posXInfo = resolveSignalField(
+		op,
+		"lightPosX",
+		0.5,
+		0.0,
+		1.0,
+		compositionFrame,
+		fps,
+	);
+	const posYInfo = resolveSignalField(
+		op,
+		"lightPosY",
+		0.5,
+		0.0,
+		1.0,
+		compositionFrame,
+		fps,
+	);
+	const posZInfo = resolveSignalField(
+		op,
+		"lightPosZ",
+		0.3,
+		-2.0,
+		2.0,
+		compositionFrame,
+		fps,
+	);
+	const radiusInfo = resolveSignalField(
+		op,
+		"lightRadius",
+		0.8,
+		0.05,
+		5.0,
+		compositionFrame,
+		fps,
+	);
+	const spotConeInfo = resolveSignalField(
+		op,
+		"spotConeAngle",
+		45,
+		5,
+		90,
+		compositionFrame,
+		fps,
+	);
 	const roughnessInfo = resolveSignalField(
 		op,
 		"specularRoughness",
 		0.35,
 		0.01,
 		1.0,
-		frame,
+		compositionFrame,
 		fps,
 	);
 	const specularInfo = resolveSignalField(
@@ -711,21 +767,45 @@ export const Relight3DWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 		0.7,
 		0.0,
 		3.0,
-		frame,
+		compositionFrame,
 		fps,
 	);
-	const metallicInfo = resolveSignalField(op, "metallic", 0.0, 0.0, 1.0, frame, fps);
-	const ambientInfo = resolveSignalField(op, "ambientIntensity", 0.4, 0.0, 2.0, frame, fps);
+	const metallicInfo = resolveSignalField(
+		op,
+		"metallic",
+		0.0,
+		0.0,
+		1.0,
+		compositionFrame,
+		fps,
+	);
+	const ambientInfo = resolveSignalField(
+		op,
+		"ambientIntensity",
+		0.4,
+		0.0,
+		2.0,
+		compositionFrame,
+		fps,
+	);
 	const volumetricInfo = resolveSignalField(
 		op,
 		"volumetricDensity",
 		0.2,
 		0.0,
 		1.0,
-		frame,
+		compositionFrame,
 		fps,
 	);
-	const depthScaleInfo = resolveSignalField(op, "depthScale", 1.0, 0.1, 10.0, frame, fps);
+	const depthScaleInfo = resolveSignalField(
+		op,
+		"depthScale",
+		1.0,
+		0.1,
+		10.0,
+		compositionFrame,
+		fps,
+	);
 
 	const getSigTextureView = (
 		info: { hasSignal: boolean; sd: RelightSignalData | null },
@@ -742,7 +822,7 @@ export const Relight3DWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				width,
 				height,
 				props.renderId,
-				frame,
+				compositionFrame,
 				fps,
 			);
 		}
@@ -795,7 +875,7 @@ export const Relight3DWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 
 	uniformData[12] = depthScaleInfo.value;
 	uniformData[13] = op.depthInvert ? 1.0 : 0.0;
-	uniformData[14] = (hasDepthMap || hasNormalMap) ? 1.0 : 0.0;
+	uniformData[14] = hasDepthMap || hasNormalMap ? 1.0 : 0.0;
 	uniformData[15] = hasNormalMap ? 1.0 : 0.0;
 
 	uniformData[16] = intensityInfo.hasSignal ? 1.0 : 0.0;

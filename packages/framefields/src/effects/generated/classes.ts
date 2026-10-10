@@ -2559,6 +2559,44 @@ export class ResizerScaler extends Effect<ResizerScalerProps> {
 	}
 }
 
+export interface RotateProps {
+	/**
+	 * Rotation in degrees about the frame center, clockwise. Any value; 90 / 180 / 270 fix footage shot sideways or upside down.
+	 * Accepts a signal.
+	 * @default 90
+	 */
+	angle?: EffectProp<number>;
+	/**
+	 * How the rotated source sits in the output: cover fills it (cropping the overhang), contain shows all of it (transparent margins), fill keeps the unrotated source stretched to the output and only turns it.
+	 * @default "cover"
+	 */
+	fit?: "cover" | "contain" | "fill";
+	/**
+	 * Extra zoom applied after the fit (1 = exactly fitted).
+	 * Range 0.01 to 20. Accepts a signal.
+	 * @default 1
+	 */
+	scale?: EffectProp<number>;
+}
+
+const rotateDefaults: RotateProps = {
+	angle: 90,
+	fit: "cover",
+	scale: 1,
+};
+
+export class Rotate extends Effect<RotateProps> {
+	public readonly op = "Rotate";
+
+	public declare angle: number;
+	public declare fit: "cover" | "contain" | "fill";
+	public declare scale: number;
+
+	constructor(config: RotateProps = {}) {
+		super(withDefaults("Rotate", rotateDefaults, config, effectMeta.Rotate));
+	}
+}
+
 export interface StereoPanningProps {
 	/**
 	 * Stereo panning value: -1 (full left) to 1 (full right), 0 is center. Can be modulated by a static number or dynamic signal.

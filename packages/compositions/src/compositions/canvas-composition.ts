@@ -104,6 +104,7 @@ export async function drawCompositionTree(
 	const isCompositor = op.op === "Compositor";
 
 	const frame = props.frame ?? 0;
+	const compositionFrame = props.compositionFrame ?? frame;
 	const segments = op.timeline?.segments || [];
 	const nodeStartFrame = op.startFrame ?? op.timeline?.startFrame ?? 0;
 	const localFrame = frame - nodeStartFrame;
@@ -124,18 +125,21 @@ export async function drawCompositionTree(
 	const isLeafNode =
 		op.op === "source" || op.op === "text" || op.op === "caption";
 	if (!isLeafNode) {
-		updateClockSignals(frame, fps, resolvedDurationMs);
+		updateClockSignals(compositionFrame, fps, resolvedDurationMs);
 	}
 
 	const frameCtx = acquireFrameContext();
-	frameCtx.frame = frame;
+	frameCtx.frame = compositionFrame;
 	frameCtx.fps = fps;
-	frameCtx.time = fps > 0 ? frame / fps : 0;
+	frameCtx.time = fps > 0 ? compositionFrame / fps : 0;
 	frameCtx.duration = (resolvedDurationMs ?? 0) / 1000;
 	frameCtx.durationMs = resolvedDurationMs ?? 0;
 	frameCtx.progress =
 		resolvedDurationMs && resolvedDurationMs > 0
-			? Math.max(0, Math.min(1, ((frame / fps) * 1000) / resolvedDurationMs))
+			? Math.max(
+					0,
+					Math.min(1, ((compositionFrame / fps) * 1000) / resolvedDurationMs),
+				)
 			: 0;
 	frameCtx.deltaTime = fps > 0 ? 1 / fps : 0;
 
@@ -212,7 +216,7 @@ export async function drawCompositionTree(
 							lutW,
 							lutH,
 							lutVirtualMedia,
-							{ ...props, virtualMedia: lutVirtualMedia },
+							{ ...props, compositionFrame, virtualMedia: lutVirtualMedia },
 							accumulatedSeekOffsetSec,
 							accumulatedClockOffsetSec,
 						);
@@ -263,6 +267,7 @@ export async function drawCompositionTree(
 			targetHeight,
 			props: {
 				...props,
+				compositionFrame,
 				virtualMedia,
 				inheritedSeekOffset: accumulatedSeekOffsetSec,
 				inheritedClockOffset: accumulatedClockOffsetSec,
@@ -287,6 +292,7 @@ export async function drawCompositionTree(
 					child,
 					{
 						...props,
+						compositionFrame,
 						durationMs: resolvedDurationMs,
 						elapsedMs: resolvedElapsedMs,
 						virtualMedia: child,
@@ -362,6 +368,7 @@ export async function drawCompositionTree(
 					child,
 					{
 						...props,
+						compositionFrame,
 						durationMs: resolvedDurationMs,
 						elapsedMs: resolvedElapsedMs,
 						...childProps,
@@ -682,6 +689,7 @@ export async function drawCompositionTree(
 					child,
 					{
 						...props,
+						compositionFrame,
 						durationMs: resolvedDurationMs,
 						elapsedMs: resolvedElapsedMs,
 						virtualMedia: child,

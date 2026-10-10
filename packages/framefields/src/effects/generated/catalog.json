@@ -2043,6 +2043,41 @@
 			]
 		},
 		{
+			"name": "Rotate",
+			"op": "Rotate",
+			"kind": "effect",
+			"factory": "rotate",
+			"node": "node-rotate",
+			"aliases": [],
+			"custom": null,
+			"props": [
+				{
+					"name": "angle",
+					"type": "EffectProp<number>",
+					"signal": true,
+					"default": 90,
+					"description": "Rotation in degrees about the frame center, clockwise. Any value; 90 / 180 / 270 fix footage shot sideways or upside down."
+				},
+				{
+					"name": "fit",
+					"type": "\"cover\" | \"contain\" | \"fill\"",
+					"signal": false,
+					"default": "cover",
+					"enum": ["cover", "contain", "fill"],
+					"description": "How the rotated source sits in the output: cover fills it (cropping the overhang), contain shows all of it (transparent margins), fill keeps the unrotated source stretched to the output and only turns it."
+				},
+				{
+					"name": "scale",
+					"type": "EffectProp<number>",
+					"signal": true,
+					"default": 1,
+					"min": 0.01,
+					"max": 20,
+					"description": "Extra zoom applied after the fit (1 = exactly fitted)."
+				}
+			]
+		},
+		{
 			"name": "StereoPanning",
 			"op": "StereoPanning",
 			"kind": "audio",

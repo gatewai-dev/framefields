@@ -35,10 +35,18 @@ interface FieldSignalInfo {
 	value: number;
 }
 
-function resolveVal(val: unknown, fallback: number, frame: number, fps: number): number {
+function resolveVal(
+	val: unknown,
+	fallback: number,
+	frame: number,
+	fps: number,
+): number {
 	if (val === undefined || val === null) return fallback;
 	if (typeof val === "object" && val !== null) {
-		if ("get" in (val as Record<string, unknown>) && typeof (val as { get: unknown }).get === "function") {
+		if (
+			"get" in (val as Record<string, unknown>) &&
+			typeof (val as { get: unknown }).get === "function"
+		) {
 			try {
 				const res = (val as { get: (ctx?: unknown) => unknown }).get({
 					frame,
@@ -104,7 +112,8 @@ function resolveModulateField(
 		) {
 			value = Number(signalInput.outputItem.data ?? defaultValue);
 		} else {
-			const raw = op[fieldName] ?? (op as Record<string, unknown>).signals?.[fieldName];
+			const raw =
+				op[fieldName] ?? (op as Record<string, unknown>).signals?.[fieldName];
 			value = resolveVal(raw, defaultValue, frame, fps);
 		}
 	} else if (sd && typeof sd === "object" && "offset" in sd) {
@@ -441,6 +450,7 @@ export const ModulateWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 		drawChild,
 	} = args;
 	const frame = props.frame ?? 0;
+	const compositionFrame = props.compositionFrame ?? frame;
 	const fps = props.fps || 30;
 	const op = props.virtualMedia?.operation as ModulateOp | undefined;
 	if (op?.op !== "Modulate" || !op) return;
@@ -450,12 +460,60 @@ export const ModulateWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 
 	pass.end();
 
-	const hueInfo = resolveModulateField(op, "hue", 0, 0, 360, frame, fps);
-	const brightnessInfo = resolveModulateField(op, "brightness", 1, 0, 2, frame, fps);
-	const contrastInfo = resolveModulateField(op, "contrast", 1, 0, 2, frame, fps);
-	const exposureInfo = resolveModulateField(op, "exposure", 0, -2, 2, frame, fps);
-	const saturationInfo = resolveModulateField(op, "saturation", 1, 0, 2, frame, fps);
-	const sepiaInfo = resolveModulateField(op, "sepia", 0, 0, 1, frame, fps);
+	const hueInfo = resolveModulateField(
+		op,
+		"hue",
+		0,
+		0,
+		360,
+		compositionFrame,
+		fps,
+	);
+	const brightnessInfo = resolveModulateField(
+		op,
+		"brightness",
+		1,
+		0,
+		2,
+		compositionFrame,
+		fps,
+	);
+	const contrastInfo = resolveModulateField(
+		op,
+		"contrast",
+		1,
+		0,
+		2,
+		compositionFrame,
+		fps,
+	);
+	const exposureInfo = resolveModulateField(
+		op,
+		"exposure",
+		0,
+		-2,
+		2,
+		compositionFrame,
+		fps,
+	);
+	const saturationInfo = resolveModulateField(
+		op,
+		"saturation",
+		1,
+		0,
+		2,
+		compositionFrame,
+		fps,
+	);
+	const sepiaInfo = resolveModulateField(
+		op,
+		"sepia",
+		0,
+		0,
+		1,
+		compositionFrame,
+		fps,
+	);
 
 	const width = targetWidth;
 	const height = targetHeight;

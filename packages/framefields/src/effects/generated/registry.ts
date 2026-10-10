@@ -58,6 +58,8 @@ import {
 	type RefractionCaustics3DProps,
 	ResizerScaler,
 	type ResizerScalerProps,
+	Rotate,
+	type RotateProps,
 	StereoPanning,
 	type StereoPanningProps,
 	Vignette,
@@ -100,6 +102,7 @@ export const effectFactories = {
 	refractionCaustics3D: (config?: RefractionCaustics3DProps) =>
 		new RefractionCaustics3D(config),
 	resizerScaler: (config?: ResizerScalerProps) => new ResizerScaler(config),
+	rotate: (config?: RotateProps) => new Rotate(config),
 	stereoPanning: (config?: StereoPanningProps) => new StereoPanning(config),
 	vignette: (config?: VignetteProps) => new Vignette(config),
 } as const;

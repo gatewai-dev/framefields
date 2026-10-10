@@ -74,7 +74,12 @@ function resolveVal(
 
 function resolveProp(
 	op: TemporalDeflickerOp,
-	fieldName: "blendWeight" | "disocclusionThreshold" | "maxMotionPixels" | "scale" | "windowSize",
+	fieldName:
+		| "blendWeight"
+		| "disocclusionThreshold"
+		| "maxMotionPixels"
+		| "scale"
+		| "windowSize",
 	defaultValue: number,
 	minVal: number,
 	maxVal: number,
@@ -88,9 +93,10 @@ function resolveProp(
 	let raw: unknown;
 	if (input?.connectionValid && input.outputItem) {
 		const outData = input.outputItem.data as Record<string, unknown> | null;
-		raw = outData && typeof outData === "object" && "offset" in outData
-			? outData.offset
-			: input.outputItem.data;
+		raw =
+			outData && typeof outData === "object" && "offset" in outData
+				? outData.offset
+				: input.outputItem.data;
 	} else {
 		raw = op[fieldName];
 	}
@@ -144,6 +150,7 @@ export const TemporalDeflickerWebGPURenderer: WebGPUNodeRenderer = async (
 	const width = targetWidth;
 	const height = targetHeight;
 	const frame = props.frame ?? 0;
+	const compositionFrame = props.compositionFrame ?? frame;
 	const fps = props.fps || 30;
 
 	// 1. Draw child source media into a clean temporary texture
@@ -185,11 +192,37 @@ export const TemporalDeflickerWebGPURenderer: WebGPUNodeRenderer = async (
 	args.pass.end();
 
 	// 2. Resolve properties defensively with signal support
-	const blendWeight = resolveProp(op, "blendWeight", 0.35, 0.0, 1.0, frame, fps);
-	const disocclusionThreshold = resolveProp(op, "disocclusionThreshold", 0.15, 0.01, 1.0, frame, fps);
-	const maxMotionPixels = resolveProp(op, "maxMotionPixels", 64.0, 1.0, 256.0, frame, fps);
-	const scale = resolveProp(op, "scale", 0.5, 0.1, 1.0, frame, fps);
-	const windowSize = Math.round(resolveProp(op, "windowSize", 2, 1, 5, frame, fps));
+	const blendWeight = resolveProp(
+		op,
+		"blendWeight",
+		0.35,
+		0.0,
+		1.0,
+		compositionFrame,
+		fps,
+	);
+	const disocclusionThreshold = resolveProp(
+		op,
+		"disocclusionThreshold",
+		0.15,
+		0.01,
+		1.0,
+		compositionFrame,
+		fps,
+	);
+	const maxMotionPixels = resolveProp(
+		op,
+		"maxMotionPixels",
+		64.0,
+		1.0,
+		256.0,
+		compositionFrame,
+		fps,
+	);
+	const scale = resolveProp(op, "scale", 0.5, 0.1, 1.0, compositionFrame, fps);
+	const windowSize = Math.round(
+		resolveProp(op, "windowSize", 2, 1, 5, compositionFrame, fps),
+	);
 
 	// 3. Execute temporal optical flow warping & adaptive blend
 	const pipelineKey =

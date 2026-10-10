@@ -30,10 +30,10 @@ Thumbs.db
 *.woff2
 *.eot
 assets/fonts/
-
+examples/25_bakery
 # Soundfonts
 *.sf2
-assets/soundfonts/
+assets
 
 # Heavy Media, Video, Audio & Images
 *.mp4

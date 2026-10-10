@@ -723,6 +723,8 @@ export {
 	type Relight3DProps,
 	ResizerScaler,
 	type ResizerScalerProps,
+	Rotate,
+	type RotateProps,
 	SelectiveColor,
 	type SelectiveColorAdjustment,
 	type SelectiveColorProps,

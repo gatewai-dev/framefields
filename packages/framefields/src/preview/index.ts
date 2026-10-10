@@ -7,6 +7,11 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { VirtualMediaData } from "@framefields/core";
 import { encodeStereoWav } from "../audio/index.js";
+import {
+	type Project,
+	type ResolvedComposition,
+	resolveComposition,
+} from "../project/index.js";
 import { HeadlessMediaRenderer } from "../renderer/index.js";
 import {
 	bundleProject,
@@ -18,8 +23,11 @@ import {
 import { describeNote, type NewNote, NoteStore } from "./notes.js";
 import { previewPage } from "./page.js";
 
-/** Where the composition comes from: the module that builds it. */
-export interface PreviewSource {
+/** Where the composition comes from: the module that builds it, or a project's composition. */
+export type PreviewSource = PreviewEntrySource | PreviewProjectSource;
+
+/** The module that builds the composition. */
+export interface PreviewEntrySource {
 	/** Path or file URL of the module, e.g. `new URL("./film.ts", import.meta.url)`. */
 	entry: string | URL;
 	/**
@@ -27,6 +35,16 @@ export interface PreviewSource {
 	 * async), or a `Composition`. Defaults to `"default"`.
 	 */
 	export?: string;
+}
+
+/**
+ * A composition of a project (see `framefields/project`). The page can switch
+ * between the project's compositions.
+ */
+export interface PreviewProjectSource {
+	project: Project;
+	/** A composition id, `file#export`, or undefined for the default. */
+	composition?: string;
 }
 
 /** What the server needs from the composition: its size, timing and soundtrack. */
@@ -109,6 +127,10 @@ export interface PreviewSession {
 
 interface PreviewMeta {
 	session: string;
+	/** The composition shown, when previewing a project. */
+	composition: string | null;
+	/** The project's compositions, for the page's picker. */
+	compositions: { id: string; title: string; group: string | null }[];
 	/** Where notes are kept; null when they are off. */
 	notesDir: string | null;
 	title: string;
@@ -144,18 +166,42 @@ export async function startPreview(
 	source: PreviewSource,
 	options: PreviewOptions = {},
 ): Promise<PreviewSession> {
-	const entry =
-		source.entry instanceof URL || String(source.entry).startsWith("file:")
-			? fileURLToPath(source.entry)
-			: path.resolve(String(source.entry));
-	const exportName = source.export ?? "default";
+	const project = "project" in source ? source.project : undefined;
+	const pick = (ref?: string): Picked => {
+		if (!project) {
+			const s = source as PreviewEntrySource;
+			const entry =
+				s.entry instanceof URL || String(s.entry).startsWith("file:")
+					? fileURLToPath(s.entry)
+					: path.resolve(String(s.entry));
+			return { id: null, entry, exportName: s.export ?? "default" };
+		}
+		const c = resolveComposition(project, ref);
+		return {
+			id: c.id,
+			entry: path.join(project.root, c.entry),
+			exportName: c.export,
+			composition: c,
+		};
+	};
+	let current = pick("project" in source ? source.composition : undefined);
+	const compositions = project
+		? [
+				...project.compositions,
+				...(current.composition &&
+				!project.compositions.includes(current.composition)
+					? [current.composition]
+					: []),
+			].map((c) => ({ id: c.id, title: c.title, group: c.group }))
+		: [];
+	const baseDir = project?.root ?? path.dirname(current.entry);
 	// Vision nodes load their cached models, and onnxruntime-web's files when
 	// the project has it installed.
 	const modelsDir = visionModelsDir();
-	const ort = onnxRuntimeWeb(path.dirname(entry));
+	const ort = onnxRuntimeWeb(baseDir);
 	const roots = [
 		...(options.root === undefined
-			? [repoRoot(path.dirname(entry))]
+			? [repoRoot(baseDir)]
 			: Array.isArray(options.root)
 				? options.root
 				: [options.root]),
@@ -167,8 +213,8 @@ export async function startPreview(
 	const sseClients = new Set<http.ServerResponse>();
 	const idleCloseMs = options.idleCloseMs ?? 5000;
 	let idleTimer: NodeJS.Timeout | undefined;
-	const title = options.title ?? "framefields preview";
-	const session = randomUUID();
+	const titleFor = (p: Picked) =>
+		options.title ?? p.composition?.title ?? "framefields preview";
 	const log =
 		options.log === false
 			? () => {}
@@ -178,25 +224,34 @@ export async function startPreview(
 	const reported = new Set<string>();
 	let pageOpened = false;
 
-	const notes =
+	// Several compositions keep their notes apart, one folder each.
+	const notesFor = (p: Picked) =>
 		options.notesDir === false
 			? undefined
 			: new NoteStore(
 					path.resolve(
 						options.notesDir ??
 							path.join(process.cwd(), ".framefields", "preview-notes"),
+						compositions.length > 1 && p.id ? p.id : "",
 					),
 				);
+	let notes = notesFor(current);
 	// Changes run one at a time: each reads and rewrites notes.json.
 	let noteQueue: Promise<unknown> = Promise.resolve();
 
-	const target = await loadTarget(entry, exportName);
-	const meta = await resolveMeta(target, title, session, notes?.dir ?? null);
+	const describe = (target: PreviewTarget, p: Picked) =>
+		resolveMeta(target, titleFor(p), randomUUID(), notes?.dir ?? null, {
+			composition: p.id,
+			compositions,
+		});
+	let target = await loadTarget(current.entry, current.exportName);
+	let meta = await describe(target, current);
 	// The project's own code, bundled against the browser engine; the engine
 	// itself is prebuilt (or built once, running from source).
 	let bundle: Promise<string> | undefined;
 	const playerBundle = () => {
 		if (!bundle) {
+			const { entry, exportName } = current;
 			const built = bundleProject({
 				entry,
 				exportName,
@@ -222,6 +277,9 @@ export async function startPreview(
 		state: options.audio === false ? "none" : "mixing",
 	};
 	let audioWav: Buffer | undefined;
+	// Bumped on each switch, so a soundtrack still mixing for the last
+	// composition is dropped.
+	let generation = 0;
 
 	function broadcast(event: string, data: unknown) {
 		for (const client of sseClients) {
@@ -241,13 +299,16 @@ export async function startPreview(
 			return;
 		}
 		const renderer = options.renderer ?? new HeadlessMediaRenderer();
+		const mixing = generation;
+		const { fps } = meta;
 		(async () => {
 			const vm = target.toVirtualMediaAsync
 				? await target.toVirtualMediaAsync()
 				: (target.toVirtualMedia as () => VirtualMediaData)();
-			return renderer.renderAudio(vm, { fps: meta.fps });
+			return renderer.renderAudio(vm, { fps });
 		})().then(
 			({ channels, sampleRate }) => {
+				if (mixing !== generation) return;
 				const left = channels[0] ?? new Float32Array(0);
 				const right = channels[1] ?? left;
 				const peaks = computePeaks(left, right, PEAK_BINS);
@@ -263,6 +324,7 @@ export async function startPreview(
 				});
 			},
 			(err: unknown) => {
+				if (mixing !== generation) return;
 				setAudio({
 					state: "error",
 					error: err instanceof Error ? err.message : String(err),
@@ -390,6 +452,30 @@ export async function startPreview(
 				});
 				return;
 			}
+			// The page's composition picker: load the other composition, then
+			// say hello with a new session so open tabs reload into it.
+			if (
+				project &&
+				req.method === "POST" &&
+				url.pathname === "/@framefields/composition" &&
+				req.headers["content-type"] === "application/json"
+			) {
+				const { id } = JSON.parse(await readBody(req, 4096)) as {
+					id?: unknown;
+				};
+				if (typeof id !== "string" || !compositions.some((c) => c.id === id)) {
+					sendJson(res, 404, { error: "no such composition" });
+					return;
+				}
+				try {
+					await switchTo(id);
+				} catch (err) {
+					sendJson(res, 422, { error: errorText(err) });
+					return;
+				}
+				sendJson(res, 200, { ok: true, session: meta.session });
+				return;
+			}
 			// A newer preview of the same project wants this port. The custom
 			// header keeps web pages from triggering it (it forces a CORS preflight).
 			if (
@@ -424,9 +510,10 @@ export async function startPreview(
 				res.writeHead(204).end();
 				return;
 			}
-			if (notes && url.pathname === "/@framefields/notes") {
+			const store = notes;
+			if (store && url.pathname === "/@framefields/notes") {
 				if (req.method === "GET") {
-					sendJson(res, 200, await notes.list());
+					sendJson(res, 200, await store.list());
 					return;
 				}
 				if (
@@ -441,11 +528,11 @@ export async function startPreview(
 						note?: NewNote;
 					};
 					const change = noteQueue.then(() =>
-						changeNote(notes, body, meta.fps, say),
+						changeNote(store, body, meta.fps, say),
 					);
 					noteQueue = change.catch(() => {});
 					const note = await change;
-					broadcast("notes", await notes.list());
+					broadcast("notes", await store.list());
 					sendJson(res, note ? 200 : 404, note ?? { error: "no such note" });
 					return;
 				}
@@ -501,6 +588,25 @@ export async function startPreview(
 			}
 		}
 	});
+
+	async function switchTo(id: string) {
+		if (id === current.id) return;
+		const next = pick(id);
+		const nextTarget = await loadTarget(next.entry, next.exportName);
+		current = next;
+		target = nextTarget;
+		notes = notesFor(next);
+		meta = await describe(nextTarget, next);
+		bundle = undefined;
+		generation++;
+		audioWav = undefined;
+		audio = { state: options.audio === false ? "none" : "mixing" };
+		reported.clear();
+		say(`switched to ${id}`);
+		void playerBundle().catch(() => {});
+		startAudio();
+		broadcast("hello", { session: meta.session });
+	}
 
 	let onClient: (() => void) | undefined;
 	const host = options.host ?? "127.0.0.1";
@@ -728,17 +834,27 @@ async function sendFile(
 	fs.createReadStream(file, { start, end }).pipe(res);
 }
 
+/** The composition being previewed. */
+interface Picked {
+	id: string | null;
+	entry: string;
+	exportName: string;
+	composition?: ResolvedComposition;
+}
+
 async function resolveMeta(
 	target: PreviewTarget,
 	title: string,
 	session: string,
 	notesDir: string | null,
+	project: Pick<PreviewMeta, "composition" | "compositions">,
 ): Promise<PreviewMeta> {
 	const fps = target.fps ?? 24;
 	const durationMs =
 		target.durationMs ?? (await target.computeDuration?.()) ?? 5000;
 	return {
 		session,
+		...project,
 		notesDir,
 		title,
 		fps,

@@ -39,7 +39,6 @@
 	"devDependencies": {
 		"@framefields/client-utils": "workspace:*",
 		"@framefields/core": "workspace:*",
-		"@framefields/server-utils": "workspace:*",
 		"@framefields/tsconfig": "workspace:*",
 		"@webgpu/types": "^0.1.70",
 		"dotenv": "^16.4.5",
@@ -54,11 +53,11 @@
 		"zod": "^4.3.6"
 	},
 	"dependencies": {
+		"@framefields/node-sdk": "workspace:*",
 		"@framefields/renderers": "workspace:*",
 		"@framefields/webgpu-renderers": "workspace:*",
 		"@mediabunny/mp3-encoder": "^1.51.0",
-		"yoga-layout": "^3.2.1",
-		"@framefields/node-sdk": "workspace:*"
+		"yoga-layout": "^3.2.1"
 	},
 	"publishConfig": {
 		"access": "public"

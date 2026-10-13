@@ -3,6 +3,63 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import {
+	compositionStateStore,
+	drawCompositionTree,
+	mixAudioTracks,
+} from "@framefields/compositions";
+import {
+	getMediaType,
+	takeRenderDiagnostics,
+	updateClockSignals,
+	type VirtualMediaData,
+} from "@framefields/core";
+import {
+	clearAllVideoCache,
+	ensureDevice,
+	getRenderer2D,
+	initHeadlessWebGPU,
+	inputStore,
+	lutStore,
+	mediaDecoderCache,
+	NodeSurfaceProvider,
+	type RenderContextValue,
+	type Renderer2D,
+	SlugFontCache,
+	shaderStore,
+	textureCache,
+	WebGPUAudioProcessor,
+} from "@framefields/webgpu-renderers";
+import {
+	AudioSample,
+	AudioSampleSource,
+	FilePathTarget,
+	Mp3OutputFormat,
+	Mp4OutputFormat,
+	Output,
+	QUALITY_HIGH,
+	QUALITY_LOW,
+	QUALITY_VERY_HIGH,
+	QUALITY_VERY_LOW,
+	VideoSampleSource,
+	WebMOutputFormat,
+} from "mediabunny";
+import sharp from "sharp";
+import { Canvas as SkiaCanvas, Image as SkiaImage } from "skia-canvas";
+import { preloadFonts } from "./asset-preloader.js";
+import { bootstrapMediabunny, isAMD } from "./bootstrap-mediabunny.js";
+import { discoverAndRegisterNodeRenderers } from "./dynamic-node-discovery.js";
+import { rendererLogger } from "./logger.js";
+import {
+	type AudioQaStats,
+	analyzeAudio,
+	buildQaReport,
+	FrameInspector,
+	type VideoQaOptions,
+	type VideoQaReport,
+	type VideoQaStats,
+} from "./video-qa.js";
+import { ZeroCopyWebCodecsPipeline } from "./zero-copy-webcodecs-pipeline.js";
 
 async function convertMp4ToGif(
 	inputMp4Path: string,
@@ -42,66 +99,7 @@ async function convertMp4ToGif(
 	});
 }
 
-import {
-	compositionStateStore,
-	drawCompositionTree,
-	mixAudioTracks,
-} from "@framefields/compositions";
-import {
-	getMediaType,
-	takeRenderDiagnostics,
-	updateClockSignals,
-	type VirtualMediaData,
-} from "@framefields/core";
-import { rendererLogger } from "@framefields/server-utils";
-import {
-	clearAllVideoCache,
-	ensureDevice,
-	getRenderer2D,
-	initHeadlessWebGPU,
-	inputStore,
-	lutStore,
-	mediaDecoderCache,
-	NodeSurfaceProvider,
-	type RenderContextValue,
-	type Renderer2D,
-	SlugFontCache,
-	shaderStore,
-	textureCache,
-	WebGPUAudioProcessor,
-} from "@framefields/webgpu-renderers";
-import {
-	AudioSample,
-	AudioSampleSource,
-	FilePathTarget,
-	Mp3OutputFormat,
-	Mp4OutputFormat,
-	Output,
-	QUALITY_HIGH,
-	QUALITY_LOW,
-	QUALITY_VERY_HIGH,
-	QUALITY_VERY_LOW,
-	VideoSampleSource,
-	WebMOutputFormat,
-} from "mediabunny";
-import sharp from "sharp";
-import { Canvas as SkiaCanvas, Image as SkiaImage } from "skia-canvas";
-import { preloadFonts } from "./asset-preloader.js";
-import { discoverAndRegisterNodeRenderers } from "./dynamic-node-discovery.js";
-import {
-	type AudioQaStats,
-	analyzeAudio,
-	buildQaReport,
-	FrameInspector,
-	type VideoQaOptions,
-	type VideoQaReport,
-	type VideoQaStats,
-} from "./video-qa.js";
-import { ZeroCopyWebCodecsPipeline } from "./zero-copy-webcodecs-pipeline.js";
-
 // ─── Bootstrap ─────────────────────────────────────────────────────────────────
-
-import { bootstrapMediabunny, isAMD } from "./bootstrap-mediabunny.js";
 
 bootstrapMediabunny();
 

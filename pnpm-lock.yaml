@@ -2206,9 +2206,6 @@ importers:
       '@framefields/core':
         specifier: workspace:*
         version: link:../core
-      '@framefields/server-utils':
-        specifier: workspace:*
-        version: link:../server-utils
       '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../tsconfig
@@ -2765,9 +2762,6 @@ importers:
       '@framefields/renderers':
         specifier: workspace:*
         version: link:../renderers
-      '@framefields/server-utils':
-        specifier: workspace:*
-        version: link:../server-utils
       '@framefields/webgpu-renderers':
         specifier: workspace:*
         version: link:../webgpu-renderers
@@ -2780,6 +2774,9 @@ importers:
       mediabunny:
         specifier: ^1.51.0
         version: 1.51.0
+      pino:
+        specifier: ^10.3.1
+        version: 10.3.1
       sharp:
         specifier: ^0.35.4
         version: 0.35.5(@types/node@24.10.14)

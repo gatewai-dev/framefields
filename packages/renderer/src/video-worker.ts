@@ -4,7 +4,6 @@ import {
 	drawCompositionTree,
 } from "@framefields/compositions";
 import type { VirtualMediaData } from "@framefields/core";
-import { rendererLogger } from "@framefields/server-utils";
 import {
 	clearAllVideoCache,
 	createHeadlessDOMElement,
@@ -26,6 +25,7 @@ import { Canvas as SkiaCanvas, Image as SkiaImage } from "skia-canvas";
 import { preloadFonts } from "./asset-preloader.js";
 import { DmaStagingRing } from "./dma-staging-ring.js";
 import { discoverAndRegisterNodeRenderers } from "./dynamic-node-discovery.js";
+import { rendererLogger } from "./logger.js";
 
 const globalObj = globalThis as unknown as Record<string, unknown>;
 

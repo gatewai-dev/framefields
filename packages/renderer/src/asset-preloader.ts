@@ -1,7 +1,7 @@
 import type { VirtualMediaData } from "@framefields/core";
 import { preloadCompositionFonts } from "@framefields/renderers";
-import { rendererLogger } from "@framefields/server-utils";
 import type {} from "webgpu";
+import { rendererLogger } from "./logger.js";
 
 /**
  * Preloads only the fonts (and emoji) a VirtualMediaData tree's text uses, so

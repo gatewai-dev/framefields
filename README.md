@@ -174,7 +174,25 @@ Layer.chart(
 );
 ```
 
-### 6. On-Device Vision & Tracking
+### 6. Vector Animations & Lottie
+[`Layer.lottie`](packages/framefields/src/index.ts) plays Lottie JSON (`.json`) and dotLottie (`.lottie`) vector animations natively via ThorVG without browser overhead:
+- **Headless vector decoding** — renders directly on WebGPU in Node.js via WASM/ThorVG.
+- **Unified compositing** — positions with flex/box layout, animates with `LayerAnimation`, tilts into 3D scenes, masks (`.withMatte`), and applies GPU post-processing effects.
+- **Configurable playback** — supports `fit` (`"contain"` | `"cover"` | `"fill"`), `loop`, `speed`, `autoplay`, and lifecycle frames.
+- **Strict format boundary** — raster formats (`.png`, `.jpg`, `.webp`) use `Layer.image()`; passing `.json` or `.lottie` to `Layer.image()` throws/warns and is flagged by `comp.lint()`.
+
+```typescript
+comp.add(
+  Layer.lottie("assets/animations/badge.json", {
+    width: 400,
+    height: 400,
+    fit: "contain",
+    loop: true,
+  })
+);
+```
+
+### 7. On-Device Vision & Tracking
 [`@framefields/vision`](packages/vision) runs ONNX models via `onnxruntime-node` (CPU) or `onnxruntime-web` (WebGPU) and wires every result into the same reactive signal surface the rest of Framefields consumes.
 
 > [!TIP]
@@ -240,11 +258,11 @@ Project normalized landmarks to screen space with a configurable camera FOV, the
 - **Clear failures** — a model that is the wrong size, fails its checksum, or lacks an expected output raises an error naming the model and its source.
 - **Browser entry** — `@framefields/vision/web` re-exports the engine plus `createWebGPUProvider()` / `hasWebGPU()`; `onnxruntime-web` is an optional lazy peer.
 
-### 7. Headless Conformance & FrameGrid Testing
+### 8. Headless Conformance & FrameGrid Testing
 - **Pixel-sampling invariant assertions** — test compositions in Vitest with `skia-canvas` to verify shader math, font coverage, and Mean Squared Error (MSE) temporal deltas.
 - **FrameGrid contact sheets** — `comp.renderFrameGrid(...)` outputs sequential-frame contact sheets for instant review of easing, kinetic type, and transitions.
 
-### 8. Live Preview in the Browser
+### 9. Live Preview in the Browser
 - **Runs your composition, not a video** — `startPreview({ entry, export })` serves a localhost WebGPU player that loads the composition's own module and renders its frames live in the browser. Nothing is streamed: the server only hands over the bundle, the project's assets, and the soundtrack mixed by the export engine.
 - **Timeline, waveform & frame stepping** — play/pause, scrub, step frame by frame, and read resolution, FPS, duration, and audio status at a glance.
 - **One stable URL per project** — the port is derived from the working directory, so re-running the preview replaces the running server and any open tab reloads into the new version by itself. Close the tab and the server shuts down about five seconds later. A reload comes back at the same moment, and `#t=12.5` links to one.
@@ -587,6 +605,7 @@ console.log(`Video rendered successfully to: ${filePath}`);
 3. **Carrier match cuts** — carry a visual element (badge, card, cursor, container) across scene boundaries with continuous velocity and position to avoid jarring cuts.
 4. **Physical easing vocabulary** — `back.out(1.4–1.7)` for snap-overshoot entrances, `spring` / `expo.out` for decelerating motion, `power2.in` for exits. Reserve `linear` for infinite spinners and time counters.
 5. **Headless invariant verification** — verify shader transforms, glyph coverage, and temporal MSE deltas with `skia-canvas` pixel sampling in Vitest before shipping.
+6. **Image vs. Lottie layers** — raster images (`.png`, `.jpg`, `.webp`) use `Layer.image()`. Vector animations (`.json`, `.lottie`) must use `Layer.lottie()` — passing `.json` or `.lottie` to `Layer.image()` throws/warns and is rejected by `comp.lint()` with `unsupported_image_format`.
 
 ---
 

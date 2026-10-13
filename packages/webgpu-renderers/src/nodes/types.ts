@@ -45,6 +45,7 @@ export interface LottieNodeProps {
 	animationId?: string;
 	stateMachineId?: string;
 	theme?: string;
+	dpr?: number;
 }
 
 export interface SVGNodeProps {

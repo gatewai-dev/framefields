@@ -1,4 +1,8 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, relative } from "node:path";
+import { pathToFileURL } from "node:url";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Variables referenced in vi.mock must be prefixed with "mock" in Vitest
 const mockDispose = vi.fn();
@@ -72,24 +76,51 @@ describe("InputStore", () => {
 		(inputStore as any).store.clear();
 	});
 
-	it("should acquire an Input using FilePathSource for local file paths in Node", async () => {
-		const filePath = "/path/to/video%20file.mp4";
-		const input = await inputStore.acquire(filePath);
+	describe("local files in Node", () => {
+		const dir = mkdtempSync(join(tmpdir(), "input-store-"));
+		const spacedFile = join(dir, "video file.mp4");
+		writeFileSync(spacedFile, "");
+		mkdirSync(join(dir, "folder"));
+		afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
-		expect(mockState.filePathSourceConstructorCallCount).toBe(1);
-		expect(mockState.lastFilePathSourcePath).toBe("/path/to/video file.mp4");
-		expect(mockState.inputConstructorCallCount).toBe(1);
-		expect(input).toBeDefined();
-	});
+		it("opens an absolute path, percent-decoded", async () => {
+			const input = await inputStore.acquire(join(dir, "video%20file.mp4"));
 
-	it("should acquire an Input using FilePathSource for file:// URLs in Node", async () => {
-		const fileUrl = "file:///path/to/video.mp4";
-		const input = await inputStore.acquire(fileUrl);
+			expect(mockState.filePathSourceConstructorCallCount).toBe(1);
+			expect(mockState.lastFilePathSourcePath).toBe(spacedFile);
+			expect(mockState.urlSourceConstructorCallCount).toBe(0);
+			expect(input).toBeDefined();
+		});
 
-		expect(mockState.filePathSourceConstructorCallCount).toBe(1);
-		expect(mockState.lastFilePathSourcePath).toBe("/path/to/video.mp4");
-		expect(mockState.inputConstructorCallCount).toBe(1);
-		expect(input).toBeDefined();
+		it("opens a file:// URL via fileURLToPath", async () => {
+			await inputStore.acquire(pathToFileURL(spacedFile).href);
+
+			expect(mockState.filePathSourceConstructorCallCount).toBe(1);
+			expect(mockState.lastFilePathSourcePath).toBe(spacedFile);
+		});
+
+		it("opens a path relative to the working directory", async () => {
+			await inputStore.acquire(relative(process.cwd(), spacedFile));
+
+			expect(mockState.filePathSourceConstructorCallCount).toBe(1);
+			expect(mockState.lastFilePathSourcePath).toBe(spacedFile);
+			expect(mockState.urlSourceConstructorCallCount).toBe(0);
+		});
+
+		it("fails fast, naming the path, when the file is missing", async () => {
+			const missing = join(dir, "missing.mp4");
+			await expect(inputStore.acquire(missing)).rejects.toThrow(
+				`Cannot open local media file "${missing}"`,
+			);
+			expect(mockState.urlSourceConstructorCallCount).toBe(0);
+			expect((inputStore as any).store.has(missing)).toBe(false);
+		});
+
+		it("fails fast when the path is a directory", async () => {
+			await expect(inputStore.acquire(join(dir, "folder"))).rejects.toThrow(
+				"not a regular file",
+			);
+		});
 	});
 
 	it("should acquire an Input for a given URL", async () => {

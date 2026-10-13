@@ -931,6 +931,7 @@ export interface MediaNode extends CompositionNodeBase {
 	inputHandleId: string;
 	dataType?: string;
 	fit?: "cover" | "contain" | "fill" | "none";
+	dpr?: number;
 	borderRadius?: number;
 	borderColor?: string;
 	borderWidth?: number;
@@ -1447,6 +1448,7 @@ export const MediaNodeSchema: z.ZodType<MediaNode> = z
 		inputHandleId: z.string().min(1),
 		dataType: z.string().optional(),
 		fit: z.enum(["cover", "contain", "fill", "none"]).default("contain"),
+		dpr: z.number().min(1).max(4).optional(),
 		borderRadius: z.number().min(0).optional(),
 		borderColor: ColorSchema.optional(),
 		borderWidth: z.number().min(0).optional(),

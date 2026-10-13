@@ -4,6 +4,7 @@ import {
 	localFontManager,
 } from "@framefields/client-utils";
 import { DotLottie, type Fit } from "@lottiefiles/dotlottie-web";
+import { premultiplyPixels } from "../color.js";
 import {
 	getHeadlessFontData,
 	registerHeadlessFont,
@@ -214,13 +215,18 @@ class LottieInstance {
 	private _width: number;
 	private _height: number;
 
-	constructor(src: string, width: number, height: number) {
+	constructor(
+		src: string,
+		width: number,
+		height: number,
+		data?: string | ArrayBuffer,
+	) {
 		this._width = width;
 		this._height = height;
 		this.canvas = new OffscreenCanvas(width, height);
 		this.dotLottie = new DotLottie({
 			canvas: this.canvas,
-			src: resolveUrl(src),
+			...(data ? { data } : { src: resolveUrl(src) }),
 			autoplay: false,
 			loop: false,
 			speed: 0,
@@ -242,7 +248,7 @@ class LottieInstance {
 				reject(
 					e instanceof Error
 						? e
-						: new Error("Failed to load DotLottie animation"),
+						: new Error(`Failed to load DotLottie animation from '${src}'`),
 				);
 			});
 		});
@@ -312,20 +318,23 @@ function polyfillHeadlessDOM(): void {
 		}
 	}
 
-	const docObj = (globalThis.document ??= {
-		createElement: (tag: string) => {
-			if (
-				tag === "canvas" &&
-				typeof globalThis.OffscreenCanvas === "function"
-			) {
-				return new globalThis.OffscreenCanvas(1, 1);
-			}
-			return { ...dummyElement };
-		},
-		getElementsByTagName: () => [],
-		documentElement: dummyElement,
-		body: dummyElement,
-	} as unknown as Document) as unknown as Record<string, unknown>;
+	if (!globalThis.document) {
+		(globalThis as unknown as Record<string, unknown>).document = {
+			createElement: (tag: string) => {
+				if (
+					tag === "canvas" &&
+					typeof globalThis.OffscreenCanvas === "function"
+				) {
+					return new globalThis.OffscreenCanvas(1, 1);
+				}
+				return { ...dummyElement };
+			},
+			getElementsByTagName: () => [],
+			documentElement: dummyElement,
+			body: dummyElement,
+		} as unknown as Document;
+	}
+	const docObj = globalThis.document as unknown as Record<string, unknown>;
 
 	docObj.documentElement ??= dummyElement;
 	docObj.body ??= dummyElement;
@@ -348,6 +357,15 @@ async function ensureWasmConfigured(): Promise<void> {
 		typeof document.getElementById === "function";
 
 	if (!isBrowser) {
+		if (typeof globalThis.OffscreenCanvas === "undefined") {
+			try {
+				const { Canvas } = await import(
+					/* webpackIgnore: true */ "skia-canvas"
+				);
+				(globalThis as unknown as Record<string, unknown>).OffscreenCanvas =
+					Canvas;
+			} catch {}
+		}
 		polyfillHeadlessDOM();
 		// Add Response instanceof patch to handle cross-realm ESM loader issues in worker threads
 		if (typeof globalThis.Response === "function") {
@@ -426,25 +444,27 @@ class LottieLoader {
 				// 1. Parse the Lottie JSON if applicable, extract its fonts and register them.
 				// This runs before the LottieInstance is created, so the text layers are shaped
 				// with the registered fonts from the start.
-				let resolvedSrc = src;
+				const resolvedSrc = src;
+				let lottieData: string | ArrayBuffer | undefined;
 				try {
 					let lottieJson: any = null;
 					const isNode =
 						typeof process !== "undefined" && Boolean(process.versions?.node);
+					const isRemote =
+						resolvedSrc.startsWith("http://") ||
+						resolvedSrc.startsWith("https://") ||
+						resolvedSrc.startsWith("data:");
 
 					if (resolvedSrc.startsWith("data:application/json;base64,")) {
 						const base64Data = resolvedSrc.split(",")[1];
 						const jsonStr = decodeBase64(base64Data);
 						lottieJson = JSON.parse(jsonStr);
+						lottieData = jsonStr;
 					} else if (resolvedSrc.startsWith("data:application/json,")) {
 						const decodeData = decodeURIComponent(resolvedSrc.split(",")[1]);
 						lottieJson = JSON.parse(decodeData);
-					} else if (
-						isNode &&
-						(resolvedSrc.startsWith("/") ||
-							resolvedSrc.startsWith("file://")) &&
-						resolvedSrc.endsWith(".json")
-					) {
+						lottieData = decodeData;
+					} else if (isNode && !isRemote) {
 						let filePath = resolvedSrc;
 						if (filePath.startsWith("file://")) {
 							try {
@@ -453,25 +473,35 @@ class LottieLoader {
 								filePath = filePath.replace(/^file:\/\//, "");
 							}
 						}
-						const fs = await import(/* webpackIgnore: true */ "fs/promises");
-						const jsonContent = await fs.readFile(filePath, "utf-8");
-						lottieJson = JSON.parse(jsonContent);
-						const base64Data = Buffer.from(jsonContent).toString("base64");
-						resolvedSrc = `data:application/json;base64,${base64Data}`;
-					} else if (
-						resolvedSrc.startsWith("http://") ||
-						resolvedSrc.startsWith("https://") ||
-						resolvedSrc.startsWith("/")
-					) {
-						// Only pre-fetch JSON animations. Binary .lottie zip files pack their own fonts.
-						if (
-							resolvedSrc.endsWith(".json") ||
-							resolvedSrc.includes("/assets/")
-						) {
-							const response = await fetch(resolveUrl(resolvedSrc));
-							if (response.ok) {
-								lottieJson = await response.json();
+						const pathModule = await import(
+							/* webpackIgnore: true */ "node:path"
+						);
+						if (!pathModule.isAbsolute(filePath)) {
+							filePath = pathModule.resolve(process.cwd(), filePath);
+						}
+						try {
+							const fs = await import(/* webpackIgnore: true */ "fs/promises");
+							if (filePath.endsWith(".json")) {
+								const jsonContent = await fs.readFile(filePath, "utf-8");
+								lottieJson = JSON.parse(jsonContent);
+								lottieData = jsonContent;
+							} else {
+								const fileBuf = await fs.readFile(filePath);
+								lottieData = fileBuf.buffer.slice(
+									fileBuf.byteOffset,
+									fileBuf.byteOffset + fileBuf.byteLength,
+								);
 							}
+						} catch {
+							// If file read fails (e.g. mocked path in tests), fall back to resolvedSrc
+						}
+					} else if (
+						isRemote &&
+						(resolvedSrc.endsWith(".json") || resolvedSrc.includes("/assets/"))
+					) {
+						const response = await fetch(resolveUrl(resolvedSrc));
+						if (response.ok) {
+							lottieJson = await response.json();
 						}
 					}
 
@@ -495,6 +525,7 @@ class LottieLoader {
 					resolvedSrc,
 					resolvedWidth,
 					resolvedHeight,
+					lottieData,
 				);
 				await instance.ready();
 
@@ -514,8 +545,17 @@ export async function drawLottieNode(
 	pass: GPURenderPassEncoder,
 	props: LottieNodeProps,
 ): Promise<void> {
-	const resolvedWidth = Math.max(1, Math.ceil(props.dstRect.width));
-	const resolvedHeight = Math.max(1, Math.ceil(props.dstRect.height));
+	const baseWidth = Math.max(1, Math.ceil(props.dstRect.width));
+	const baseHeight = Math.max(1, Math.ceil(props.dstRect.height));
+	const requestedDpr =
+		typeof props.dpr === "number" && props.dpr > 0 ? props.dpr : 2;
+	const maxDim = Math.max(baseWidth, baseHeight);
+	const maxAllowedDpr = Math.max(1, Math.floor(4096 / Math.max(1, maxDim)));
+	const effectiveDpr = Math.min(requestedDpr, maxAllowedDpr);
+
+	const resolvedWidth = Math.max(1, Math.round(baseWidth * effectiveDpr));
+	const resolvedHeight = Math.max(1, Math.round(baseHeight * effectiveDpr));
+
 	const instance = await lottieLoader.load(
 		props.src,
 		resolvedWidth,
@@ -554,10 +594,13 @@ export async function drawLottieNode(
 				const imgData = (
 					c2d as unknown as OffscreenCanvasRenderingContext2D
 				).getImageData(0, 0, instance.width, instance.height);
-				const pixelBuffer = new Uint8Array(
-					imgData.data.buffer,
-					imgData.data.byteOffset,
-					imgData.data.byteLength,
+				// getImageData returns straight alpha.
+				const pixelBuffer = premultiplyPixels(
+					new Uint8Array(
+						imgData.data.buffer,
+						imgData.data.byteOffset,
+						imgData.data.byteLength,
+					),
 				);
 				ctx.device.queue.writeTexture(
 					{ texture: tex },

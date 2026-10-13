@@ -28,9 +28,7 @@ const COLOR_PROPS = [
 /** Contrast below this makes text hard to read (WCAG large-text minimum). */
 const MIN_TEXT_CONTRAST = 3;
 
-function tracksOf(
-	node: AnyNode,
-): Array<{
+function tracksOf(node: AnyNode): Array<{
 	prop: string;
 	keyframes?: Array<{ value: unknown }>;
 	source?: { type?: string };
@@ -55,9 +53,7 @@ function paints(node: AnyNode): boolean {
 }
 
 const byZ = (nodes: AnyNode[]) =>
-	[...nodes].sort(
-		(a, b) => (Number(a.zIndex) || 0) - (Number(b.zIndex) || 0),
-	);
+	[...nodes].sort((a, b) => (Number(a.zIndex) || 0) - (Number(b.zIndex) || 0));
 
 function solidColor(value: unknown): string | null {
 	if (typeof value !== "string" || value.includes("gradient(")) return null;
@@ -128,6 +124,37 @@ export function lintComposition(
 			return;
 		}
 		if (node.kind === "camera") return;
+
+		if (node.kind === "media") {
+			const src = node.inputHandleId;
+			if (typeof src === "string") {
+				const dataType = node.dataType ?? "Video";
+				if (dataType === "Image") {
+					if (/\.(json|lottie)(\?.*)?$/i.test(src)) {
+						push(
+							"error",
+							"unsupported_image_format",
+							`'${id}' is an image layer with source '${src}', which is a Lottie vector animation. Use Layer.lottie() instead.`,
+							id,
+						);
+					} else if (/\.(mp4|mov|webm|mkv)(\?.*)?$/i.test(src)) {
+						push(
+							"error",
+							"unsupported_image_format",
+							`'${id}' is an image layer with video source '${src}'. Use Layer.video() instead.`,
+							id,
+						);
+					} else if (/\.(mp3|wav|ogg|m4a|aac)(\?.*)?$/i.test(src)) {
+						push(
+							"error",
+							"unsupported_image_format",
+							`'${id}' is an image layer with audio source '${src}'. Use Layer.audio() instead.`,
+							id,
+						);
+					}
+				}
+			}
+		}
 
 		const is3D =
 			Boolean(node.is3D) || (typeof node.z === "number" && node.z !== 0);

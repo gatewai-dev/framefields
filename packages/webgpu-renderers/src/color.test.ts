@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseColor, premultiplyColor } from "./color.js";
+import { parseColor, premultiplyColor, premultiplyPixels } from "./color.js";
 
 describe("parseColor", () => {
 	it("returns transparent black for null/undefined", () => {
@@ -101,5 +101,49 @@ describe("premultiplyColor", () => {
 			b: 0,
 			a: 0,
 		});
+	});
+});
+
+describe("premultiplyPixels", () => {
+	it("zeroes RGB under fully transparent pixels", () => {
+		const px = new Uint8Array([255, 200, 100, 0]);
+		expect(Array.from(premultiplyPixels(px))).toEqual([0, 0, 0, 0]);
+	});
+
+	it("leaves opaque pixels untouched and scales partial ones", () => {
+		const px = new Uint8Array([10, 20, 30, 255, 255, 255, 255, 128]);
+		expect(Array.from(premultiplyPixels(px))).toEqual([
+			10, 20, 30, 255, 128, 128, 128, 128,
+		]);
+	});
+
+	it("rounds like Math.round(c * a / 255) for every 8-bit pair", () => {
+		const px = new Uint8Array(256 * 256 * 4);
+		for (let c = 0; c < 256; c++) {
+			for (let a = 0; a < 256; a++) {
+				const i = (c * 256 + a) * 4;
+				px[i] = c;
+				px[i + 3] = a;
+			}
+		}
+		premultiplyPixels(px);
+		for (let c = 0; c < 256; c++) {
+			for (let a = 0; a < 256; a++) {
+				const got = px[(c * 256 + a) * 4];
+				if (got !== Math.round((c * a) / 255)) {
+					expect({ c, a, got }).toEqual({
+						c,
+						a,
+						got: Math.round((c * a) / 255),
+					});
+				}
+			}
+		}
+	});
+
+	it("works on Uint8ClampedArray in place", () => {
+		const px = new Uint8ClampedArray([200, 0, 0, 51]);
+		expect(premultiplyPixels(px)).toBe(px);
+		expect(Array.from(px)).toEqual([40, 0, 0, 51]);
 	});
 });

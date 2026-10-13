@@ -2,6 +2,8 @@ import earcut from "earcut";
 import type * as fontkit from "fontkit";
 import { Path2D } from "skia-canvas";
 import type { Material3D, Mesh3DData, Model3DData } from "../loaders/types.js";
+import type { FontkitFont } from "../slug/slug-generator.js";
+import { shapeLineFromFont } from "../slug/text-shaping.js";
 
 export interface Point2D {
 	x: number;
@@ -23,8 +25,10 @@ export interface ExtrudedTextGeometryOptions {
 	 * text and tight bowls stay round while straight stems stay cheap.
 	 */
 	curveTolerance?: number;
-	/** "start"/"end" read as left/right (the text runs left to right) */
+	/** "start"/"end" follow the text direction (left/right for LTR text) */
 	align?: "left" | "center" | "right" | "start" | "end";
+	/** Base direction; "auto" (default) takes it from the first strong character. */
+	direction?: "ltr" | "rtl" | "auto";
 	verticalAlign?: "top" | "middle" | "bottom";
 	letterSpacing?: number;
 	/** Letter faces: the front cap (toward a default camera, -z) and the back cap */
@@ -472,31 +476,31 @@ export function generateExtrudedTextGeometry(
 	const unitsPerEm = font.unitsPerEm || 1000;
 	const scale = fontSize / unitsPerEm;
 
-	const run = font.layout(options.text);
-	let cursorX = 0;
+	// Shaped and ordered like 2D text: joining forms, ligatures and marks,
+	// and right-to-left runs laid out right to left.
+	const line = shapeLineFromFont(
+		font as unknown as FontkitFont,
+		options.text.replace(/\n/g, " "),
+		{
+			direction: options.direction,
+			letterSpacing: options.letterSpacing ? options.letterSpacing / scale : 0,
+		},
+	);
 	const polygons: PolygonHierarchy[] = [];
 
-	for (let i = 0; i < run.glyphs.length; i++) {
-		const glyph = run.glyphs[i]!;
-		const pos = run.positions[i]!;
-		const glyphX = cursorX + (pos.xOffset ?? 0);
-		const glyphY = pos.yOffset ?? 0;
-
+	for (const placed of line.glyphs) {
+		const glyph = font.getGlyph(placed.glyphId);
 		const glyphPolys = glyphPolygonsAt(
 			font,
 			glyph,
-			glyphX,
-			glyphY,
+			placed.x,
+			placed.y,
 			scale,
 			flattening,
 		);
 		for (const gp of glyphPolys) {
 			polygons.push(gp);
 		}
-
-		cursorX +=
-			(pos.xAdvance ?? glyph.advanceWidth ?? 0) +
-			(options.letterSpacing ? options.letterSpacing / scale : 0);
 	}
 
 	let minX = Number.POSITIVE_INFINITY;
@@ -531,10 +535,21 @@ export function generateExtrudedTextGeometry(
 	const w = maxX - minX;
 	const h = maxY - minY;
 
+	// "start"/"end" follow the text's direction.
+	const rtl = (line.baseLevel & 1) === 1;
+	const align =
+		options.align === "start"
+			? rtl
+				? "right"
+				: "left"
+			: options.align === "end"
+				? rtl
+					? "left"
+					: "right"
+				: options.align;
 	let alignOffsetX = (minX + maxX) / 2;
-	if (options.align === "left" || options.align === "start")
-		alignOffsetX = minX;
-	if (options.align === "right" || options.align === "end") alignOffsetX = maxX;
+	if (align === "left") alignOffsetX = minX;
+	if (align === "right") alignOffsetX = maxX;
 
 	let alignOffsetY = (minY + maxY) / 2;
 	if (options.verticalAlign === "top") alignOffsetY = minY;

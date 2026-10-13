@@ -64,6 +64,8 @@ interface ShapeOptions {
 	direction?: TextDirection;
 	/** Optional ligatures (`liga`, `clig`); required ones such as lam-alef always apply. */
 	ligatures?: boolean;
+	/** Set emoji apart for bitmap drawing (default); false shapes them as glyphs. */
+	emoji?: boolean;
 }
 
 const EMOJI_REGEX =
@@ -204,7 +206,7 @@ const SHAPE_CACHE_MAX = 2048;
 const shapeCache = new Map<string, RunGlyph[]>();
 
 function resolveShapingSource(font: SlugFont): FontkitFont | null {
-	const own = getSlugFontSource(font);
+	const own = getSlugFontSource(font) ?? viewSources.get(font);
 	if (own) return own;
 	if (!font.fontFamily) return null;
 	const parsed = (globalThis as Record<symbol, unknown>)[
@@ -512,7 +514,9 @@ export function shapeParagraph<S extends ShapeStyle>(
 		const { start, text: gt } = graphemes[g];
 		for (let k = 0; k < gt.length; k++) graphemeAt[start + k] = g;
 	}
-	const isEmojiGrapheme = graphemes.map((g) => EMOJI_REGEX.test(g.text));
+	const isEmojiGrapheme = graphemes.map(
+		(g) => options.emoji !== false && EMOJI_REGEX.test(g.text),
+	);
 
 	// Glyphs per grapheme, and ligature merges (a glyph spanning graphemes).
 	const glyphsOf: RunGlyph[][] = graphemes.map(() => []);
@@ -613,6 +617,110 @@ export function shapeParagraph<S extends ShapeStyle>(
 	}
 
 	return { clusters, baseLevel };
+}
+
+// ── Shaping straight from a fontkit font ─────────────────────────────────
+
+/** Glyph-only stand-ins for fontkit fonts that are shaped but never drawn by Slug. */
+const viewSources = new WeakMap<SlugFont, FontkitFont>();
+const fontViews = new WeakMap<FontkitFont, SlugFont>();
+
+/** A glyph map that makes a metrics-only record for any glyph id asked for. */
+class GlyphRecordMap extends Map<number, SlugCodePoint> {
+	constructor(private readonly source: FontkitFont) {
+		super();
+	}
+	override get(id: number): SlugCodePoint | undefined {
+		let record = super.get(id);
+		if (!record) {
+			let advanceWidth = 0;
+			try {
+				advanceWidth = this.source.getGlyph?.(id)?.advanceWidth ?? 0;
+			} catch {
+				advanceWidth = 0;
+			}
+			record = {
+				codePoint: -2,
+				glyphId: id,
+				width: 0,
+				height: 0,
+				advanceWidth,
+				bearingX: 0,
+				bearingY: 0,
+				bandCount: 0,
+				bandDimX: 0,
+				bandDimY: 0,
+				bandsTexCoordX: 0,
+				bandsTexCoordY: 0,
+			};
+			super.set(id, record);
+		}
+		return record;
+	}
+	override has(id: number): boolean {
+		return this.get(id) !== undefined;
+	}
+}
+
+function fontView(source: FontkitFont): SlugFont {
+	let view = fontViews.get(source);
+	if (!view) {
+		const glyphs = new GlyphRecordMap(source);
+		view = {
+			codePoints: new Map([[-1, glyphs.get(0) as SlugCodePoint]]),
+			glyphs,
+			curvesTex: null as unknown as GPUTexture,
+			bandsTex: null as unknown as GPUTexture,
+			ascender: source.ascent || 0,
+			descender: source.descent || 0,
+			lineGap: source.lineGap || 0,
+			unitsPerEm: source.unitsPerEm || 1000,
+		};
+		fontViews.set(source, view);
+		viewSources.set(view, source);
+	}
+	return view;
+}
+
+export interface PositionedGlyph {
+	glyphId: number;
+	/** Pen position, font units from the line's left edge. */
+	x: number;
+	/** Baseline offset, font units, positive up. */
+	y: number;
+}
+
+/**
+ * Shapes and orders one line of text set straight from a fontkit font (for
+ * geometry built from outlines, such as extruded 3D text). Positions are in
+ * font units, left to right; `letterSpacing` is in font units too.
+ */
+export function shapeLineFromFont(
+	source: FontkitFont,
+	text: string,
+	options: ShapeOptions & { letterSpacing?: number } = {},
+): { glyphs: PositionedGlyph[]; width: number; baseLevel: number } {
+	const font = fontView(source);
+	const letterSpacing = options.letterSpacing ?? 0;
+	const p = shapeParagraph(
+		[{ text, style: { font, fontSize: font.unitsPerEm, letterSpacing } }],
+		{
+			direction: options.direction,
+			ligatures: options.ligatures ?? letterSpacing === 0,
+			emoji: false,
+		},
+	);
+	const line = placeLine(p.clusters, p.baseLevel);
+	const glyphs: PositionedGlyph[] = [];
+	let width = 0;
+	for (const { cluster, x } of line.clusters) {
+		width = x + cluster.advance;
+		for (const g of cluster.glyphs) {
+			if (g.cp.glyphId === undefined) continue;
+			glyphs.push({ glyphId: g.cp.glyphId, x: x + g.dx, y: -g.dy });
+		}
+	}
+	return { glyphs, width, baseLevel: p.baseLevel };
 }
 
 // ── Lines ────────────────────────────────────────────────────────────────

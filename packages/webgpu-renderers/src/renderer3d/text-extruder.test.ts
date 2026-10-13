@@ -203,4 +203,20 @@ describe("Extruded 3D Text Polygonal Mesh Generator", () => {
 		expect(zNormals(front.normals)).toContain(-1);
 		expect(zNormals(side.normals).every((z) => z === 0)).toBe(true);
 	});
+
+	it("aligns start/end by the text's direction", () => {
+		const font = loadInter();
+		const at = (direction: "ltr" | "rtl") =>
+			generateExtrudedTextGeometry({
+				text: "Hi",
+				font,
+				fontSize: 100,
+				depth: 10,
+				align: "start",
+				direction,
+			}).bounds;
+		// Left to right, start is the left edge; right to left, the right edge.
+		expect(at("ltr").minX).toBeCloseTo(0, 5);
+		expect(at("rtl").maxX).toBeCloseTo(0, 5);
+	});
 });

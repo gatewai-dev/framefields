@@ -1,3 +1,5 @@
+import { toLocalPath } from "./local-path.js";
+
 export interface GPUModelLut {
 	texture: GPUTexture;
 	type: "1D" | "3D";
@@ -523,18 +525,14 @@ export const lutStore: LutStore = (() => {
 })();
 
 /**
- * A `.cube` file's text. Under Node a local path or `file://` URL is read from
- * disk (fetch cannot open either), the same sources video layers accept;
- * everything else is fetched.
+ * A `.cube` file's text. Under Node a local path (absolute, relative or Windows)
+ * or `file://` URL is read from disk (fetch cannot open either), the same
+ * sources video layers accept; everything else is fetched.
  */
 async function readLutText(src: string, signal?: AbortSignal): Promise<string> {
-	const isNode =
-		typeof process !== "undefined" && Boolean(process.versions?.node);
-	const isLocal = src.startsWith("/") || src.startsWith("file://");
-	if (isNode && isLocal) {
+	const path = await toLocalPath(src);
+	if (path !== null) {
 		const { readFile } = await import("node:fs/promises");
-		const { fileURLToPath } = await import("node:url");
-		const path = src.startsWith("file://") ? fileURLToPath(src) : src;
 		return readFile(path, { encoding: "utf8", signal });
 	}
 	const response = await fetch(src, { signal });

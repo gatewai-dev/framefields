@@ -217,7 +217,7 @@ Add scripts to `package.json`:
 
 ### Video assets & Git LFS
 
-Video inputs (`Layer.video("assets/footage/clip.mp4")`), audio tracks (`Layer.audio(...)`), LUTs, and custom fonts belong in **Git LFS**, while render outputs in `output/` belong in `.gitignore`.
+Video inputs (`Layer.video("assets/footage/clip.mp4")`), Lottie animations (`Layer.lottie(...)`), audio tracks (`Layer.audio(...)`), LUTs, and custom fonts belong in **Git LFS**, while render outputs in `output/` belong in `.gitignore`.
 
 1. **Initialize Git LFS:**
    ```bash
@@ -232,6 +232,7 @@ Video inputs (`Layer.video("assets/footage/clip.mp4")`), audio tracks (`Layer.au
    assets/**/*.mp3 filter=lfs diff=lfs merge=lfs -text
    assets/**/*.wav filter=lfs diff=lfs merge=lfs -text
    assets/**/*.cube filter=lfs diff=lfs merge=lfs -text
+   assets/**/*.lottie filter=lfs diff=lfs merge=lfs -text
    assets/fonts/**/*.ttf filter=lfs diff=lfs merge=lfs -text
    assets/fonts/**/*.otf filter=lfs diff=lfs merge=lfs -text
    ```

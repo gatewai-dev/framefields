@@ -1,4 +1,5 @@
 import * as fontkit from "fontkit";
+import { premultiplyPixels } from "../color.js";
 import { debugLog } from "../debug-log.js";
 import type { FontkitFont } from "./slug-generator.js";
 import { SlugGenerator } from "./slug-generator.js";
@@ -437,17 +438,7 @@ export class SlugFontCache {
 				.raw()
 				.toBuffer({ resolveWithObject: true });
 
-			const pixels = new Uint8Array(data.length);
-			pixels.set(data);
-			for (let i = 0; i < pixels.length; i += 4) {
-				const alpha = pixels[i + 3];
-				if (alpha < 255) {
-					const f = alpha / 255;
-					pixels[i] = Math.round(pixels[i] * f);
-					pixels[i + 1] = Math.round(pixels[i + 1] * f);
-					pixels[i + 2] = Math.round(pixels[i + 2] * f);
-				}
-			}
+			const pixels = premultiplyPixels(new Uint8Array(data));
 
 			tex = device.createTexture({
 				label: `Emoji-${char}`,

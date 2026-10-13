@@ -54,7 +54,7 @@ function nodeToVirtualMedia(
 			s.startsWith("./") ||
 			s.startsWith("blob:") ||
 			s.startsWith("data:") ||
-			/\.(png|jpe?g|webp|gif|svg|mp4|webm|mov|mkv|mp3|wav|ogg|m4a|srt|vtt)$/i.test(
+			/\.(png|jpe?g|webp|gif|svg|mp4|webm|mov|mkv|mp3|wav|ogg|m4a|srt|vtt|json|lottie)$/i.test(
 				s,
 			));
 
@@ -71,6 +71,16 @@ function nodeToVirtualMedia(
 			media = createVirtualMedia(
 				sourceRef,
 				(node.dataType as DataType) ?? "Video",
+			);
+		}
+		if (
+			!media &&
+			!resolveMedia &&
+			sourceRef &&
+			(sourceRef.includes(".") || sourceRef.includes("/"))
+		) {
+			console.warn(
+				`[Compositor] Media layer '${node.id ?? "?"}' source '${sourceRef}' could not be resolved.`,
 			);
 		}
 		if (media && (node as any).crop) {

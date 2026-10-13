@@ -1,3 +1,4 @@
+import { premultiplyPixels } from "../color.js";
 import { toLocalPath } from "../local-path.js";
 import type { RenderContextValue } from "../render-context.js";
 import { textureCache } from "../texture-cache.js";
@@ -19,6 +20,15 @@ class ImageLoader {
 		let promise = this.pending.get(key);
 		if (!promise) {
 			promise = (async () => {
+				if (
+					typeof src === "string" &&
+					(/\.(json|lottie)(\?.*)?$/i.test(src) ||
+						src.startsWith("data:application/json"))
+				) {
+					throw new Error(
+						`Unsupported image format for '${src}'. Lottie vector animations must be rendered with Layer.lottie(), not Layer.image().`,
+					);
+				}
 				let arrayBuffer: ArrayBuffer;
 				const isRemote =
 					src.startsWith("http://") ||
@@ -49,10 +59,11 @@ class ImageLoader {
 						.ensureAlpha()
 						.raw()
 						.toBuffer({ resolveWithObject: true });
+					// Decoded PNG/WebP is straight alpha; the compositor expects premultiplied.
 					return {
 						width: info.width,
 						height: info.height,
-						buffer: new Uint8Array(data),
+						buffer: premultiplyPixels(new Uint8Array(data)),
 					};
 				}
 
@@ -77,6 +88,15 @@ export async function drawImageNode(
 	pass: GPURenderPassEncoder,
 	props: ImageNodeProps,
 ): Promise<void> {
+	if (
+		typeof props.src === "string" &&
+		(/\.(json|lottie)(\?.*)?$/i.test(props.src) ||
+			props.src.startsWith("data:application/json"))
+	) {
+		console.warn(
+			`[ImageRenderer] '${props.src}' is a Lottie vector animation, not a static image. Use Layer.lottie() instead.`,
+		);
+	}
 	let tex = textureCache.acquire(props.src);
 
 	if (!tex) {

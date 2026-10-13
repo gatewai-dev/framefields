@@ -849,6 +849,15 @@ export class Media {
 		return m;
 	}
 
+	static lottie(
+		source: MediaSourceInput,
+		meta?: Partial<MediaMetadata>,
+	): Media {
+		const m = new Media(source, "Lottie");
+		if (meta) Object.assign(m.virtualMedia.metadata, meta);
+		return m;
+	}
+
 	static audio(source: MediaSourceInput, meta?: Partial<MediaMetadata>): Media {
 		const m = new Media(source, "Audio");
 		if (meta) Object.assign(m.virtualMedia.metadata, meta);
@@ -1840,8 +1849,7 @@ export class Composition {
 				...result.qa,
 				issues,
 				// Lint warnings advise; only a lint error fails the render.
-				passed:
-					result.qa.passed && !lint.some((d) => d.severity === "error"),
+				passed: result.qa.passed && !lint.some((d) => d.severity === "error"),
 			};
 		}
 		return deliverToOutputPath(result, opts.outputPath);
@@ -2231,15 +2239,34 @@ export const Layer = {
 	image: (
 		src: string,
 		options: Partial<MediaNode> = {},
-	): AnimatableNode<MediaNode> =>
-		withAnimation({
+	): AnimatableNode<MediaNode> => {
+		if (typeof src === "string") {
+			if (
+				/\.(json|lottie)(\?.*)?$/i.test(src) ||
+				src.startsWith("data:application/json")
+			) {
+				console.warn(
+					`[Layer.image] '${src}' is a Lottie vector animation, not a static image. Use Layer.lottie('${src}', options) instead.`,
+				);
+			} else if (/\.(mp4|mov|webm|mkv)(\?.*)?$/i.test(src)) {
+				console.warn(
+					`[Layer.image] '${src}' is a video file, not a static image. Use Layer.video('${src}', options) instead.`,
+				);
+			} else if (/\.(mp3|wav|ogg|m4a|aac)(\?.*)?$/i.test(src)) {
+				console.warn(
+					`[Layer.image] '${src}' is an audio file, not a static image. Use Layer.audio('${src}', options) instead.`,
+				);
+			}
+		}
+		return withAnimation({
 			id: options.id ?? autoId("img"),
 			kind: "media",
 			inputHandleId: src,
 			dataType: "Image",
 			fit: options.fit ?? "cover",
 			...options,
-		}),
+		});
+	},
 	svg: (
 		src: string,
 		options: Partial<MediaNode> = {},

@@ -7,6 +7,7 @@ import {
 	type WrappedAudioBuffer,
 	type WrappedCanvas,
 } from "mediabunny";
+import { premultiplyPixels } from "../color.js";
 import { inputStore } from "../input-store.js";
 
 /**
@@ -319,6 +320,8 @@ export class VideoDecoder extends BaseMediaDecoder<
 		await currentSample.copyTo(buffer, { format: "RGBA" });
 		if (this.currentFetchId !== fetchId || this.destroyed || !this.input)
 			return null;
+		// WebCodecs RGBA is straight alpha; the compositor expects premultiplied.
+		premultiplyPixels(buffer);
 		return { width, height, buffer };
 	}
 

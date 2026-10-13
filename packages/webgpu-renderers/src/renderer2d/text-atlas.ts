@@ -1,3 +1,4 @@
+import { premultiplyPixels } from "../color.js";
 import type { Rect } from "./index.js";
 
 export interface AtlasRegion {
@@ -86,7 +87,8 @@ export class TextAtlas {
 			const imgData = c2d.getImageData(0, 0, width, height);
 			this.device.queue.writeTexture(
 				{ texture: this.texture, origin: [region.x, region.y, 0] },
-				imgData.data,
+				// getImageData returns straight alpha.
+				premultiplyPixels(imgData.data),
 				{ bytesPerRow: width * 4 },
 				[width, height],
 			);

@@ -506,6 +506,12 @@ export async function drawCompositionTree(
 						fps,
 						opacity: Number(op.opacity ?? 1) * Number(props.opacity ?? 1),
 						isHeadless: props.isHeadless,
+						dpr:
+							typeof (props as { dpr?: unknown }).dpr === "number"
+								? (props as { dpr: number }).dpr
+								: typeof (op as { dpr?: unknown }).dpr === "number"
+									? (op as { dpr: number }).dpr
+									: undefined,
 					});
 				} else if (mediaType === "GIF") {
 					await drawGifNode(ctx, pass, {

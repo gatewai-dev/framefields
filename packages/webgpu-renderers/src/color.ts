@@ -49,3 +49,25 @@ export function premultiplyColor(color: Color): Color {
 		a: color.a,
 	};
 }
+
+/**
+ * Premultiplies straight-alpha RGBA8 pixels in place and returns them.
+ *
+ * Every 2D pipeline blends with premultiplied "over", so straight pixels
+ * (decoded PNGs, `getImageData`, WebCodecs RGBA) must pass through here
+ * before `writeTexture`. Otherwise RGB under transparent pixels is added
+ * onto the destination.
+ */
+export function premultiplyPixels<T extends Uint8Array | Uint8ClampedArray>(
+	pixels: T,
+): T {
+	for (let i = 0; i < pixels.length; i += 4) {
+		const a = pixels[i + 3];
+		if (a === 255) continue;
+		// (c·a + 127) / 255, floored, equals round(c·a / 255) for 8-bit ints.
+		pixels[i] = ((pixels[i] * a + 127) / 255) | 0;
+		pixels[i + 1] = ((pixels[i + 1] * a + 127) / 255) | 0;
+		pixels[i + 2] = ((pixels[i + 2] * a + 127) / 255) | 0;
+	}
+	return pixels;
+}

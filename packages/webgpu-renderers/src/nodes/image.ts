@@ -1,3 +1,4 @@
+import { premultiplyPixels } from "../color.js";
 import type { RenderContextValue } from "../render-context.js";
 import { textureCache } from "../texture-cache.js";
 import { createImageTexture } from "./image-texture.js";
@@ -55,10 +56,11 @@ class ImageLoader {
 						.ensureAlpha()
 						.raw()
 						.toBuffer({ resolveWithObject: true });
+					// Decoded PNG/WebP is straight alpha; the compositor expects premultiplied.
 					return {
 						width: info.width,
 						height: info.height,
-						buffer: new Uint8Array(data),
+						buffer: premultiplyPixels(new Uint8Array(data)),
 					};
 				}
 

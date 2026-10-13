@@ -1,5 +1,7 @@
 # @framefields/compositions
 
+## 2.1.0
+
 ## 2.0.11
 
 ### Patch Changes

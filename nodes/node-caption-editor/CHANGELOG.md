@@ -1,5 +1,7 @@
 # @framefields/node-caption-editor
 
+## 2.1.0
+
 ## 2.0.11
 
 ## 2.0.10

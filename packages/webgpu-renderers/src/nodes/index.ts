@@ -8,5 +8,6 @@ export * from "./media-size.js";
 export * from "./paragraph.js";
 export * from "./signal.js";
 export * from "./svg.js";
+export * from "./text-spans.js";
 export * from "./types.js";
 export * from "./video.js";

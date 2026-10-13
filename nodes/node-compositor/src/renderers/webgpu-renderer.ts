@@ -743,6 +743,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 									letterSpacing: node.letterSpacing,
 									lineHeight: node.lineHeight,
 									padding: node.padding,
+									direction: node.direction,
 								};
 
 								if (constraintWidth !== undefined) {
@@ -3219,12 +3220,8 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 						fontStyle: lop.fontStyle,
 						fontWeight: lop.fontWeight,
 						fill: target?.fill ?? target?.color ?? lop.fill,
-						align:
-							lop.align === "start"
-								? "left"
-								: lop.align === "end"
-									? "right"
-									: lop.align,
+						align: lop.align,
+						direction: lop.direction,
 						verticalAlign: lop.verticalAlign,
 						letterSpacing: target?.letterSpacing ?? lop.letterSpacing,
 						lineHeight: lop.lineHeight,
@@ -3309,12 +3306,8 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 								fontStyle: lop.fontStyle,
 								fill: lop.fill,
 								color: lop.fill,
-								align:
-									lop.align === "start"
-										? "left"
-										: lop.align === "end"
-											? "right"
-											: (lop.align ?? "center"),
+								align: lop.align ?? "center",
+								direction: lop.direction,
 								verticalAlign: lop.verticalAlign ?? lop.textAlignVertical,
 								lineHeight: lop.lineHeight,
 								letterSpacing: lop.letterSpacing,

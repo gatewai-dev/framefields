@@ -84,7 +84,7 @@ All `Layer.*` builders return `AnimatableNode<T>` instances with chainable `.ani
 
 | Builder | Node `kind` | Description & Key Options |
 |---|---|---|
-| `Layer.text(content, options)` | `"text"` | Slug GPU vector text. Options: `fontSize`, `fontFamily`, `fill`, `letterSpacing`, `lineHeight`, `align`, `animators`, `spans`. |
+| `Layer.text(content, options)` | `"text"` | Slug GPU vector text. Options: `fontSize`, `fontFamily`, `fill`, `letterSpacing`, `lineHeight`, `align`, `direction`, `animators`, `spans`. Arabic, Hebrew and Persian are shaped and laid out right to left automatically (`direction: "auto"`); set `"rtl"`/`"ltr"` to force it. `align: "start"`/`"end"` follow the direction. |
 | `Layer.box(options)` | `"box"` | Rectangular container / card. Options: `background`, `borderRadius`, `borderColor`, `borderWidth`, `overflow: "hidden"`, `padding`, `children`. |
 | `Layer.flex(options)` | `"flex"` | Auto-layout container (Yoga). Options: `dir: "row" \| "column"`, `gap`, `justify`, `align`, `padding`, `wrap`, `children`. |
 | `Layer.video(src, options)` | `"media"` | Video layer decoded via mediabunny. Options: `fit: "cover" \| "contain"`, `trimStartSec`, `muted`, `volume`. |

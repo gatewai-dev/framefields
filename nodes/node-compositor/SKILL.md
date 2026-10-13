@@ -109,7 +109,7 @@ Container styles (flex/block/box with children):
 
 Per-kind fields:
 - **`box`**: `background` (CSS color, also accepts gradients), `borderRadius` (number), `padding`. A `box` with children behaves like a column container.
-- **`text`**: `text` (string), `fontSize`, `fontFamily`, `fontWeight`, `fontStyle`, `fill` (text color), `align`, `verticalAlign` (`top` default | `middle` | `bottom`: places the text block in a `height` taller than it; ignored for path text), `lineHeight`, `letterSpacing`, `textShadow`, `shadows`, `background` (rounded text box fill), `borderRadius`, `padding`.
+- **`text`**: `text` (string), `fontSize`, `fontFamily`, `fontWeight`, `fontStyle`, `fill` (text color), `align` (`start`/`end` follow the text direction), `direction` (`auto` default | `ltr` | `rtl`: paragraph base direction; `auto` takes it from the first strong character, so Arabic/Hebrew/Persian read right to left, with mixed Latin and numbers kept in order), `verticalAlign` (`top` default | `middle` | `bottom`: places the text block in a `height` taller than it; ignored for path text), `lineHeight`, `letterSpacing`, `textShadow`, `shadows`, `background` (rounded text box fill), `borderRadius`, `padding`.
   - **Kinetic Typography Animators (`animators`)**: Array of text animators applied sequentially at the Slug GPU glyph instancing stage:
     - `id` (string): Unique animator identifier.
     - `unit` (`"character"` | `"word"` | `"line"`, default `"character"`): Granularity of text breakdown.
@@ -141,6 +141,7 @@ Per-kind fields:
     - `fontStyle` (`"normal"` | `"italic"`).
     - `fill` (string, default `"#ffffff"`): Text color.
     - `align` (`"start"` | `"center"` | `"end"`, default `"center"`): Horizontal text alignment.
+    - `direction` (`"auto"` | `"ltr"` | `"rtl"`, default `"auto"`): Caption text direction; `start`/`end` follow it.
     - `verticalAlign` (`"top"` | `"middle"` | `"bottom"`, default `"bottom"`): Vertical alignment. When `"bottom"`, the bottom edge is anchored, and multi-line subtitle cues expand **upwards**.
     - `lineHeight` (number, default `1.2` or `fontSize * 1.2`).
     - `letterSpacing` (number, default `0`).

@@ -114,6 +114,7 @@ function paragraphPropsFromTextOp(
 		height: opText.height ? Number(opText.height) : undefined,
 		lineHeight: Number(opText.lineHeight ?? 1.2),
 		align: opText.align,
+		direction: opText.direction,
 		verticalAlign: opText.verticalAlign,
 		fontWeight: opText.fontWeight,
 		fontStyle: opText.fontStyle,
@@ -594,12 +595,8 @@ export async function drawCompositionTree(
 						fontSize: Number(opCap.fontSize ?? 48),
 						color: opCap.fill ?? opCap.color ?? "white",
 						lineHeight: Number(opCap.lineHeight ?? 1.2),
-						align:
-							opCap.align === "start"
-								? "left"
-								: opCap.align === "end"
-									? "right"
-									: (opCap.align ?? "center"),
+						align: opCap.align ?? "center",
+						direction: opCap.direction,
 						textAlignVertical: opCap.verticalAlign ?? opCap.textAlignVertical,
 						fontWeight: opCap.fontWeight,
 						fontStyle: opCap.fontStyle,

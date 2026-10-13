@@ -4,12 +4,13 @@ import type { RenderContextValue } from "../render-context.js";
 import type { Color } from "../renderer2d/index.js";
 import { signalRegistry } from "../signals/signal-registry.js";
 import { parseFontWeight, SlugFontCache } from "../slug/slug-font-cache.js";
+import { SlugGenerator } from "../slug/slug-generator.js";
 import {
 	SlugGeometry,
 	type SlugGlyphLayout,
 	type SlugLayoutResult,
 } from "../slug/slug-geometry.js";
-import type { SlugFont } from "../slug/slug-loader.js";
+import type { SlugCodePoint, SlugFont } from "../slug/slug-loader.js";
 import {
 	type AdvancedTextAnimator,
 	type AETextAnimator,
@@ -936,7 +937,8 @@ export function drawParagraphNode(
 		props.lineHeight !== undefined && props.lineHeight < 10
 			? props.lineHeight * fontSize
 			: (props.lineHeight ?? fontSize * 1.2);
-	const align = props.align ?? "left";
+	const align = props.align ?? "start";
+	const direction = props.direction ?? "auto";
 
 	const padding = props.isCaption
 		? 0
@@ -999,6 +1001,7 @@ export function drawParagraphNode(
 			lineHeight,
 			maxWidth,
 			props.spans,
+			direction,
 		);
 	} else {
 		measured = SlugGeometry.measure(
@@ -1009,14 +1012,16 @@ export function drawParagraphNode(
 			lineHeight,
 			undefined,
 			props.spans,
+			direction,
 		);
 		maxWidth = measured.width;
 	}
 
 	const alignWidth = props.isCaption ? props.dstRect.width : maxWidth;
 	const animApplyBy = props.animation?.applyBy ?? "word";
+	// measure() lays out left-aligned; "start" is the same for LTR text.
 	const canReuseMeasured =
-		align === "left" &&
+		(align === "left" || (align === "start" && !measured.layout?.hasRtl)) &&
 		(alignWidth === undefined || alignWidth === maxWidth) &&
 		!pathOptions &&
 		animApplyBy === "word" &&
@@ -1037,6 +1042,7 @@ export function drawParagraphNode(
 					alignWidth,
 					pathOptions,
 					props.spans,
+					direction,
 				);
 	// verticalAlign places the text block inside a box taller than it (CSS
 	// line-box centring). Path text follows its path; captions place themselves.
@@ -1297,10 +1303,26 @@ export function drawParagraphNode(
 						list.push(gIdx);
 					}
 
-					for (const indices of lineGlyphIndices.values()) {
+					for (const lineIndices of lineGlyphIndices.values()) {
+						// Track whole clusters (a letter and its marks) in display order,
+						// which differs from reading order on right-to-left lines.
+						const clusterMap = new Map<number, number[]>();
+						for (const gIdx of lineIndices) {
+							const key = layout.glyphs[gIdx].charIndex;
+							const members = clusterMap.get(key);
+							if (members) members.push(gIdx);
+							else clusterMap.set(key, [gIdx]);
+						}
+						const clusters = Array.from(clusterMap.values());
+						const clusterX = (c: number[]) => {
+							const g = layout.glyphs[c[0]];
+							return g.clusterX ?? g.x;
+						};
+						clusters.sort((a, b) => clusterX(a) - clusterX(b));
+
 						const weights: number[] = [];
-						for (const gIdx of indices) {
-							const g = layout.glyphs[gIdx];
+						for (const members of clusters) {
+							const g = layout.glyphs[members[0]];
 							const w = evaluateAEAnimatorWeight(
 								aeAnim,
 								g,
@@ -1313,21 +1335,31 @@ export function drawParagraphNode(
 						}
 
 						let totalLineShift = 0;
-						for (let k = 0; k < indices.length - 1; k++) {
+						for (let k = 0; k < clusters.length - 1; k++) {
 							totalLineShift += trackingAmount * weights[k];
 						}
 
+						const baseRtl = layout.glyphs[lineIndices[0]]?.baseRtl ?? false;
+						const lineAlign =
+							align === "start"
+								? baseRtl
+									? "right"
+									: "left"
+								: align === "end"
+									? baseRtl
+										? "left"
+										: "right"
+									: align;
 						let cumShift = 0;
-						for (let k = 0; k < indices.length; k++) {
-							const gIdx = indices[k];
+						for (let k = 0; k < clusters.length; k++) {
 							let shift = cumShift;
-							if (align === "center") {
+							if (lineAlign === "center") {
 								shift -= totalLineShift * 0.5;
-							} else if (align === "right" || align === "end") {
+							} else if (lineAlign === "right") {
 								shift -= totalLineShift;
 							}
-							trackingShifts[gIdx] += shift;
-							if (k < indices.length - 1) {
+							for (const gIdx of clusters[k]) trackingShifts[gIdx] += shift;
+							if (k < clusters.length - 1) {
 								cumShift += trackingAmount * weights[k];
 							}
 						}
@@ -1338,6 +1370,43 @@ export function drawParagraphNode(
 	}
 
 	let scratchData = new Float32Array(Math.max(1024, instanceCount * 24));
+
+	// Stroke and synthetic-bold variants are separate fonts of the same family:
+	// they share glyph ids, so shaped glyphs carry over by id. Glyphs from
+	// another family (a span's font) fall back to their code point.
+	const sharesGlyphIds = (target: SlugFont, glyph: SlugGlyphLayout) =>
+		glyph.cp.glyphId !== undefined &&
+		(glyph.font ?? slugFont).fontFamily === target.fontFamily;
+	const preparedFonts = new Set<SlugFont>();
+	const prepareGlyphs = (target: SlugFont) => {
+		if (preparedFonts.has(target)) return;
+		preparedFonts.add(target);
+		const missing: number[] = [];
+		for (const g of layout.glyphs) {
+			const id = g.cp.glyphId;
+			if (
+				id !== undefined &&
+				(g.font ?? slugFont) !== target &&
+				sharesGlyphIds(target, g) &&
+				!target.glyphs?.has(id)
+			) {
+				missing.push(id);
+			}
+		}
+		// One batch, so the variant's textures are re-uploaded at most once.
+		if (missing.length > 0) SlugGenerator.ensureGlyphs(target, missing);
+	};
+	const glyphInFont = (
+		target: SlugFont,
+		glyph: SlugGlyphLayout,
+	): SlugCodePoint => {
+		if ((glyph.font ?? slugFont) === target) return glyph.cp;
+		if (sharesGlyphIds(target, glyph)) {
+			const byId = target.glyphs?.get(glyph.cp.glyphId as number);
+			if (byId) return byId;
+		}
+		return target.codePoints.get(glyph.cp.codePoint) || glyph.cp;
+	};
 
 	const buildInstanceData = (
 		targetFont: SlugFont,
@@ -1353,6 +1422,7 @@ export function drawParagraphNode(
 		}
 		const data = scratchData;
 		let visibleCount = 0;
+		prepareGlyphs(targetFont);
 
 		for (let i = 0; i < layout.glyphs.length; i++) {
 			const glyph = layout.glyphs[i];
@@ -1364,7 +1434,7 @@ export function drawParagraphNode(
 				continue;
 			}
 
-			const cp = targetFont.codePoints.get(glyph.cp.codePoint) || glyph.cp;
+			const cp = glyphInFont(targetFont, glyph);
 			if (!cp || cp.width === 0 || cp.height === 0) {
 				continue;
 			}
@@ -1973,10 +2043,23 @@ export function drawParagraphNode(
 		let cursorY = textRect.y + padding;
 
 		if (layout.glyphs.length > 0) {
+			// Glyphs are in reading order: the cursor follows the last one, on
+			// its left when that text runs right to left.
 			const lastG = layout.glyphs[layout.glyphs.length - 1];
 			const fontScale = fontSize / slugFont.unitsPerEm;
-			const adv = (lastG.cp?.advanceWidth || 0) * fontScale;
-			cursorX = lastG.x + props.dstRect.x + padding + adv + cursorSpacing;
+			const adv =
+				lastG.clusterAdvance ?? (lastG.cp?.advanceWidth || 0) * fontScale;
+			const left = lastG.clusterX ?? lastG.x;
+			const barWidth =
+				cursorCfg.style === "underscore" || cursorCfg.style === "block"
+					? fontSize * 0.5
+					: cursorWidth;
+			cursorX =
+				props.dstRect.x +
+				padding +
+				(lastG.rtl
+					? left - cursorSpacing - barWidth
+					: left + adv + cursorSpacing);
 			cursorY = lastG.y + textRect.y + padding;
 		}
 

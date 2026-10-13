@@ -903,6 +903,12 @@ export interface TextNode extends CompositionNodeBase {
 	fontStyle?: string;
 	fill?: string;
 	align?: "start" | "center" | "end";
+	/**
+	 * Base direction of each paragraph. "auto" (default) takes it from the
+	 * first strong character, so Arabic, Hebrew or Persian reads right to
+	 * left; "start"/"end" alignment follows it.
+	 */
+	direction?: "ltr" | "rtl" | "auto";
 	verticalAlign?: "top" | "middle" | "bottom";
 	lineHeight?: number;
 	letterSpacing?: number;
@@ -941,6 +947,8 @@ export interface MediaNode extends CompositionNodeBase {
 	fontStyle?: string;
 	fill?: string;
 	align?: "start" | "center" | "end";
+	/** Caption text direction; see {@link TextNode.direction}. */
+	direction?: "ltr" | "rtl" | "auto";
 	verticalAlign?: "top" | "middle" | "bottom";
 	lineHeight?: number;
 	letterSpacing?: number;
@@ -1397,6 +1405,7 @@ const TextFields = {
 	/** Text color (v1 name kept). */
 	fill: ColorSchema,
 	align: z.enum(["start", "center", "end"]).optional(),
+	direction: z.enum(["ltr", "rtl", "auto"]).optional(),
 	verticalAlign: z.enum(["top", "middle", "bottom"]).optional(),
 	lineHeight: z.number().positive().optional(),
 	letterSpacing: z.number().optional(),
@@ -1453,6 +1462,7 @@ export const MediaNodeSchema: z.ZodType<MediaNode> = z
 		fontStyle: z.string().optional(),
 		fill: ColorSchema,
 		align: z.enum(["start", "center", "end"]).optional(),
+		direction: z.enum(["ltr", "rtl", "auto"]).optional(),
 		verticalAlign: z.enum(["top", "middle", "bottom"]).optional(),
 		lineHeight: z.number().positive().optional(),
 		letterSpacing: z.number().optional(),

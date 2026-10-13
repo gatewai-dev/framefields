@@ -11,6 +11,7 @@ export interface TextMeasureStyle {
 	lineHeight?: number;
 	padding?: number;
 	align?: "left" | "center" | "right";
+	direction?: "ltr" | "rtl" | "auto";
 	width?: number;
 	height?: number;
 	autoDimensions?: boolean;
@@ -109,6 +110,7 @@ export function measureText(
 			? Math.max(0, style.width - padding * 2)
 			: undefined,
 		style.spans,
+		style.direction,
 	);
 
 	const result = {

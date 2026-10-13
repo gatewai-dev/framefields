@@ -172,6 +172,8 @@ export interface MeasureTextOptions {
 	/** Wrap width in px; omit for one line per `\n`. */
 	width?: number;
 	align?: "left" | "center" | "right";
+	/** Paragraph base direction, as on `Layer.text`. Default "auto". */
+	direction?: "ltr" | "rtl" | "auto";
 }
 
 export interface MeasuredGlyph {
@@ -185,6 +187,8 @@ export interface MeasuredGlyph {
 	/** Advance width in px. */
 	width: number;
 	line: number;
+	/** Part of a right-to-left run: reading continues to the left. */
+	rtl?: boolean;
 }
 
 export interface TextMetrics {
@@ -196,7 +200,8 @@ export interface TextMetrics {
 	glyphs: MeasuredGlyph[];
 	/**
 	 * X of a caret placed after `count` characters (0 = before the first),
-	 * relative to the text box. Pair with a `.keys("text", …)` reveal to make
+	 * relative to the text box. In right-to-left text the caret sits on the
+	 * left of the last character. Pair with a `.keys("text", …)` reveal to make
 	 * a cursor follow typing exactly.
 	 */
 	caretX(count: number): number;
@@ -285,29 +290,46 @@ export class FontManager {
 			letterSpacing,
 			lineHeight,
 			options.width,
+			undefined,
+			options.direction,
 		);
 		const scale = fontSize / font.unitsPerEm;
-		// Map glyphs back to string indices (layout counts graphemes).
+		// One entry per cluster (a letter with its marks, or a ligature), in
+		// reading order; textIndex maps it back to the string.
 		const glyphs: MeasuredGlyph[] = [];
+		const seen = new Set<number>();
 		let cursor = 0;
 		for (const g of layout.glyphs) {
-			const at = text.indexOf(g.char, cursor);
-			const index = at >= 0 ? at : cursor;
+			let index = g.textIndex;
+			if (index === undefined) {
+				const at = text.indexOf(g.char, cursor);
+				index = at >= 0 ? at : cursor;
+			}
+			if (seen.has(index)) continue;
+			seen.add(index);
 			cursor = index + g.char.length;
+			const advance =
+				g.clusterAdvance ?? g.cp.advanceWidth * (g.fontScale ?? scale);
 			glyphs.push({
 				char: g.char,
 				index,
-				x: g.x,
+				x: g.clusterX ?? g.x,
 				y: g.y,
-				width: g.cp.advanceWidth * (g.fontScale ?? scale) + letterSpacing,
+				width: advance + letterSpacing,
 				line: g.lineIndex,
+				...(g.rtl && { rtl: true }),
 			});
 		}
 		const caretX = (count: number): number => {
-			if (count <= 0 || glyphs.length === 0) return glyphs[0]?.x ?? 0;
+			if (count <= 0 || glyphs.length === 0) {
+				const first = glyphs[0];
+				if (!first) return 0;
+				return first.rtl ? first.x + first.width - letterSpacing : first.x;
+			}
 			const before = glyphs.filter((g) => g.index < count);
 			const last = before[before.length - 1];
-			return last ? last.x + last.width - letterSpacing : 0;
+			if (!last) return 0;
+			return last.rtl ? last.x : last.x + last.width - letterSpacing;
 		};
 		return {
 			width,

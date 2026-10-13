@@ -6,8 +6,19 @@ import {
 } from "../text-animations/path.js";
 import type { TextPathOptions } from "../text-animations/types.js";
 import { SlugFontCache } from "./slug-font-cache.js";
-import type { FontkitFont } from "./slug-generator.js";
 import type { SlugCodePoint, SlugFont } from "./slug-loader.js";
+import {
+	alignOffset,
+	breakLines,
+	fontIdentity,
+	type PlacedLine,
+	placeLine,
+	resolveAlign,
+	type ShapedCluster,
+	type ShapeStyle,
+	shapeParagraph,
+	type TextDirection,
+} from "./text-shaping.js";
 
 export interface SlugGlyphLayout {
 	char: string;
@@ -19,6 +30,16 @@ export interface SlugGlyphLayout {
 	charIndex: number;
 	unitIndex: number; // Index of the animation unit this glyph belongs to
 	isSpace: boolean;
+	/** UTF-16 index in the laid-out text of the cluster this glyph draws. */
+	textIndex?: number;
+	/** The glyph belongs to a right-to-left run. */
+	rtl?: boolean;
+	/** Advance of the glyph's whole cluster, px (letter spacing excluded). */
+	clusterAdvance?: number;
+	/** Left edge of the glyph's cluster on its line, px. */
+	clusterX?: number;
+	/** The glyph's paragraph runs right to left (so "start" is the right edge). */
+	baseRtl?: boolean;
 	pathTangentAngleRad?: number;
 	perpendicularToPath?: boolean;
 	pathNormalX?: number;
@@ -60,89 +81,90 @@ export interface SlugLayoutResult {
 	linesCount: number;
 	wordsCount: number;
 	charsCount: number;
+	/** Some text was laid out right to left. */
+	hasRtl?: boolean;
 }
 
-const EMOJI_REGEX =
-	/(\p{Extended_Pictographic}|\p{Emoji_Presentation}|[\u2600-\u27BF])/u;
-
-const graphemeSegmenter =
-	typeof Intl !== "undefined" &&
-	(
-		Intl as unknown as {
-			Segmenter?: new (
-				locale: string,
-				opts: { granularity: string },
-			) => { segment: (text: string) => Iterable<{ segment: string }> };
-		}
-	).Segmenter
-		? new (
-				Intl as unknown as {
-					Segmenter: new (
-						locale: string,
-						opts: { granularity: string },
-					) => { segment: (text: string) => Iterable<{ segment: string }> };
-				}
-			).Segmenter("en", { granularity: "grapheme" })
-		: null;
-
-function segmentGraphemes(text: string): string[] {
-	if (graphemeSegmenter) {
-		return Array.from(graphemeSegmenter.segment(text), (s) => s.segment);
-	}
-	return Array.from(text);
-}
-
-const kernCache = new Map<string, number>();
-
-function resolveParsedFont(font: SlugFont): FontkitFont | null {
-	if (font.fontFamily) {
-		const parsed = SlugFontCache.getParsed(font.fontFamily);
-		if (parsed) return parsed;
-	}
-	const globalParsed = (globalThis as Record<symbol, unknown>)[
-		Symbol.for("gatewai.slugFontCache.parsed")
-	] as Map<string, FontkitFont> | undefined;
-	if (globalParsed) {
-		if (font.fontFamily && globalParsed.has(font.fontFamily)) {
-			return globalParsed.get(font.fontFamily) ?? null;
-		}
-		if (globalParsed.size === 1) {
-			return globalParsed.values().next().value ?? null;
-		}
-	}
-	return null;
-}
-
-export function getKernOffset(font: SlugFont, a: number, b: number): number {
-	const family = font.fontFamily ?? "default";
-	const key = `${family}:${a}:${b}`;
-	const hit = kernCache.get(key);
-	if (hit !== undefined) return hit;
-
-	const src = resolveParsedFont(font);
-	let v = 0;
-	if (src) {
-		try {
-			const s = String.fromCodePoint(a) + String.fromCodePoint(b);
-			const laid = src.layout?.(s);
-			if (!laid) throw new Error("font cannot shape text");
-			const total = laid.positions.reduce(
-				(acc: number, p: { xAdvance: number }) => acc + p.xAdvance,
-				0,
-			);
-			const advA = src.glyphForCodePoint?.(a)?.advanceWidth ?? 0;
-			const advB = src.glyphForCodePoint?.(b)?.advanceWidth ?? 0;
-			v = laid.glyphs.length === 2 ? total - (advA + advB) : 0;
-		} catch {
-			v = 0;
-		}
-	}
-	kernCache.set(key, v);
-	return v;
-}
+type Align = "left" | "center" | "right" | "start" | "end";
+type ApplyBy = "line" | "word" | "char";
 
 const layoutCache = new Map<string, SlugLayoutResult>();
 const MAX_LAYOUT_CACHE = 256;
+
+function cacheResult(key: string, result: SlugLayoutResult): SlugLayoutResult {
+	if (layoutCache.size >= MAX_LAYOUT_CACHE) {
+		const firstKey = layoutCache.keys().next().value;
+		if (firstKey) layoutCache.delete(firstKey);
+	}
+	layoutCache.set(key, result);
+	return result;
+}
+
+/** Reads a plain value or an animated `{ get() }` one. */
+function resolveValue(v: unknown): unknown {
+	if (
+		v &&
+		typeof v === "object" &&
+		"get" in v &&
+		typeof (v as { get: unknown }).get === "function"
+	) {
+		return (v as { get: () => unknown }).get();
+	}
+	return v;
+}
+
+interface LogicalIndices {
+	charIndex: number;
+	wordIndex: number;
+	unitIndex: number;
+}
+
+/**
+ * Animation indices follow reading order, so a right-to-left line reveals
+ * from the right. Emoji count as characters but neither start nor end words.
+ */
+function assignIndices<S extends ShapeStyle>(
+	lines: ShapedCluster<S>[][],
+	applyBy: ApplyBy,
+): {
+	indices: Map<ShapedCluster<S>, LogicalIndices>;
+	words: number;
+	chars: number;
+} {
+	const indices = new Map<ShapedCluster<S>, LogicalIndices>();
+	let wordIndex = 0;
+	let charIndex = 0;
+	for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+		let inWord = false;
+		for (const c of lines[lineIndex]) {
+			if (!c.isEmoji) {
+				if (c.isSpace) {
+					if (inWord) {
+						wordIndex++;
+						inWord = false;
+					}
+				} else {
+					inWord = true;
+				}
+			}
+			const unitIndex =
+				applyBy === "line"
+					? lineIndex
+					: applyBy === "word"
+						? wordIndex
+						: charIndex;
+			indices.set(c, { charIndex, wordIndex, unitIndex });
+			if (c.isEmoji || c.glyphs.length > 0) charIndex++;
+		}
+		if (inWord) wordIndex++;
+	}
+	return { indices, words: wordIndex, chars: charIndex };
+}
+
+/** Optional ligatures stay off when text animates per character or is letter-spaced (as in CSS). */
+function useLigatures(applyBy: ApplyBy, letterSpacing: number): boolean {
+	return applyBy !== "char" && letterSpacing === 0;
+}
 
 export class SlugGeometry {
 	static layout(
@@ -152,40 +174,40 @@ export class SlugGeometry {
 		letterSpacing: number,
 		lineHeight: number,
 		maxWidth: number,
-		align: "left" | "center" | "right" | "start" | "end" = "left",
-		applyBy: "line" | "word" | "char" = "word",
+		align: Align = "left",
+		applyBy: ApplyBy = "word",
 		alignWidth?: number,
 		pathOptions?: TextPathOptions,
 		spans?: TextSpan[],
+		direction: TextDirection = "auto",
 	): SlugLayoutResult {
+		const fontKey = fontIdentity(font);
 		if (spans && spans.length > 0) {
 			const spansKey = spans
 				.map(
 					(s) =>
-						`${typeof s.text === "string" ? s.text : ""}:${s.fontFamily ?? ""}:${s.fontWeight ?? ""}:${s.fontSize ?? ""}:${s.fill ?? ""}:${s.baselineShift ?? ""}`,
+						`${typeof s.text === "string" ? s.text : ""}:${s.fontFamily ?? ""}:${s.fontWeight ?? ""}:${s.fontSize ?? ""}:${s.fill ?? ""}:${s.baselineShift ?? ""}:${s.letterSpacing ?? ""}`,
 				)
 				.join(";");
-			const cacheKey = `${text}|${font.fontFamily ?? ""}|${font.unitsPerEm}|${fontSize}|${letterSpacing}|${lineHeight}|${maxWidth}|${align}|${applyBy}|${alignWidth ?? ""}|${spansKey}`;
+			const cacheKey = `${text}|${fontKey}|${fontSize}|${letterSpacing}|${lineHeight}|${maxWidth}|${align}|${applyBy}|${alignWidth ?? ""}|${direction}|${spansKey}`;
 			const cached = layoutCache.get(cacheKey);
 			if (cached) return cached;
 
-			const result = SlugGeometry.layoutSpans(
-				spans,
-				font,
-				fontSize,
-				letterSpacing,
-				lineHeight,
-				maxWidth,
-				align,
-				applyBy,
-				alignWidth,
+			return cacheResult(
+				cacheKey,
+				SlugGeometry.layoutSpans(
+					spans,
+					font,
+					fontSize,
+					letterSpacing,
+					lineHeight,
+					maxWidth,
+					align,
+					applyBy,
+					alignWidth,
+					direction,
+				),
 			);
-			if (layoutCache.size >= MAX_LAYOUT_CACHE) {
-				const firstKey = layoutCache.keys().next().value;
-				if (firstKey) layoutCache.delete(firstKey);
-			}
-			layoutCache.set(cacheKey, result);
-			return result;
 		}
 
 		if (pathOptions) {
@@ -196,250 +218,110 @@ export class SlugGeometry {
 				letterSpacing,
 				pathOptions,
 				applyBy,
+				direction,
 			);
 		}
 
-		const cacheKey = `${text}|${font.fontFamily ?? ""}|${font.unitsPerEm}|${fontSize}|${letterSpacing}|${lineHeight}|${maxWidth}|${align}|${applyBy}|${alignWidth ?? ""}`;
+		const cacheKey = `${text}|${fontKey}|${fontSize}|${letterSpacing}|${lineHeight}|${maxWidth}|${align}|${applyBy}|${alignWidth ?? ""}|${direction}`;
 		const cached = layoutCache.get(cacheKey);
 		if (cached) return cached;
 
-		const fontScale = fontSize / font.unitsPerEm;
+		const style: ShapeStyle = { font, fontSize, letterSpacing };
+		const ligatures = useLigatures(applyBy, letterSpacing);
 
-		// 1. Tokenize text into paragraph lines, words, and spaces
-		const rawLines = text.split("\n");
-
-		interface RawGlyph {
-			char: string;
-			cp: SlugCodePoint | null;
-			isEmoji: boolean;
-			isSpace: boolean;
-			x: number; // local X offset in the token
+		// 1. Shape each paragraph and wrap it into lines (logical order).
+		interface Line {
+			clusters: ShapedCluster[];
+			baseLevel: number;
+			textOffset: number;
 		}
-
-		interface RawLine {
-			glyphs: RawGlyph[];
-			width: number;
-		}
-
-		const lines: RawLine[] = [];
-
-		for (const rawLine of rawLines) {
-			const tokens = rawLine.split(/(\s+)/);
-			let currentLineGlyphs: RawGlyph[] = [];
-			let currentLineWidth = 0;
-
-			for (const token of tokens) {
-				if (!token) continue;
-
-				const isSpace = /^\s+$/.test(token);
-				let tokenWidth = 0;
-				const tokenGlyphs: RawGlyph[] = [];
-
-				const graphemes = segmentGraphemes(token);
-
-				for (const char of graphemes) {
-					// Ignore invisible standalone variation selectors or zero-width joiners if any
-					if (char === "\uFE0F" || char === "\uFE0E" || char === "\u200D") {
-						continue;
-					}
-
-					const codePoint = char.codePointAt(0) || 0;
-					const isEmoji = EMOJI_REGEX.test(char);
-
-					let cp: SlugCodePoint | null = null;
-					let adv = 0;
-
-					if (isEmoji) {
-						adv = fontSize;
-					} else {
-						cp =
-							font.codePoints.get(codePoint) || font.codePoints.get(-1) || null;
-						adv = (cp?.advanceWidth || 0) * fontScale;
-					}
-
-					tokenGlyphs.push({
-						char,
-						cp,
-						isEmoji,
-						isSpace,
-						x: tokenWidth,
-					});
-
-					tokenWidth += adv + letterSpacing;
-				}
-
-				if (isSpace) {
-					// Skip leading spaces on a new line (after a word-wrap reset)
-					if (currentLineGlyphs.length === 0) continue;
-					for (const tg of tokenGlyphs) {
-						tg.x += currentLineWidth;
-						currentLineGlyphs.push(tg);
-					}
-					currentLineWidth += tokenWidth;
-				} else {
-					const tokenVisualWidth =
-						tokenGlyphs.length > 0 && letterSpacing > 0
-							? tokenWidth - letterSpacing
-							: tokenWidth;
-					if (
-						currentLineWidth > 0 &&
-						currentLineWidth + tokenVisualWidth > maxWidth
-					) {
-						lines.push({
-							glyphs: currentLineGlyphs,
-							width: currentLineWidth,
-						});
-						currentLineGlyphs = [];
-						currentLineWidth = 0;
-					}
-
-					for (const tg of tokenGlyphs) {
-						tg.x += currentLineWidth;
-						currentLineGlyphs.push(tg);
-					}
-					currentLineWidth += tokenWidth;
-				}
-			}
-
-			lines.push({
-				glyphs: currentLineGlyphs,
-				width: currentLineWidth,
+		const lines: Line[] = [];
+		let textOffset = 0;
+		for (const paragraph of text.split("\n")) {
+			const shaped = shapeParagraph([{ text: paragraph, style }], {
+				direction,
+				ligatures,
 			});
-		}
-
-		// Apply kerning across consecutive non-space glyphs on each line
-		for (const line of lines) {
-			let shift = 0;
-			for (let i = 1; i < line.glyphs.length; i++) {
-				const prev = line.glyphs[i - 1];
-				const cur = line.glyphs[i];
-				if (!prev.isSpace && !cur.isSpace && prev.cp && cur.cp) {
-					shift +=
-						getKernOffset(font, prev.cp.codePoint, cur.cp.codePoint) *
-						fontScale;
-				}
-				cur.x += shift;
+			for (const clusters of breakLines(shaped.clusters, maxWidth)) {
+				lines.push({ clusters, baseLevel: shaped.baseLevel, textOffset });
 			}
-			line.width += shift;
+			textOffset += paragraph.length + 1;
 		}
 
-		// 2. Position lines and build detailed glyph descriptions
+		const { indices, words, chars } = assignIndices(
+			lines.map((l) => l.clusters),
+			applyBy,
+		);
+
+		// 2. Order each line for display, align it, and emit glyphs.
 		const glyphs: SlugGlyphLayout[] = [];
 		const emojis: SlugEmojiLayout[] = [];
-
-		let currentY = font.ascender * fontScale; // Baseline of first line
-		let wordIndex = 0;
-		let charIndex = 0;
-
-		const isCenter = align === "center";
-		const isRight = align === "right" || align === "end";
+		let hasRtl = false;
+		let currentY = font.ascender * (fontSize / font.unitsPerEm); // Baseline of first line
+		const targetAlignWidth = alignWidth ?? maxWidth;
 
 		for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
-			const line = lines[lineIndex];
-			let visibleLineWidth = line.width;
-			for (let i = line.glyphs.length - 1; i >= 0; i--) {
-				const g = line.glyphs[i];
-				if (!g.isSpace) {
-					const adv = g.isEmoji
-						? fontSize
-						: (g.cp?.advanceWidth || 0) * fontScale;
-					visibleLineWidth = g.x + adv;
-					break;
-				}
-			}
+			const { clusters, baseLevel, textOffset: offset } = lines[lineIndex];
+			const placed = placeLine(clusters, baseLevel);
+			const shift = alignOffset(
+				placed,
+				resolveAlign(align, baseLevel),
+				targetAlignWidth,
+			);
+			const xOf = new Map<ShapedCluster, number>();
+			for (const p of placed.clusters) xOf.set(p.cluster, p.x + shift);
+			if (baseLevel & 1) hasRtl = true;
 
-			const targetAlignWidth = alignWidth ?? maxWidth;
-			let alignOffset = 0;
-			if (isCenter) {
-				alignOffset = (targetAlignWidth - visibleLineWidth) / 2;
-			} else if (isRight) {
-				alignOffset = targetAlignWidth - visibleLineWidth;
-			}
-
-			let inWord = false;
-
-			for (let gIdx = 0; gIdx < line.glyphs.length; gIdx++) {
-				const g = line.glyphs[gIdx];
-				const charX = g.x + alignOffset;
-
-				if (g.isEmoji) {
+			// Emit in reading order; positions come from the visual placement.
+			for (const c of clusters) {
+				const x = xOf.get(c) ?? 0;
+				const idx = indices.get(c) as LogicalIndices;
+				const rtl = (c.level & 1) === 1;
+				if (rtl) hasRtl = true;
+				if (c.isEmoji) {
 					emojis.push({
-						char: g.char,
-						x: charX,
+						char: c.text,
+						x: x + c.inkStart,
 						y: currentY - fontSize,
 						size: fontSize,
 						lineIndex,
 					});
-					charIndex++;
-				} else if (g.cp) {
-					if (g.isSpace) {
-						if (inWord) {
-							wordIndex++;
-							inWord = false;
-						}
-					} else {
-						if (!inWord) {
-							inWord = true;
-						}
-					}
-
-					let mappedUnitIndex = 0;
-					if (applyBy === "line") {
-						mappedUnitIndex = lineIndex;
-					} else if (applyBy === "word") {
-						mappedUnitIndex = wordIndex;
-					} else {
-						mappedUnitIndex = charIndex;
-					}
-
-					glyphs.push({
-						char: g.char,
-						cp: g.cp,
-						x: charX,
-						y: currentY,
-						lineIndex,
-						wordIndex,
-						charIndex,
-						unitIndex: mappedUnitIndex,
-						isSpace: g.isSpace,
-					});
-
-					charIndex++;
+					continue;
 				}
-			}
-
-			if (inWord) {
-				wordIndex++;
+				for (const g of c.glyphs) {
+					glyphs.push({
+						char: c.text,
+						cp: g.cp,
+						x: x + g.dx,
+						y: currentY + g.dy,
+						lineIndex,
+						wordIndex: idx.wordIndex,
+						charIndex: idx.charIndex,
+						unitIndex: idx.unitIndex,
+						isSpace: c.isSpace,
+						textIndex: offset + c.start,
+						rtl,
+						clusterAdvance: c.advance - c.spacing,
+						clusterX: x,
+						baseRtl: (baseLevel & 1) === 1,
+					});
+				}
 			}
 			currentY += lineHeight;
 		}
 
-		const totalHeight = currentY - lineHeight + -font.descender * fontScale;
+		const totalHeight =
+			currentY - lineHeight + -font.descender * (fontSize / font.unitsPerEm);
 
-		// Calculate total distinct unit counts
-		let maxUnitIndex = 0;
-		for (const g of glyphs) {
-			if (!g.isSpace && g.unitIndex > maxUnitIndex) {
-				maxUnitIndex = g.unitIndex;
-			}
-		}
-
-		const result: SlugLayoutResult = {
+		return cacheResult(cacheKey, {
 			glyphs,
 			emojis,
 			totalHeight,
 			linesCount: lines.length,
-			wordsCount: wordIndex,
-			charsCount: charIndex,
-		};
-
-		if (layoutCache.size >= MAX_LAYOUT_CACHE) {
-			const firstKey = layoutCache.keys().next().value;
-			if (firstKey) layoutCache.delete(firstKey);
-		}
-		layoutCache.set(cacheKey, result);
-
-		return result;
+			wordsCount: words,
+			charsCount: chars,
+			hasRtl: hasRtl || undefined,
+		});
 	}
 
 	static measure(
@@ -450,6 +332,7 @@ export class SlugGeometry {
 		lineHeight: number,
 		maxWidth?: number,
 		spans?: TextSpan[],
+		direction: TextDirection = "auto",
 	): { width: number; height: number; layout: SlugLayoutResult } {
 		const effectiveMaxWidth = maxWidth ?? Number.MAX_SAFE_INTEGER;
 		const layout = SlugGeometry.layout(
@@ -464,6 +347,7 @@ export class SlugGeometry {
 			undefined,
 			undefined,
 			spans,
+			direction,
 		);
 
 		// Compute the actual content width from the lines
@@ -507,41 +391,26 @@ export class SlugGeometry {
 		defaultLetterSpacing: number,
 		defaultLineHeight: number,
 		maxWidth: number,
-		align: "left" | "center" | "right" | "start" | "end" = "left",
-		applyBy: "line" | "word" | "char" = "word",
+		align: Align = "left",
+		applyBy: ApplyBy = "word",
 		alignWidth?: number,
+		direction: TextDirection = "auto",
 	): SlugLayoutResult {
-		interface StreamGrapheme {
-			isNewline: boolean;
-			char: string;
-			cp: SlugCodePoint | null;
-			isEmoji: boolean;
-			isSpace: boolean;
-			advance: number;
+		interface SpanStyle extends ShapeStyle {
 			spanIndex: number;
-			font: SlugFont;
-			fontSize: number;
 			fontScale: number;
-			letterSpacing: number;
 			baselineShift: number;
 			fill?: string;
 			opacity?: number;
 			mark?: TextSpanMark;
 		}
 
-		const stream: StreamGrapheme[] = [];
-
+		// Split the spans into paragraphs of styled segments.
+		const paragraphs: Array<Array<{ text: string; style: SpanStyle }>> = [[]];
+		let ligatures = useLigatures(applyBy, defaultLetterSpacing);
 		for (let sIdx = 0; sIdx < spans.length; sIdx++) {
 			const s = spans[sIdx];
-			const rawText =
-				typeof s.text === "string"
-					? s.text
-					: s.text &&
-							typeof s.text === "object" &&
-							"get" in s.text &&
-							typeof (s.text as { get: () => unknown }).get === "function"
-						? String((s.text as { get: () => unknown }).get())
-						: String(s.text ?? "");
+			const rawText = String(resolveValue(s.text) ?? "");
 
 			let spanFont = defaultFont;
 			if (s.fontFamily || s.fontWeight !== undefined) {
@@ -549,269 +418,76 @@ export class SlugGeometry {
 				const resolved = SlugFontCache.getFont(family, s.fontWeight, null);
 				if (resolved) spanFont = resolved;
 			}
-
+			const sizeValue = resolveValue(s.fontSize);
 			const spanFontSize =
-				typeof s.fontSize === "number"
-					? s.fontSize
-					: s.fontSize &&
-							typeof s.fontSize === "object" &&
-							"get" in s.fontSize &&
-							typeof (s.fontSize as { get: () => unknown }).get === "function"
-						? Number((s.fontSize as { get: () => unknown }).get())
+				typeof sizeValue === "number"
+					? sizeValue
+					: sizeValue !== undefined
+						? Number(sizeValue)
 						: defaultFontSize;
+			const fillValue = resolveValue(s.fill);
+			const opacityValue = resolveValue(s.opacity);
+			const style: SpanStyle = {
+				font: spanFont,
+				fontSize: spanFontSize,
+				fontScale: spanFontSize / spanFont.unitsPerEm,
+				letterSpacing: s.letterSpacing ?? defaultLetterSpacing,
+				baselineShift: s.baselineShift ?? 0,
+				fill: fillValue !== undefined ? String(fillValue) : undefined,
+				opacity: opacityValue !== undefined ? Number(opacityValue) : undefined,
+				mark: s.mark,
+				spanIndex: sIdx,
+			};
+			if (style.letterSpacing !== 0) ligatures = false;
 
-			const spanFontScale = spanFontSize / spanFont.unitsPerEm;
-			const spanLetterSpacing = s.letterSpacing ?? defaultLetterSpacing;
-			const spanBaselineShift = s.baselineShift ?? 0;
-			const spanFill =
-				typeof s.fill === "string"
-					? s.fill
-					: s.fill &&
-							typeof s.fill === "object" &&
-							"get" in s.fill &&
-							typeof (s.fill as { get: () => unknown }).get === "function"
-						? String((s.fill as { get: () => unknown }).get())
-						: undefined;
-			const spanOpacity =
-				typeof s.opacity === "number"
-					? s.opacity
-					: s.opacity &&
-							typeof s.opacity === "object" &&
-							"get" in s.opacity &&
-							typeof (s.opacity as { get: () => unknown }).get === "function"
-						? Number((s.opacity as { get: () => unknown }).get())
-						: undefined;
-
-			const graphemes = segmentGraphemes(rawText);
-			for (const char of graphemes) {
-				if (char === "\uFE0F" || char === "\uFE0E" || char === "\u200D") {
-					continue;
-				}
-				if (char === "\n") {
-					stream.push({
-						isNewline: true,
-						char: "\n",
-						cp: null,
-						isEmoji: false,
-						isSpace: true,
-						advance: 0,
-						spanIndex: sIdx,
-						font: spanFont,
-						fontSize: spanFontSize,
-						fontScale: spanFontScale,
-						letterSpacing: spanLetterSpacing,
-						baselineShift: spanBaselineShift,
-						fill: spanFill,
-						opacity: spanOpacity,
-						mark: s.mark,
-					});
-					continue;
-				}
-
-				const codePoint = char.codePointAt(0) || 0;
-				const isEmoji = EMOJI_REGEX.test(char);
-				let cp: SlugCodePoint | null = null;
-				let adv = 0;
-
-				if (isEmoji) {
-					adv = spanFontSize;
-				} else {
-					cp =
-						spanFont.codePoints.get(codePoint) ||
-						spanFont.codePoints.get(-1) ||
-						null;
-					adv = (cp?.advanceWidth || 0) * spanFontScale;
-				}
-
-				stream.push({
-					isNewline: false,
-					char,
-					cp,
-					isEmoji,
-					isSpace: /^\s+$/.test(char),
-					advance: adv,
-					spanIndex: sIdx,
-					font: spanFont,
-					fontSize: spanFontSize,
-					fontScale: spanFontScale,
-					letterSpacing: spanLetterSpacing,
-					baselineShift: spanBaselineShift,
-					fill: spanFill,
-					opacity: spanOpacity,
-					mark: s.mark,
-				});
-			}
-		}
-
-		// Tokenize stream into words, spaces, and newlines
-		interface Token {
-			isNewline: boolean;
-			isSpace: boolean;
-			glyphs: StreamGrapheme[];
-			width: number;
-		}
-
-		const tokens: Token[] = [];
-		let currentTokenGlyphs: StreamGrapheme[] = [];
-		let currentTokenIsSpace = false;
-		let currentTokenWidth = 0;
-
-		const flushToken = () => {
-			if (currentTokenGlyphs.length > 0) {
-				tokens.push({
-					isNewline: false,
-					isSpace: currentTokenIsSpace,
-					glyphs: currentTokenGlyphs,
-					width: currentTokenWidth,
-				});
-				currentTokenGlyphs = [];
-				currentTokenWidth = 0;
-			}
-		};
-
-		for (const g of stream) {
-			if (g.isNewline) {
-				flushToken();
-				tokens.push({
-					isNewline: true,
-					isSpace: true,
-					glyphs: [],
-					width: 0,
-				});
-				continue;
-			}
-
-			if (currentTokenGlyphs.length === 0) {
-				currentTokenIsSpace = g.isSpace;
-				currentTokenGlyphs.push(g);
-				currentTokenWidth = g.advance + g.letterSpacing;
-			} else if (g.isSpace === currentTokenIsSpace) {
-				currentTokenGlyphs.push(g);
-				currentTokenWidth += g.advance + g.letterSpacing;
-			} else {
-				flushToken();
-				currentTokenIsSpace = g.isSpace;
-				currentTokenGlyphs.push(g);
-				currentTokenWidth = g.advance + g.letterSpacing;
-			}
-		}
-		flushToken();
-
-		// Word wrapping into lines
-		interface RawSpanGlyph extends StreamGrapheme {
-			x: number;
-		}
-		interface RawSpanLine {
-			glyphs: RawSpanGlyph[];
-			width: number;
-		}
-
-		const lines: RawSpanLine[] = [];
-		let currentLineGlyphs: RawSpanGlyph[] = [];
-		let currentLineWidth = 0;
-
-		for (const token of tokens) {
-			if (token.isNewline) {
-				lines.push({
-					glyphs: currentLineGlyphs,
-					width: currentLineWidth,
-				});
-				currentLineGlyphs = [];
-				currentLineWidth = 0;
-				continue;
-			}
-
-			if (token.isSpace) {
-				// Drop leading space at start of line
-				if (currentLineGlyphs.length === 0) continue;
-				for (const g of token.glyphs) {
-					currentLineGlyphs.push({
-						...g,
-						x: currentLineWidth,
-					});
-					currentLineWidth += g.advance + g.letterSpacing;
-				}
-			} else {
-				// Word token: wrap if exceeding maxWidth
-				const lastG = token.glyphs[token.glyphs.length - 1];
-				const trailingLs =
-					lastG && lastG.letterSpacing > 0 ? lastG.letterSpacing : 0;
-				const tokenVisualWidth = token.width - trailingLs;
-				if (
-					currentLineWidth > 0 &&
-					currentLineWidth + tokenVisualWidth > maxWidth
-				) {
-					lines.push({
-						glyphs: currentLineGlyphs,
-						width: currentLineWidth,
-					});
-					currentLineGlyphs = [];
-					currentLineWidth = 0;
-				}
-
-				for (const g of token.glyphs) {
-					currentLineGlyphs.push({
-						...g,
-						x: currentLineWidth,
-					});
-					currentLineWidth += g.advance + g.letterSpacing;
+			const parts = rawText.split("\n");
+			for (let p = 0; p < parts.length; p++) {
+				if (p > 0) paragraphs.push([]);
+				if (parts[p]) {
+					paragraphs[paragraphs.length - 1].push({ text: parts[p], style });
 				}
 			}
 		}
-		lines.push({
-			glyphs: currentLineGlyphs,
-			width: currentLineWidth,
-		});
 
-		// Kerning per line
-		for (const line of lines) {
-			let shift = 0;
-			for (let i = 1; i < line.glyphs.length; i++) {
-				const prev = line.glyphs[i - 1];
-				const cur = line.glyphs[i];
-				if (
-					!prev.isSpace &&
-					!cur.isSpace &&
-					prev.cp &&
-					cur.cp &&
-					prev.font === cur.font
-				) {
-					shift +=
-						getKernOffset(cur.font, prev.cp.codePoint, cur.cp.codePoint) *
-						cur.fontScale;
-				}
-				cur.x += shift;
-			}
-			line.width += shift;
+		interface Line {
+			clusters: ShapedCluster<SpanStyle>[];
+			baseLevel: number;
 		}
+		const lines: Line[] = [];
+		for (const segments of paragraphs) {
+			const shaped = shapeParagraph(segments, { direction, ligatures });
+			for (const clusters of breakLines(shaped.clusters, maxWidth)) {
+				lines.push({ clusters, baseLevel: shaped.baseLevel });
+			}
+		}
+
+		const { indices, chars } = assignIndices(
+			lines.map((l) => l.clusters),
+			applyBy,
+		);
 
 		// Baseline alignment & output glyph assembly
 		const glyphs: SlugGlyphLayout[] = [];
 		const emojis: SlugEmojiLayout[] = [];
 		const marks: SlugMarkLayout[] = [];
+		let hasRtl = false;
 
 		let currentBaselineY = 0;
-		let wordIndex = 0;
-		let charIndex = 0;
-
-		const isCenter = align === "center";
-		const isRight = align === "right" || align === "end";
+		const targetAlignWidth = alignWidth ?? maxWidth;
+		const defaultScale = defaultFontSize / defaultFont.unitsPerEm;
 
 		for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
-			const line = lines[lineIndex];
+			const { clusters, baseLevel } = lines[lineIndex];
 
-			let maxAscenderPx =
-				(defaultFont.ascender ?? 800) *
-				(defaultFontSize / defaultFont.unitsPerEm);
-			let maxDescenderPx =
-				-(defaultFont.descender ?? -200) *
-				(defaultFontSize / defaultFont.unitsPerEm);
+			let maxAscenderPx = (defaultFont.ascender ?? 800) * defaultScale;
+			let maxDescenderPx = -(defaultFont.descender ?? -200) * defaultScale;
 			let maxLineHeightPx = defaultLineHeight;
 
-			for (const g of line.glyphs) {
-				const asc = (g.font.ascender ?? 800) * g.fontScale;
-				const desc = -(g.font.descender ?? -200) * g.fontScale;
-				const lh = defaultLineHeight * (g.fontSize / defaultFontSize);
+			for (const c of clusters) {
+				const st = c.style;
+				const asc = (st.font.ascender ?? 800) * st.fontScale;
+				const desc = -(st.font.descender ?? -200) * st.fontScale;
+				const lh = defaultLineHeight * (st.fontSize / defaultFontSize);
 				if (asc > maxAscenderPx) maxAscenderPx = asc;
 				if (desc > maxDescenderPx) maxDescenderPx = desc;
 				if (lh > maxLineHeightPx) maxLineHeightPx = lh;
@@ -821,26 +497,15 @@ export class SlugGeometry {
 				currentBaselineY = maxAscenderPx;
 			}
 
-			let visibleLineWidth = line.width;
-			for (let i = line.glyphs.length - 1; i >= 0; i--) {
-				const g = line.glyphs[i];
-				if (!g.isSpace) {
-					visibleLineWidth = g.x + g.advance;
-					break;
-				}
-			}
+			const placed: PlacedLine<SpanStyle> = placeLine(clusters, baseLevel);
+			const shift = alignOffset(
+				placed,
+				resolveAlign(align, baseLevel),
+				targetAlignWidth,
+			);
+			if (baseLevel & 1) hasRtl = true;
 
-			const targetAlignWidth = alignWidth ?? maxWidth;
-			let alignOffset = 0;
-			if (isCenter) {
-				alignOffset = (targetAlignWidth - visibleLineWidth) / 2;
-			} else if (isRight) {
-				alignOffset = targetAlignWidth - visibleLineWidth;
-			}
-
-			let inWord = false;
-
-			// Mark tracking
+			// Mark backgrounds group visually adjacent clusters of one mark.
 			let activeMark: TextSpanMark | undefined;
 			let markStartX = 0;
 			let markEndX = 0;
@@ -851,24 +516,12 @@ export class SlugGeometry {
 				if (activeMark && markEndX > markStartX) {
 					const padX = activeMark.paddingX ?? 4;
 					const padY = activeMark.paddingY ?? 2;
-					const bg =
-						typeof activeMark.background === "string"
-							? activeMark.background
-							: activeMark.background &&
-									typeof activeMark.background === "object" &&
-									"get" in activeMark.background &&
-									typeof (activeMark.background as { get: () => unknown })
-										.get === "function"
-								? String(
-										(activeMark.background as { get: () => unknown }).get(),
-									)
-								: String(activeMark.background);
 					marks.push({
 						x: markStartX - padX,
 						y: currentBaselineY - markAsc - padY,
 						width: markEndX - markStartX + padX * 2,
 						height: markAsc + markDesc + padY * 2,
-						background: bg,
+						background: String(resolveValue(activeMark.background)),
 						borderRadius: activeMark.borderRadius ?? 4,
 						lineIndex,
 					});
@@ -876,88 +529,75 @@ export class SlugGeometry {
 				activeMark = undefined;
 			};
 
-			for (let gIdx = 0; gIdx < line.glyphs.length; gIdx++) {
-				const g = line.glyphs[gIdx];
-				const charX = g.x + alignOffset;
-
-				// Mark grouping
-				if (g.mark && !g.isSpace) {
-					if (!activeMark || activeMark !== g.mark) {
+			const xOf = new Map<ShapedCluster<SpanStyle>, number>();
+			for (const p of placed.clusters) {
+				const c = p.cluster;
+				const x = p.x + shift;
+				xOf.set(c, x);
+				const st = c.style;
+				if (st.mark && !c.isSpace) {
+					const a = (st.font.ascender ?? 800) * st.fontScale;
+					const d = -(st.font.descender ?? -200) * st.fontScale;
+					if (!activeMark || activeMark !== st.mark) {
 						flushMark();
-						activeMark = g.mark;
-						markStartX = charX;
-						markEndX = charX + g.advance;
-						markAsc = (g.font.ascender ?? 800) * g.fontScale;
-						markDesc = -(g.font.descender ?? -200) * g.fontScale;
+						activeMark = st.mark;
+						markStartX = x + c.inkStart;
+						markEndX = x + c.inkEnd;
+						markAsc = a;
+						markDesc = d;
 					} else {
-						markEndX = charX + g.advance;
-						const a = (g.font.ascender ?? 800) * g.fontScale;
-						const d = -(g.font.descender ?? -200) * g.fontScale;
+						markEndX = x + c.inkEnd;
 						if (a > markAsc) markAsc = a;
 						if (d > markDesc) markDesc = d;
 					}
 				} else {
 					flushMark();
 				}
-
-				if (g.isEmoji) {
-					emojis.push({
-						char: g.char,
-						x: charX,
-						y: currentBaselineY - g.fontSize,
-						size: g.fontSize,
-						lineIndex,
-					});
-					charIndex++;
-				} else if (g.cp) {
-					if (g.isSpace) {
-						if (inWord) {
-							wordIndex++;
-							inWord = false;
-						}
-					} else {
-						if (!inWord) {
-							inWord = true;
-						}
-					}
-
-					let mappedUnitIndex = 0;
-					if (applyBy === "line") {
-						mappedUnitIndex = lineIndex;
-					} else if (applyBy === "word") {
-						mappedUnitIndex = wordIndex;
-					} else {
-						mappedUnitIndex = charIndex;
-					}
-
-					glyphs.push({
-						char: g.char,
-						cp: g.cp,
-						x: charX,
-						y: currentBaselineY + g.baselineShift,
-						lineIndex,
-						wordIndex,
-						charIndex,
-						unitIndex: mappedUnitIndex,
-						isSpace: g.isSpace,
-						spanIndex: g.spanIndex,
-						fill: g.fill,
-						fontSize: g.fontSize,
-						fontScale: g.fontScale,
-						baselineShift: g.baselineShift,
-						opacity: g.opacity,
-						fontFamily: g.font.fontFamily,
-						font: g.font,
-						mark: g.mark,
-					});
-
-					charIndex++;
-				}
 			}
 			flushMark();
 
-			if (inWord) {
-				wordIndex++;
+			for (const c of clusters) {
+				const x = xOf.get(c) ?? 0;
+				const st = c.style;
+				const idx = indices.get(c) as LogicalIndices;
+				const rtl = (c.level & 1) === 1;
+				if (rtl) hasRtl = true;
+				if (c.isEmoji) {
+					emojis.push({
+						char: c.text,
+						x: x + c.inkStart,
+						y: currentBaselineY - st.fontSize,
+						size: st.fontSize,
+						lineIndex,
+					});
+					continue;
+				}
+				for (const g of c.glyphs) {
+					glyphs.push({
+						char: c.text,
+						cp: g.cp,
+						x: x + g.dx,
+						y: currentBaselineY + st.baselineShift + g.dy,
+						lineIndex,
+						wordIndex: idx.wordIndex,
+						charIndex: idx.charIndex,
+						unitIndex: idx.unitIndex,
+						isSpace: c.isSpace,
+						rtl,
+						clusterAdvance: c.advance - c.spacing,
+						clusterX: x,
+						baseRtl: (baseLevel & 1) === 1,
+						spanIndex: st.spanIndex,
+						fill: st.fill,
+						fontSize: st.fontSize,
+						fontScale: st.fontScale,
+						baselineShift: st.baselineShift,
+						opacity: st.opacity,
+						fontFamily: st.font.fontFamily,
+						font: st.font,
+						mark: st.mark,
+					});
+				}
 			}
 
 			if (lineIndex < lines.length - 1) {
@@ -978,9 +618,7 @@ export class SlugGeometry {
 
 		const totalHeight =
 			lines.length > 0
-				? currentBaselineY +
-					(defaultFontSize / defaultFont.unitsPerEm) *
-						-(defaultFont.descender ?? -200)
+				? currentBaselineY + defaultScale * -(defaultFont.descender ?? -200)
 				: 0;
 
 		return {
@@ -990,7 +628,8 @@ export class SlugGeometry {
 			totalHeight,
 			linesCount: lines.length,
 			wordsCount: Math.max(0, maxUnitIndex + 1),
-			charsCount: charIndex,
+			charsCount: chars,
+			hasRtl: hasRtl || undefined,
 		};
 	}
 
@@ -1000,76 +639,30 @@ export class SlugGeometry {
 		fontSize: number,
 		letterSpacing: number,
 		pathOptions: TextPathOptions,
-		applyBy: "line" | "word" | "char" = "word",
+		applyBy: ApplyBy = "word",
+		direction: TextDirection = "auto",
 	): SlugLayoutResult {
 		const fontScale = fontSize / font.unitsPerEm;
 		const segments = generatePathSegments(pathOptions.path);
 		const chainLUT = buildPathLUT(segments);
 		const totalLength = chainLUT.totalLength;
 
-		const graphemes = segmentGraphemes(text);
-
-		interface TokenChar {
-			char: string;
-			cp: SlugCodePoint | null;
-			isEmoji: boolean;
-			isSpace: boolean;
-			advance: number;
-			charIndex: number;
-			wordIndex: number;
-			unitIndex: number;
-		}
-
-		const chars: TokenChar[] = [];
-		let wordIndex = 0;
-		let charIndex = 0;
-		let inWord = false;
-
-		for (const char of graphemes) {
-			if (char === "\uFE0F" || char === "\uFE0E" || char === "\u200D") {
-				continue;
-			}
-			const isSpace = /^\s+$/.test(char);
-			const isEmoji = EMOJI_REGEX.test(char);
-			let cp: SlugCodePoint | null = null;
-			let advance = 0;
-
-			if (isEmoji) {
-				advance = fontSize;
-			} else {
-				const codePoint = char.codePointAt(0) || 0;
-				cp = font.codePoints.get(codePoint) || font.codePoints.get(-1) || null;
-				advance = (cp?.advanceWidth || 0) * fontScale;
-			}
-
-			if (isSpace) {
-				if (inWord) {
-					wordIndex++;
-					inWord = false;
-				}
-			} else {
-				if (!inWord) {
-					inWord = true;
-				}
-			}
-
-			let unitIdx = charIndex;
-			if (applyBy === "word") unitIdx = wordIndex;
-			else if (applyBy === "line") unitIdx = 0;
-
-			chars.push({
-				char,
-				cp,
-				isEmoji,
-				isSpace,
-				advance,
-				charIndex,
-				wordIndex,
-				unitIndex: unitIdx,
-			});
-			charIndex++;
-		}
-		if (inWord) wordIndex++;
+		// Path text is a single line: shape it whole, then lay it along the
+		// path in display order.
+		const shaped = shapeParagraph(
+			[
+				{
+					text: text.replace(/\n/g, " "),
+					style: { font, fontSize, letterSpacing },
+				},
+			],
+			{ direction, ligatures: useLigatures(applyBy, letterSpacing) },
+		);
+		const clusters = shaped.clusters;
+		const { indices, words, chars } = assignIndices([clusters], applyBy);
+		const visual = placeLine(clusters, shaped.baseLevel).clusters.map(
+			(p) => p.cluster,
+		);
 
 		let baselineOffsetPixels = 0;
 		if (pathOptions.baselineOffset === "center") {
@@ -1090,70 +683,67 @@ export class SlugGeometry {
 		// Last Margin); force alignment spreads the line across what is left.
 		const effEnd = Math.max(firstMargin, totalLength - lastMargin);
 		const pathSpan = effEnd - firstMargin;
-		const advanceAt = (i: number): number => {
-			const ch = chars[i];
-			const next = chars[i + 1];
-			const kern =
-				next && !ch.isSpace && !next.isSpace && ch.cp && next.cp
-					? getKernOffset(font, ch.cp.codePoint, next.cp.codePoint) * fontScale
-					: 0;
-			return ch.advance + letterSpacing + kern;
-		};
-		// The natural run: every advance but the last glyph's own width counts once.
+		// The natural run: every advance but the last cluster's own width counts once.
 		let naturalLength = 0;
-		for (let i = 0; i < chars.length; i++)
-			naturalLength += i < chars.length - 1 ? advanceAt(i) : chars[i].advance;
+		for (let i = 0; i < visual.length; i++) {
+			const c = visual[i];
+			naturalLength +=
+				i < visual.length - 1 ? c.advance : c.advance - c.spacing;
+		}
 		const forceAlignExtra =
-			pathOptions.forceAlignment && chars.length > 1
-				? (pathSpan - naturalLength) / (chars.length - 1)
+			pathOptions.forceAlignment && visual.length > 1
+				? (pathSpan - naturalLength) / (visual.length - 1)
 				: 0;
 
-		let currentDistance = firstMargin;
-
-		for (let i = 0; i < chars.length; i++) {
-			const ch = chars[i];
-			const d = currentDistance;
-
+		const perpendicular = pathOptions.perpendicularToPath !== false;
+		const sampleAt = (d: number) => {
 			let s = pathOptions.reversePath ? totalLength - d : d;
 			if (pathOptions.loop && totalLength > 0) {
 				s = ((s % totalLength) + totalLength) % totalLength;
 			}
+			return samplePathChainGeometry(segments, chainLUT, s);
+		};
 
-			const sample = samplePathChainGeometry(segments, chainLUT, s);
-			const glyphX = sample.position.x + sample.normal.x * totalShift;
-			const glyphY = sample.position.y + sample.normal.y * totalShift;
-			const tangentRad =
-				pathOptions.perpendicularToPath !== false
-					? (sample.tangentAngleDeg * Math.PI) / 180
-					: 0;
-
-			if (ch.isEmoji) {
+		let currentDistance = firstMargin;
+		for (const c of visual) {
+			const idx = indices.get(c) as LogicalIndices;
+			if (c.isEmoji) {
+				const sample = sampleAt(currentDistance + c.inkStart);
 				emojis.push({
-					char: ch.char,
-					x: glyphX,
-					y: glyphY - fontSize,
+					char: c.text,
+					x: sample.position.x + sample.normal.x * totalShift,
+					y: sample.position.y + sample.normal.y * totalShift - fontSize,
 					size: fontSize,
 					lineIndex: 0,
 				});
-			} else if (ch.cp) {
-				glyphs.push({
-					char: ch.char,
-					cp: ch.cp,
-					x: glyphX,
-					y: glyphY,
-					lineIndex: 0,
-					wordIndex: ch.wordIndex,
-					charIndex: ch.charIndex,
-					unitIndex: ch.unitIndex,
-					isSpace: ch.isSpace,
-					pathTangentAngleRad: tangentRad,
-					perpendicularToPath: pathOptions.perpendicularToPath !== false,
-					pathNormalX: sample.normal.x,
-					pathNormalY: sample.normal.y,
-				});
+			} else {
+				for (const g of c.glyphs) {
+					// Each glyph (a mark too) sits where its own offset lands on the path.
+					const sample = sampleAt(currentDistance + g.dx);
+					const shift = totalShift + g.dy;
+					glyphs.push({
+						char: c.text,
+						cp: g.cp,
+						x: sample.position.x + sample.normal.x * shift,
+						y: sample.position.y + sample.normal.y * shift,
+						lineIndex: 0,
+						wordIndex: idx.wordIndex,
+						charIndex: idx.charIndex,
+						unitIndex: applyBy === "line" ? 0 : idx.unitIndex,
+						isSpace: c.isSpace,
+						textIndex: c.start,
+						rtl: (c.level & 1) === 1,
+						clusterAdvance: c.advance - c.spacing,
+						pathTangentAngleRad: perpendicular
+							? (sample.tangentAngleDeg * Math.PI) / 180
+							: 0,
+						perpendicularToPath: perpendicular,
+						pathNormalX: sample.normal.x,
+						pathNormalY: sample.normal.y,
+					});
+				}
 			}
-
-			currentDistance += advanceAt(i) + forceAlignExtra;
+			currentDistance += c.advance + forceAlignExtra;
 		}
 
 		return {
@@ -1161,8 +751,12 @@ export class SlugGeometry {
 			emojis,
 			totalHeight: fontSize * 1.5,
 			linesCount: 1,
-			wordsCount: wordIndex,
-			charsCount: charIndex,
+			wordsCount: words,
+			charsCount: chars,
+			hasRtl:
+				shaped.baseLevel & 1 || clusters.some((c) => c.level & 1)
+					? true
+					: undefined,
 		};
 	}
 }

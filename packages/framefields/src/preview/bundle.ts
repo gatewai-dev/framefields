@@ -106,7 +106,6 @@ export async function buildEngine(outDir: string): Promise<void> {
 		...BROWSER,
 		entryPoints,
 		outdir: outDir,
-		outExtension: { ".js": ".mjs" },
 		splitting: true,
 		minify: true,
 		conditions: ["development", "browser", "import"],
@@ -124,6 +123,13 @@ export async function buildEngine(outDir: string): Promise<void> {
 			},
 		],
 	});
+	// Plain `.js`: every static host serves it as JavaScript, while some send
+	// `.mjs` as text, which browsers refuse to run as a module. This marks the
+	// files as ES modules for Node.
+	await fs.promises.writeFile(
+		path.join(outDir, "package.json"),
+		'{ "type": "module" }\n',
+	);
 }
 
 export interface ProjectBundle {
@@ -141,11 +147,21 @@ export async function bundleProject(options: {
 	/** Where cached vision models are, and where onnxruntime-web loads from. */
 	modelsDir: string;
 	ortBase: string;
+	/** URL the engine's files are served under. Defaults to the preview server's. */
+	engineUrl?: string;
+	/**
+	 * Gives the project's files the URLs a static site serves them at: a
+	 * file in `dir` gets `url` plus its path inside `dir` as its
+	 * `import.meta.url`, so paths built from it point into the site. By
+	 * default each file keeps its own path, which the preview server serves.
+	 */
+	fileRoot?: { dir: string; url: string };
 }): Promise<ProjectBundle> {
 	const { build } = await import("esbuild");
 	const entry = path.resolve(options.entry);
+	const engineUrl = options.engineUrl ?? ENGINE_URL;
 	const fromEngine = (file: string) => ({
-		path: `${ENGINE_URL}/${file}.mjs`,
+		path: `${engineUrl}/${file}.js`,
 		external: true,
 	});
 	const settings = { modelsDir: options.modelsDir, ortBase: options.ortBase };
@@ -166,22 +182,22 @@ export async function bundleProject(options: {
 					}));
 					b.onLoad({ filter: /.*/, namespace: "framefields-preview" }, () => ({
 						contents: [
-							`import { startPlayer } from ${JSON.stringify(`${ENGINE_URL}/player.mjs`)};`,
+							`import { startPlayer } from ${JSON.stringify(`${engineUrl}/player.js`)};`,
 							`import * as mod from ${JSON.stringify(entry)};`,
 							`startPlayer(mod, ${JSON.stringify(options.exportName)}, ${JSON.stringify(settings)});`,
 						].join("\n"),
 						resolveDir: path.dirname(entry),
 						loader: "js",
 					}));
-					b.onResolve({ filter: /^\/@framefields\/engine\// }, (args) => ({
-						path: args.path,
-						external: true,
-					}));
+					b.onResolve(
+						{ filter: new RegExp(`^${escapeRegExp(engineUrl)}/`) },
+						(args) => ({ path: args.path, external: true }),
+					);
 					b.onResolve({ filter: /^framefields(\/|$)/ }, (args) =>
 						ENTRIES[args.path] ? fromEngine(engineName(args.path)) : undefined,
 					);
 					resolveNode(b, (name) => fromEngine(`shims/${name}`));
-					rewriteMetaUrl(b);
+					rewriteMetaUrl(b, options.fileRoot);
 				},
 			},
 		],
@@ -203,7 +219,7 @@ let engineBuild: Promise<string> | undefined;
 export function prebuiltEngineDir(here: string): string | undefined {
 	return [here, path.join(here, "..")]
 		.map((base) => path.join(base, "preview-engine"))
-		.find((dir) => fs.existsSync(path.join(dir, "player.mjs")));
+		.find((dir) => fs.existsSync(path.join(dir, "player.js")));
 }
 
 /**
@@ -239,6 +255,9 @@ export function visionModelsDir(): string {
 
 const ORT_WEB_VERSION = "1.30.0";
 
+/** A pinned onnxruntime-web build on a CDN. */
+export const ORT_WEB_CDN = `https://cdn.jsdelivr.net/npm/onnxruntime-web@${ORT_WEB_VERSION}/dist/`;
+
 /**
  * onnxruntime-web, for vision effects: the project's own install when it has
  * one (served from disk), otherwise a pinned CDN build. Loaded only when a
@@ -258,7 +277,7 @@ export function onnxRuntimeWeb(fromDir: string): {
 		} catch {}
 	}
 	return {
-		base: `https://cdn.jsdelivr.net/npm/onnxruntime-web@${ORT_WEB_VERSION}/dist/`,
+		base: ORT_WEB_CDN,
 	};
 }
 
@@ -304,17 +323,43 @@ function resolveNode(
 }
 
 /** Each project file keeps its own URL, as `fileURLToPath(import.meta.url)` expects. */
-function rewriteMetaUrl(b: PluginBuild): void {
+function rewriteMetaUrl(
+	b: PluginBuild,
+	fileRoot?: { dir: string; url: string },
+): void {
 	b.onLoad({ filter: /\.[cm]?[jt]sx?$/ }, async (args) => {
 		if (args.path.includes(`${path.sep}node_modules${path.sep}`))
 			return undefined;
 		const source = await fs.promises.readFile(args.path, "utf8");
 		if (!source.includes(META_URL)) return undefined;
 		return {
-			contents: `const __framefieldsFileUrl = ${JSON.stringify(pathToFileURL(args.path).href)};\n${source.replaceAll(META_URL, "__framefieldsFileUrl")}`,
+			contents: `const __framefieldsFileUrl = ${JSON.stringify(fileUrl(args.path, fileRoot))};\n${source.replaceAll(META_URL, "__framefieldsFileUrl")}`,
 			loader: loaderFor(args.path),
 		};
 	});
+}
+
+/** A file's `file://` URL, moved under `fileRoot.url` when it is in `fileRoot.dir`. */
+export function fileUrl(
+	file: string,
+	fileRoot?: { dir: string; url: string },
+): string {
+	const rel = fileRoot ? path.relative(fileRoot.dir, file) : "";
+	if (
+		!fileRoot ||
+		!rel ||
+		rel === ".." ||
+		rel.startsWith(`..${path.sep}`) ||
+		path.isAbsolute(rel)
+	) {
+		return pathToFileURL(file).href;
+	}
+	const url = `${fileRoot.url.replace(/\/?$/, "/")}${rel.split(path.sep).join("/")}`;
+	return `file://${encodeURI(url).replace(/[?#]/g, encodeURIComponent)}`;
+}
+
+function escapeRegExp(text: string): string {
+	return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 /** The generated list of node renderers (needed only to build the engine). */

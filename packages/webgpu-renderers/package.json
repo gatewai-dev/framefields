@@ -51,7 +51,8 @@
 		"mediabunny": "^1.51.0",
 		"sharp": "^0.35.4",
 		"skia-canvas": "^3.0.8",
-		"webgpu": "^0.4.0"
+		"webgpu": "^0.4.0",
+		"zod": "^4.3.6"
 	},
 	"devDependencies": {
 		"@framefields/tsconfig": "workspace:*",

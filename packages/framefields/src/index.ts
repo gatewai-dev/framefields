@@ -2870,7 +2870,12 @@ export const Light = {
 };
 
 export {
+	type ExportPreviewOptions,
+	type ExportPreviewSource,
+	exportPreview,
+	type PreviewAudio,
 	type PreviewCloseReason,
+	type PreviewExport,
 	type PreviewOptions,
 	type PreviewSession,
 	type PreviewSource,

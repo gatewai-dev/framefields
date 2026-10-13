@@ -1,11 +1,37 @@
 /**
- * Single-file preview UI served by `startPreview`. No framework, no build step.
- * The page script avoids template literals so it can live inside this one.
+ * Single-file preview UI served by `startPreview` and written by
+ * `exportPreview`. No framework, no build step. The page script avoids
+ * template literals so it can live inside this one.
  */
-export const previewPage = /* html */ `<!doctype html>
+
+/** What the page loads. */
+export interface PreviewPageConfig {
+	/** URL of the composition's size and timing, as JSON. */
+	meta: string;
+	/** URL of the soundtrack. */
+	audio: string;
+	/** URL of the composition's bundle. */
+	player: string;
+	/**
+	 * Served by `startPreview`: the page reloads into the next preview, sends
+	 * its errors to the terminal and keeps notes. Off for a static export.
+	 */
+	live: boolean;
+	/** Base URL for the page's relative URLs, e.g. fonts found by family. */
+	base?: string;
+	/**
+	 * A static export's files: their size by URL path, so `fs.existsSync` and
+	 * `fs.statSync` in the composition work without a server.
+	 */
+	files?: Record<string, number>;
+}
+
+/** The page, for one composition. */
+export function previewPage(config: PreviewPageConfig): string {
+	return /* html */ `<!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
+<meta charset="utf-8">${config.base ? `\n<base href="${attr(config.base)}">` : ""}
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>framefields preview</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 512 512%22%3E%3Cg fill=%22none%22 stroke=%22%233B82F6%22 stroke-linecap=%22round%22%3E%3Cpath d=%22M184 56H86q-30 0-30 30v98M328 56h98q30 0 30 30v98M184 456H86q-30 0-30-30v-98M328 456h98q30 0 30-30v-98%22 stroke-width=%2234%22/%3E%3Cpath d=%22M176 182v148m0-148c0 74 60 74 100 74%22 stroke-width=%2228%22/%3E%3C/g%3E%3Cg fill=%22%233B82F6%22%3E%3Ccircle cx=%22176%22 cy=%22172%22 r=%2232%22/%3E%3Ccircle cx=%22176%22 cy=%22340%22 r=%2232%22/%3E%3Cpath d=%22M284 200l78 56-78 56z%22 stroke=%22%233B82F6%22 stroke-width=%2234%22 stroke-linejoin=%22round%22/%3E%3C/g%3E%3C/svg%3E">
@@ -38,6 +64,7 @@ export const previewPage = /* html */ `<!doctype html>
     }
   }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   html, body { height: 100%; margin: 0; overflow: hidden; background: var(--bg); color: var(--ink); }
   body {
     display: flex; flex-direction: column; height: 100dvh;
@@ -364,7 +391,25 @@ export const previewPage = /* html */ `<!doctype html>
 
 <script>
 (function () {
+  var CONFIG = ${scriptJson(config)};
   var $ = function (id) { return document.getElementById(id); };
+
+  // A static export has no server: the page lists the published files for
+  // fs.existsSync, and the engine's requests for local files under /@fs/
+  // (the preview server's prefix) go to where the files are published.
+  if (CONFIG.files) {
+    window.__framefieldsStaticFiles = CONFIG.files;
+    var fetchFile = window.fetch.bind(window);
+    window.fetch = function (input, init) {
+      var request = input instanceof Request ? input : null;
+      var url = new URL(request ? request.url : String(input), location.href);
+      if (url.origin === location.origin && url.pathname.indexOf("/@fs/") === 0) {
+        url.pathname = url.pathname.slice(4);
+        input = request ? new Request(url.href, request) : url.href;
+      }
+      return fetchFile(input, init);
+    };
+  }
   var stage = $("stage"), timeline = $("timeline"), tlInner = $("tlInner");
 
   var meta = null, session = null, frame = 0, shown = -1, playing = false, playToken = 0;
@@ -398,6 +443,7 @@ export const previewPage = /* html */ `<!doctype html>
     var text = parts.map(errText).join(" ").trim(), key = level + text.replace(/\\d+/g, "#");
     if (!text || reportedKeys.has(key) || reportedKeys.size > 100) return;
     reportedKeys.add(key);
+    if (!CONFIG.live) return;
     fetch("/@framefields/log", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -525,7 +571,7 @@ export const previewPage = /* html */ `<!doctype html>
       audio.gain.connect(audio.ctx.destination);
       applyVolume();
     }
-    fetch("/audio")
+    fetch(CONFIG.audio)
       .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.arrayBuffer(); })
       .then(function (data) { return audio.ctx.decodeAudioData(data); })
       .then(function (buf) { audio.buffer = buf; setAudioStatus("ready"); })
@@ -1175,30 +1221,32 @@ export const previewPage = /* html */ `<!doctype html>
 
   // When the preview command ends the event stream drops and the browser keeps
   // retrying. The next preview of this project (same port) says hello with a
-  // new session, and this tab reloads into it.
-  var events = new EventSource("/events");
-  events.addEventListener("hello", function (e) {
-    var s = JSON.parse(e.data).session;
-    if (session && s !== session) { location.reload(); return; }
-    offline = false;
-    renderChip();
-  });
-  events.addEventListener("error", function () {
-    if (!meta) return;
-    if (playing) { stop(); keepPosition(); }
-    offline = true;
-    renderChip();
-  });
-  events.addEventListener("notes", function (e) {
-    notes = JSON.parse(e.data);
-    if (openId != null && !noteById(openId)) closePop();
-    renderNotes();
-  });
-  events.addEventListener("audio", function (e) {
-    if (meta) loadAudio(JSON.parse(e.data));
-  });
+  // new session, and this tab reloads into it. A static export has no server.
+  if (CONFIG.live) {
+    var events = new EventSource("/events");
+    events.addEventListener("hello", function (e) {
+      var s = JSON.parse(e.data).session;
+      if (session && s !== session) { location.reload(); return; }
+      offline = false;
+      renderChip();
+    });
+    events.addEventListener("error", function () {
+      if (!meta) return;
+      if (playing) { stop(); keepPosition(); }
+      offline = true;
+      renderChip();
+    });
+    events.addEventListener("notes", function (e) {
+      notes = JSON.parse(e.data);
+      if (openId != null && !noteById(openId)) closePop();
+      renderNotes();
+    });
+    events.addEventListener("audio", function (e) {
+      if (meta) loadAudio(JSON.parse(e.data));
+    });
+  }
 
-  fetch("/meta").then(function (r) { return r.json(); }).then(function (m) {
+  fetch(CONFIG.meta).then(function (r) { return r.json(); }).then(function (m) {
     session = m.session;
     applyMeta(m);
     notesOn = !!m.notesDir;
@@ -1237,7 +1285,20 @@ export const previewPage = /* html */ `<!doctype html>
   window.addEventListener("unhandledrejection", function (e) { report("error", [e.reason]); });
 })();
 </script>
-<script type="module" src="/@framefields/player.js"></script>
+<script type="module" src="${attr(config.player)}"></script>
 </body>
 </html>
 `;
+}
+
+function attr(value: string): string {
+	return value
+		.replaceAll("&", "&amp;")
+		.replaceAll('"', "&quot;")
+		.replaceAll("<", "&lt;");
+}
+
+/** JSON that can sit inside a script element. */
+function scriptJson(value: unknown): string {
+	return JSON.stringify(value).replaceAll("<", "\\u003c");
+}

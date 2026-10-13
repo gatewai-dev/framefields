@@ -1,4 +1,5 @@
 import { premultiplyPixels } from "../color.js";
+import { toLocalPath } from "../local-path.js";
 import type { RenderContextValue } from "../render-context.js";
 import { textureCache } from "../texture-cache.js";
 import { createImageTexture } from "./image-texture.js";
@@ -42,14 +43,7 @@ class ImageLoader {
 					arrayBuffer = await response.arrayBuffer();
 				} else {
 					// Local filesystem file in headless Node.js
-					let filePath = src;
-					if (filePath.startsWith("file://")) {
-						try {
-							filePath = new URL(filePath).pathname;
-						} catch {
-							filePath = filePath.replace(/^file:\/\//, "");
-						}
-					}
+					const filePath = (await toLocalPath(src)) ?? src;
 					const fs = await import(/* webpackIgnore: true */ "fs/promises");
 					const fileBuf = await fs.readFile(filePath);
 					arrayBuffer = fileBuf.buffer.slice(

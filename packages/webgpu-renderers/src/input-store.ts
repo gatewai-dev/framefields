@@ -1,7 +1,5 @@
 import { ALL_FORMATS, FilePathSource, Input, UrlSource } from "mediabunny";
-
-const isNodeRuntime = () =>
-	typeof process !== "undefined" && Boolean(process.versions?.node);
+import { isNodeRuntime, toLocalPath } from "./local-path.js";
 
 /** In the browser, local paths are served through the dev server's `/@fs`. */
 function resolveInputUrl(url: string, isNode: boolean): string {
@@ -21,6 +19,37 @@ function resolveInputUrl(url: string, isNode: boolean): string {
 	return resolvedUrl;
 }
 
+function safeDecode(path: string): string {
+	try {
+		return decodeURIComponent(path);
+	} catch {
+		return path;
+	}
+}
+
+async function assertReadableFile(
+	filePath: string,
+	url: string,
+): Promise<void> {
+	const { stat } = await import(
+		/* webpackIgnore: true */ /* @vite-ignore */ "node:fs/promises"
+	);
+	let isFile: boolean;
+	try {
+		isFile = (await stat(filePath)).isFile();
+	} catch (err) {
+		throw new Error(
+			`Cannot open local media file "${filePath}" (from "${url}"): ${(err as Error).message}`,
+			{ cause: err },
+		);
+	}
+	if (!isFile) {
+		throw new Error(
+			`Cannot open local media file "${filePath}" (from "${url}"): not a regular file`,
+		);
+	}
+}
+
 class InputStore {
 	private store = new Map<
 		string,
@@ -35,15 +64,18 @@ class InputStore {
 		let shared = this.store.get(resolvedUrl);
 		if (!shared) {
 			const promise = (async () => {
-				const isLocal = resolvedUrl.startsWith("/") || resolvedUrl.startsWith("file://");
-				let source: InstanceType<typeof FilePathSource> | InstanceType<typeof UrlSource>;
-				if (isNode && isLocal && typeof FilePathSource !== "undefined") {
-					let filePath = resolvedUrl.startsWith("file://")
-						? resolvedUrl.slice(7)
-						: resolvedUrl;
-					try {
-						filePath = decodeURIComponent(filePath);
-					} catch (_) {}
+				const filePath = await toLocalPath(
+					resolvedUrl.startsWith("file:")
+						? resolvedUrl
+						: safeDecode(resolvedUrl),
+				);
+				let source:
+					| InstanceType<typeof FilePathSource>
+					| InstanceType<typeof UrlSource>;
+				if (filePath !== null) {
+					// FilePathSource opens lazily; check now so a bad path fails
+					// with its name instead of deep inside the first decode.
+					await assertReadableFile(filePath, url);
 					source = new FilePathSource(filePath);
 				} else {
 					source = new UrlSource(resolvedUrl);

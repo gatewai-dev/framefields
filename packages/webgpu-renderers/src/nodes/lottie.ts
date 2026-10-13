@@ -4,6 +4,7 @@ import {
 	localFontManager,
 } from "@framefields/client-utils";
 import { DotLottie, type Fit } from "@lottiefiles/dotlottie-web";
+import { premultiplyPixels } from "../color.js";
 import {
 	getHeadlessFontData,
 	registerHeadlessFont,
@@ -593,10 +594,13 @@ export async function drawLottieNode(
 				const imgData = (
 					c2d as unknown as OffscreenCanvasRenderingContext2D
 				).getImageData(0, 0, instance.width, instance.height);
-				const pixelBuffer = new Uint8Array(
-					imgData.data.buffer,
-					imgData.data.byteOffset,
-					imgData.data.byteLength,
+				// getImageData returns straight alpha.
+				const pixelBuffer = premultiplyPixels(
+					new Uint8Array(
+						imgData.data.buffer,
+						imgData.data.byteOffset,
+						imgData.data.byteLength,
+					),
 				);
 				ctx.device.queue.writeTexture(
 					{ texture: tex },

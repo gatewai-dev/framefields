@@ -61,6 +61,7 @@ class SvgLoader {
 					const rendered = await renderAsync(text, {
 						fitTo: { mode: "width", value: resolvedWidth },
 					});
+					// resvg's pixels are already premultiplied, as createImageTexture expects.
 					return {
 						width: rendered.width,
 						height: rendered.height,

@@ -66,7 +66,6 @@ const NODE_ONLY = new Set([
 	"dotenv",
 	"esbuild",
 	"@framefields/renderer",
-	"@framefields/server-utils",
 	"framefields/renderer",
 	"framefields/preview",
 ]);

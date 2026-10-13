@@ -6,8 +6,8 @@ import {
 	type NodeRendererPlugin,
 	registerWebGPURenderer,
 } from "@framefields/node-sdk";
-import { rendererLogger } from "@framefields/server-utils";
 import { BUILTIN_NODE_RENDERERS } from "./generated/node-renderers.js";
+import { rendererLogger } from "./logger.js";
 import {
 	loadNodeManifests,
 	type NodeManifest,

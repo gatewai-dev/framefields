@@ -14,8 +14,7 @@ const verbose =
 	typeof process !== "undefined" &&
 	/^(debug|trace)$/i.test(process.env?.LOG_LEVEL ?? "");
 
-// Fallback logger for browser environment. In Node.js environment, we dynamically load @framefields/server-utils to avoid bundling it on the frontend.
-let mediaLogger = {
+const mediaLogger = {
 	debug: (msg: unknown, ...args: unknown[]) => {
 		if (!verbose) return;
 		if (typeof msg === "object" && msg !== null) {
@@ -39,21 +38,6 @@ let mediaLogger = {
 		}
 	},
 };
-
-if (
-	typeof window === "undefined" ||
-	(typeof process !== "undefined" && process.versions?.node)
-) {
-	import(
-		/* webpackIgnore: true */ /* @vite-ignore */ "@framefields/server-utils"
-	)
-		.then((m) => {
-			if (m.mediaLogger) {
-				mediaLogger = m.mediaLogger;
-			}
-		})
-		.catch(() => {});
-}
 
 const yieldToMain = (): Promise<void> => {
 	if (typeof window === "undefined") {

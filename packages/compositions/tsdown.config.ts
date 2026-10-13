@@ -14,7 +14,6 @@ export default defineConfig({
 		"@framefields/core",
 		"@framefields/client-utils",
 		"@framefields/node-sdk",
-		"@framefields/server-utils",
 		"@framefields/renderers",
 		"zod",
 	],

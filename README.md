@@ -4,6 +4,8 @@
 
 **Compositing, motion graphics and 3D for code-first video — one npm package that AI agents drive with code.**
 
+[**framefields.dev**](https://framefields.dev/)
+
 [![npm](https://img.shields.io/badge/npm-framefields-cb3837?logo=npm&logoColor=white)](https://www.npmjs.com/package/framefields)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENCE)
 [![status](https://img.shields.io/badge/status-beta-orange.svg)](#)
@@ -734,6 +736,7 @@ docker build -t framefields-renderer -f Dockerfile.renderer .
 
 ## Community
 
+- **Website:** [framefields.dev](https://framefields.dev/)
 - **Discord:** ask questions, share renders, and follow development at [discord.gg/cbqMGGme5](https://discord.gg/cbqMGGme5).
 - **YouTube:** watch films made with framefields on [@gatewai.studio](https://www.youtube.com/@gatewai.studio).
 

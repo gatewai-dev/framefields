@@ -1,5 +1,11 @@
 # framefields
 
+## 2.1.2
+
+### Patch Changes
+
+- Update homepage and documentation URLs to https://framefields.dev.
+
 ## 2.1.1
 
 ### Patch Changes

@@ -45,6 +45,7 @@
 		"@framefields/core": "workspace:*",
 		"@lottiefiles/dotlottie-web": "^0.74.0",
 		"@resvg/resvg-js": "^2.6.2",
+		"bidi-js": "^1.0.3",
 		"earcut": "^3.2.4",
 		"fontkit": "^2.0.4",
 		"gifuct-js": "^2.1.2",

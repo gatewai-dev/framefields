@@ -1,10 +1,15 @@
 import { debugLog } from "../debug-log.js";
 
 const SLUGGISH_HEADER_DATA = "SLUGGISH";
+/** v2 adds a glyph id to every record, so shaped (unmapped) glyphs round-trip. */
+const SLUGGISH_HEADER_DATA_V2 = "SLUGGIS2";
 const TEXTURE_WIDTH = 4096;
 
 export interface SlugCodePoint {
+	/** Unicode code point, -1 for .notdef, or -2 for a glyph no code point maps to. */
 	codePoint: number;
+	/** The font's glyph id; shaping output refers to glyphs by this. */
+	glyphId?: number;
 	width: number;
 	height: number;
 	advanceWidth: number;
@@ -19,6 +24,8 @@ export interface SlugCodePoint {
 
 export interface SlugFont {
 	codePoints: Map<number, SlugCodePoint>;
+	/** The same glyphs keyed by glyph id (shaped text looks glyphs up here). */
+	glyphs?: Map<number, SlugCodePoint>;
 	curvesTex: GPUTexture;
 	bandsTex: GPUTexture;
 	ascender: number;
@@ -29,6 +36,9 @@ export interface SlugFont {
 	hasTrueWeight?: boolean;
 	weight?: number;
 }
+
+/** `SlugCodePoint.codePoint` of a glyph that only shaping reaches. */
+export const UNMAPPED_CODE_POINT = -2;
 
 export class SlugLoader {
 	static parse(device: GPUDevice, buffer: ArrayBuffer): SlugFont {
@@ -42,20 +52,26 @@ export class SlugLoader {
 		for (let i = 0; i < 8; i++) {
 			headerStr += String.fromCharCode(headerBytes[i]);
 		}
-		if (headerStr !== SLUGGISH_HEADER_DATA) {
+		const isV2 = headerStr === SLUGGISH_HEADER_DATA_V2;
+		if (headerStr !== SLUGGISH_HEADER_DATA && !isV2) {
 			throw new Error(
-				`Invalid header found (${headerStr} instead of ${SLUGGISH_HEADER_DATA})`,
+				`Invalid header found (${headerStr} instead of ${SLUGGISH_HEADER_DATA_V2})`,
 			);
 		}
 		offset += 8;
 
-		const codePointCount = dataView.getUint16(offset, true);
-		offset += 2;
+		const codePointCount = isV2
+			? dataView.getUint32(offset, true)
+			: dataView.getUint16(offset, true);
+		offset += isV2 ? 4 : 2;
 
 		const codePoints = new Map<number, SlugCodePoint>();
+		const glyphs = new Map<number, SlugCodePoint>();
 		for (let i = 0; i < codePointCount; i++) {
 			const cp: SlugCodePoint = {
-				codePoint: dataView.getUint32(offset, true),
+				codePoint: isV2
+					? dataView.getInt32(offset, true)
+					: dataView.getUint32(offset, true),
 				width: dataView.getUint32(offset + 4, true),
 				height: dataView.getUint32(offset + 8, true),
 				advanceWidth: dataView.getUint32(offset + 12, true),
@@ -67,8 +83,13 @@ export class SlugLoader {
 				bandsTexCoordX: dataView.getUint16(offset + 36, true),
 				bandsTexCoordY: dataView.getUint16(offset + 38, true),
 			};
-			codePoints.set(cp.codePoint, cp);
-			offset += 40;
+			if (isV2) {
+				cp.glyphId = dataView.getUint32(offset + 40, true);
+				glyphs.set(cp.glyphId, cp);
+			}
+			if (cp.codePoint !== UNMAPPED_CODE_POINT)
+				codePoints.set(cp.codePoint, cp);
+			offset += isV2 ? 44 : 40;
 		}
 
 		const curvesTexWidth = dataView.getUint16(offset, true);
@@ -166,6 +187,7 @@ export class SlugLoader {
 
 		return {
 			codePoints,
+			glyphs: isV2 ? glyphs : undefined,
 			curvesTex,
 			bandsTex,
 			ascender,

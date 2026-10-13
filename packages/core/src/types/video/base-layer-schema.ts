@@ -54,6 +54,8 @@ export const VideoTextPropsSchema = z.object({
 	fontWeight: z.union([z.number(), z.string()]).optional(),
 	fill: z.string().optional(),
 	align: z.string().optional(),
+	/** Paragraph base direction: "ltr", "rtl" or "auto" (from the text). */
+	direction: z.enum(["ltr", "rtl", "auto"]).optional(),
 	verticalAlign: z.string().optional(),
 	letterSpacing: z.number().optional(),
 	lineHeight: z.number().optional(),

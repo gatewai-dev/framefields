@@ -318,6 +318,8 @@ export async function drawCaptionNode(
 		letterSpacing,
 		calculatedLineHeight,
 		maxWidth,
+		undefined,
+		props.direction,
 	);
 
 	const finalWidth = measured.width;
@@ -327,10 +329,22 @@ export async function drawCaptionNode(
 	const rectHeight = finalHeight + padding * 2;
 
 	const align = props.align ?? "center";
+	// "start"/"end" follow the caption's direction (right/left for RTL text).
+	const rtl = measured.layout?.glyphs[0]?.baseRtl ?? props.direction === "rtl";
+	const boxAlign =
+		align === "start"
+			? rtl
+				? "right"
+				: "left"
+			: align === "end"
+				? rtl
+					? "left"
+					: "right"
+				: align;
 	let rectX = 0;
-	if (align === "center") {
+	if (boxAlign === "center") {
 		rectX = Math.max(0, (containerWidth - rectWidth) / 2);
-	} else if (align === "right") {
+	} else if (boxAlign === "right") {
 		rectX = Math.max(0, containerWidth - rectWidth);
 	}
 

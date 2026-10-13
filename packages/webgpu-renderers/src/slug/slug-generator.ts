@@ -1,7 +1,13 @@
-import type { SlugCodePoint, SlugFont } from "./slug-loader.js";
+import {
+	type SlugCodePoint,
+	type SlugFont,
+	UNMAPPED_CODE_POINT,
+} from "./slug-loader.js";
 
 export interface FontkitGlyph {
+	id: number;
 	codePoints: number[];
+	isMark?: boolean;
 	advanceWidth: number;
 	bbox: {
 		minX: number;
@@ -34,14 +40,25 @@ export interface FontkitFont {
 	variationAxes?: Record<string, unknown>;
 	getVariation?(settings: Record<string, number>): FontkitFont;
 	/** Shapes a string (kerning, ligatures); fontkit fonts always have it. */
-	layout?(text: string): {
-		glyphs: unknown[];
-		positions: Array<{ xAdvance: number }>;
+	layout?(
+		text: string,
+		features?: string[] | Record<string, boolean>,
+		script?: string,
+		language?: string,
+		direction?: "ltr" | "rtl",
+	): {
+		glyphs: FontkitGlyph[];
+		positions: Array<{
+			xAdvance: number;
+			yAdvance: number;
+			xOffset: number;
+			yOffset: number;
+		}>;
 	};
 }
 
 const TEXTURE_WIDTH = 4096;
-const SLUGGISH_HEADER_DATA = "SLUGGISH";
+const SLUGGISH_HEADER_DATA_V2 = "SLUGGIS2";
 
 export interface SlugGeneratorOptions {
 	bandCount?: number;
@@ -400,6 +417,112 @@ function offsetGlyphPath(
 	return { commands };
 }
 
+/**
+ * The growing curve/band data of one generated font. Band offsets are kept
+ * relative to the curve-offset region; they are rebased onto the band header
+ * each time the raw arrays are rebuilt, so glyphs can be appended later.
+ */
+interface GlyphAtlas {
+	source: FontkitFont;
+	strokeWidth?: number;
+	bandCount: number;
+	curves: number[];
+	bandOffsets: number[];
+	curveOffsets: number[];
+	/** GPU device the textures were last uploaded with. */
+	device: GPUDevice | null;
+}
+
+const atlases = new WeakMap<SlugFont, GlyphAtlas>();
+
+/** The fontkit font a generated Slug font was built from (null for loaded binaries). */
+export function getSlugFontSource(font: SlugFont): FontkitFont | null {
+	return atlases.get(font)?.source ?? null;
+}
+
+function rebuildRaw(font: SlugGeneratorOutput, atlas: GlyphAtlas): void {
+	const headerTexels = Math.floor(atlas.bandOffsets.length / 2);
+	const bandOffsets = atlas.bandOffsets.slice();
+	for (let k = 1; k < bandOffsets.length; k += 2) {
+		bandOffsets[k] += headerTexels;
+	}
+	font._raw.bandOffsets = bandOffsets;
+	font._raw.curvesList = atlas.curves;
+	font._raw.curveOffsets = atlas.curveOffsets;
+}
+
+/**
+ * Uploads a generated font's curve and band data to fresh textures. The old
+ * textures are left to the garbage collector: draws already encoded this
+ * frame may still reference them.
+ */
+export function uploadSlugTextures(device: GPUDevice, font: SlugFont): void {
+	const raw = (font as Partial<SlugGeneratorOutput>)._raw;
+	if (!raw) return;
+
+	const curvesTexels = Math.ceil(raw.curvesList.length / 4);
+	const curvesTexHeight = Math.max(1, Math.ceil(curvesTexels / TEXTURE_WIDTH));
+	const curvesFloatArray = new Float32Array(
+		TEXTURE_WIDTH * curvesTexHeight * 4,
+	);
+	curvesFloatArray.fill(-1.0);
+	curvesFloatArray.set(raw.curvesList);
+
+	const curvesTex = device.createTexture({
+		label: "SlugGeneratedCurvesTexture",
+		size: [TEXTURE_WIDTH, curvesTexHeight],
+		format: "rgba32float",
+		usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
+	});
+	device.queue.writeTexture(
+		{ texture: curvesTex },
+		curvesFloatArray,
+		{ bytesPerRow: TEXTURE_WIDTH * 16 },
+		[TEXTURE_WIDTH, curvesTexHeight],
+	);
+
+	const bandsTexels =
+		Math.floor(raw.bandOffsets.length / 2) +
+		Math.floor(raw.curveOffsets.length / 2);
+	const bandsTexHeight = Math.max(1, Math.ceil(bandsTexels / TEXTURE_WIDTH));
+	const bandsUintArray = new Uint32Array(TEXTURE_WIDTH * bandsTexHeight * 2);
+	bandsUintArray.set(raw.bandOffsets, 0);
+	bandsUintArray.set(raw.curveOffsets, raw.bandOffsets.length);
+
+	const bandsTex = device.createTexture({
+		label: "SlugGeneratedBandsTexture",
+		size: [TEXTURE_WIDTH, bandsTexHeight],
+		format: "rg32uint",
+		usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
+	});
+	device.queue.writeTexture(
+		{ texture: bandsTex },
+		bandsUintArray,
+		{ bytesPerRow: TEXTURE_WIDTH * 8 },
+		[TEXTURE_WIDTH, bandsTexHeight],
+	);
+
+	font.curvesTex = curvesTex;
+	font.bandsTex = bandsTex;
+	const atlas = atlases.get(font);
+	if (atlas) atlas.device = device;
+}
+
+/** Default code points generated up front; anything else is generated on first use. */
+function isDefaultCodePoint(cp: number): boolean {
+	return (
+		(cp >= 32 && cp <= 126) || // ASCII Printable
+		(cp >= 160 && cp <= 255) || // Latin-1 Supplement (é, ü, ©, ®, etc.)
+		(cp >= 0x0100 && cp <= 0x024f) || // Latin Extended-A & B
+		(cp >= 0x2000 && cp <= 0x206f) || // General Punctuation (• bullet U+2022, —, –, ‘, ’, “, ”, …, etc.)
+		(cp >= 0x20a0 && cp <= 0x20cf) || // Currency Symbols (€, £, etc.)
+		(cp >= 0x2100 && cp <= 0x214f) || // Letterlike Symbols (™, etc.)
+		(cp >= 0x2190 && cp <= 0x21ff) || // Arrows (←, ↑, →, ↓, etc.)
+		(cp >= 0x2200 && cp <= 0x22ff) || // Mathematical Operators (≠, ≤, ≥, etc.)
+		(cp >= 0x2600 && cp <= 0x27bf) // Misc Symbols & Dingbats (✦, ★, ⚡, etc.)
+	);
+}
+
 export class SlugGenerator {
 	private bandCount = 16;
 	private fullRange = false;
@@ -420,28 +543,20 @@ export class SlugGenerator {
 				"[SlugGenerator] Cannot generate slug font: font is null or undefined",
 			);
 		}
-		const curvesTexData: number[] = [];
-		const bandsTexBandOffsets: number[] = [];
-		const bandsTexCurveOffsets: number[] = [];
-		const codePointsData: SlugCodePoint[] = [];
+		const atlas: GlyphAtlas = {
+			source: font,
+			strokeWidth: this.strokeWidth,
+			bandCount: this.bandCount,
+			curves: [],
+			bandOffsets: [],
+			curveOffsets: [],
+			device: null,
+		};
 
 		const charSet = Array.isArray(font.characterSet)
 			? font.characterSet
 			: Array.from(font.characterSet || []);
 		const charSetSet = new Set(charSet);
-
-		const getGlyphFn =
-			typeof font.getGlyph === "function"
-				? font.getGlyph.bind(font)
-				: typeof font.glyphForCodePoint === "function"
-					? font.glyphForCodePoint.bind(font)
-					: null;
-		const glyphForCodePointFn =
-			typeof font.glyphForCodePoint === "function"
-				? font.glyphForCodePoint.bind(font)
-				: typeof font.getGlyph === "function"
-					? font.getGlyph.bind(font)
-					: null;
 
 		const codePointsToProcess: number[] = [-1]; // Start with .notdef fallback
 		if (this.fullRange) {
@@ -450,482 +565,501 @@ export class SlugGenerator {
 					codePointsToProcess.push(cp);
 				}
 			}
+		} else if (this.whitelist) {
+			for (const cp of this.whitelist) {
+				if (charSetSet.has(cp)) {
+					codePointsToProcess.push(cp);
+				}
+			}
 		} else {
-			if (this.whitelist) {
-				for (const cp of this.whitelist) {
-					if (charSetSet.has(cp)) {
-						codePointsToProcess.push(cp);
-					}
-				}
-			} else {
-				for (const cp of charSet) {
-					if (cp === -1) continue;
-					if (
-						(cp >= 32 && cp <= 126) || // ASCII Printable
-						(cp >= 160 && cp <= 255) || // Latin-1 Supplement (é, ü, ©, ®, etc.)
-						(cp >= 0x0100 && cp <= 0x024f) || // Latin Extended-A & B
-						(cp >= 0x2000 && cp <= 0x206f) || // General Punctuation (• bullet U+2022, —, –, ‘, ’, “, ”, …, etc.)
-						(cp >= 0x20a0 && cp <= 0x20cf) || // Currency Symbols (€, £, etc.)
-						(cp >= 0x2100 && cp <= 0x214f) || // Letterlike Symbols (™, etc.)
-						(cp >= 0x2190 && cp <= 0x21ff) || // Arrows (←, ↑, →, ↓, etc.)
-						(cp >= 0x2200 && cp <= 0x22ff) || // Mathematical Operators (≠, ≤, ≥, etc.)
-						(cp >= 0x2600 && cp <= 0x27bf) // Misc Symbols & Dingbats (✦, ★, ⚡, etc.)
-					) {
-						codePointsToProcess.push(cp);
-					}
+			for (const cp of charSet) {
+				if (cp !== -1 && isDefaultCodePoint(cp)) {
+					codePointsToProcess.push(cp);
 				}
 			}
 		}
 
+		const output = this.buildOutput(font);
+		atlases.set(output, atlas);
 		for (const cp of codePointsToProcess) {
-			let glyph: FontkitGlyph | null = null;
-			try {
-				glyph =
-					cp === -1
-						? getGlyphFn
-							? getGlyphFn(0)
-							: null
-						: glyphForCodePointFn
-							? glyphForCodePointFn(cp)
-							: null;
-			} catch {
-				continue;
-			}
-			if (!glyph) {
-				continue;
-			}
-
-			let path: any;
-			let bbox: any;
-			let advanceWidth = 0;
-			try {
-				path = glyph.path;
-				bbox = glyph.bbox;
-				try {
-					advanceWidth = Math.floor(glyph.advanceWidth || 0);
-				} catch {
-					advanceWidth = 0;
-				}
-			} catch {
-				continue;
-			}
-
-			if (
-				!bbox ||
-				bbox.minX === bbox.maxX ||
-				bbox.minY === bbox.maxY ||
-				bbox.minX === Infinity ||
-				bbox.minY === Infinity ||
-				!path ||
-				!path.commands ||
-				path.commands.length === 0
-			) {
-				// Empty glyph (e.g. space) or missing
-				codePointsData.push({
-					codePoint: cp,
-					width: 0,
-					height: 0,
-					advanceWidth,
-					bearingX: 0,
-					bearingY: 0,
-					bandCount: 0,
-					bandDimX: 0,
-					bandDimY: 0,
-					bandsTexCoordX: 0,
-					bandsTexCoordY: 0,
-				});
-				continue;
-			}
-
-			const strokeOffset = this.strokeWidth ? this.strokeWidth / 2 : 0;
-			const pathCommands =
-				this.strokeWidth && this.strokeWidth > 0
-					? offsetGlyphPath(path, strokeOffset)
-					: path;
-
-			const gx1 = bbox.minX - strokeOffset;
-			const gy1 = bbox.minY - strokeOffset;
-			const gx2 = bbox.maxX + strokeOffset;
-			const gy2 = bbox.maxY + strokeOffset;
-
-			// 1. Build Temporary Curve List
-			const curves: TempCurve[] | null = [];
-			let currentX = 0;
-			let currentY = 0;
-			let firstCurve = false;
-			let startOfShapeX = 0;
-			let startOfShapeY = 0;
-
-			for (let j = 0; j < pathCommands.commands.length; j++) {
-				const cmd = pathCommands.commands[j];
-				const commandType = cmd.command || (cmd as any).type;
-				const args = cmd.args || [];
-
-				if (commandType === "moveTo") {
-					firstCurve = true;
-					const x = args.length >= 2 ? args[0] : (cmd as any).x;
-					const y = args.length >= 2 ? args[1] : (cmd as any).y;
-					currentX = x - gx1;
-					currentY = y - gy1;
-					startOfShapeX = currentX;
-					startOfShapeY = currentY;
-				} else if (commandType === "lineTo") {
-					const x = args.length >= 2 ? args[0] : (cmd as any).x;
-					const y = args.length >= 2 ? args[1] : (cmd as any).y;
-					const nextX = x - gx1;
-					const nextY = y - gy1;
-					const c: TempCurve = {
-						first: firstCurve,
-						x1: currentX,
-						y1: currentY,
-						x3: nextX,
-						y3: nextY,
-						x2: (currentX + nextX) / 2.0,
-						y2: (currentY + nextY) / 2.0,
-					};
-					curves.push(c);
-					firstCurve = false;
-					currentX = nextX;
-					currentY = nextY;
-				} else if (commandType === "quadraticCurveTo") {
-					const cpx =
-						args.length >= 4 ? args[0] : ((cmd as any).cpx ?? (cmd as any).x1);
-					const cpy =
-						args.length >= 4 ? args[1] : ((cmd as any).cpy ?? (cmd as any).y1);
-					const x = args.length >= 4 ? args[2] : (cmd as any).x;
-					const y = args.length >= 4 ? args[3] : (cmd as any).y;
-					const nextX = x - gx1;
-					const nextY = y - gy1;
-					const c: TempCurve = {
-						first: firstCurve,
-						x1: currentX,
-						y1: currentY,
-						x2: cpx - gx1,
-						y2: cpy - gy1,
-						x3: nextX,
-						y3: nextY,
-					};
-					curves.push(c);
-					firstCurve = false;
-					currentX = nextX;
-					currentY = nextY;
-				} else if (commandType === "bezierCurveTo") {
-					const cp1x = args.length >= 6 ? args[0] : (cmd as any).cp1x;
-					const cp1y = args.length >= 6 ? args[1] : (cmd as any).cp1y;
-					const cp2x = args.length >= 6 ? args[2] : (cmd as any).cp2x;
-					const cp2y = args.length >= 6 ? args[3] : (cmd as any).cp2y;
-					const x = args.length >= 6 ? args[4] : (cmd as any).x;
-					const y = args.length >= 6 ? args[5] : (cmd as any).y;
-					const nextX = x - gx1;
-					const nextY = y - gy1;
-
-					// Approximate cubic Bezier with 4 quadratic Bezier segments
-					const segments = 4;
-					let prevX = currentX;
-					let prevY = currentY;
-
-					for (let k = 1; k <= segments; k++) {
-						const t = k / segments;
-						const mt = 1.0 - t;
-						const mt2 = mt * mt;
-						const mt3 = mt2 * mt;
-						const t2 = t * t;
-						const t3 = t2 * t;
-
-						const posX =
-							mt3 * currentX +
-							3.0 * mt2 * t * (cp1x - gx1) +
-							3.0 * mt * t2 * (cp2x - gx1) +
-							t3 * nextX;
-						const posY =
-							mt3 * currentY +
-							3.0 * mt2 * t * (cp1y - gy1) +
-							3.0 * mt * t2 * (cp2y - gy1) +
-							t3 * nextY;
-
-						const c: TempCurve = {
-							first: firstCurve && k === 1,
-							x1: prevX,
-							y1: prevY,
-							x2: (prevX + posX) / 2.0,
-							y2: (prevY + posY) / 2.0,
-							x3: posX,
-							y3: posY,
-						};
-						curves.push(c);
-						prevX = posX;
-						prevY = posY;
-					}
-
-					firstCurve = false;
-					currentX = nextX;
-					currentY = nextY;
-				} else if (commandType === "closePath") {
-					if (currentX !== startOfShapeX || currentY !== startOfShapeY) {
-						const c: TempCurve = {
-							first: firstCurve,
-							x1: currentX,
-							y1: currentY,
-							x3: startOfShapeX,
-							y3: startOfShapeY,
-							x2: (currentX + startOfShapeX) / 2.0,
-							y2: (currentY + startOfShapeY) / 2.0,
-						};
-						curves.push(c);
-						firstCurve = false;
-					}
-					currentX = startOfShapeX;
-					currentY = startOfShapeY;
-				}
-			}
-
-			if (!curves || curves.length === 0) {
-				continue;
-			}
-
-			// Fix up curves where the control point is one of the endpoints
-			for (const c of curves) {
-				if (
-					(c.x2 === c.x1 && c.y2 === c.y1) ||
-					(c.x2 === c.x3 && c.y2 === c.y3)
-				) {
-					c.x2 = (c.x1 + c.x3) / 2.0;
-					c.y2 = (c.y1 + c.y3) / 2.0;
-				}
-			}
-
-			const bandsTexelIndex = Math.floor(bandsTexBandOffsets.length / 2);
-
-			// 2. Write Curves Texture
-			for (const c of curves) {
-				if (c.first && curvesTexData.length % 4 !== 0) {
-					const toAdd = 4 - (curvesTexData.length % 4);
-					for (let k = 0; k < toAdd; k++) {
-						curvesTexData.push(-1.0);
-					}
-				}
-
-				const texelCount = Math.floor(curvesTexData.length / 4);
-				const col = texelCount % TEXTURE_WIDTH;
-				const newRow = col === TEXTURE_WIDTH - 1;
-				if (newRow) {
-					const toAdd = 8 - (curvesTexData.length % 4);
-					for (let k = 0; k < toAdd; k++) {
-						curvesTexData.push(-1.0);
-					}
-				}
-
-				if (c.first || newRow) {
-					c.texelIndex = Math.floor(curvesTexData.length / 4);
-					curvesTexData.push(c.x1, c.y1);
-				} else {
-					c.texelIndex = Math.floor(
-						(Math.floor(curvesTexData.length / 2) - 1) / 2,
-					);
-				}
-
-				curvesTexData.push(c.x2, c.y2);
-				curvesTexData.push(c.x3, c.y3);
-			}
-
-			const sizeX = 1 + (gx2 - gx1);
-			const sizeY = 1 + (gy2 - gy1);
-			let bCount = this.bandCount;
-			if (sizeX < bCount || sizeY < bCount) {
-				bCount = Math.floor(Math.min(sizeX, sizeY) / 2);
-				if (bCount < 1) {
-					bCount = 1;
-				}
-			}
-
-			const bandDimY = Math.ceil(sizeY / bCount);
-			let bandMinY = 0;
-			let bandMaxY = bandDimY;
-
-			// Sort curves by highest Y (max of y1,y2,y3) descending
-			curves.sort(
-				(a, b) => Math.max(b.x1, b.x2, b.x3) - Math.max(a.x1, a.x2, a.x3),
-			);
-
-			for (let b = 0; b < bCount; b++) {
-				const bandTexelOffset = Math.floor(bandsTexCurveOffsets.length / 2);
-				let curveCount = 0;
-
-				for (const c of curves) {
-					if (c.y1 === c.y2 && c.y2 === c.y3) {
-						continue; // perfectly horizontal
-					}
-					const curveMinY = Math.min(c.y1, c.y2, c.y3);
-					const curveMaxY = Math.max(c.y1, c.y2, c.y3);
-					if (curveMinY > bandMaxY || curveMaxY < bandMinY) {
-						continue; // doesn't cross band
-					}
-
-					const texelIndex = c.texelIndex ?? 0;
-					const curveOffsetX = texelIndex % TEXTURE_WIDTH;
-					const curveOffsetY = Math.floor(texelIndex / TEXTURE_WIDTH);
-					bandsTexCurveOffsets.push(curveOffsetX, curveOffsetY);
-					curveCount++;
-				}
-				bandsTexBandOffsets.push(curveCount, bandTexelOffset);
-				bandMinY += bandDimY;
-				bandMaxY += bandDimY;
-			}
-
-			// For vertical bands, sort by max Y descending
-			const bandDimX = Math.ceil(sizeX / bCount);
-			let bandMinX = 0;
-			let bandMaxX = bandDimX;
-
-			curves.sort(
-				(a, b) => Math.max(b.y1, b.y2, b.y3) - Math.max(a.y1, a.y2, a.y3),
-			);
-
-			for (let b = 0; b < bCount; b++) {
-				const bandTexelOffset = Math.floor(bandsTexCurveOffsets.length / 2);
-				let curveCount = 0;
-
-				for (const c of curves) {
-					if (c.x1 === c.x2 && c.x2 === c.x3) {
-						continue; // perfectly vertical
-					}
-					const curveMinX = Math.min(c.x1, c.x2, c.x3);
-					const curveMaxX = Math.max(c.x1, c.x2, c.x3);
-					if (curveMinX > bandMaxX || curveMaxX < bandMinX) {
-						continue; // doesn't cross band
-					}
-
-					const texelIndex = c.texelIndex ?? 0;
-					const curveOffsetX = texelIndex % TEXTURE_WIDTH;
-					const curveOffsetY = Math.floor(texelIndex / TEXTURE_WIDTH);
-					bandsTexCurveOffsets.push(curveOffsetX, curveOffsetY);
-					curveCount++;
-				}
-				bandsTexBandOffsets.push(curveCount, bandTexelOffset);
-				bandMinX += bandDimX;
-				bandMaxX += bandDimX;
-			}
-
-			codePointsData.push({
-				codePoint: cp,
-				width: Math.floor(gx2 - gx1),
-				height: Math.floor(gy2 - gy1),
-				advanceWidth: Math.floor(glyph.advanceWidth || 0),
-				bearingX: Math.floor(gx1),
-				bearingY: Math.floor(gy2),
-				bandCount: bCount,
-				bandDimX,
-				bandDimY,
-				bandsTexCoordX: bandsTexelIndex % TEXTURE_WIDTH,
-				bandsTexCoordY: Math.floor(bandsTexelIndex / TEXTURE_WIDTH),
-			});
+			SlugGenerator.addCodePoint(output, atlas, cp);
 		}
-
-		// Post-processing
-		const bandHeaderTexels = Math.floor(bandsTexBandOffsets.length / 2);
-		for (let k = 1; k < bandsTexBandOffsets.length; k += 2) {
-			bandsTexBandOffsets[k] += bandHeaderTexels;
-		}
-
-		return this.buildOutput(
-			device,
-			codePointsData,
-			curvesTexData,
-			bandsTexBandOffsets,
-			bandsTexCurveOffsets,
-			font,
-		);
+		rebuildRaw(output, atlas);
+		if (device) uploadSlugTextures(device, output);
+		return output;
 	}
 
-	private buildOutput(
-		device: GPUDevice | null,
-		codePoints: SlugCodePoint[],
-		curvesList: number[],
-		bandOffsets: number[],
-		curveOffsets: number[],
-		font: FontkitFont,
-	): SlugGeneratorOutput {
-		const map = new Map<number, SlugCodePoint>();
+	/**
+	 * Generates any of `glyphIds` the font does not have yet, and re-uploads
+	 * its textures if it already had some. Returns whether anything was added.
+	 * Fonts not built by this generator (e.g. loaded binaries) are left as is.
+	 */
+	static ensureGlyphs(font: SlugFont, glyphIds: Iterable<number>): boolean {
+		const atlas = atlases.get(font);
+		if (!atlas || typeof atlas.source.getGlyph !== "function") return false;
+		const out = font as SlugGeneratorOutput;
+		out.glyphs ??= new Map();
+		let added = false;
+		for (const id of glyphIds) {
+			if (out.glyphs.has(id)) continue;
+			let glyph: FontkitGlyph | null = null;
+			try {
+				glyph = atlas.source.getGlyph(id);
+			} catch {
+				glyph = null;
+			}
+			const record = glyph
+				? SlugGenerator.buildGlyph(atlas, glyph, UNMAPPED_CODE_POINT, id)
+				: null;
+			// Remember failures too, so a broken glyph is not retried every frame.
+			const entry =
+				record ?? SlugGenerator.emptyRecord(UNMAPPED_CODE_POINT, id, 0);
+			out.glyphs.set(id, entry);
+			out._raw.codePoints.push(entry);
+			added = true;
+		}
+		if (added) SlugGenerator.commit(out, atlas);
+		return added;
+	}
+
+	/** Like {@link ensureGlyphs}, for code points looked up through the cmap. */
+	static ensureCodePoints(
+		font: SlugFont,
+		codePoints: Iterable<number>,
+	): boolean {
+		const atlas = atlases.get(font);
+		if (!atlas) return false;
+		const out = font as SlugGeneratorOutput;
+		let added = false;
 		for (const cp of codePoints) {
-			map.set(cp.codePoint, cp);
+			if (out.codePoints.has(cp)) continue;
+			if (SlugGenerator.addCodePoint(out, atlas, cp)) added = true;
+		}
+		if (added) SlugGenerator.commit(out, atlas);
+		return added;
+	}
+
+	private static commit(font: SlugGeneratorOutput, atlas: GlyphAtlas): void {
+		rebuildRaw(font, atlas);
+		if (font.curvesTex && atlas.device) {
+			uploadSlugTextures(atlas.device, font);
+		}
+	}
+
+	/** Maps a code point (or -1 for .notdef) to a glyph record, generating it once per glyph id. */
+	private static addCodePoint(
+		font: SlugGeneratorOutput,
+		atlas: GlyphAtlas,
+		cp: number,
+	): boolean {
+		const src = atlas.source;
+		let glyph: FontkitGlyph | null = null;
+		try {
+			if (cp === -1) {
+				glyph =
+					typeof src.getGlyph === "function"
+						? src.getGlyph(0)
+						: (src.glyphForCodePoint?.(0) ?? null);
+			} else {
+				glyph = src.glyphForCodePoint?.(cp) ?? null;
+			}
+		} catch {
+			return false;
+		}
+		if (!glyph) return false;
+		// A code point the font lacks maps to glyph 0; let .notdef stand in.
+		if (cp !== -1 && glyph.id === 0) return false;
+
+		font.glyphs ??= new Map();
+		const glyphId = typeof glyph.id === "number" ? glyph.id : undefined;
+		const shared = glyphId !== undefined ? font.glyphs.get(glyphId) : undefined;
+		if (shared) {
+			// Another code point already produced this glyph: alias it.
+			const alias = { ...shared, codePoint: cp };
+			font.codePoints.set(cp, alias);
+			font._raw.codePoints.push(alias);
+			return true;
+		}
+		const record = SlugGenerator.buildGlyph(atlas, glyph, cp, glyphId);
+		if (!record) return false;
+		font.codePoints.set(cp, record);
+		if (glyphId !== undefined) font.glyphs.set(glyphId, record);
+		font._raw.codePoints.push(record);
+		return true;
+	}
+
+	private static emptyRecord(
+		codePoint: number,
+		glyphId: number | undefined,
+		advanceWidth: number,
+	): SlugCodePoint {
+		return {
+			codePoint,
+			glyphId,
+			width: 0,
+			height: 0,
+			advanceWidth,
+			bearingX: 0,
+			bearingY: 0,
+			bandCount: 0,
+			bandDimX: 0,
+			bandDimY: 0,
+			bandsTexCoordX: 0,
+			bandsTexCoordY: 0,
+		};
+	}
+
+	/** Writes one glyph's curves and bands into the atlas and returns its record. */
+	private static buildGlyph(
+		a: GlyphAtlas,
+		glyph: FontkitGlyph,
+		codePoint: number,
+		glyphId: number | undefined,
+	): SlugCodePoint | null {
+		let path: any;
+		let bbox: any;
+		let advanceWidth = 0;
+		try {
+			path = glyph.path;
+			bbox = glyph.bbox;
+			try {
+				advanceWidth = Math.floor(glyph.advanceWidth || 0);
+			} catch {
+				advanceWidth = 0;
+			}
+		} catch {
+			return null;
 		}
 
-		let curvesTex: GPUTexture = null as any;
-		let bandsTex: GPUTexture = null as any;
+		if (
+			!bbox ||
+			bbox.minX === bbox.maxX ||
+			bbox.minY === bbox.maxY ||
+			bbox.minX === Infinity ||
+			bbox.minY === Infinity ||
+			!path ||
+			!path.commands ||
+			path.commands.length === 0
+		) {
+			// Empty glyph (e.g. space) or missing
+			return {
+				codePoint,
+				glyphId,
+				width: 0,
+				height: 0,
+				advanceWidth,
+				bearingX: 0,
+				bearingY: 0,
+				bandCount: 0,
+				bandDimX: 0,
+				bandDimY: 0,
+				bandsTexCoordX: 0,
+				bandsTexCoordY: 0,
+			};
+		}
 
-		if (device) {
-			const curvesTexels = Math.ceil(curvesList.length / 4);
-			const curvesTexHeight = Math.max(
-				1,
-				Math.ceil(curvesTexels / TEXTURE_WIDTH),
-			);
+		const strokeOffset = a.strokeWidth ? a.strokeWidth / 2 : 0;
+		const pathCommands =
+			a.strokeWidth && a.strokeWidth > 0
+				? offsetGlyphPath(path, strokeOffset)
+				: path;
 
-			const curvesFloatArray = new Float32Array(
-				TEXTURE_WIDTH * curvesTexHeight * 4,
-			);
-			curvesFloatArray.fill(-1.0);
-			curvesFloatArray.set(curvesList);
+		const gx1 = bbox.minX - strokeOffset;
+		const gy1 = bbox.minY - strokeOffset;
+		const gx2 = bbox.maxX + strokeOffset;
+		const gy2 = bbox.maxY + strokeOffset;
 
-			curvesTex = device.createTexture({
-				label: "SlugGeneratedCurvesTexture",
-				size: [TEXTURE_WIDTH, curvesTexHeight],
-				format: "rgba32float",
-				usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
-			});
-			device.queue.writeTexture(
-				{ texture: curvesTex },
-				curvesFloatArray,
-				{ bytesPerRow: TEXTURE_WIDTH * 16 },
-				[TEXTURE_WIDTH, curvesTexHeight],
-			);
+		// 1. Build Temporary Curve List
+		const curves: TempCurve[] | null = [];
+		let currentX = 0;
+		let currentY = 0;
+		let firstCurve = false;
+		let startOfShapeX = 0;
+		let startOfShapeY = 0;
 
-			const bandsTexels =
-				Math.floor(bandOffsets.length / 2) +
-				Math.floor(curveOffsets.length / 2);
-			const bandsTexHeight = Math.max(
-				1,
-				Math.ceil(bandsTexels / TEXTURE_WIDTH),
-			);
+		for (let j = 0; j < pathCommands.commands.length; j++) {
+			const cmd = pathCommands.commands[j];
+			const commandType = cmd.command || (cmd as any).type;
+			const args = cmd.args || [];
 
-			const bandsUintArray = new Uint32Array(
-				TEXTURE_WIDTH * bandsTexHeight * 2,
-			);
-			bandsUintArray.set(bandOffsets, 0);
-			bandsUintArray.set(curveOffsets, bandOffsets.length);
+			if (commandType === "moveTo") {
+				firstCurve = true;
+				const x = args.length >= 2 ? args[0] : (cmd as any).x;
+				const y = args.length >= 2 ? args[1] : (cmd as any).y;
+				currentX = x - gx1;
+				currentY = y - gy1;
+				startOfShapeX = currentX;
+				startOfShapeY = currentY;
+			} else if (commandType === "lineTo") {
+				const x = args.length >= 2 ? args[0] : (cmd as any).x;
+				const y = args.length >= 2 ? args[1] : (cmd as any).y;
+				const nextX = x - gx1;
+				const nextY = y - gy1;
+				const c: TempCurve = {
+					first: firstCurve,
+					x1: currentX,
+					y1: currentY,
+					x3: nextX,
+					y3: nextY,
+					x2: (currentX + nextX) / 2.0,
+					y2: (currentY + nextY) / 2.0,
+				};
+				curves.push(c);
+				firstCurve = false;
+				currentX = nextX;
+				currentY = nextY;
+			} else if (commandType === "quadraticCurveTo") {
+				const cpx =
+					args.length >= 4 ? args[0] : ((cmd as any).cpx ?? (cmd as any).x1);
+				const cpy =
+					args.length >= 4 ? args[1] : ((cmd as any).cpy ?? (cmd as any).y1);
+				const x = args.length >= 4 ? args[2] : (cmd as any).x;
+				const y = args.length >= 4 ? args[3] : (cmd as any).y;
+				const nextX = x - gx1;
+				const nextY = y - gy1;
+				const c: TempCurve = {
+					first: firstCurve,
+					x1: currentX,
+					y1: currentY,
+					x2: cpx - gx1,
+					y2: cpy - gy1,
+					x3: nextX,
+					y3: nextY,
+				};
+				curves.push(c);
+				firstCurve = false;
+				currentX = nextX;
+				currentY = nextY;
+			} else if (commandType === "bezierCurveTo") {
+				const cp1x = args.length >= 6 ? args[0] : (cmd as any).cp1x;
+				const cp1y = args.length >= 6 ? args[1] : (cmd as any).cp1y;
+				const cp2x = args.length >= 6 ? args[2] : (cmd as any).cp2x;
+				const cp2y = args.length >= 6 ? args[3] : (cmd as any).cp2y;
+				const x = args.length >= 6 ? args[4] : (cmd as any).x;
+				const y = args.length >= 6 ? args[5] : (cmd as any).y;
+				const nextX = x - gx1;
+				const nextY = y - gy1;
 
-			bandsTex = device.createTexture({
-				label: "SlugGeneratedBandsTexture",
-				size: [TEXTURE_WIDTH, bandsTexHeight],
-				format: "rg32uint",
-				usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
-			});
-			device.queue.writeTexture(
-				{ texture: bandsTex },
-				bandsUintArray,
-				{ bytesPerRow: TEXTURE_WIDTH * 8 },
-				[TEXTURE_WIDTH, bandsTexHeight],
-			);
+				// Approximate cubic Bezier with 4 quadratic Bezier segments
+				const segments = 4;
+				let prevX = currentX;
+				let prevY = currentY;
+
+				for (let k = 1; k <= segments; k++) {
+					const t = k / segments;
+					const mt = 1.0 - t;
+					const mt2 = mt * mt;
+					const mt3 = mt2 * mt;
+					const t2 = t * t;
+					const t3 = t2 * t;
+
+					const posX =
+						mt3 * currentX +
+						3.0 * mt2 * t * (cp1x - gx1) +
+						3.0 * mt * t2 * (cp2x - gx1) +
+						t3 * nextX;
+					const posY =
+						mt3 * currentY +
+						3.0 * mt2 * t * (cp1y - gy1) +
+						3.0 * mt * t2 * (cp2y - gy1) +
+						t3 * nextY;
+
+					const c: TempCurve = {
+						first: firstCurve && k === 1,
+						x1: prevX,
+						y1: prevY,
+						x2: (prevX + posX) / 2.0,
+						y2: (prevY + posY) / 2.0,
+						x3: posX,
+						y3: posY,
+					};
+					curves.push(c);
+					prevX = posX;
+					prevY = posY;
+				}
+
+				firstCurve = false;
+				currentX = nextX;
+				currentY = nextY;
+			} else if (commandType === "closePath") {
+				if (currentX !== startOfShapeX || currentY !== startOfShapeY) {
+					const c: TempCurve = {
+						first: firstCurve,
+						x1: currentX,
+						y1: currentY,
+						x3: startOfShapeX,
+						y3: startOfShapeY,
+						x2: (currentX + startOfShapeX) / 2.0,
+						y2: (currentY + startOfShapeY) / 2.0,
+					};
+					curves.push(c);
+					firstCurve = false;
+				}
+				currentX = startOfShapeX;
+				currentY = startOfShapeY;
+			}
+		}
+
+		if (!curves || curves.length === 0) {
+			return null;
+		}
+
+		// Fix up curves where the control point is one of the endpoints
+		for (const c of curves) {
+			if (
+				(c.x2 === c.x1 && c.y2 === c.y1) ||
+				(c.x2 === c.x3 && c.y2 === c.y3)
+			) {
+				c.x2 = (c.x1 + c.x3) / 2.0;
+				c.y2 = (c.y1 + c.y3) / 2.0;
+			}
+		}
+
+		const bandsTexelIndex = Math.floor(a.bandOffsets.length / 2);
+
+		// 2. Write Curves Texture
+		for (const c of curves) {
+			if (c.first && a.curves.length % 4 !== 0) {
+				const toAdd = 4 - (a.curves.length % 4);
+				for (let k = 0; k < toAdd; k++) {
+					a.curves.push(-1.0);
+				}
+			}
+
+			const texelCount = Math.floor(a.curves.length / 4);
+			const col = texelCount % TEXTURE_WIDTH;
+			const newRow = col === TEXTURE_WIDTH - 1;
+			if (newRow) {
+				const toAdd = 8 - (a.curves.length % 4);
+				for (let k = 0; k < toAdd; k++) {
+					a.curves.push(-1.0);
+				}
+			}
+
+			if (c.first || newRow) {
+				c.texelIndex = Math.floor(a.curves.length / 4);
+				a.curves.push(c.x1, c.y1);
+			} else {
+				c.texelIndex = Math.floor((Math.floor(a.curves.length / 2) - 1) / 2);
+			}
+
+			a.curves.push(c.x2, c.y2);
+			a.curves.push(c.x3, c.y3);
+		}
+
+		const sizeX = 1 + (gx2 - gx1);
+		const sizeY = 1 + (gy2 - gy1);
+		let bCount = a.bandCount;
+		if (sizeX < bCount || sizeY < bCount) {
+			bCount = Math.floor(Math.min(sizeX, sizeY) / 2);
+			if (bCount < 1) {
+				bCount = 1;
+			}
+		}
+
+		const bandDimY = Math.ceil(sizeY / bCount);
+		let bandMinY = 0;
+		let bandMaxY = bandDimY;
+
+		// Sort curves by highest Y (max of y1,y2,y3) descending
+		curves.sort(
+			(a, b) => Math.max(b.x1, b.x2, b.x3) - Math.max(a.x1, a.x2, a.x3),
+		);
+
+		for (let b = 0; b < bCount; b++) {
+			const bandTexelOffset = Math.floor(a.curveOffsets.length / 2);
+			let curveCount = 0;
+
+			for (const c of curves) {
+				if (c.y1 === c.y2 && c.y2 === c.y3) {
+					continue; // perfectly horizontal
+				}
+				const curveMinY = Math.min(c.y1, c.y2, c.y3);
+				const curveMaxY = Math.max(c.y1, c.y2, c.y3);
+				if (curveMinY > bandMaxY || curveMaxY < bandMinY) {
+					continue; // doesn't cross band
+				}
+
+				const texelIndex = c.texelIndex ?? 0;
+				const curveOffsetX = texelIndex % TEXTURE_WIDTH;
+				const curveOffsetY = Math.floor(texelIndex / TEXTURE_WIDTH);
+				a.curveOffsets.push(curveOffsetX, curveOffsetY);
+				curveCount++;
+			}
+			a.bandOffsets.push(curveCount, bandTexelOffset);
+			bandMinY += bandDimY;
+			bandMaxY += bandDimY;
+		}
+
+		// For vertical bands, sort by max Y descending
+		const bandDimX = Math.ceil(sizeX / bCount);
+		let bandMinX = 0;
+		let bandMaxX = bandDimX;
+
+		curves.sort(
+			(a, b) => Math.max(b.y1, b.y2, b.y3) - Math.max(a.y1, a.y2, a.y3),
+		);
+
+		for (let b = 0; b < bCount; b++) {
+			const bandTexelOffset = Math.floor(a.curveOffsets.length / 2);
+			let curveCount = 0;
+
+			for (const c of curves) {
+				if (c.x1 === c.x2 && c.x2 === c.x3) {
+					continue; // perfectly vertical
+				}
+				const curveMinX = Math.min(c.x1, c.x2, c.x3);
+				const curveMaxX = Math.max(c.x1, c.x2, c.x3);
+				if (curveMinX > bandMaxX || curveMaxX < bandMinX) {
+					continue; // doesn't cross band
+				}
+
+				const texelIndex = c.texelIndex ?? 0;
+				const curveOffsetX = texelIndex % TEXTURE_WIDTH;
+				const curveOffsetY = Math.floor(texelIndex / TEXTURE_WIDTH);
+				a.curveOffsets.push(curveOffsetX, curveOffsetY);
+				curveCount++;
+			}
+			a.bandOffsets.push(curveCount, bandTexelOffset);
+			bandMinX += bandDimX;
+			bandMaxX += bandDimX;
 		}
 
 		return {
-			codePoints: map,
-			curvesTex,
-			bandsTex,
+			codePoint,
+			glyphId,
+			width: Math.floor(gx2 - gx1),
+			height: Math.floor(gy2 - gy1),
+			advanceWidth: Math.floor(glyph.advanceWidth || 0),
+			bearingX: Math.floor(gx1),
+			bearingY: Math.floor(gy2),
+			bandCount: bCount,
+			bandDimX,
+			bandDimY,
+			bandsTexCoordX: bandsTexelIndex % TEXTURE_WIDTH,
+			bandsTexCoordY: Math.floor(bandsTexelIndex / TEXTURE_WIDTH),
+		};
+	}
+
+	private buildOutput(font: FontkitFont): SlugGeneratorOutput {
+		const metrics = {
 			ascender: font.ascent || 0,
 			descender: font.descent || 0,
 			lineGap: font.lineGap || 0,
 			unitsPerEm: font.unitsPerEm || 0,
+		};
+		return {
+			codePoints: new Map<number, SlugCodePoint>(),
+			glyphs: new Map<number, SlugCodePoint>(),
+			curvesTex: null as unknown as GPUTexture,
+			bandsTex: null as unknown as GPUTexture,
+			...metrics,
 			_raw: {
-				codePoints,
-				curvesList,
-				bandOffsets,
-				curveOffsets,
-				metrics: {
-					ascender: font.ascent || 0,
-					descender: font.descent || 0,
-					lineGap: font.lineGap || 0,
-					unitsPerEm: font.unitsPerEm || 0,
-				},
+				codePoints: [],
+				curvesList: [],
+				bandOffsets: [],
+				curveOffsets: [],
+				metrics,
 			},
 		};
 	}
@@ -954,20 +1088,20 @@ export class SlugGenerator {
 		const metrics = generatedData._raw.metrics;
 
 		const totalBytes =
-			8 + 2 + codePoints.length * 40 + 8 + curvesBytes + 8 + bandsBytes + 16;
+			8 + 4 + codePoints.length * 44 + 8 + curvesBytes + 8 + bandsBytes + 16;
 		const buffer = new ArrayBuffer(totalBytes);
 		const view = new DataView(buffer);
 		let offset = 0;
 
 		for (let i = 0; i < 8; i++) {
-			view.setUint8(offset++, SLUGGISH_HEADER_DATA.charCodeAt(i));
+			view.setUint8(offset++, SLUGGISH_HEADER_DATA_V2.charCodeAt(i));
 		}
 
-		view.setUint16(offset, codePoints.length, true);
-		offset += 2;
+		view.setUint32(offset, codePoints.length, true);
+		offset += 4;
 
 		for (const cp of codePoints) {
-			view.setUint32(offset, cp.codePoint, true);
+			view.setInt32(offset, cp.codePoint, true);
 			offset += 4;
 			view.setUint32(offset, cp.width, true);
 			offset += 4;
@@ -989,6 +1123,8 @@ export class SlugGenerator {
 			offset += 2;
 			view.setUint16(offset, cp.bandsTexCoordY, true);
 			offset += 2;
+			view.setUint32(offset, cp.glyphId ?? 0, true);
+			offset += 4;
 		}
 
 		view.setUint16(offset, TEXTURE_WIDTH, true);

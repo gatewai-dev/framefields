@@ -114,6 +114,7 @@ function paragraphPropsFromTextOp(
 		height: opText.height ? Number(opText.height) : undefined,
 		lineHeight: Number(opText.lineHeight ?? 1.2),
 		align: opText.align,
+		direction: opText.direction,
 		verticalAlign: opText.verticalAlign,
 		fontWeight: opText.fontWeight,
 		fontStyle: opText.fontStyle,
@@ -506,6 +507,12 @@ export async function drawCompositionTree(
 						fps,
 						opacity: Number(op.opacity ?? 1) * Number(props.opacity ?? 1),
 						isHeadless: props.isHeadless,
+						dpr:
+							typeof (props as { dpr?: unknown }).dpr === "number"
+								? (props as { dpr: number }).dpr
+								: typeof (op as { dpr?: unknown }).dpr === "number"
+									? (op as { dpr: number }).dpr
+									: undefined,
 					});
 				} else if (mediaType === "GIF") {
 					await drawGifNode(ctx, pass, {
@@ -594,12 +601,8 @@ export async function drawCompositionTree(
 						fontSize: Number(opCap.fontSize ?? 48),
 						color: opCap.fill ?? opCap.color ?? "white",
 						lineHeight: Number(opCap.lineHeight ?? 1.2),
-						align:
-							opCap.align === "start"
-								? "left"
-								: opCap.align === "end"
-									? "right"
-									: (opCap.align ?? "center"),
+						align: opCap.align ?? "center",
+						direction: opCap.direction,
 						textAlignVertical: opCap.verticalAlign ?? opCap.textAlignVertical,
 						fontWeight: opCap.fontWeight,
 						fontStyle: opCap.fontStyle,

@@ -1,7 +1,8 @@
 import * as fontkit from "fontkit";
+import { premultiplyPixels } from "../color.js";
 import { debugLog } from "../debug-log.js";
 import type { FontkitFont } from "./slug-generator.js";
-import { SlugGenerator } from "./slug-generator.js";
+import { SlugGenerator, uploadSlugTextures } from "./slug-generator.js";
 import type { SlugFont } from "./slug-loader.js";
 
 export type FontLoadListener = (fontFamily: string) => void;
@@ -69,53 +70,7 @@ function parseFontBuffer(bytes: Uint8Array): FontkitFont {
 
 function recreateTextures(device: GPUDevice, slugFont: SlugFont): void {
 	if (slugFont.curvesTex) return;
-	const raw = (slugFont as any)._raw;
-	if (!raw) return;
-
-	const TEXTURE_WIDTH = 4096;
-	const curvesTexels = Math.ceil(raw.curvesList.length / 4);
-	const curvesTexHeight = Math.max(1, Math.ceil(curvesTexels / TEXTURE_WIDTH));
-
-	const curvesFloatArray = new Float32Array(
-		TEXTURE_WIDTH * curvesTexHeight * 4,
-	);
-	curvesFloatArray.fill(-1.0);
-	curvesFloatArray.set(raw.curvesList);
-
-	slugFont.curvesTex = device.createTexture({
-		label: "SlugGeneratedCurvesTexture",
-		size: [TEXTURE_WIDTH, curvesTexHeight],
-		format: "rgba32float",
-		usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
-	});
-	device.queue.writeTexture(
-		{ texture: slugFont.curvesTex },
-		curvesFloatArray,
-		{ bytesPerRow: TEXTURE_WIDTH * 16 },
-		[TEXTURE_WIDTH, curvesTexHeight],
-	);
-
-	const bandsTexels =
-		Math.floor(raw.bandOffsets.length / 2) +
-		Math.floor(raw.curveOffsets.length / 2);
-	const bandsTexHeight = Math.max(1, Math.ceil(bandsTexels / TEXTURE_WIDTH));
-
-	const bandsUintArray = new Uint32Array(TEXTURE_WIDTH * bandsTexHeight * 2);
-	bandsUintArray.set(raw.bandOffsets, 0);
-	bandsUintArray.set(raw.curveOffsets, raw.bandOffsets.length);
-
-	slugFont.bandsTex = device.createTexture({
-		label: "SlugGeneratedBandsTexture",
-		size: [TEXTURE_WIDTH, bandsTexHeight],
-		format: "rg32uint",
-		usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
-	});
-	device.queue.writeTexture(
-		{ texture: slugFont.bandsTex },
-		bandsUintArray,
-		{ bytesPerRow: TEXTURE_WIDTH * 8 },
-		[TEXTURE_WIDTH, bandsTexHeight],
-	);
+	uploadSlugTextures(device, slugFont);
 }
 
 const GLOBAL_CACHE_KEY = Symbol.for("gatewai.slugFontCache.cache");
@@ -437,17 +392,7 @@ export class SlugFontCache {
 				.raw()
 				.toBuffer({ resolveWithObject: true });
 
-			const pixels = new Uint8Array(data.length);
-			pixels.set(data);
-			for (let i = 0; i < pixels.length; i += 4) {
-				const alpha = pixels[i + 3];
-				if (alpha < 255) {
-					const f = alpha / 255;
-					pixels[i] = Math.round(pixels[i] * f);
-					pixels[i + 1] = Math.round(pixels[i + 1] * f);
-					pixels[i + 2] = Math.round(pixels[i + 2] * f);
-				}
-			}
+			const pixels = premultiplyPixels(new Uint8Array(data));
 
 			tex = device.createTexture({
 				label: `Emoji-${char}`,

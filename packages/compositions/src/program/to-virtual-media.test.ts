@@ -239,4 +239,42 @@ describe("compositorToProgram", () => {
 		expect((card.operation as any).durationFrames).toBe(144);
 		expect((card.children![0].operation as any).startFrame).toBe(490);
 	});
+
+	it("resolves .json and .lottie files as direct media sources with Lottie dataType", () => {
+		const doc: CompositorProgramConfig = {
+			width: 1920,
+			height: 1080,
+			fps: 30,
+			mode: "Video",
+			layout: [
+				{
+					id: "lottie1",
+					kind: "media",
+					inputHandleId: "animation.json",
+					dataType: "Lottie",
+				},
+				{
+					id: "lottie2",
+					kind: "media",
+					inputHandleId: "animation.lottie",
+					dataType: "Lottie",
+				},
+			],
+		} as any;
+
+		const vm = compositorToProgram(doc, { isVideoMode: true, fps: 30 });
+		expect(vm.children).toHaveLength(2);
+
+		const layer1 = vm.children![0];
+		expect(layer1.children).toHaveLength(1);
+		expect((layer1.children![0].operation as any).op).toBe("source");
+		expect((layer1.children![0].operation as any).dataType).toBe("Lottie");
+		expect((layer1.children![0].operation as any).url).toBe("animation.json");
+
+		const layer2 = vm.children![1];
+		expect(layer2.children).toHaveLength(1);
+		expect((layer2.children![0].operation as any).op).toBe("source");
+		expect((layer2.children![0].operation as any).dataType).toBe("Lottie");
+		expect((layer2.children![0].operation as any).url).toBe("animation.lottie");
+	});
 });

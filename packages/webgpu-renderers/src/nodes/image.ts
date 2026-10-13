@@ -1,3 +1,5 @@
+import { premultiplyPixels } from "../color.js";
+import { toLocalPath } from "../local-path.js";
 import type { RenderContextValue } from "../render-context.js";
 import { textureCache } from "../texture-cache.js";
 import { createImageTexture } from "./image-texture.js";
@@ -18,6 +20,15 @@ class ImageLoader {
 		let promise = this.pending.get(key);
 		if (!promise) {
 			promise = (async () => {
+				if (
+					typeof src === "string" &&
+					(/\.(json|lottie)(\?.*)?$/i.test(src) ||
+						src.startsWith("data:application/json"))
+				) {
+					throw new Error(
+						`Unsupported image format for '${src}'. Lottie vector animations must be rendered with Layer.lottie(), not Layer.image().`,
+					);
+				}
 				let arrayBuffer: ArrayBuffer;
 				const isRemote =
 					src.startsWith("http://") ||
@@ -32,14 +43,7 @@ class ImageLoader {
 					arrayBuffer = await response.arrayBuffer();
 				} else {
 					// Local filesystem file in headless Node.js
-					let filePath = src;
-					if (filePath.startsWith("file://")) {
-						try {
-							filePath = new URL(filePath).pathname;
-						} catch {
-							filePath = filePath.replace(/^file:\/\//, "");
-						}
-					}
+					const filePath = (await toLocalPath(src)) ?? src;
 					const fs = await import(/* webpackIgnore: true */ "fs/promises");
 					const fileBuf = await fs.readFile(filePath);
 					arrayBuffer = fileBuf.buffer.slice(
@@ -55,10 +59,11 @@ class ImageLoader {
 						.ensureAlpha()
 						.raw()
 						.toBuffer({ resolveWithObject: true });
+					// Decoded PNG/WebP is straight alpha; the compositor expects premultiplied.
 					return {
 						width: info.width,
 						height: info.height,
-						buffer: new Uint8Array(data),
+						buffer: premultiplyPixels(new Uint8Array(data)),
 					};
 				}
 
@@ -83,6 +88,15 @@ export async function drawImageNode(
 	pass: GPURenderPassEncoder,
 	props: ImageNodeProps,
 ): Promise<void> {
+	if (
+		typeof props.src === "string" &&
+		(/\.(json|lottie)(\?.*)?$/i.test(props.src) ||
+			props.src.startsWith("data:application/json"))
+	) {
+		console.warn(
+			`[ImageRenderer] '${props.src}' is a Lottie vector animation, not a static image. Use Layer.lottie() instead.`,
+		);
+	}
 	let tex = textureCache.acquire(props.src);
 
 	if (!tex) {

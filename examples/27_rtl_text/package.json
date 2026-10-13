@@ -1,0 +1,21 @@
+{
+	"name": "@framefields/example-27-rtl-text",
+	"version": "2.0.11",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"fonts": "tsx src/fetch-fonts.ts",
+		"render": "tsx src/render.ts",
+		"render:src": "tsx --tsconfig tsconfig.dev.json --conditions=development src/render.ts",
+		"typecheck": "tsc --noEmit -p ."
+	},
+	"dependencies": {
+		"framefields": "workspace:*"
+	},
+	"devDependencies": {
+		"@framefields/tsconfig": "workspace:*",
+		"@types/node": "^24.1.0",
+		"tsx": "^4.20.3",
+		"typescript": "^5.8.3"
+	}
+}

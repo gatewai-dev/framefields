@@ -45,6 +45,7 @@ export interface LottieNodeProps {
 	animationId?: string;
 	stateMachineId?: string;
 	theme?: string;
+	dpr?: number;
 }
 
 export interface SVGNodeProps {
@@ -116,8 +117,13 @@ export interface ParagraphNodeProps {
 	opacity?: number;
 	matrix?: DOMMatrix;
 	lineHeight?: number;
-	/** "start"/"end" follow the line direction (left/right for LTR text) */
+	/** "start"/"end" follow the paragraph direction (left/right for LTR text) */
 	align?: TextAlign | "start" | "end";
+	/**
+	 * Base direction of each paragraph. "auto" (default) takes it from the
+	 * first strong character, so Arabic or Hebrew text reads right to left.
+	 */
+	direction?: "ltr" | "rtl" | "auto";
 	fontWeight?: number | string;
 	fontStyle?: "normal" | "italic";
 	letterSpacing?: number;

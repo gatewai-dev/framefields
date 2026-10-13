@@ -1,4 +1,7 @@
-/** A decoded image: a browser bitmap or, headless, raw RGBA8 pixels. */
+/**
+ * A decoded image: a browser bitmap or, headless, raw RGBA8 pixels.
+ * `buffer` must already be premultiplied (see `premultiplyPixels`).
+ */
 export interface DecodedImageData {
 	width: number;
 	height: number;
@@ -6,7 +9,10 @@ export interface DecodedImageData {
 	buffer?: Parameters<GPUQueue["writeTexture"]>[1] | null;
 }
 
-/** An rgba8unorm texture holding `data` (left empty when it has neither form). */
+/**
+ * A premultiplied-alpha rgba8unorm texture holding `data` (left empty when
+ * it has neither form).
+ */
 export function createImageTexture(
 	device: GPUDevice,
 	data: DecodedImageData,
@@ -23,7 +29,7 @@ export function createImageTexture(
 	if (data.bitmap) {
 		device.queue.copyExternalImageToTexture(
 			{ source: data.bitmap },
-			{ texture: tex },
+			{ texture: tex, premultipliedAlpha: true },
 			[data.width, data.height],
 		);
 	} else if (data.buffer) {

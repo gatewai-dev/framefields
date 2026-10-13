@@ -74,7 +74,8 @@ describe("Image Node", () => {
 			expect(globalThis.fetch).toHaveBeenCalledWith("http://test.com/img.png");
 			expect(data.width).toBe(1);
 			expect(data.height).toBe(1);
-			expect(data.buffer).toBeDefined();
+			// sharp's straight [0,1,2,a=3] comes back premultiplied.
+			expect(Array.from(data.buffer as Uint8Array)).toEqual([0, 0, 0, 3]);
 			expect(data.bitmap).toBeUndefined();
 		});
 
@@ -106,6 +107,15 @@ describe("Image Node", () => {
 				imageLoader.load("http://test.com/fail.png", true),
 			).rejects.toThrow();
 		});
+
+		it("should reject Lottie and JSON animation files with helpful message", async () => {
+			await expect(imageLoader.load("animation.json", true)).rejects.toThrow(
+				"Unsupported image format for 'animation.json'",
+			);
+			await expect(imageLoader.load("animation.lottie", true)).rejects.toThrow(
+				"Unsupported image format for 'animation.lottie'",
+			);
+		});
 	});
 
 	describe("drawImageNode", () => {
@@ -133,7 +143,11 @@ describe("Image Node", () => {
 			await drawImageNode(mockCtx, mockPass, props);
 
 			expect(mockDevice.createTexture).toHaveBeenCalled();
-			expect(mockDevice.queue.copyExternalImageToTexture).toHaveBeenCalled();
+			expect(mockDevice.queue.copyExternalImageToTexture).toHaveBeenCalledWith(
+				expect.anything(),
+				expect.objectContaining({ premultipliedAlpha: true }),
+				expect.anything(),
+			);
 			expect(mockCtx.renderer.drawTexture).toHaveBeenCalled();
 		});
 

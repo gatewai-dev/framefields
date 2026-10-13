@@ -252,6 +252,7 @@ if (!result.qa!.passed) process.exitCode = 1; // fail CI / the agent loop
 | `audio_silence` | info | ≥ `minSilenceSec` (2 s) below `silenceDbfs` (-60) |
 | `audio_silent` | info | The whole track is silent |
 | `invalid_gradient` | error | A `background` / `fill` gradient string that does not parse: it draws nothing |
+| `unsupported_image_format` | error | An image layer receiving a `.json` / `.lottie` vector animation, video, or audio file |
 | `unknown_color` | warning | A color string that is not a color: it draws transparent |
 | `low_contrast_text` | warning | Text below 3:1 contrast against the solid color behind it (suggests a readable one) |
 | `offscreen_layer` | warning | A static absolute layer entirely outside the canvas |

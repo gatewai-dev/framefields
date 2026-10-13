@@ -49,13 +49,17 @@ describe("lintComposition", () => {
 			{ id: "photo", kind: "image", src: "a.png" },
 			{ id: "t", kind: "text", fill: "#ffffff" },
 		];
-		expect(codes(overImage, { backgroundColor: "#ffffff" })).not.toContain("low_contrast_text");
+		expect(codes(overImage, { backgroundColor: "#ffffff" })).not.toContain(
+			"low_contrast_text",
+		);
 		const onPanel = [
 			{ id: "panel", kind: "box", background: "#ffffff" },
 			{ id: "t", kind: "text", fill: "#ffffff", zIndex: -1 },
 		];
 		// Drawn before the panel (lower z): the backdrop is still known.
-		expect(codes(onPanel, { backgroundColor: "#ffffff" })).toContain("low_contrast_text");
+		expect(codes(onPanel, { backgroundColor: "#ffffff" })).toContain(
+			"low_contrast_text",
+		);
 	});
 
 	it("flags static layers parked off-canvas, but not ones that move in", () => {
@@ -124,5 +128,48 @@ describe("lintComposition", () => {
 				},
 			]),
 		).toEqual(["static_track"]);
+	});
+
+	it("flags unsupported formats given to image layers", () => {
+		expect(
+			codes([
+				{
+					id: "img1",
+					kind: "media",
+					dataType: "Image",
+					inputHandleId: "anim.json",
+				},
+			]),
+		).toEqual(["unsupported_image_format"]);
+		expect(
+			codes([
+				{
+					id: "img2",
+					kind: "media",
+					dataType: "Image",
+					inputHandleId: "anim.lottie",
+				},
+			]),
+		).toEqual(["unsupported_image_format"]);
+		expect(
+			codes([
+				{
+					id: "img3",
+					kind: "media",
+					dataType: "Image",
+					inputHandleId: "video.mp4",
+				},
+			]),
+		).toEqual(["unsupported_image_format"]);
+		expect(
+			codes([
+				{
+					id: "img4",
+					kind: "media",
+					dataType: "Image",
+					inputHandleId: "valid.png",
+				},
+			]),
+		).toEqual([]);
 	});
 });

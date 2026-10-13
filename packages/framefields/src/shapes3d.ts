@@ -216,6 +216,12 @@ export interface Text3DOptions extends Surface3DOptions {
 	scaleY?: number;
 	scaleZ?: number;
 	align?: "start" | "center" | "end" | "left" | "right";
+	/**
+	 * Base direction: "auto" (default) takes it from the first strong
+	 * character, so Arabic and Hebrew read right to left. "start"/"end"
+	 * alignment follows it.
+	 */
+	direction?: "ltr" | "rtl" | "auto";
 	verticalAlign?: "top" | "middle" | "bottom";
 	letterSpacing?: number;
 	lineHeight?: number;
@@ -792,6 +798,7 @@ export const Layer3D = {
 			fontStyle: options.fontStyle,
 			fill: options.fill ?? "#ffffff",
 			align: (options.align as any) ?? "center",
+			direction: options.direction,
 			verticalAlign: options.verticalAlign ?? "middle",
 			letterSpacing: options.letterSpacing,
 			lineHeight: options.lineHeight,
@@ -844,6 +851,7 @@ export const Layer3D = {
 				curveSegments: options.curveSegments,
 				curveTolerance,
 				align: options.align,
+				direction: options.direction,
 				verticalAlign: options.verticalAlign,
 				letterSpacing: options.letterSpacing,
 				// The mesh's own shading only knows these; glass and the like are

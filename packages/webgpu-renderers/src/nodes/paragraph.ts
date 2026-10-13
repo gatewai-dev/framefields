@@ -34,6 +34,7 @@ import {
 	sampleAudioSpectrumScale,
 	type TextAnchorConfig,
 } from "../text-animations/index.js";
+import { fitSpansToText, resolveTextSpans } from "./text-spans.js";
 import type { ParagraphNodeProps, TextAnimator } from "./types.js";
 
 function sampleSignalValue(
@@ -966,6 +967,11 @@ export function drawParagraphNode(
 		);
 		textToRender = twState.currentDisplayString;
 	}
+	// Spans carry the text that is drawn: keep them to what the typewriter shows.
+	const spans =
+		twState && props.spans?.length
+			? fitSpansToText(resolveTextSpans(props.spans), textToRender)
+			: props.spans;
 
 	// Path-following options resolution with animated margin/shift properties
 	const pathOptions = props.pathOptions
@@ -998,7 +1004,7 @@ export function drawParagraphNode(
 			letterSpacing,
 			lineHeight,
 			maxWidth,
-			props.spans,
+			spans,
 		);
 	} else {
 		measured = SlugGeometry.measure(
@@ -1008,7 +1014,7 @@ export function drawParagraphNode(
 			letterSpacing,
 			lineHeight,
 			undefined,
-			props.spans,
+			spans,
 		);
 		maxWidth = measured.width;
 	}
@@ -1036,7 +1042,7 @@ export function drawParagraphNode(
 					animApplyBy,
 					alignWidth,
 					pathOptions,
-					props.spans,
+					spans,
 				);
 	// verticalAlign places the text block inside a box taller than it (CSS
 	// line-box centring). Path text follows its path; captions place themselves.

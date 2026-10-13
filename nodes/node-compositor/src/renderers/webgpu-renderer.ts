@@ -9,7 +9,7 @@ import {
 	type LayoutNode,
 	type Rect,
 } from "@framefields/compositions/program";
-import type { MeshAudioDeformConfig } from "@framefields/core";
+import type { MeshAudioDeformConfig, TextSpan } from "@framefields/core";
 import {
 	DEFAULT_DURATION_MS,
 	getActiveMediaMetadata,
@@ -39,6 +39,7 @@ import {
 	type DrawQuad3DOpts,
 	type Environment3DOptions,
 	type ExtrudedTextGeometryOptions,
+	fitSpansToText,
 	type GPUMeshBuffers,
 	generateExtrudedTextGeometry,
 	getPrimitiveGeometry,
@@ -55,12 +56,14 @@ import {
 	poseNodes,
 	type RenderContextValue,
 	Renderer3D,
+	resolveTextSpans,
 	ScreenSpaceRelightPipeline,
 	type ShadowCaster3D,
 	type ShapeFillConfig,
 	type ShapeGeometryConfig,
 	SlugFontCache,
 	type SlugGlyphBatch,
+	spansText,
 	srtLoader,
 	Vector3Math,
 } from "@framefields/webgpu-renderers";
@@ -3064,7 +3067,29 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					lop.dataType === "Caption" ||
 					(content?.operation as any)?.srtText !== undefined;
 			} else if (kind === "text") {
-				const fullText = lop.text ?? "";
+				// Rich-text spans are the drawn text: read their animated fields for
+				// this frame and take the plain text from them, so a reveal below
+				// slices the same characters the spans hold.
+				const rawSpans = (target?.spans ?? lop.spans) as TextSpan[] | undefined;
+				const spanFps = fps ?? 24;
+				const spans = rawSpans?.length
+					? resolveTextSpans(rawSpans, {
+							frame: compositionFrame,
+							fps: spanFps,
+							time: compositionFrame / spanFps,
+							duration: composeDuration / 1000,
+							durationMs: composeDuration,
+							progress:
+								composeDuration > 0
+									? Math.min(
+											1,
+											((compositionFrame / spanFps) * 1000) / composeDuration,
+										)
+									: 0,
+							deltaTime: 1 / spanFps,
+						})
+					: undefined;
+				const fullText: string = spans ? spansText(spans) : (lop.text ?? "");
 				let displayText = fullText;
 
 				// Kinetic typography animators (Section 5)
@@ -3202,6 +3227,10 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					operation: {
 						op: "text",
 						text: displayText,
+						spans:
+							spans && displayText !== fullText
+								? fitSpansToText(spans, displayText)
+								: spans,
 						animators: resolvedAnimators,
 						pathOptions: target?.pathOptions ?? lop.pathOptions,
 						typewriter: target?.typewriter ?? lop.typewriter,

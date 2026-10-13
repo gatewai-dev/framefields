@@ -3287,6 +3287,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 							durationMs: layerDurationInMS,
 							opacity: 1.0,
 							fps,
+							...(typeof lop.dpr === "number" && { dpr: lop.dpr }),
 							// A media layer's effect chain (decode → passes) allocates from the
 							// shared pool: keep it off the destination this layer composites onto,
 							// or the raw frame lands there wherever the clip does not cover it.

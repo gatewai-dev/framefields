@@ -15,6 +15,7 @@ const builders = {
 	video: () => Layer.video("clip.mp4"),
 	image: () => Layer.image("still.png"),
 	svg: () => Layer.svg("logo.svg"),
+	lottie: () => Layer.lottie("anim.json"),
 	audio: () => Layer.audio("track.mp3"),
 	text: () => Layer.text("Hello", { align: "start" }),
 	richText: () => Layer.text(["Hello ", { text: "world", fontWeight: 700 }]),

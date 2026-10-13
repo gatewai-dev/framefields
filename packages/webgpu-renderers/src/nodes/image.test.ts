@@ -106,6 +106,15 @@ describe("Image Node", () => {
 				imageLoader.load("http://test.com/fail.png", true),
 			).rejects.toThrow();
 		});
+
+		it("should reject Lottie and JSON animation files with helpful message", async () => {
+			await expect(imageLoader.load("animation.json", true)).rejects.toThrow(
+				"Unsupported image format for 'animation.json'",
+			);
+			await expect(imageLoader.load("animation.lottie", true)).rejects.toThrow(
+				"Unsupported image format for 'animation.lottie'",
+			);
+		});
 	});
 
 	describe("drawImageNode", () => {

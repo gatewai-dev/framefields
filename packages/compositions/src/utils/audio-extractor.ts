@@ -281,6 +281,12 @@ export async function decodeAudioSource(
 
 			return { channels, sampleRate };
 		} catch (err) {
+			if (
+				err instanceof Error &&
+				err.message.includes("Cannot open local media file")
+			) {
+				throw err;
+			}
 			if (typeof process !== "undefined" && process.versions?.node) {
 				try {
 					const { execSync } = await import("node:child_process");
@@ -320,6 +326,12 @@ export async function decodeAudioSource(
 			}
 		}
 	} catch (err) {
+		if (
+			err instanceof Error &&
+			err.message.includes("Cannot open local media file")
+		) {
+			throw err;
+		}
 		mediaLogger.error(
 			{ err },
 			`[AudioExtractor] Failed to decode source ${url}`,

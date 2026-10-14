@@ -44,7 +44,7 @@ class ImageLoader {
 				} else {
 					// Local filesystem file in headless Node.js
 					const filePath = (await toLocalPath(src)) ?? src;
-					const fs = await import(/* webpackIgnore: true */ "fs/promises");
+					const fs = await import(/* webpackIgnore: true */ "node:fs/promises");
 					const fileBuf = await fs.readFile(filePath);
 					arrayBuffer = fileBuf.buffer.slice(
 						fileBuf.byteOffset,
@@ -99,12 +99,16 @@ export async function drawImageNode(
 	}
 	let tex = textureCache.acquire(props.src);
 
+	const isHeadless =
+		props.isHeadless ??
+		(typeof window === "undefined" ||
+			Boolean(
+				(globalThis as { __IS_HEADLESS_RENDERER__?: boolean })
+					.__IS_HEADLESS_RENDERER__,
+			));
+
 	if (!tex) {
 		try {
-			const isHeadless =
-				props.isHeadless ??
-				(typeof window === "undefined" ||
-					(globalThis as any).__IS_HEADLESS_RENDERER__);
 			const data = await imageLoader.load(props.src, isHeadless);
 
 			// Check the cache again in case another concurrent render task already created and cached the texture!
@@ -115,6 +119,9 @@ export async function drawImageNode(
 				textureCache.set(props.src, tex, ctx.device);
 			}
 		} catch (err) {
+			if (isHeadless) {
+				throw err;
+			}
 			console.error("Failed to load image texture:", err);
 			return;
 		}

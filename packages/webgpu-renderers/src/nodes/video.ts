@@ -127,6 +127,10 @@ export const drawVideoNode = async (
 		const exactKey = props.frameKey;
 		let exactTex = textureCache.acquire(exactKey);
 
+		const isPlaying = props.isPlaying ?? true;
+		const shouldWait = isHeadless || props.forceWait || !isPlaying;
+		const isFirstFrame = !lastGoodFrameKey.has(nodeId);
+
 		if (!exactTex) {
 			// Only start a decode if one isn't already running for this key
 			if (!pendingDecodes.has(exactKey)) {
@@ -140,28 +144,31 @@ export const drawVideoNode = async (
 					0,
 					Number.isFinite(props.timestampSec) ? props.timestampSec : 0,
 				);
-				const decodePromise = decoder
-					.getFrame(safeTimestampSec)
-					.then((frame) => {
-						if (!frame) return;
-						// Another render cycle may have already uploaded this
-						const existing = textureCache.acquire(exactKey);
-						if (existing) {
-							textureCache.release(exactKey);
-							return;
-						}
-						const tex = uploadFrameToTexture(ctx, exactKey, frame, isHeadless);
-						if (tex) {
-							updateLastGoodFrame(nodeId, exactKey, ctx.device);
-						}
-					})
-					.catch((err) => {
+				const innerPromise = (async () => {
+					const frame = await decoder.getFrame(safeTimestampSec);
+					if (!frame) return;
+					// Another render cycle may have already uploaded this
+					const existing = textureCache.acquire(exactKey);
+					if (existing) {
+						textureCache.release(exactKey);
+						return;
+					}
+					const tex = uploadFrameToTexture(ctx, exactKey, frame, isHeadless);
+					if (tex) {
+						updateLastGoodFrame(nodeId, exactKey, ctx.device);
+					}
+				})();
+
+				const decodePromise = innerPromise.finally(() => {
+					pendingDecodes.delete(exactKey);
+					delays.delete(delayHandle);
+				});
+
+				decodePromise.catch((err) => {
+					if (!shouldWait && !isFirstFrame) {
 						console.error("[VideoNode] decode error:", err);
-					})
-					.finally(() => {
-						pendingDecodes.delete(exactKey);
-						delays.delete(delayHandle);
-					});
+					}
+				});
 
 				pendingDecodes.set(exactKey, decodePromise);
 
@@ -173,17 +180,11 @@ export const drawVideoNode = async (
 				// keeps rendering smooth at full frame-rate.
 				// In headless mode we ALWAYS await every frame to guarantee 100%
 				// frame-accuracy and prevent parallel decodes clogging WebCodecs.
-				const isPlaying = props.isPlaying ?? true;
-				const shouldWait = isHeadless || props.forceWait || !isPlaying;
-				const isFirstFrame = !lastGoodFrameKey.has(nodeId);
 				if (isFirstFrame || shouldWait) {
 					await decodePromise;
 					exactTex = textureCache.acquire(exactKey);
 				}
 			} else {
-				const isPlaying = props.isPlaying ?? true;
-				const shouldWait = isHeadless || props.forceWait || !isPlaying;
-				const isFirstFrame = !lastGoodFrameKey.has(nodeId);
 				if (isFirstFrame || shouldWait) {
 					await pendingDecodes.get(exactKey);
 					exactTex = textureCache.acquire(exactKey);
@@ -226,6 +227,9 @@ export const drawVideoNode = async (
 			textureCache.release(activeKey);
 		}
 	} catch (err) {
+		if (isHeadless) {
+			throw err;
+		}
 		console.error("[VideoNode] drawVideoNode error:", err);
 	}
 };

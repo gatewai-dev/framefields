@@ -262,11 +262,14 @@ export function buildConfig(
 
 	if (problems.length > 0) return { ok: false as const, problems };
 
+	// RunPod network volume, then the image's cache dir, then the user's.
 	const cacheDir =
 		e.FF_CACHE_DIR ??
 		(probe.exists("/runpod-volume")
 			? "/runpod-volume/framefields"
-			: path.join(probe.homedir(), ".cache", "framefields-renderer"));
+			: probe.exists("/var/cache/framefields")
+				? "/var/cache/framefields"
+				: path.join(probe.homedir(), ".cache", "framefields-renderer"));
 	const workDir = e.FF_WORK_DIR ?? path.join(probe.tmpdir(), "framefields");
 	const outputBuckets = e.FF_OUTPUT_BUCKETS.length
 		? e.FF_OUTPUT_BUCKETS

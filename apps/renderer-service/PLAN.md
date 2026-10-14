@@ -476,7 +476,7 @@ The service no longer uses `S3StorageService` from `@framefields/server-utils`, 
 
 ## 12. Image, RunPod template, docs
 
-**Image** (`Dockerfile.renderer`, renamed to `apps/renderer-service/Dockerfile`, with the build context still at the repo root):
+**Image** (`apps/renderer-service/Dockerfile`, formerly `Dockerfile.renderer`; the build context is still the repo root):
 
 - **Runtime packages added:** `git`, `git-lfs`, `openssh-client`, `ca-certificates`, `tini` (PID 1, reaps git and install subprocesses), `jq`. Corepack is pre-warmed for pnpm, yarn and npm, and `tsx` ships in the service's prod dependencies (its `tsImport` API is used in-process).
 - **Two variants:**
@@ -538,10 +538,14 @@ Each phase is its own PR-sized step with tests.
    - CLI `--job-file` / `--job -` with `--result-file`. Exit codes: 0 completed, 1 failed, 2 bad invocation or job.
    - Server and CLI share `worker/boot.ts`.
    - Also done here: cache eviction (§6.4, `worker/janitor.ts`). It runs between jobs (at most every 5 min), and on demand when the LFS disk preflight finds too little space.
-8. **Image + template + compose + docs.**
-   - Release workflow.
-   - GPU smoke test: render the fixture repo on a RunPod pod. Run it by hand first, then as a nightly job.
-   - Nightly host smoke test against GitHub, GitLab, Bitbucket and a Gitea container (6.5).
+8. **Image + template + compose + docs.** Written, but the image has **not been built yet** (no Docker daemon on the dev machine):
+   - `apps/renderer-service/Dockerfile` (`VARIANT=slim|full`; tini, git, git-lfs, ssh, ffmpeg; user `framefields`; `HEALTHCHECK`) and `docker/entrypoint.sh` (`http` | `runpod-serverless` | `cli`).
+   - Pinned SSH host keys: `deploy/known_hosts`, verified against `deploy/known_hosts.fingerprints` by `deploy/known-hosts.sh`, which the image build runs. The live keys were checked against the published fingerprints on 2026-10-14.
+   - RunPod: `deploy/runpod/{serverless,pod}.template.json` and `create-template.sh` (GraphQL `saveTemplate`).
+   - `deploy/docker-compose.yml` with MinIO (validated with `docker compose config`) and `deploy/env.example`.
+   - `.github/workflows/renderer-image.yml`: tests, then builds both variants, a no-GPU smoke test, and a push to GHCR on `renderer-v*` tags.
+   - `README.md` is the self-hosting guide. A page on the docs website is still to do; the site isn't in this repo.
+   - Still to do: the first image build, a GPU smoke test on a RunPod pod and a serverless endpoint, and the nightly host smoke tests (6.5).
 9. **(Later)**
    - Chunked distributed rendering: split a frame range across N jobs and concat with a stream copy.
    - Webhooks on completion (`output.webhook` with an HMAC signature).

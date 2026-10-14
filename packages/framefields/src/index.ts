@@ -243,6 +243,7 @@ import {
 import {
 	type FrameGridOptions,
 	HeadlessMediaRenderer,
+	type RenderProgress,
 	renderFrameGrid,
 	type VideoQaOptions,
 	type VideoQaReport,
@@ -1000,6 +1001,13 @@ export interface RenderVideoOptions {
 	 * pass thresholds (e.g. `{ targetLufs: -14 }`) to tighten them.
 	 */
 	qa?: boolean | VideoQaOptions;
+	/**
+	 * Stops the render between frames. The promise rejects with
+	 * `signal.reason` and no file is left behind.
+	 */
+	signal?: AbortSignal;
+	/** Called as frames finish (`phase: "render"`), then once for the audio mix. */
+	onProgress?: (progress: RenderProgress) => void;
 }
 
 export interface RenderVideoResult {
@@ -2914,6 +2922,7 @@ export {
 	HeadlessWebGPURenderer,
 	type QaIssue,
 	type QaSegment,
+	type RenderProgress,
 	renderFrameGrid,
 	renderSemaphore,
 	resolveSamplePoints,

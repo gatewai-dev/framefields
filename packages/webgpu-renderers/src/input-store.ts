@@ -95,6 +95,25 @@ class InputStore {
 		return shared.promise;
 	}
 
+	/**
+	 * Drops every cached input, including ones a failed render never released.
+	 * Used between jobs, when the same path may now hold a different file.
+	 */
+	clear(): void {
+		const entries = [...this.store.values()];
+		this.store.clear();
+		for (const shared of entries) {
+			shared.promise.then(
+				(input) => {
+					try {
+						input.dispose();
+					} catch (_) {}
+				},
+				() => {},
+			);
+		}
+	}
+
 	release(url: string): void {
 		if (!url) return;
 		const resolvedUrl = resolveInputUrl(url, isNodeRuntime());

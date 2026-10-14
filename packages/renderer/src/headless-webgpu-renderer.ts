@@ -1035,6 +1035,13 @@ export class HeadlessWebGPURenderer {
 			 * and return the findings as `qa`. `true` uses default thresholds.
 			 */
 			qa?: boolean | VideoQaOptions;
+			/**
+			 * Aborts the render between frames; the promise rejects with
+			 * `signal.reason` and the partial output is deleted.
+			 */
+			signal?: AbortSignal;
+			/** Called after each frame is queued for encoding, then once for audio. */
+			onProgress?: (progress: RenderProgress) => void;
 		},
 	): Promise<{
 		filePath: string;
@@ -1265,6 +1272,7 @@ export class HeadlessWebGPURenderer {
 
 				// Render and encode frames using pipelined double-buffered DMA staging ring
 				for (let i = 0; i < totalFrames; i++) {
+					options?.signal?.throwIfAborted();
 					if (i % 10 === 0) {
 						rendererLogger.info(
 							{ renderId, frame: i, totalFrames },
@@ -1321,6 +1329,11 @@ export class HeadlessWebGPURenderer {
 						);
 
 						await pipeline.enqueueFrame(i, targetTexture, encoder);
+						options?.onProgress?.({
+							phase: "render",
+							frame: i + 1,
+							totalFrames,
+						});
 					} else {
 						throw new Error("Invalid render context state");
 					}
@@ -1347,6 +1360,12 @@ export class HeadlessWebGPURenderer {
 			}
 
 			// ── Audio ──────────────────────────────────────────────────────────────
+			options?.signal?.throwIfAborted();
+			options?.onProgress?.({
+				phase: "audio",
+				frame: totalFrames,
+				totalFrames,
+			});
 			const { channels, sampleRate } = await mixAudioTracks(
 				virtualMedia,
 				fps,
@@ -1391,6 +1410,7 @@ export class HeadlessWebGPURenderer {
 				}
 			}
 
+			options?.signal?.throwIfAborted();
 			await output.finalize();
 			outputFinalized = true;
 
@@ -1472,6 +1492,15 @@ export class HeadlessWebGPURenderer {
 			);
 		}
 	}
+}
+
+/** Progress reported by `renderVideo({ onProgress })`. */
+export interface RenderProgress {
+	/** "render" while frames are drawn and encoded, "audio" while mixing. */
+	phase: "render" | "audio";
+	/** Frames finished so far (1-based). */
+	frame: number;
+	totalFrames: number;
 }
 
 export const HeadlessMediaRenderer = HeadlessWebGPURenderer;

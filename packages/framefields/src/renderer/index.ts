@@ -5,6 +5,7 @@ export {
 	HeadlessWebGPURenderer,
 	type QaIssue,
 	type QaSegment,
+	type RenderProgress,
 	renderSemaphore,
 	type VideoQaOptions,
 	type VideoQaReport,

@@ -497,21 +497,23 @@ The service no longer uses `S3StorageService` from `@framefields/server-utils`, 
 
 Each phase is its own PR-sized step with tests.
 
-0. **Unbreak and remove the inline path.**
+0. **Unbreak and remove the inline path.** ✅ Done.
    - Drop the DI container (`di-setup.ts`, inversify, `ServerMediaService`, `R2StorageService`). Storage returns in phase 6 as the service's own output sink.
    - Delete the `virtualMedia` path: `job-processor.ts`, `render-upload.ts`, `cli.ts --job <json>`, the `/run` and `/status` routes, `configureAssetUrls`/`BASE_URL`, and the old `render.test.ts` cases. Keep `/health`, `/ping`, readiness and graceful shutdown.
    - Fix the `gatewai-renderer` paths in the entrypoint and the Python shim.
    - Get `pnpm --filter @framefields/renderer-service typecheck test` green.
-1. **Config + job schema v2 + error model.**
+1. **Config + job schema v2 + error model.** ✅ Done.
    - `src/config/` (frozen config, secrets scrubbed from `process.env`), `src/jobs/schema.ts`, `src/errors.ts` (`RenderError` with `code`/`phase`/`retryable`), and the redactor.
    - API-key auth on HTTP, the job store with TTL eviction, and the single-slot queue.
-2. **GitWorkspace.**
+2. **GitWorkspace.** ✅ Done, except that the LFS download is untested locally because git-lfs isn't installed.
    - Mirror cache, ref resolution, workspace leasing, auth helpers and host profiles (6.5), LFS pull with pre- and postflight, eviction.
    - Integration tests use local bare repos and a file-based LFS remote (`lfs.standalonetransferagent`), so no network is needed.
-3. **Installer.** Package manager detection, frozen install with framefields filtered out, skipping the install when nothing else is needed, the stamp check, shared stores, and the engine range check.
-4. **Engine hooks (in `@framefields/renderer` and `framefields`).**
-   - `signal: AbortSignal` and `onProgress` on `renderVideo`/`renderFrame`/`renderFrameGrid`, checked between frames.
-   - A per-job cache reset (fonts, textures, compiled timelines) that keeps the device and pipelines.
+3. **Installer.** ✅ Done: package manager detection (via `packageManager` or the lockfile, run through corepack), frozen install, skipping the install when nothing else is needed, the stamp check, shared stores, the engine range check, and install error classification. `install.prepare` steps are deferred until the repo defaults file (`framefields.render.json`) is implemented.
+4. **Engine hooks (in `@framefields/renderer` and `framefields`).** ✅ Done:
+   - `signal: AbortSignal` and `onProgress` on `renderVideo`, checked between frames and before the audio mix. Single-frame renders don't need either.
+   - `resetRenderCaches()` (`@framefields/renderer`) clears media inputs and decoders, textures, LUTs and fonts. The worker calls it plus `FontManager.clear()` before each job. The GPU device and pipelines stay warm.
+   - A GPU test (`src/engine.gpu.test.ts`, run with `FF_GPU_TESTS=1`) confirmed that without the reset, a changed file at the same workspace path is served stale.
+   - Not yet verified: re-opening a *video* file at the same path after the reset. A comment in `renderImage` says a mediabunny `Input` can only be created once per URL. Phase 5 needs a GPU test that renders a video layer in two jobs back to back.
 5. **InProcessRenderer.**
    - The engine alias resolve hook, `tsImport` loading, export-shape normalisation, the job sandbox (8.2), the watchdog, the crash journal, and recycling.
 6. **Outputs.** The s3, presigned, local and inline sinks, verification (ffprobe), multi-output keys, and idempotency.

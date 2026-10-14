@@ -2914,10 +2914,12 @@ export {
 export {
 	type AudioQaStats,
 	computeGridLayout,
+	describeGpu,
 	type FrameGridOptions,
 	type FrameGridRenderable,
 	type FrameSamplePoint,
 	formatQaReport,
+	type GpuAdapterDescription,
 	HeadlessMediaRenderer,
 	HeadlessWebGPURenderer,
 	type QaIssue,

@@ -1,6 +1,7 @@
 import fsSync from "node:fs";
 import { registerMediabunnyServer } from "@mediabunny/server";
 import * as webcodecs from "@napi-rs/webcodecs";
+import { videoCodecServerOptions } from "./video-encoders.js";
 
 export const isAMD = (): boolean => {
 	if (process.platform !== "linux") return false;
@@ -29,14 +30,8 @@ export const isAMD = (): boolean => {
 };
 
 export const bootstrapMediabunny = (): void => {
-	const getHardwareContextOption = () => {
-		if (isAMD()) {
-			return { hardwareContext: null };
-		}
-		return {};
-	};
-
-	registerMediabunnyServer(getHardwareContextOption());
+	// Hardware codecs only where they work; software encoders otherwise.
+	registerMediabunnyServer(videoCodecServerOptions(isAMD()) as never);
 
 	for (const key of Object.keys(webcodecs)) {
 		if (typeof (globalThis as any)[key] === "undefined") {

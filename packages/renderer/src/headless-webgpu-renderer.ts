@@ -47,7 +47,7 @@ import {
 import sharp from "sharp";
 import { Canvas as SkiaCanvas, Image as SkiaImage } from "skia-canvas";
 import { preloadFonts } from "./asset-preloader.js";
-import { bootstrapMediabunny, isAMD } from "./bootstrap-mediabunny.js";
+import { bootstrapMediabunny } from "./bootstrap-mediabunny.js";
 import { discoverAndRegisterNodeRenderers } from "./dynamic-node-discovery.js";
 import { rendererLogger } from "./logger.js";
 import {
@@ -1188,7 +1188,8 @@ export class HeadlessWebGPURenderer {
 				codec: videoCodec,
 				bitrate: quality,
 				latencyMode: "realtime",
-				hardwareAcceleration: isAMD() ? "prefer-software" : "prefer-hardware",
+				// The codec server options pick hardware or software (video-encoders.ts).
+				hardwareAcceleration: "prefer-hardware",
 			} as any);
 			output.addVideoTrack(videoSource);
 		}

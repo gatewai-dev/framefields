@@ -13,7 +13,11 @@ export {
 	type VideoQaStats,
 } from "@framefields/renderer";
 
-export { initHeadlessWebGPU } from "@framefields/webgpu-renderers";
+export {
+	describeGpu,
+	type GpuAdapterDescription,
+	initHeadlessWebGPU,
+} from "@framefields/webgpu-renderers";
 
 export {
 	computeGridLayout,

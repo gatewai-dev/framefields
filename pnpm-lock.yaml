@@ -2774,6 +2774,9 @@ importers:
       mediabunny:
         specifier: ^1.51.0
         version: 1.51.0
+      node-av:
+        specifier: 6.0.0
+        version: 6.0.0
       pino:
         specifier: ^10.3.1
         version: 10.3.1

@@ -119,7 +119,13 @@ export function measureMaxCaptionHeight(
 	if (SlugFontCache.isFailed(fontFamily)) {
 		fontFamily = "Inter";
 	}
-	const slugFont = SlugFontCache.getFont(fontFamily, style.fontWeight, null);
+	const slugFont = SlugFontCache.getFont(
+		fontFamily,
+		style.fontWeight,
+		null,
+		undefined,
+		fontSize,
+	);
 
 	let maxH = 0;
 	for (const cue of captions) {
@@ -287,6 +293,8 @@ export async function drawCaptionNode(
 		fontFamily,
 		props.fontWeight,
 		ctx.device,
+		undefined,
+		fontSize,
 	);
 
 	if (!slugFont || !slugFont.curvesTex) {

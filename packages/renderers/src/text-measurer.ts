@@ -56,7 +56,13 @@ export function measureText(
 			? style.lineHeight * fontSize
 			: (style.lineHeight ?? fontSize * 1.2);
 
-	const slugFont = SlugFontCache.getFont(fontFamily, style.fontWeight, null);
+	const slugFont = SlugFontCache.getFont(
+		fontFamily,
+		style.fontWeight,
+		null,
+		undefined,
+		fontSize,
+	);
 
 	const padding = style.padding ?? 0;
 

@@ -412,12 +412,6 @@ export class SlugGeometry {
 			const s = spans[sIdx];
 			const rawText = String(resolveValue(s.text) ?? "");
 
-			let spanFont = defaultFont;
-			if (s.fontFamily || s.fontWeight !== undefined) {
-				const family = s.fontFamily ?? defaultFont.fontFamily ?? "Inter";
-				const resolved = SlugFontCache.getFont(family, s.fontWeight, null);
-				if (resolved) spanFont = resolved;
-			}
 			const sizeValue = resolveValue(s.fontSize);
 			const spanFontSize =
 				typeof sizeValue === "number"
@@ -425,6 +419,18 @@ export class SlugGeometry {
 					: sizeValue !== undefined
 						? Number(sizeValue)
 						: defaultFontSize;
+			let spanFont = defaultFont;
+			if (s.fontFamily || s.fontWeight !== undefined) {
+				const family = s.fontFamily ?? defaultFont.fontFamily ?? "Inter";
+				const resolved = SlugFontCache.getFont(
+					family,
+					s.fontWeight,
+					null,
+					undefined,
+					spanFontSize,
+				);
+				if (resolved) spanFont = resolved;
+			}
 			const fillValue = resolveValue(s.fill);
 			const opacityValue = resolveValue(s.opacity);
 			const style: SpanStyle = {

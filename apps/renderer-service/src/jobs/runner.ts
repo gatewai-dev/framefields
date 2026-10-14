@@ -5,6 +5,7 @@ import { loggerContext, rendererLogger } from "@framefields/server-utils";
 import type { RendererConfig } from "../config/index.js";
 import { type JobPhase, RenderError, toRenderError } from "../errors.js";
 import { redact, redactValue } from "../redact.js";
+import type { CrashJournal } from "./journal.js";
 import type { Pipeline, StepContext } from "./pipeline.js";
 import { JobQueue } from "./queue.js";
 import { type JobRecord, JobStore } from "./store.js";
@@ -22,7 +23,10 @@ export class JobRunner {
 	constructor(
 		private readonly config: RendererConfig,
 		private readonly pipeline: Pipeline,
-		private readonly hooks: { afterJob?: (completed: number) => void } = {},
+		private readonly hooks: {
+			afterJob?: (completed: number) => void;
+			journal?: CrashJournal;
+		} = {},
 	) {
 		this.store = new JobStore(
 			config.limits.jobTtlSec * 1000,
@@ -114,10 +118,15 @@ export class JobRunner {
 				throw toRenderError(controller.signal.reason, phase);
 		};
 
-		this.store.update(id, {
+		const record = this.store.update(id, {
 			status: "IN_PROGRESS",
 			startedAt: new Date().toISOString(),
 			progress: { phase: "resolving" },
+		});
+		this.hooks.journal?.begin({
+			jobId: id,
+			createdAt: record?.createdAt ?? new Date().toISOString(),
+			startedAt: record?.startedAt ?? new Date().toISOString(),
 		});
 		rendererLogger.info(
 			{ jobId: id, repo: job.repo.id, ref: job.ref },
@@ -126,6 +135,7 @@ export class JobRunner {
 
 		let release: (() => Promise<void>) | undefined;
 		let succeeded = false;
+		let settle: (() => unknown) | undefined;
 		try {
 			await fs.mkdir(path.join(jobDir, "out"), { recursive: true });
 
@@ -163,34 +173,36 @@ export class JobRunner {
 			checkAbort();
 
 			timings.totalMs = Date.now() - started;
-			this.store.update(id, {
-				status: "COMPLETED",
-				progress: { phase: "done" },
-				result: redactValue({
-					jobId: id,
-					source: {
-						repo: job.repo.id,
-						ref: job.ref,
-						sha: checkout.sha,
-						workdir: job.input.source.workdir,
-					},
-					engine: {
-						...rendered.engine,
-						projectDeclared: install.declaredEngine,
-					},
-					outputs,
-					timings,
-					cache,
-					warnings,
-				}),
-			});
+			settle = () =>
+				this.store.update(id, {
+					status: "COMPLETED",
+					progress: { phase: "done" },
+					result: redactValue({
+						jobId: id,
+						source: {
+							repo: job.repo.id,
+							ref: job.ref,
+							sha: checkout.sha,
+							workdir: job.input.source.workdir,
+						},
+						engine: {
+							...rendered.engine,
+							projectDeclared: install.declaredEngine,
+						},
+						outputs,
+						timings,
+						cache,
+						warnings,
+					}),
+				});
 			succeeded = true;
-			rendererLogger.info({ jobId: id, timings }, "Job completed");
 		} catch (err) {
 			const reason = controller.signal.aborted ? controller.signal.reason : err;
-			this.fail(id, toRenderError(reason, phase), { timings, cache });
+			settle = () =>
+				this.fail(id, toRenderError(reason, phase), { timings, cache });
 		} finally {
 			clearTimeout(timer);
+			this.hooks.journal?.end();
 			signal.removeEventListener("abort", onAbort);
 			await release?.().catch((err) =>
 				rendererLogger.warn(
@@ -202,7 +214,12 @@ export class JobRunner {
 				await fs.rm(jobDir, { recursive: true, force: true }).catch(() => {});
 			}
 			this.completedJobs++;
+			// Decide on recycling before the job is visibly finished, so a client
+			// that sees the result also sees /health report "draining".
 			this.hooks.afterJob?.(this.completedJobs);
+			settle?.();
+			if (succeeded)
+				rendererLogger.info({ jobId: id, timings }, "Job completed");
 		}
 	}
 

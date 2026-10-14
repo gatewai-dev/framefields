@@ -51,6 +51,15 @@ def wait_ready():
     raise RuntimeError("Renderer did not become healthy in time")
 
 
+def draining():
+    """True when the worker decided to recycle (job count, memory, GPU loss)."""
+    try:
+        status, body = call("GET", "/health")
+        return status != 200 and (body or {}).get("status") == "draining"
+    except (urllib.error.URLError, ConnectionError):
+        return True
+
+
 def failure(error, refresh=False):
     """RunPod marks a job failed when the output has an `error` key."""
     out = {"error": json.dumps(error), "refresh_worker": refresh}
@@ -77,11 +86,14 @@ def handler(job):
             last_progress = progress
 
         if record["status"] == "COMPLETED":
-            return record["result"]
+            result = dict(record["result"])
+            if draining():
+                result["refresh_worker"] = True
+            return result
         if record["status"] in ("FAILED", "CANCELLED"):
             error = record.get("error") or {"code": "INTERNAL", "message": "unknown failure"}
             # Device loss / crashes leave the worker unhealthy: ask for a fresh one.
-            refresh = error.get("code") in ("GPU_DEVICE_LOST", "RENDER_OOM", "RENDER_CRASHED")
+            refresh = error.get("code") in ("GPU_DEVICE_LOST", "RENDER_OOM", "RENDER_CRASHED") or draining()
             return failure(error, refresh=refresh)
 
 

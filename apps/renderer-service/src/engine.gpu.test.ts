@@ -125,3 +125,56 @@ gpu("engine hooks", () => {
 		expect(Buffer.compare(red, green)).not.toBe(0);
 	}, 120_000);
 });
+
+gpu("in-process render step (real Node loader)", () => {
+	it("renders several jobs back to back in one process", async () => {
+		const { execFileSync } = await import("node:child_process");
+		const workDir = await fs.mkdtemp(path.join(os.tmpdir(), "ff-render-e2e-"));
+		try {
+			const out = execFileSync(
+				path.resolve(import.meta.dirname, "../node_modules/.bin/tsx"),
+				[
+					path.resolve(import.meta.dirname, "../test/render-harness.ts"),
+					workDir,
+				],
+				{
+					encoding: "utf8",
+					env: { ...process.env, NODE_ENV: "test" },
+					timeout: 300_000,
+				},
+			);
+			const line = out
+				.trim()
+				.split("\n")
+				.filter((l) => l.startsWith('{"video1"'))
+				.at(-1);
+			const r = JSON.parse(line ?? "{}");
+			expect(r.video1).toMatchObject({
+				ok: true,
+				files: [{ name: "main", ext: "mp4" }],
+			});
+			// Same asset path with new bytes in the next job: decoded fresh.
+			expect(r.video2.ok).toBe(true);
+			expect(r.videosDiffer).toBe(true);
+			expect(r.frames).toMatchObject({
+				ok: true,
+				files: [{ name: "teaser-f0" }, { name: "teaser-f12" }],
+			});
+			expect(r.exits).toMatchObject({ ok: false, code: "EXPORT_SIDE_EFFECT" });
+			expect(r.cancel).toMatchObject({ ok: false, code: "CANCELLED" });
+			expect(r.after.ok).toBe(true);
+			for (const k of [
+				"video1",
+				"video2",
+				"frames",
+				"exits",
+				"cancel",
+				"after",
+			]) {
+				expect(r[k].cwdRestored).toBe(true);
+			}
+		} finally {
+			await fs.rm(workDir, { recursive: true, force: true });
+		}
+	}, 300_000);
+});

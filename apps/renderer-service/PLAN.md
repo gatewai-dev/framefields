@@ -325,9 +325,12 @@ Rules that apply to every host:
 ### 8.1 Loading the entry
 
 1. Resolve `entry` with `realpath` and check that it lies inside the workspace (`PATH_ESCAPE` otherwise, which also covers symlink escapes).
-2. Import it with tsx's `tsImport(entryUrl, { parentURL, tsconfig })`.
-   - Every call gets its own module namespace, so job N+1 never sees job N's cached modules. A fix pushed to the same file is picked up even when the path is identical.
+2. Import it with a per-job tsx loader (`register({ tsconfig })`) and a native `import()` of the entry URL plus `?ff-job=<jobId>`.
+   - The engine alias hook passes that query on to every workspace module the entry imports, so job N+1 never sees job N's cached modules. A fix pushed to the same file is picked up even when the path is identical.
+   - Engine modules get no query, so they stay the worker's single instance. tsx's `tsImport` was rejected because its namespace also applies to `framefields`, which loaded a second engine copy per job.
    - The project's `tsconfig.json` is honoured, including `paths`.
+   - Workspace `.ts/.tsx/.js/.jsx` files always load as ESM, even without `"type": "module"`. In CommonJS mode, tsx transpiles framefields' `.mjs` into a second CJS copy of the engine. `.cjs`/`.cts` stay CommonJS, and their `require.cache` entries are cleared after each job.
+   - The alias uses `module.registerHooks` (synchronous, in-thread), which covers both `import` and `require()`.
    - A missing module gives `ENTRY_NOT_FOUND`. A TS or syntax error gives `ENTRY_COMPILE_FAILED`, with the first frames of the error.
 3. Read the export (`EXPORT_NOT_FOUND`). If it is a function, call it with `args`. A throw here gives `COMPOSITION_BUILD_FAILED`.
 4. Normalise the result to a render plan (section 4). Anything that isn't a Composition, a record of compositions, or a plan gives `EXPORT_INVALID`.
@@ -514,8 +517,12 @@ Each phase is its own PR-sized step with tests.
    - `resetRenderCaches()` (`@framefields/renderer`) clears media inputs and decoders, textures, LUTs and fonts. The worker calls it plus `FontManager.clear()` before each job. The GPU device and pipelines stay warm.
    - A GPU test (`src/engine.gpu.test.ts`, run with `FF_GPU_TESTS=1`) confirmed that without the reset, a changed file at the same workspace path is served stale.
    - Not yet verified: re-opening a *video* file at the same path after the reset. A comment in `renderImage` says a mediabunny `Input` can only be created once per URL. Phase 5 needs a GPU test that renders a video layer in two jobs back to back.
-5. **InProcessRenderer.**
-   - The engine alias resolve hook, `tsImport` loading, export-shape normalisation, the job sandbox (8.2), the watchdog, the crash journal, and recycling.
+5. **InProcessRenderer.** ✅ Done: the engine alias, per-job loading, export-shape normalisation, the job sandbox, stall detection, the abort grace period, the watchdog, the crash journal, and recycling. RunPod gets `refresh_worker` when the worker is draining.
+   - Tests that need Node's real loader run in a subprocess (`test/load-harness.ts`, `test/render-harness.ts`), because vitest's VM bypasses loader hooks.
+   - GPU-verified: back-to-back jobs, a changed video asset at the same path, frames with `select`, `process.exit` at import, cancel mid-render, and recovery afterwards.
+   - Known limits:
+     - Each job registers another tsx loader layer (deactivated afterwards). Recycling every `FF_MAX_JOBS_PER_WORKER` jobs bounds that.
+     - `console.*` from repo code is not yet captured into a per-job log.
 6. **Outputs.** The s3, presigned, local and inline sinks, verification (ffprobe), multi-output keys, and idempotency.
 7. **Transports.**
    - HTTP v2 with SSE progress and cancel.

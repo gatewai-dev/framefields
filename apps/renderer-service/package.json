@@ -14,20 +14,15 @@
 		"dev": "tsx watch --tsconfig tsconfig.dev.json --conditions=development src/index.ts",
 		"typecheck": "tsc -b tsconfig.json",
 		"build": "tsc -b tsconfig.json",
-		"start-cli": "node dist/src/cli.js",
 		"test": "vitest run"
 	},
 	"dependencies": {
-		"@framefields/client-utils": "workspace:*",
 		"@framefields/core": "workspace:*",
 		"@framefields/renderer": "workspace:*",
-		"@framefields/media": "workspace:*",
 		"@framefields/server-utils": "workspace:*",
 		"@hono/node-server": "^1.19.11",
 		"dotenv": "^17.0.1",
 		"hono": "^4.13.7",
-		"inversify": "^7.11.0",
-		"reflect-metadata": "^0.2.2",
 		"zod": "^4.3.6"
 	},
 	"devDependencies": {

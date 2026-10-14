@@ -178,15 +178,9 @@ importers:
 
   apps/renderer-service:
     dependencies:
-      '@framefields/client-utils':
-        specifier: workspace:*
-        version: link:../../packages/client-utils
       '@framefields/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@framefields/media':
-        specifier: workspace:*
-        version: link:../../packages/media
       '@framefields/renderer':
         specifier: workspace:*
         version: link:../../packages/renderer
@@ -202,12 +196,6 @@ importers:
       hono:
         specifier: ^4.13.7
         version: 4.13.13
-      inversify:
-        specifier: ^7.11.0
-        version: 7.11.0(reflect-metadata@0.2.2)
-      reflect-metadata:
-        specifier: ^0.2.2
-        version: 0.2.2
       zod:
         specifier: ^4.3.6
         version: 4.3.6
@@ -396,28 +384,6 @@ importers:
 
   examples/27_rtl_text:
     dependencies:
-      framefields:
-        specifier: workspace:*
-        version: link:../../packages/framefields
-    devDependencies:
-      '@framefields/tsconfig':
-        specifier: workspace:*
-        version: link:../../packages/tsconfig
-      '@types/node':
-        specifier: ^24.1.0
-        version: 24.10.14
-      tsx:
-        specifier: ^4.20.3
-        version: 4.21.0
-      typescript:
-        specifier: ^5.8.3
-        version: 5.9.3
-
-  examples/28_ai_character:
-    dependencies:
-      dotenv:
-        specifier: ^16.4.7
-        version: 16.6.1
       framefields:
         specifier: workspace:*
         version: link:../../packages/framefields

@@ -225,6 +225,43 @@ describe("Framefields Rendering Engine", () => {
 
 			await expect(fs.stat(filePath)).rejects.toThrow();
 		});
+
+		it("fails fast when a local video file does not exist", async () => {
+			const comp = new Composition({
+				width: 320,
+				height: 240,
+				fps: 30,
+				durationMs: 500,
+			});
+			comp.add(
+				Layer.video("../media/does-not-exist.mp4", {
+					width: 320,
+					height: 240,
+				}),
+			);
+			await expect(comp.renderVideo()).rejects.toThrow(
+				/Cannot open local media file.*does-not-exist\.mp4/,
+			);
+		});
+
+		it("fails fast when a local audio file does not exist", async () => {
+			const comp = new Composition({
+				width: 320,
+				height: 240,
+				fps: 30,
+				durationMs: 500,
+			});
+			comp.add(
+				Layer.audio("../media/does-not-exist.wav", {
+					volume: 1,
+					startFrame: 0,
+					durationFrames: 15,
+				}),
+			);
+			await expect(comp.renderVideo()).rejects.toThrow(
+				/Cannot open local media file.*does-not-exist\.wav/,
+			);
+		});
 	});
 
 	describe("4. Audio DSP & Mixing Pipeline", () => {

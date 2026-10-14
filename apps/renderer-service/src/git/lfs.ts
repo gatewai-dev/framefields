@@ -13,6 +13,8 @@ export interface LfsOptions {
 	exclude: string[];
 	/** Directories that must be fully usable (workdir, sparse paths). */
 	scope: string[];
+	/** Frees disk (cache eviction) when the preflight finds too little. */
+	makeRoom?: () => Promise<void>;
 }
 
 export interface LfsResult {
@@ -115,8 +117,21 @@ export async function pullLfs(
 	const needed = missing.reduce((sum, f) => sum + (f.size ?? 0), 0);
 	const total = files.reduce((sum, f) => sum + (f.size ?? 0), 0);
 	// Objects land in the store, then get copied into the checkout.
-	await assertFreeSpace(storage, needed);
-	await assertFreeSpace(root, total);
+	const fits = async () => {
+		await assertFreeSpace(storage, needed);
+		await assertFreeSpace(root, total);
+	};
+	try {
+		await fits();
+	} catch (err) {
+		if (
+			!(err instanceof RenderError && err.code === "DISK_FULL") ||
+			!options.makeRoom
+		)
+			throw err;
+		await options.makeRoom();
+		await fits();
+	}
 
 	const attempts = 3;
 	for (let attempt = 1; ; attempt++) {

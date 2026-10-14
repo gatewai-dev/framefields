@@ -25,6 +25,8 @@ export class JobRunner {
 		private readonly pipeline: Pipeline,
 		private readonly hooks: {
 			afterJob?: (completed: number) => void;
+			/** Awaited before checkout, between jobs (e.g. cache eviction). */
+			beforeJob?: (job: ValidatedJob) => Promise<void>;
 			journal?: CrashJournal;
 		} = {},
 	) {
@@ -137,6 +139,7 @@ export class JobRunner {
 		let succeeded = false;
 		let settle: (() => unknown) | undefined;
 		try {
+			await this.hooks.beforeJob?.(job);
 			await fs.mkdir(path.join(jobDir, "out"), { recursive: true });
 
 			const checkout = await timed("checkout", () =>

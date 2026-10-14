@@ -3,6 +3,7 @@ import path from "node:path";
 import { RenderError } from "../errors.js";
 import type { CheckoutResult, Pipeline } from "../jobs/pipeline.js";
 import { resolveInside } from "../paths.js";
+import { activeJanitor, markUsed } from "../worker/janitor.js";
 import { openGitSession } from "./auth.js";
 import { hostProfile } from "./hosts.js";
 import { findPointers, pullLfs } from "./lfs.js";
@@ -10,6 +11,7 @@ import {
 	type GitContext,
 	git,
 	listRemote,
+	repoHash,
 	resolveRef,
 	syncMirror,
 } from "./mirror.js";
@@ -36,6 +38,7 @@ export const checkout: Pipeline["checkout"] = async (job, ctx) => {
 
 		ctx.progress({ phase: "fetching" });
 		const mirror = await syncMirror(gctx, repo, spec);
+		await markUsed(mirror.path);
 		if (source.commit && !mirror.sha.startsWith(source.commit.toLowerCase())) {
 			throw new RenderError(
 				"COMMIT_MISMATCH",
@@ -50,6 +53,7 @@ export const checkout: Pipeline["checkout"] = async (job, ctx) => {
 		const ws = await checkoutWorkspace(gctx, repo, mirror.path, mirror.sha, {
 			sparse: sparsePaths(source.sparse, source.workdir),
 		});
+		await markUsed(path.dirname(ws.root));
 		if (source.submodules) await initSubmodules(gctx, ws.root, repo);
 
 		const workdir = await resolveInside(ws.root, source.workdir).catch(
@@ -76,6 +80,9 @@ export const checkout: Pipeline["checkout"] = async (job, ctx) => {
 			include,
 			exclude: source.lfs.exclude,
 			scope: include.length ? [] : scope,
+			makeRoom: async () => {
+				await activeJanitor()?.enforce([repoHash(repo)]);
+			},
 		});
 		const leftover = await findPointers(ws.root, source.workdir);
 		if (leftover.length > 0) {

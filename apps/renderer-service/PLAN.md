@@ -277,10 +277,12 @@ Why the files are split this way:
 
 ### 6.4 Cache eviction
 
-`FF_CACHE_MAX_GB` and `FF_WORK_MAX_GB` set the size limits. Eviction runs before each job, and again whenever a preflight needs space:
+`FF_CACHE_MAX_GB` and `FF_WORK_MAX_GB` set the size limits (0 = no limit). Eviction runs between jobs, at most every 5 minutes, and again whenever the LFS preflight needs space. Mirrors and workspaces record their last use in a `.ff-last-used` marker.
 
-- Least-recently-leased workspaces are evicted first, then LFS objects by atime, then whole mirrors.
-- A workspace that is currently leased is never evicted.
+- In `FF_WORK_DIR`: the least recently used workspaces are evicted. Failed-job dirs kept by `FF_KEEP_FAILED_JOBS` are deleted after a day.
+- In `FF_CACHE_DIR`, in this order: LFS objects by last access, then git mirrors by last use, then whole package caches (largest first). Pinned vision models are never evicted.
+- The next job's own workspace and mirror are never evicted.
+- Another worker's mirror on a shared volume is only evicted once it has been idle for over an hour.
 
 ### 6.5 Git hosts
 
@@ -530,10 +532,12 @@ Each phase is its own PR-sized step with tests.
      - `console.*` from repo code is not yet captured into a per-job log.
 6. **Outputs.** ✅ Done: verification (size, SHA-256, ffprobe frame count ±1), the QA `failOn` gate (codes or severities), and the s3 (multipart via `@aws-sdk/lib-storage`), presigned, local (atomic) and inline sinks. Transient errors are retried; auth and expiry errors fail fast (`UPLOAD_AUTH_FAILED`, `UPLOAD_URL_EXPIRED`). The idempotency manifest is in place.
    - Verified end to end over HTTP on this Mac: a local git repo was checked out, the install skipped, rendered on the GPU in-process, verified and delivered in 1.2 s cold. A warm rerun after a push took 0.7 s (243 ms render). Also verified: SSE progress, cancel mid-render, a bad ref, and an inline QA report.
-7. **Transports.**
+7. **Transports.** ✅ Done:
    - HTTP v2 with SSE progress and cancel.
-   - New `runpod_worker.py` (localhost client, `progress_update`, error passthrough with `retryable`, `refresh_worker` on recycle).
-   - CLI `--job-file` and `--result-file`.
+   - `runpod_worker.py`: a localhost client with `progress_update`, error passthrough including `retryable`, and `refresh_worker` on recycle.
+   - CLI `--job-file` / `--job -` with `--result-file`. Exit codes: 0 completed, 1 failed, 2 bad invocation or job.
+   - Server and CLI share `worker/boot.ts`.
+   - Also done here: cache eviction (§6.4, `worker/janitor.ts`). It runs between jobs (at most every 5 min), and on demand when the LFS disk preflight finds too little space.
 8. **Image + template + compose + docs.**
    - Release workflow.
    - GPU smoke test: render the fixture repo on a RunPod pod. Run it by hand first, then as a nightly job.

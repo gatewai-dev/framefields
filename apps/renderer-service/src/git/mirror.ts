@@ -43,11 +43,12 @@ export function repoHash(repo: RepoRef): string {
 }
 
 /** Mirrors are per worker: a shared volume isn't safe for concurrent git writers (§6.1). */
+export function workerId(): string {
+	return (process.env.RUNPOD_POD_ID || os.hostname()).replace(/[^\w.-]/g, "_");
+}
+
 export function mirrorPath(config: RendererConfig, repo: RepoRef): string {
-	const worker = (process.env.RUNPOD_POD_ID || os.hostname()).replace(
-		/[^\w.-]/g,
-		"_",
-	);
+	const worker = workerId();
 	return path.join(
 		config.paths.cacheDir,
 		"git",

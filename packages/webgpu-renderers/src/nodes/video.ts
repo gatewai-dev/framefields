@@ -92,6 +92,14 @@ export const drawVideoNode = async (
 	pass: GPURenderPassEncoder,
 	props: VideoNodeProps,
 ): Promise<void> => {
+	const isHeadless =
+		props.isHeadless ??
+		(typeof window === "undefined" ||
+			Boolean(
+				(globalThis as { __IS_HEADLESS_RENDERER__?: boolean })
+					.__IS_HEADLESS_RENDERER__,
+			));
+
 	try {
 		const nodeId = props.nodeId ?? "default";
 		const currentSourceUrl = props.sourceUrl;
@@ -104,11 +112,6 @@ export const drawVideoNode = async (
 				lastGoodFrameKey.delete(nodeId);
 			}
 		}
-
-		const isHeadless =
-			props.isHeadless ??
-			(typeof window === "undefined" ||
-				(globalThis as any).__IS_HEADLESS_RENDERER__);
 
 		const decoder = mediaDecoderCache.getVideo(
 			props.sourceUrl,
@@ -136,8 +139,11 @@ export const drawVideoNode = async (
 			if (!pendingDecodes.has(exactKey)) {
 				const delayHandle = `${nodeId}-${Math.random()}`;
 				const delays =
-					(globalThis as any).__GATEWAI_DELAYS__ || new Set<number | string>();
-				(globalThis as any).__GATEWAI_DELAYS__ = delays;
+					(globalThis as { __GATEWAI_DELAYS__?: Set<number | string> })
+						.__GATEWAI_DELAYS__ || new Set<number | string>();
+				(
+					globalThis as { __GATEWAI_DELAYS__?: Set<number | string> }
+				).__GATEWAI_DELAYS__ = delays;
 				delays.add(delayHandle);
 
 				const safeTimestampSec = Math.max(

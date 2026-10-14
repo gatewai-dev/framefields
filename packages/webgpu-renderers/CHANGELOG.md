@@ -1,5 +1,12 @@
 # @framefields/webgpu-renderers
 
+## 2.1.3
+
+### Patch Changes
+
+- Measure variable fonts with optical size (`opsz`) clamped to `fontSize` across `FontManager.measure`, `measureText`, captions, and rich text so layout matches rendered glyph geometry.
+- 71d48b4: Fail fast when referenced local media files cannot be opened or decoded during headless rendering, instead of silently resolving with black frames or silent audio.
+
 ## 2.1.2
 
 ## 2.1.1

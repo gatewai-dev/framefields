@@ -1,5 +1,11 @@
 # @framefields/compositions
 
+## 2.1.3
+
+### Patch Changes
+
+- 71d48b4: Fail fast when referenced local media files cannot be opened or decoded during headless rendering, instead of silently resolving with black frames or silent audio.
+
 ## 2.1.2
 
 ## 2.1.1

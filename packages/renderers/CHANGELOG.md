@@ -1,5 +1,11 @@
 # @framefields/renderers
 
+## 2.1.3
+
+### Patch Changes
+
+- Measure variable fonts with optical size (`opsz`) clamped to `fontSize` across `FontManager.measure`, `measureText`, captions, and rich text so layout matches rendered glyph geometry.
+
 ## 2.1.2
 
 ## 2.1.1

@@ -191,3 +191,73 @@ describe("HTTP v2", () => {
 		expect((await call("/v2/jobs/nope")).status).toBe(404);
 	});
 });
+
+describe("SSE events", () => {
+	it("streams progress and always ends with the terminal event", async () => {
+		const { call, runner } = setup(
+			fakePipeline({
+				render: async (_c, _i, ctx) => {
+					ctx.progress({ phase: "rendering", frame: 1, total: 2 });
+					await new Promise((r) => setTimeout(r, 20));
+					ctx.progress({ phase: "rendering", frame: 2, total: 2 });
+					return {
+						files: [
+							{
+								name: "main",
+								path: "/tmp/x.mp4",
+								ext: "mp4",
+								contentType: "video/mp4",
+							},
+						],
+						engine: {},
+					};
+				},
+			}),
+		);
+		const res = await call("/v2/jobs", {
+			method: "POST",
+			body: JSON.stringify(testJob()),
+		});
+		const { id } = (await res.json()) as { id: string };
+		const events = await (await call(`/v2/jobs/${id}/events`)).text();
+		const statuses = [...events.matchAll(/"status":"(\w+)"/g)].map((m) => m[1]);
+		expect(statuses.at(-1)).toBe("COMPLETED");
+		expect(events).toContain('"frame":2');
+		expect(runner.store.get(id)?.status).toBe("COMPLETED");
+	});
+});
+
+describe("idempotency", () => {
+	it("skips install, render and upload when an earlier attempt delivered this commit", async () => {
+		const calls: string[] = [];
+		const { call, runner } = setup(
+			fakePipeline({
+				findExisting: async () => [
+					{
+						name: "main",
+						bytes: 1,
+						sha256: "abc",
+						contentType: "video/mp4",
+						key: "k.mp4",
+					},
+				],
+				install: async () => {
+					calls.push("install");
+					return { skipped: true, cache: {} };
+				},
+			}),
+		);
+		const res = await call("/v2/jobs", {
+			method: "POST",
+			body: JSON.stringify(testJob()),
+		});
+		const { id } = (await res.json()) as { id: string };
+		const job = await waitDone(runner, id);
+		expect(job.status).toBe("COMPLETED");
+		expect(job.result).toMatchObject({
+			cache: { output: "hit" },
+			outputs: [{ key: "k.mp4" }],
+		});
+		expect(calls).toEqual([]);
+	});
+});

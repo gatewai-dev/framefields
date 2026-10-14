@@ -13,6 +13,7 @@ import { install } from "./install/installer.js";
 import { CrashJournal } from "./jobs/journal.js";
 import type { Pipeline } from "./jobs/pipeline.js";
 import { JobRunner } from "./jobs/runner.js";
+import { deliver, findExisting } from "./output/deliver.js";
 import { ReadinessTracker } from "./readiness.js";
 import { redact } from "./redact.js";
 import { installEngineAlias } from "./render/engine-alias.js";
@@ -53,18 +54,12 @@ installProcessGuards((msg, err) =>
 const readiness = new ReadinessTracker();
 let draining = false;
 
-const notYet = (step: string): never => {
-	throw new RenderError(
-		"INTERNAL",
-		`The ${step} step is not implemented in this build yet.`,
-	);
-};
-// Steps land phase by phase (PLAN.md §13).
 const pipeline: Pipeline = {
 	checkout,
 	install,
 	render,
-	deliver: async () => notYet("deliver"),
+	findExisting,
+	deliver,
 };
 
 const journal = new CrashJournal(

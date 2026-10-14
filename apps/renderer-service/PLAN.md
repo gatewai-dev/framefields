@@ -394,7 +394,11 @@ Progress callbacks become the phase events in 4.2.
 
 ### 8.6 Idempotency & retries
 
-RunPod delivers jobs at least once, and callers retry. With an `idempotencyKey` and an s3 output, the worker `HEAD`s the key before resolving. If the object exists with the same `x-ff-idempotency` **and** the same resolved SHA, the worker returns the existing output with `cache.output = "hit"` and does not render. Without a key, the output is overwritten (last writer wins).
+RunPod delivers jobs at least once, and callers retry. With an `idempotencyKey` and an s3 output, the worker writes a manifest to `.ff-idempotency/<base64url(key)>.json` in the bucket after a successful upload. The manifest records the key, the commit SHA and the delivered outputs.
+
+On the next attempt, the worker reads the manifest right after checkout, once the SHA is known. It is a hit only if the key and SHA both match **and** every listed object still exists. A hit skips install, render and upload, and the result has `cache.output = "hit"`. Anything else re-renders.
+
+Without a key, outputs are overwritten (last writer wins). Output keys can't be checked before rendering, because `{name}`/`{ext}` are only known afterwards; that is why a separate manifest is used.
 
 ## 9. Trust & security model
 
@@ -441,6 +445,7 @@ Every failure maps to a stable `code`. `retryable` is what RunPod or the caller 
 | verify | `OUTPUT_MISSING` / `OUTPUT_INVALID` / `OUTPUT_TOO_LARGE` / `QA_FAILED` | no | |
 | upload | `UPLOAD_FAILED` | yes | Retried internally first. |
 | upload | `UPLOAD_URL_EXPIRED` | no | |
+| upload | `UPLOAD_AUTH_FAILED` | no | Storage rejected the credentials or the bucket policy (`AccessDenied`, `InvalidAccessKeyId`, `SignatureDoesNotMatch`). |
 | any | `CANCELLED` / `SHUTDOWN` | no / yes | `SHUTDOWN` means the worker was preempted or scaled down mid-job. |
 
 Warnings don't fail a job; they are listed in the result's `warnings`. They include `ENGINE_MISMATCH` (the declared framefields range isn't satisfied by the bundled engine, under `warn` policy), `ENGINE_FOREIGN_INSTANCE` (8.1), and `NODE_ENGINE_MISMATCH`.
@@ -523,7 +528,8 @@ Each phase is its own PR-sized step with tests.
    - Known limits:
      - Each job registers another tsx loader layer (deactivated afterwards). Recycling every `FF_MAX_JOBS_PER_WORKER` jobs bounds that.
      - `console.*` from repo code is not yet captured into a per-job log.
-6. **Outputs.** The s3, presigned, local and inline sinks, verification (ffprobe), multi-output keys, and idempotency.
+6. **Outputs.** ✅ Done: verification (size, SHA-256, ffprobe frame count ±1), the QA `failOn` gate (codes or severities), and the s3 (multipart via `@aws-sdk/lib-storage`), presigned, local (atomic) and inline sinks. Transient errors are retried; auth and expiry errors fail fast (`UPLOAD_AUTH_FAILED`, `UPLOAD_URL_EXPIRED`). The idempotency manifest is in place.
+   - Verified end to end over HTTP on this Mac: a local git repo was checked out, the install skipped, rendered on the GPU in-process, verified and delivered in 1.2 s cold. A warm rerun after a push took 0.7 s (243 ms render). Also verified: SSE progress, cancel mid-render, a bad ref, and an inline QA report.
 7. **Transports.**
    - HTTP v2 with SSE progress and cancel.
    - New `runpod_worker.py` (localhost client, `progress_update`, error passthrough with `retryable`, `refresh_worker` on recycle).

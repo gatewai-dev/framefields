@@ -104,8 +104,9 @@ export function createApp(
 				await new Promise<void>((resolve) => {
 					const onUpdate = (record: JobRecord) => {
 						if (record.id !== job.id) return;
-						void send(record);
-						if (isTerminal(record.status)) done();
+						// The final event must be written before the stream closes.
+						const write = send(record);
+						if (isTerminal(record.status)) void write.finally(done);
 					};
 					const keepAlive = setInterval(
 						() => void stream.writeSSE({ event: "ping", data: "" }),

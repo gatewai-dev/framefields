@@ -6,7 +6,7 @@ import type { RendererConfig } from "../config/index.js";
 import { type JobPhase, RenderError, toRenderError } from "../errors.js";
 import { redact, redactValue } from "../redact.js";
 import type { CrashJournal } from "./journal.js";
-import type { Pipeline, StepContext } from "./pipeline.js";
+import type { DeliveredFile, Pipeline, StepContext } from "./pipeline.js";
 import { JobQueue } from "./queue.js";
 import { type JobRecord, JobStore } from "./store.js";
 import { type ValidatedJob, validateJob } from "./validate.js";
@@ -146,31 +146,48 @@ export class JobRunner {
 			Object.assign(cache, checkout.cache);
 			checkAbort();
 
-			phase = "install";
-			ctx.progress({ phase: "installing" });
-			const install = await timed("install", () =>
-				this.pipeline.install(checkout, ctx),
+			const existing = await this.pipeline.findExisting?.(
+				job.input,
+				checkout.sha,
+				ctx,
 			);
-			Object.assign(cache, install.cache);
-			checkAbort();
+			let engine: Record<string, unknown> = {};
+			let outputs: DeliveredFile[];
+			if (existing) {
+				// An earlier attempt of this job already delivered this commit.
+				cache.output = "hit";
+				outputs = existing;
+			} else {
+				phase = "install";
+				ctx.progress({ phase: "installing" });
+				const install = await timed("install", () =>
+					this.pipeline.install(checkout, ctx),
+				);
+				Object.assign(cache, install.cache);
+				checkAbort();
 
-			phase = "render";
-			ctx.progress({ phase: "loading" });
-			const rendered = await timed("render", () =>
-				this.pipeline.render(checkout, job.input, ctx),
-			);
-			checkAbort();
+				phase = "render";
+				ctx.progress({ phase: "loading" });
+				const rendered = await timed("render", () =>
+					this.pipeline.render(checkout, job.input, ctx),
+				);
+				engine = {
+					...rendered.engine,
+					projectDeclared: install.declaredEngine,
+				};
+				checkAbort();
 
-			phase = "upload";
-			ctx.progress({ phase: "uploading" });
-			const outputs = await timed("upload", () =>
-				this.pipeline.deliver(
-					rendered.files,
-					{ input: job.input, sha: checkout.sha, ref: job.ref },
-					ctx,
-				),
-			);
-			checkAbort();
+				phase = "upload";
+				ctx.progress({ phase: "uploading" });
+				outputs = await timed("upload", () =>
+					this.pipeline.deliver(
+						rendered.files,
+						{ input: job.input, sha: checkout.sha, ref: job.ref },
+						ctx,
+					),
+				);
+				checkAbort();
+			}
 
 			timings.totalMs = Date.now() - started;
 			settle = () =>
@@ -185,10 +202,7 @@ export class JobRunner {
 							sha: checkout.sha,
 							workdir: job.input.source.workdir,
 						},
-						engine: {
-							...rendered.engine,
-							projectDeclared: install.declaredEngine,
-						},
+						engine,
 						outputs,
 						timings,
 						cache,

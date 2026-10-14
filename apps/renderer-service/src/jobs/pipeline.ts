@@ -39,7 +39,8 @@ export interface RenderedFile {
 	ext: string;
 	contentType: string;
 	durationMs?: number;
-	frames?: number;
+	/** Frames the engine said it would render, for verification. */
+	expectedFrames?: number;
 	qa?: unknown;
 }
 
@@ -54,6 +55,8 @@ export interface DeliveredFile {
 	base64?: string;
 	durationMs?: number;
 	frames?: number;
+	/** QA report, when render.qa was set. */
+	qa?: unknown;
 }
 
 export interface Pipeline {
@@ -67,6 +70,15 @@ export interface Pipeline {
 		input: JobInput,
 		ctx: StepContext,
 	): Promise<{ files: RenderedFile[]; engine: Record<string, unknown> }>;
+	/**
+	 * Outputs an earlier attempt already delivered for this commit
+	 * (idempotency). When found, install/render/deliver are skipped.
+	 */
+	findExisting?(
+		input: JobInput,
+		sha: string,
+		ctx: StepContext,
+	): Promise<DeliveredFile[] | undefined>;
 	deliver(
 		files: RenderedFile[],
 		job: { input: JobInput; sha: string; ref: string },

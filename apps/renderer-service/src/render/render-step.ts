@@ -157,6 +157,7 @@ async function renderOutput(
 				const { ext, contentType } = containerFor(codec);
 				const started = Date.now();
 				let lastEmit = 0;
+				let expectedFrames: number | undefined;
 				const result = await output.target.renderVideo({
 					outputPath: `${base}.${ext}`,
 					codec,
@@ -171,6 +172,7 @@ async function renderOutput(
 						totalFrames: number;
 					}) => {
 						stall.touch();
+						expectedFrames = p.totalFrames;
 						const now = Date.now();
 						if (
 							now - lastEmit < PROGRESS_INTERVAL_MS &&
@@ -197,6 +199,7 @@ async function renderOutput(
 						path: result.filePath,
 						ext,
 						contentType,
+						expectedFrames,
 						...(result.qa !== undefined && { qa: result.qa }),
 					},
 				];

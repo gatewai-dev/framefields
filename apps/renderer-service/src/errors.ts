@@ -78,6 +78,7 @@ const CODES = {
 
 	UPLOAD_FAILED: { phase: "upload", retryable: true },
 	UPLOAD_URL_EXPIRED: { phase: "upload", retryable: false },
+	UPLOAD_AUTH_FAILED: { phase: "upload", retryable: false },
 
 	CANCELLED: { phase: "any", retryable: false },
 	SHUTDOWN: { phase: "any", retryable: true },

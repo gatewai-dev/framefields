@@ -7,6 +7,7 @@ import { describeConfig, loadConfig, scrubSecretEnv } from "./config/index.js";
 import { RenderError } from "./errors.js";
 import { checkout } from "./git/checkout.js";
 import { createApp } from "./http/app.js";
+import { install } from "./install/installer.js";
 import type { Pipeline } from "./jobs/pipeline.js";
 import { JobRunner } from "./jobs/runner.js";
 import { ReadinessTracker } from "./readiness.js";
@@ -30,7 +31,7 @@ const notYet = (step: string): never => {
 // Steps land phase by phase (PLAN.md §13).
 const pipeline: Pipeline = {
 	checkout,
-	install: async () => notYet("install"),
+	install,
 	render: async () => notYet("render"),
 	deliver: async () => notYet("deliver"),
 };

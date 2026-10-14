@@ -22,7 +22,7 @@ fi
 if command -v nvidia-smi >/dev/null 2>&1; then
   nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv,noheader || true
 else
-  echo "warning: nvidia-smi not found; rendering needs a Vulkan-capable GPU" >&2
+  echo "no NVIDIA GPU visible (nvidia-smi not found); FF_GPU=${FF_GPU:-auto} decides whether to render on the CPU" >&2
 fi
 
 case "$MODE" in

@@ -9,6 +9,7 @@
 	"ports": "8082/http",
 	"env": [
 		{ "key": "FF_MODE", "value": "http" },
+		{ "key": "FF_GPU", "value": "require" },
 		{ "key": "RENDERER_API_KEY", "value": "{{ RUNPOD_SECRET_ff_api_key }}" },
 		{ "key": "FF_REPO_ALLOWLIST", "value": "github.com/your-org/*" },
 		{ "key": "GIT_TOKEN", "value": "{{ RUNPOD_SECRET_ff_git_token }}" },

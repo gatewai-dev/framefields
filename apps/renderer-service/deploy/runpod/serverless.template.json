@@ -8,6 +8,7 @@
 	"ports": "",
 	"env": [
 		{ "key": "FF_MODE", "value": "runpod-serverless" },
+		{ "key": "FF_GPU", "value": "require" },
 		{ "key": "FF_REPO_ALLOWLIST", "value": "github.com/your-org/*" },
 		{ "key": "FF_DEFAULT_REF", "value": "main" },
 		{ "key": "GIT_TOKEN", "value": "{{ RUNPOD_SECRET_ff_git_token }}" },

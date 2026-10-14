@@ -4,6 +4,12 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { RenderError } from "../errors.js";
 import { rendererLogger } from "../logger.js";
+import {
+	describeAdapter,
+	type GpuAdapter,
+	gpuStatus,
+	verifyAdapter,
+} from "../worker/gpu.js";
 import { workerHealth } from "../worker/health.js";
 import { setEngineEntry } from "./engine-alias.js";
 
@@ -18,6 +24,8 @@ export interface EngineModule {
 	FontManager?: { clear(): void };
 	/** Present in framefields versions built for long-lived workers. */
 	resetRenderCaches?: () => void;
+	/** The adapter the engine renders on (newer framefields versions). */
+	describeGpu?: () => Promise<GpuAdapter>;
 }
 
 export interface EngineRenderer {
@@ -155,6 +163,8 @@ export async function bindEngine(
 			},
 		);
 	}
+	// A GPU machine must not end up rendering on the CPU driver (gpu.ts).
+	verifyAdapter(await describeAdapter(mod).catch(() => undefined));
 	bound = {
 		...found,
 		workspace,
@@ -162,7 +172,11 @@ export async function bindEngine(
 		workerHooks: typeof mod.resetRenderCaches === "function",
 	};
 	rendererLogger.info(
-		{ version: found.version, workerHooks: bound.workerHooks },
+		{
+			version: found.version,
+			workerHooks: bound.workerHooks,
+			gpu: gpuStatus(),
+		},
 		"Bound framefields engine and initialised the GPU",
 	);
 	return bound;

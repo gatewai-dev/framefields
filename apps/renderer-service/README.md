@@ -15,6 +15,7 @@ It runs as a **RunPod serverless endpoint**, a **RunPod pod**, or a **Docker con
 - [How it works](#how-it-works)
 - [Quick start (Docker + MinIO)](#quick-start-docker--minio)
 - [RunPod](#runpod)
+- [GPU and CPU rendering](#gpu-and-cpu-rendering)
 - [Jobs](#jobs)
 - [Configuration](#configuration)
 - [Errors](#errors)
@@ -37,7 +38,7 @@ job ─▶ resolve ref → fetch (mirror cache) → checkout → git LFS pull
 
 ## Quick start (Docker + MinIO)
 
-You need an NVIDIA GPU with the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/).
+Use an NVIDIA GPU with the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/). Without a GPU the worker still runs, but renders on the CPU, which is much slower (see [GPU and CPU rendering](#gpu-and-cpu-rendering)).
 
 ```bash
 cd apps/renderer-service/deploy
@@ -92,7 +93,8 @@ Checklist for serverless endpoints:
 - **Set the endpoint's execution timeout** above your longest render. RunPod's default is much shorter than a long video.
 - **Attach a network volume** in the same data centre as the GPUs. Without one, every worker starts cold: a full clone, LFS download and install.
 - **FlashBoot** keeps warm workers around between jobs, which is what makes the caches pay off.
-- Choose GPUs with Vulkan support (any recent NVIDIA card). VRAM needs grow with resolution and effects.
+- **Choose GPUs with a hardware video encoder (NVENC):** L4, L40S, A40, RTX A4000/A5000/A6000, RTX 4090/5090. A100 and H100 are built for AI training and have no NVENC: they render, but encode on the CPU, and cost more. VRAM needs grow with resolution and effects.
+- The templates set `FF_GPU=require`, so a RunPod worker never renders on the CPU. A worker whose GPU is unusable reports `GPU_UNAVAILABLE` and asks RunPod for a fresh worker.
 
 A serverless job is the same JSON as above, wrapped as `{"input": …}`:
 
@@ -107,6 +109,38 @@ How results come back:
 - A failed job's `error` is the JSON of a [structured error](#errors), including `retryable`.
 - Progress events appear in `/status` and `/stream`.
 - The worker asks RunPod for a fresh worker (`refresh_worker`) when it recycles.
+
+## GPU and CPU rendering
+
+framefields draws frames with WebGPU, which runs on Vulkan on Linux. Video is then encoded with FFmpeg. The two steps choose their hardware separately.
+
+**Drawing frames.** `FF_GPU` decides where frames are drawn:
+
+| `FF_GPU` | Machine with a GPU | Machine without a GPU |
+|---|---|---|
+| `auto` (default) | Renders on the GPU. Fails with `GPU_UNAVAILABLE` if the GPU is unusable, instead of falling back to the CPU. | Renders on the CPU (Mesa lavapipe, included in the image). |
+| `require` (RunPod templates) | Renders on the GPU. | The worker fails its health check with `GPU_UNAVAILABLE`. |
+| `cpu` | Renders on the CPU. | Renders on the CPU. |
+
+At startup the worker looks for the GPU's device files (`/dev/nvidia*`, or `/dev/dri` render nodes for AMD and Intel) and limits Vulkan to that GPU's driver, so it can't fall back to the CPU driver silently. After the first job loads framefields, the worker checks which adapter WebGPU actually picked.
+
+For NVIDIA GPUs in Docker, the NVIDIA Container Toolkit must mount the Vulkan driver. The image sets `NVIDIA_DRIVER_CAPABILITIES=graphics,utility,video,compute`, which does that. Keep `graphics` in the list if you override it, or the worker reports that the GPU has no Vulkan driver.
+
+**Encoding video.** framefields (2.2.0 and later) tests the hardware encoder once per codec, and uses it only if it works:
+
+- NVENC on NVIDIA, VideoToolbox on macOS.
+- Otherwise software: libx264 (H.264), libx265 (HEVC), libvpx (VP9), SVT-AV1.
+
+Older framefields versions always try the hardware encoder. That fails on GPUs without NVENC and on Linux ARM (`h264_rkmpp`). Set `FRAMEFIELDS_HW_CODECS=off` to always encode in software.
+
+**Where to see it.** `/health` reports the GPU under `components.gpu`, and each result reports it under `engine.gpu`:
+
+```json
+"gpu": {"mode": "auto", "hardware": "NVIDIA L4", "renderer": "gpu",
+        "adapter": {"name": "NVIDIA L4", "software": false}}
+```
+
+Here `renderer` is `gpu` or `cpu`. `hardware` is `null` when the machine has no GPU.
 
 ## Jobs
 
@@ -217,6 +251,8 @@ Everything is set by environment variables. The worker checks them all at startu
 | `FF_CACHE_DIR`, `FF_CACHE_MAX_GB`, `FF_WORK_MAX_GB` | Cache location and size limits. Eviction runs automatically. |
 | `FF_JOB_TIMEOUT_MAX_SEC`, `FF_STALL_TIMEOUT_SEC` | Time limits. |
 | `FF_MAX_JOBS_PER_WORKER` | Recycle after N jobs (default 25). |
+| `FF_GPU` | `auto` (default), `require` or `cpu`. See [GPU and CPU rendering](#gpu-and-cpu-rendering). |
+| `FRAMEFIELDS_HW_CODECS` | `off` encodes video in software even when a hardware encoder works. |
 | `FF_NPMRC` | `.npmrc` contents, for private registries. |
 
 ## Errors
@@ -242,7 +278,8 @@ A failed job returns:
 | `RENDER_TIMEOUT` / `RENDER_STALLED` | The render took too long, or stopped making progress. |
 | `ENGINE_NOT_FOUND` | The project doesn't depend on `framefields`, so there is nothing to render with. |
 | `ENGINE_SWITCH` | Retry. The project needs another framefields version, or new dependencies; the worker restarts to load them. |
-| `GPU_DEVICE_LOST` / `RENDER_OOM` / `GPU_UNAVAILABLE` | Retry. The worker replaces itself. |
+| `GPU_DEVICE_LOST` / `RENDER_OOM` | Retry. The worker replaces itself. |
+| `GPU_UNAVAILABLE` | The machine has no usable GPU (`FF_GPU=require`), or has one that WebGPU couldn't use. Retry on another worker; on RunPod this happens automatically. Check the GPU's Vulkan driver with `vulkaninfo --summary`. |
 | `QA_FAILED` | `render.qa.failOn` matched. The outputs are still uploaded and listed. |
 
 ## Security

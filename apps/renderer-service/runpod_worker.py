@@ -92,8 +92,8 @@ def handler(job):
             return result
         if record["status"] in ("FAILED", "CANCELLED"):
             error = record.get("error") or {"code": "INTERNAL", "message": "unknown failure"}
-            # Device loss / crashes leave the worker unhealthy: ask for a fresh one.
-            refresh = error.get("code") in ("GPU_DEVICE_LOST", "RENDER_OOM", "RENDER_CRASHED") or draining()
+            # No usable GPU, device loss, crashes: ask RunPod for a fresh worker.
+            refresh = error.get("code") in ("GPU_UNAVAILABLE", "GPU_DEVICE_LOST", "RENDER_OOM", "RENDER_CRASHED") or draining()
             return failure(error, refresh=refresh)
 
 

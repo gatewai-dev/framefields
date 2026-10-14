@@ -8,6 +8,7 @@ import type {
 	StepContext,
 } from "../jobs/pipeline.js";
 import type { JobInput, RenderSettings } from "../jobs/schema.js";
+import { gpuStatus } from "../worker/gpu.js";
 import { workerHealth } from "../worker/health.js";
 import { type BoundEngine, bindEngine, markDepsLoaded } from "./engine.js";
 import { clearWorkspaceRequireCache } from "./engine-alias.js";
@@ -112,6 +113,7 @@ export const render: Pipeline["render"] = async (checkout, input, ctx) => {
 				framefields: engine.version,
 				source: "project",
 				workerHooks: engine.workerHooks,
+				gpu: gpuStatus().adapter,
 			},
 		};
 	} catch (err) {

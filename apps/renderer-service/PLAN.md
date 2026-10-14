@@ -406,6 +406,28 @@ On the next attempt, the worker reads the manifest right after checkout, once th
 
 Without a key, outputs are overwritten (last writer wins). Output keys can't be checked before rendering, because `{name}`/`{ext}` are only known afterwards; that is why a separate manifest is used.
 
+### 8.7 GPU selection (`src/worker/gpu.ts`)
+
+WebGPU (Dawn) runs on Vulkan on Linux. The image ships Mesa's CPU driver (lavapipe) so machines without a GPU can render. A GPU machine whose Vulkan driver isn't mounted would otherwise fall back to the CPU silently, and run 10–100× slower.
+
+- **At boot, before any engine loads,** the worker:
+  - looks for a usable GPU: `/dev/nvidia*`, or a `/dev/dri/renderD*` node plus an NVIDIA/AMD/Intel PCI vendor in `/sys/class/drm`. Listing in `/sys` alone isn't enough, since containers see host GPUs there;
+  - splits the Vulkan ICD manifests in `/etc/vulkan/icd.d`, `/usr/share/vulkan/icd.d` and `/usr/local/share/vulkan/icd.d` into GPU and CPU drivers.
+- **`FF_GPU` modes:**
+  - `auto` (default): a GPU machine sets `VK_DRIVER_FILES`/`VK_ICD_FILENAMES` to the GPU drivers only; a machine without a GPU renders on lavapipe.
+  - `require` (RunPod templates): like `auto`, but a machine without a GPU fails.
+  - `cpu`: limits Vulkan to lavapipe.
+  - If the operator already set `VK_DRIVER_FILES`/`VK_ICD_FILENAMES`, the worker leaves them alone.
+- **Boot failures:** a GPU with no Vulkan driver (e.g. `NVIDIA_DRIVER_CAPABILITIES` without `graphics`), or `require` with no GPU. Either one fails readiness with `GPU_UNAVAILABLE`. On RunPod the worker exits and gets replaced.
+- **After the first engine binds,** the worker checks the actual adapter. It uses framefields' `describeGpu()` when the project's version has it; otherwise it calls `navigator.gpu.requestAdapter()` with framefields' options. A GPU machine whose adapter is a CPU one (llvmpipe, SwiftShader, `isFallbackAdapter`) fails the job with `GPU_UNAVAILABLE` and marks the worker unhealthy. The RunPod shim then sets `refresh_worker`.
+- **Reporting:** `/health` → `components.gpu` and each result's `engine.gpu` report the mode, the GPU model and the adapter.
+
+**Video encoding** is framefields' job (`packages/renderer/src/video-encoders.ts`, framefields 2.2.0+):
+
+- @mediabunny/server uses FFmpeg's first registered encoder as its software encoder. In node-av's linux-arm64 build that is `h264_rkmpp`/`hevc_rkmpp`, which fail without Rockchip hardware. framefields makes libx264/libx265/libvpx/SVT-AV1 the defaults.
+- framefields tests the platform's hardware encoder once per codec (open, then encode one frame). It uses NVENC or VideoToolbox only when that works. A100/H100 have no NVENC, so they fall back to software.
+- `FRAMEFIELDS_HW_CODECS=off` forces software.
+
 ## 9. Trust & security model
 
 The worker **executes code from the repo**. Anyone who can submit a job and point it at a repo they control gets code execution on the GPU host, and that host can reach whatever its network can. The defaults are therefore closed:
@@ -424,7 +446,7 @@ Every failure maps to a stable `code`. `retryable` is what RunPod or the caller 
 | Phase | Code | Retryable | Typical cause / hint |
 |---|---|---|---|
 | boot | `CONFIG_INVALID` | – | Bad or missing env. The message lists every invalid key. |
-| boot | `GPU_UNAVAILABLE` | – (worker recycled) | No Vulkan device, or the driver doesn't match the image's CUDA/Vulkan. |
+| boot / render | `GPU_UNAVAILABLE` | – (worker replaced) | `FF_GPU=require` on a machine without a GPU; a GPU without a Vulkan driver; or a GPU machine whose WebGPU adapter is a CPU one (§8.7). |
 | boot | `TOOL_MISSING` | – | `git` or `git-lfs` is not on PATH (custom image). |
 | validate | `JOB_INVALID` | no | Schema error, with zod paths. |
 | validate | `REPO_NOT_ALLOWED` / `BUCKET_NOT_ALLOWED` / `PATH_ESCAPE` | no | |
@@ -473,6 +495,7 @@ On boot the service validates **all** keys and fails with the complete list of p
 | Paths & cache | `FF_CACHE_DIR`, `FF_WORK_DIR`, `FF_CACHE_MAX_GB` (50), `FF_WORK_MAX_GB` (40), `FRAMEFIELDS_MODELS_DIR` (`$FF_CACHE_DIR/models`), `FRAMEFIELDS_FONTS_DIR` |
 | Limits | `FF_QUEUE_MAX` (8), `FF_JOB_TIMEOUT_MAX_SEC` (7200), `FF_TIMEOUT_{GIT,LFS,INSTALL,LOAD,RENDER}_SEC`, `FF_STALL_TIMEOUT_SEC` (300), `FF_KILL_GRACE_SEC` (20), `FF_JOB_TTL_SEC` (3600), `FF_JOB_HISTORY_MAX` (500) |
 | Recycling | `FF_MAX_JOBS_PER_WORKER` (25; 0 = unlimited), `FF_RECYCLE_HEAP_MB` (4096), `FF_RECYCLE_RSS_MB` (0 = off), `FF_EVENT_LOOP_BLOCK_SEC` (120), `FF_STRAY_ERROR_LIMIT` (3), `FF_LEAKED_HANDLE_LIMIT` (50). `NODE_OPTIONS=--max-old-space-size` is set by the image. |
+| GPU | `FF_GPU` (`auto`\|`require`\|`cpu`; default `auto`, RunPod templates `require`). The engine reads `FRAMEFIELDS_HW_CODECS=off` to force software video encoding. |
 | Job env | `FF_JOB_ENV_ALLOW` (`*` minus a reserved denylist), `FF_KEEP_FAILED_JOBS` (false), `FF_QA_BLOCK_UPLOAD` (false) |
 
 `BASE_URL`, `R2_*` and `R2_CUSTOM_DOMAIN` are removed together with the inline path. Repo assets are local files in the checkout, so `configureAssetUrls` is no longer called. A project that loads assets over HTTP uses absolute URLs.
@@ -545,7 +568,7 @@ Each phase is its own PR-sized step with tests.
 8. **Image + template + compose + docs.** Built and run locally (arm64, Docker on macOS, without a GPU):
    - **Inside the container:** a file:// repo pinned to the published `framefields@2.1.3` went through checkout, then `npm ci` from the registry (40 s cold), then engine binding with GPU init on Mesa's software Vulkan, then a VP9 render, verification and delivery. The output was a valid 2 s VP9/Opus file.
    - **Findings fixed on the way:** glibc 2.38 (moved to trixie); EPIPE from the `exec` helper writing stdin that git never reads; corepack's npm differing from the lockfile's npm; install errors keeping only npm's usage text.
-   - **Engine issue found (not the worker):** on linux-arm64, `@napi-rs/webcodecs` picks the Rockchip `h264_rkmpp` encoder, which fails with "cannot be used for quantizer-based encoding". H.264 renders fail on ARM Linux; VP9 works. amd64/NVIDIA (RunPod) takes a different path, but this should be fixed in framefields.
+   - **Engine issue found and fixed in framefields (§8.7):** on linux-arm64, H.264 renders failed with "Encoder 'h264_rkmpp' cannot be used for quantizer-based encoding". The cause was @mediabunny/server taking FFmpeg's first registered H.264 encoder (node-av's build lists `h264_rkmpp` before libx264), not `@napi-rs/webcodecs`. With the fixed framefields (packed locally), an H.264 job in the arm64 container rendered 48/48 frames with libx264 on lavapipe. `FF_GPU=require` on the same container fails readiness with `GPU_UNAVAILABLE`.
    - Pinned SSH host keys, the RunPod templates and `create-template.sh`, `docker-compose.yml` with MinIO, `env.example`, the release workflow, and the README guide as listed above.
    - **Still to do:** an amd64 build (CI), a GPU smoke test on a RunPod pod and a serverless endpoint, the nightly host smoke tests (6.5), and a page on the docs website.
 9. **(Later)**

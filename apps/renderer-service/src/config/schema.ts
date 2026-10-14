@@ -125,6 +125,9 @@ export const envSchema = z.object({
 	FF_JOB_TTL_SEC: int(3600),
 	FF_JOB_HISTORY_MAX: int(500),
 
+	// GPU: auto = the GPU when the machine has one, else the CPU.
+	FF_GPU: z.enum(["auto", "require", "cpu"]).default("auto"),
+
 	// Recycling
 	FF_MAX_JOBS_PER_WORKER: int(25),
 	FF_RECYCLE_HEAP_MB: int(4096),
@@ -347,6 +350,7 @@ export function buildConfig(
 			jobTtlSec: e.FF_JOB_TTL_SEC,
 			jobHistoryMax: e.FF_JOB_HISTORY_MAX,
 		},
+		gpu: e.FF_GPU,
 		recycle: {
 			maxJobs: e.FF_MAX_JOBS_PER_WORKER,
 			heapMb: e.FF_RECYCLE_HEAP_MB,

@@ -22,6 +22,7 @@ import { boundEngine } from "../render/engine.js";
 import { installEngineAlias } from "../render/engine-alias.js";
 import { render } from "../render/render-step.js";
 import { installProcessGuards, strayErrorCount } from "../render/sandbox.js";
+import { applyGpuPlan, gpuStatus, planGpu, probeGpu } from "./gpu.js";
 import { workerHealth } from "./health.js";
 import { CacheJanitor } from "./janitor.js";
 import { currentStats, recycleReason } from "./recycle.js";
@@ -38,7 +39,7 @@ export interface Worker {
 	isDraining(): boolean;
 	/** Stops taking jobs and waits for the current one. */
 	drain(reason: RenderError, abortActive: boolean): Promise<void>;
-	/** Checks git, git-lfs and ffprobe; rejects with TOOL_MISSING. */
+	/** Checks git, git-lfs, ffprobe and the GPU; rejects with TOOL_MISSING or GPU_UNAVAILABLE. */
 	checkTools(): Promise<void>;
 	stop(): void;
 }
@@ -55,6 +56,16 @@ export function bootWorker(
 	rendererLogger.info(
 		{ config: describeConfig(config) },
 		"Renderer config loaded",
+	);
+
+	// Before any engine loads: Vulkan reads its driver list once (§8.7).
+	const gpu = planGpu(config.gpu, probeGpu());
+	applyGpuPlan(gpu);
+	rendererLogger[gpu.problem ? "error" : "info"](
+		{ gpu: { ...gpuStatus(), icds: gpu.icds }, problem: gpu.problem },
+		gpu.expect === "software"
+			? "No GPU in use: rendering on the CPU"
+			: "Rendering on the GPU",
 	);
 
 	// Workspaces live here; repo code under it gets the engine alias (§7).
@@ -175,6 +186,12 @@ export function bootWorker(
 					"TOOL_MISSING",
 					`Missing: ${required.join(", ")}`,
 				);
+			}
+			if (gpu.problem) {
+				readiness.setFailure(`GPU_UNAVAILABLE: ${gpu.problem}`);
+				throw new RenderError("GPU_UNAVAILABLE", gpu.problem, {
+					hint: gpu.hint,
+				});
 			}
 			readiness.setToolsReady(true);
 			baselineHandles = process.getActiveResourcesInfo().length;

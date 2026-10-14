@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { SlugFontCache, SlugGeometry } from "@framefields/webgpu-renderers";
 import { Composition, FontManager, Layer } from "./index.js";
 
 // Fonts are kept on disk, not in git (.gitignore: *.ttf). Every test that
@@ -202,6 +203,23 @@ describe.skipIf(!hasInter)("FontManager.measure", () => {
 		});
 		expect(wrapped.lines).toBe(2);
 		expect(wrapped.glyphs.find((g) => g.char === "w")?.line).toBe(1);
+	});
+
+	it("measures with the opsz instance text layers render at that size", () => {
+		const text = "¿Por qué la inteligencia";
+		const fontSize = 90;
+		const m = FontManager.measure(text, { fontFamily: "Inter", fontSize });
+		// The font Layer.text draws with: opsz follows the font size.
+		const font = SlugFontCache.getFont(
+			"Inter",
+			undefined,
+			null,
+			undefined,
+			fontSize,
+		);
+		if (!font) throw new Error("Inter not registered");
+		const rendered = SlugGeometry.measure(text, font, fontSize, 0, 108);
+		expect(m.width).toBeCloseTo(rendered.width, 3);
 	});
 
 	it("throws a clear error for unregistered fonts", () => {

@@ -271,6 +271,8 @@ export class FontManager {
 			options.fontFamily,
 			options.fontWeight,
 			null,
+			undefined,
+			fontSize,
 		);
 		if (!font) {
 			throw new Error(

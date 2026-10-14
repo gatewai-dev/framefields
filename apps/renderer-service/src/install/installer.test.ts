@@ -7,14 +7,10 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { RenderError } from "../errors.js";
 import { CommandError } from "../git/exec.js";
 import type { CheckoutResult, StepContext } from "../jobs/pipeline.js";
+import { _resetEngineBinding, markDepsLoaded } from "../render/engine.js";
 import { testConfig } from "../test-helpers.js";
-import {
-	bundledEngineVersion,
-	classifyInstallError,
-	install,
-	STAMP_FILE,
-} from "./installer.js";
-import { inspectProject, needsNoInstall } from "./project.js";
+import { classifyInstallError, install, STAMP_FILE } from "./installer.js";
+import { inspectProject } from "./project.js";
 
 let tmp: string;
 
@@ -25,6 +21,7 @@ beforeAll(async () => {
 });
 afterAll(async () => {
 	await fs.rm(tmp, { recursive: true, force: true });
+	_resetEngineBinding();
 });
 
 async function project(name: string, files: Record<string, unknown>) {
@@ -109,77 +106,62 @@ describe("project inspection", () => {
 		});
 		expect(await codeOf(inspectProject(root, root))).toBe("INSTALL_FAILED");
 	});
-
-	it("needs no install when only framefields and tooling are used", () => {
-		expect(
-			needsNoInstall({
-				dependencies: {
-					framefields: "^2.1.0",
-					"@framefields/compositions": "workspace:*",
-				},
-				devDependencies: { typescript: "^5", tsx: "^4", "@types/node": "^24" },
-			}),
-		).toBe(true);
-		expect(
-			needsNoInstall({ dependencies: { framefields: "^2", mediabunny: "^1" } }),
-		).toBe(false);
-	});
 });
 
 describe("install step", () => {
-	it("skips projects that only need framefields, warning on a version mismatch", async () => {
-		const root = await project("plain", {
-			"package.json": { name: "p", dependencies: { framefields: "^0.1.0" } },
+	it("requires the project to depend on framefields", async () => {
+		const root = await project("no-engine", {
+			"package.json": { name: "p", dependencies: { "left-pad": "1.3.0" } },
 		});
-		const { ctx, warnings } = context();
-		const result = await install(checkoutOf(root), ctx);
-		expect(result).toMatchObject({ skipped: true, declaredEngine: "^0.1.0" });
-		expect(warnings).toContain("ENGINE_MISMATCH");
-	});
-
-	it("fails on an engine mismatch when the policy says so", async () => {
-		const root = await project("strict", {
-			"package.json": { name: "p", dependencies: { framefields: "^0.1.0" } },
-		});
-		const { ctx } = context({ FF_ENGINE_POLICY: "fail" });
-		expect(await codeOf(install(checkoutOf(root), ctx))).toBe(
-			"ENGINE_INCOMPATIBLE",
+		expect(await codeOf(install(checkoutOf(root), context().ctx))).toBe(
+			"ENGINE_NOT_FOUND",
+		);
+		const empty = await project("no-package", { "readme.md": "hi" });
+		expect(await codeOf(install(checkoutOf(empty), context().ctx))).toBe(
+			"ENGINE_NOT_FOUND",
 		);
 	});
 
-	it("accepts the bundled version and workspace ranges", async () => {
-		const root = await project("ok", {
+	it("accepts framefields declared at the workspace root", async () => {
+		const root = await project("root-engine", {
 			"package.json": {
-				name: "p",
-				dependencies: { framefields: `^${bundledEngineVersion()}` },
-				devDependencies: { "@framefields/x": "workspace:*" },
+				name: "root",
+				workspaces: ["videos/*"],
+				dependencies: { framefields: "^2.1.0" },
 			},
+			"videos/launch/package.json": { name: "launch" },
 		});
-		const { ctx, warnings } = context();
-		await install(checkoutOf(root), ctx);
-		expect(warnings).toEqual([]);
+		// No lockfile, so it stops there, after the engine check passed.
+		expect(
+			await codeOf(
+				install(
+					checkoutOf(root, path.join(root, "videos/launch")),
+					context().ctx,
+				),
+			),
+		).toBe("LOCKFILE_MISSING");
 	});
 
-	it("requires a lockfile when dependencies must be installed", async () => {
+	it("requires a lockfile", async () => {
 		const root = await project("nolock", {
-			"package.json": { name: "p", dependencies: { "left-pad": "1.3.0" } },
+			"package.json": { name: "p", dependencies: { framefields: "^2.1.0" } },
 		});
 		expect(await codeOf(install(checkoutOf(root), context().ctx))).toBe(
 			"LOCKFILE_MISSING",
 		);
 	});
 
-	it("runs npm ci once, then reuses node_modules until the lockfile changes", async () => {
+	it("runs npm ci once, reuses it until the lockfile changes, and asks for a restart when loaded deps change", async () => {
 		const root = await project("npm-project", {
+			// A stand-in engine package, so npm ci works offline.
 			"package.json": {
 				name: "film",
 				version: "1.0.0",
-				dependencies: { helper: "file:./helper" },
+				dependencies: { framefields: "file:./engine" },
 			},
-			"helper/package.json": { name: "helper", version: "1.0.0" },
-			"helper/index.js": "module.exports = 1;\n",
+			"engine/package.json": { name: "framefields", version: "9.9.9" },
+			"engine/index.js": "module.exports = 1;\n",
 		});
-		// Generate a real lockfile offline (file: deps need no registry).
 		execFileSync(
 			"npm",
 			[
@@ -196,22 +178,37 @@ describe("install step", () => {
 		);
 
 		const first = await install(checkoutOf(root), context().ctx);
-		expect(first.cache.install).toBe("miss");
-		expect(existsSync(path.join(root, "node_modules/helper/index.js"))).toBe(
-			true,
-		);
+		expect(first).toMatchObject({
+			declaredEngine: "file:./engine",
+			cache: { install: "miss" },
+		});
+		expect(
+			existsSync(path.join(root, "node_modules/framefields/index.js")),
+		).toBe(true);
 		expect(existsSync(path.join(root, STAMP_FILE))).toBe(true);
 
-		const second = await install(checkoutOf(root), context().ctx);
-		expect(second.cache.install).toBe("hit");
+		expect((await install(checkoutOf(root), context().ctx)).cache.install).toBe(
+			"hit",
+		);
 
 		const pkg = JSON.parse(
 			await fs.readFile(path.join(root, "package.json"), "utf8"),
 		);
 		pkg.description = "changed";
 		await fs.writeFile(path.join(root, "package.json"), JSON.stringify(pkg));
-		const third = await install(checkoutOf(root), context().ctx);
-		expect(third.cache.install).toBe("miss");
+		expect((await install(checkoutOf(root), context().ctx)).cache.install).toBe(
+			"miss",
+		);
+
+		// Once this process loaded modules from the workspace, new dependencies
+		// need a fresh worker: installed, then ENGINE_SWITCH (retryable).
+		markDepsLoaded(root);
+		pkg.description = "changed again";
+		await fs.writeFile(path.join(root, "package.json"), JSON.stringify(pkg));
+		expect(await codeOf(install(checkoutOf(root), context().ctx))).toBe(
+			"ENGINE_SWITCH",
+		);
+		expect(existsSync(path.join(root, STAMP_FILE))).toBe(true);
 	}, 120_000);
 });
 

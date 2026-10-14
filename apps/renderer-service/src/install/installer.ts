@@ -1,76 +1,60 @@
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import semver from "semver";
 import type { RendererConfig } from "../config/index.js";
 import { RenderError } from "../errors.js";
 import { CommandError, exec } from "../git/exec.js";
 import type { Pipeline, StepContext } from "../jobs/pipeline.js";
 import { redact } from "../redact.js";
+import { depsLoadedFrom } from "../render/engine.js";
+import { workerHealth } from "../worker/health.js";
 import {
 	declaredEngineRange,
 	inspectProject,
-	needsNoInstall,
 	type ProjectInfo,
+	readPackageJson,
 } from "./project.js";
 
 export const STAMP_FILE = ".ff-install-stamp";
 
-let engineVersion: string | undefined;
-
-/** Version of the framefields copy this worker renders with. */
-export function bundledEngineVersion(): string {
-	if (engineVersion) return engineVersion;
-	// The package doesn't export ./package.json; walk up from its entry.
-	let dir = path.dirname(fileURLToPath(import.meta.resolve("framefields")));
-	for (;;) {
-		const file = path.join(dir, "package.json");
-		if (existsSync(file)) {
-			const pkg = JSON.parse(readFileSync(file, "utf8")) as {
-				name?: string;
-				version: string;
-			};
-			if (pkg.name === "framefields") {
-				engineVersion = pkg.version;
-				return engineVersion;
-			}
-		}
-		if (path.dirname(dir) === dir)
-			throw new Error("framefields package.json not found");
-		dir = path.dirname(dir);
-	}
-}
-
 /**
- * Pipeline step: installs the project's dependencies (PLAN.md §7). Skipped
- * when the project only needs framefields, or when the lockfile hasn't
- * changed since the last install in this workspace slot.
+ * Pipeline step: installs the project's dependencies, including the
+ * framefields version it renders with (PLAN.md §7). Skipped when the
+ * lockfile hasn't changed since the last install in this workspace slot.
  */
 export const install: Pipeline["install"] = async (checkout, ctx) => {
 	const project = await inspectProject(checkout.root, checkout.workdir);
 	if (!project) {
-		ctx.warn(
-			"NO_PACKAGE_JSON",
-			"The workdir has no package.json; rendering without installing dependencies.",
+		throw new RenderError(
+			"ENGINE_NOT_FOUND",
+			"The workdir has no package.json, so there's no framefields to render with.",
+			{
+				phase: "install",
+				hint: 'Point source.workdir at the package that depends on "framefields".',
+			},
 		);
-		return { skipped: true, cache: { install: "skipped" } };
 	}
 
-	const declaredEngine = declaredEngineRange(project.pkg);
-	checkEngine(declaredEngine, ctx);
+	const rootPkg = project.inWorkspace
+		? await readPackageJson(project.installRoot)
+		: undefined;
+	const declaredEngine =
+		declaredEngineRange(project.pkg) ??
+		(rootPkg && declaredEngineRange(rootPkg));
+	if (!declaredEngine) {
+		throw new RenderError(
+			"ENGINE_NOT_FOUND",
+			"The project doesn't depend on framefields.",
+			{
+				phase: "install",
+				hint: 'Add "framefields" to the dependencies in package.json and commit the lockfile.',
+			},
+		);
+	}
 	checkNodeEngine(project, ctx);
-
-	if (needsNoInstall(project.pkg)) {
-		return {
-			skipped: true,
-			packageManager: project.manager,
-			declaredEngine,
-			cache: { install: "skipped" },
-		};
-	}
 
 	if (!project.lockfile && !ctx.config.install.allowUnlocked) {
 		throw new RenderError(
@@ -102,6 +86,20 @@ export const install: Pipeline["install"] = async (checkout, ctx) => {
 	await fs.rm(stampPath, { force: true });
 	await runInstall(project, ctx, checkout.root);
 	await fs.writeFile(stampPath, stamp);
+
+	// This process holds the old dependencies in its module cache; only a
+	// fresh worker can load the new ones (engine-alias.ts).
+	if (depsLoadedFrom(checkout.root)) {
+		workerHealth.requestRecycle("project dependencies changed");
+		throw new RenderError(
+			"ENGINE_SWITCH",
+			"The project's dependencies changed since this worker loaded them.",
+			{
+				phase: "install",
+				hint: "Retry: the worker restarts and loads the new dependencies (already installed).",
+			},
+		);
+	}
 	return {
 		skipped: false,
 		packageManager: project.manager,
@@ -109,22 +107,6 @@ export const install: Pipeline["install"] = async (checkout, ctx) => {
 		cache: { install: "miss" },
 	};
 };
-
-function checkEngine(declared: string | undefined, ctx: StepContext): void {
-	if (!declared) return;
-	const range = declared.replace(/^npm:framefields@/, "");
-	if (!semver.validRange(range)) return; // workspace:*, file:, git URLs, tags
-	const bundled = bundledEngineVersion();
-	if (semver.satisfies(bundled, range, { includePrerelease: true })) return;
-	const message = `The project asks for framefields ${range}; this worker renders with ${bundled}.`;
-	if (ctx.config.install.enginePolicy === "fail") {
-		throw new RenderError("ENGINE_INCOMPATIBLE", message, {
-			phase: "install",
-			hint: "Use a worker image whose framefields version matches, or update the project's dependency.",
-		});
-	}
-	ctx.warn("ENGINE_MISMATCH", message);
-}
 
 function checkNodeEngine(project: ProjectInfo, ctx: StepContext): void {
 	const range = project.pkg.engines?.node;
@@ -258,7 +240,11 @@ async function runInstall(
 		}
 
 		const [pm, ...args] = installCommand(project, config);
-		const useCorepack = await hasCorepack();
+		// npm ships with Node, so corepack only runs it when the project pins a
+		// version; an unpinned npm via corepack can be a different major than
+		// the one that wrote the lockfile. pnpm and yarn always go through it.
+		const useCorepack =
+			(pm !== "npm" || Boolean(project.managerSpec)) && (await hasCorepack());
 		const file = useCorepack ? "corepack" : pm;
 		const argv = useCorepack ? [pm, ...args] : args;
 
@@ -323,13 +309,29 @@ export function classifyInstallError(
 		});
 	}
 	const output = `${err.result.stderr}\n${err.result.stdout}`;
-	const logTail = redact(
-		output.trim().split("\n").slice(-40).join("\n"),
-	).replaceAll(repoRoot, "<repo>");
+	// Package managers put the cause first and usage/help text last: keep both ends.
+	const lines = output
+		.trim()
+		.split("\n")
+		.filter((l) => !/^npm error\s*$/.test(l));
+	const excerpt =
+		lines.length > 45
+			? [...lines.slice(0, 15), "…", ...lines.slice(-30)]
+			: lines;
+	const logTail = redact(excerpt.join("\n")).replaceAll(repoRoot, "<repo>");
+	// The first line that names the problem, e.g. npm's "`npm ci` can only install…".
+	const cause =
+		lines.find(
+			(l) =>
+				/ERR_PNPM_|error (?!code\b)|YN\d{4}|ERR!/i.test(l) &&
+				l.replace(/^npm error\s*/, "").length > 12,
+		) ??
+		lines.at(-1) ??
+		"unknown error";
 	const fail = (hint?: string, transient = false) =>
 		new RenderError(
 			"INSTALL_FAILED",
-			err.message.replaceAll(repoRoot, "<repo>"),
+			`${err.command} failed: ${redact(cause).replaceAll(repoRoot, "<repo>")}`,
 			{
 				phase: "install",
 				hint,

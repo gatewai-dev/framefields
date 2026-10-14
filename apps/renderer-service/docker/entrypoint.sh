@@ -6,7 +6,7 @@
 #   cli: one job; pass the CLI's arguments, e.g. --job-file /jobs/job.json
 set -euo pipefail
 
-SERVICE_DIR=apps/renderer-service
+SERVICE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 MODE="${FF_MODE:-}"
 if [ -z "$MODE" ]; then
   if [ -n "${RUNPOD_POD_ID:-}" ]; then MODE=runpod-serverless; else MODE=http; fi

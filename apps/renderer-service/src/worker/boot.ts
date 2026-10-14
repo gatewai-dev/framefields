@@ -1,8 +1,5 @@
 import { mkdirSync, realpathSync } from "node:fs";
 import path from "node:path";
-import { HeadlessMediaRenderer } from "@framefields/renderer";
-import "@framefields/renderer/offscreen-gl-polyfill";
-import { rendererLogger } from "@framefields/server-utils";
 import {
 	describeConfig,
 	loadConfig,
@@ -11,14 +8,17 @@ import {
 } from "../config/index.js";
 import { RenderError } from "../errors.js";
 import { checkout } from "../git/checkout.js";
+import { exec } from "../git/exec.js";
 import { repoHash, workerId } from "../git/mirror.js";
 import { install } from "../install/installer.js";
 import { CrashJournal } from "../jobs/journal.js";
 import type { Pipeline } from "../jobs/pipeline.js";
 import { JobRunner } from "../jobs/runner.js";
+import { rendererLogger } from "../logger.js";
 import { deliver, findExisting } from "../output/deliver.js";
 import { ReadinessTracker } from "../readiness.js";
 import { redact } from "../redact.js";
+import { boundEngine } from "../render/engine.js";
 import { installEngineAlias } from "../render/engine-alias.js";
 import { render } from "../render/render-step.js";
 import { installProcessGuards, strayErrorCount } from "../render/sandbox.js";
@@ -38,8 +38,8 @@ export interface Worker {
 	isDraining(): boolean;
 	/** Stops taking jobs and waits for the current one. */
 	drain(reason: RenderError, abortActive: boolean): Promise<void>;
-	/** Initialises the GPU; rejects when no usable device is found. */
-	initGpu(): Promise<void>;
+	/** Checks git, git-lfs and ffprobe; rejects with TOOL_MISSING. */
+	checkTools(): Promise<void>;
 	stop(): void;
 }
 
@@ -87,12 +87,26 @@ export function bootWorker(
 		deliver,
 	};
 	let baselineHandles = 0;
+	let boundVersion: string | undefined;
 	let draining = false;
 
 	const runner = new JobRunner(config, pipeline, {
 		journal,
-		beforeJob: (job) => janitor.maybeRun([repoHash(job.repo)]),
+		beforeJob: (job) => {
+			// The bound engine is loaded from a workspace: never evict that one.
+			const engine = boundEngine();
+			const keep = [repoHash(job.repo)];
+			if (engine) keep.push(path.basename(path.dirname(engine.workspace)));
+			return janitor.maybeRun(keep);
+		},
 		afterJob: (completed) => {
+			const engine = boundEngine();
+			if (engine && boundVersion !== engine.version) {
+				// The engine's own timers and GPU handles aren't leaks.
+				boundVersion = engine.version;
+				readiness.setEngine(engine.version);
+				baselineHandles = process.getActiveResourcesInfo().length;
+			}
 			const reason = recycleReason(
 				currentStats(
 					completed,
@@ -137,23 +151,33 @@ export function bootWorker(
 			runner.queue.close(reason, abortActive);
 			await runner.queue.idle();
 		},
-		async initGpu() {
-			try {
-				rendererLogger.info("Initializing renderer (GPU, node discovery)...");
-				await HeadlessMediaRenderer.initialize();
-				readiness.setRendererReady(true);
-				readiness.setGpuReady(true);
-				baselineHandles = process.getActiveResourcesInfo().length;
-				rendererLogger.info("Renderer initialized.");
-			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
-				rendererLogger.fatal(
-					{ err: error },
-					"❌ GPU / Renderer initialization failed",
+		async checkTools() {
+			const missing: string[] = [];
+			for (const [tool, args] of [
+				["git", ["--version"]],
+				["git", ["lfs", "version"]],
+				["ffprobe", ["-version"]],
+			] as const) {
+				await exec(tool, [...args], { timeoutMs: 10_000 }).catch(() =>
+					missing.push(
+						`${tool} ${args[0]}`
+							.replace(" --version", "")
+							.replace(" -version", ""),
+					),
 				);
-				readiness.setFailure(`GPU_UNAVAILABLE: ${message}`);
-				throw new RenderError("GPU_UNAVAILABLE", message, { cause: error });
 			}
+			// ffprobe only sharpens output checks; git and git-lfs are required.
+			const required = missing.filter((m) => m.startsWith("git"));
+			if (missing.length) rendererLogger.warn({ missing }, "Tools missing");
+			if (required.length) {
+				readiness.setFailure(`TOOL_MISSING: ${required.join(", ")}`);
+				throw new RenderError(
+					"TOOL_MISSING",
+					`Missing: ${required.join(", ")}`,
+				);
+			}
+			readiness.setToolsReady(true);
+			baselineHandles = process.getActiveResourcesInfo().length;
 		},
 		stop: stopWatchdog,
 	};

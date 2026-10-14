@@ -184,27 +184,18 @@ importers:
       '@aws-sdk/lib-storage':
         specifier: ^3.1151.0
         version: 3.1151.0(@aws-sdk/client-s3@3.1151.0)
-      '@framefields/core':
-        specifier: workspace:*
-        version: link:../../packages/core
-      '@framefields/renderer':
-        specifier: workspace:*
-        version: link:../../packages/renderer
-      '@framefields/server-utils':
-        specifier: workspace:*
-        version: link:../../packages/server-utils
       '@hono/node-server':
         specifier: '>=2.0.5'
         version: 2.0.12(hono@4.13.13)
       dotenv:
         specifier: ^17.0.1
         version: 17.3.1
-      framefields:
-        specifier: workspace:*
-        version: link:../../packages/framefields
       hono:
         specifier: ^4.13.7
         version: 4.13.13
+      pino:
+        specifier: ^10.3.1
+        version: 10.3.1
       semver:
         specifier: ^7.8.5
         version: 7.8.5
@@ -215,6 +206,9 @@ importers:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
+      '@framefields/renderer':
+        specifier: workspace:*
+        version: link:../../packages/renderer
       '@framefields/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
@@ -224,6 +218,9 @@ importers:
       '@types/semver':
         specifier: ^7.8.0
         version: 7.8.0
+      framefields:
+        specifier: workspace:*
+        version: link:../../packages/framefields
       typescript:
         specifier: ^5.8.3
         version: 5.9.3

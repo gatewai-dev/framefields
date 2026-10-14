@@ -2925,6 +2925,7 @@ export {
 	type RenderProgress,
 	renderFrameGrid,
 	renderSemaphore,
+	resetRenderCaches,
 	resolveSamplePoints,
 	type VideoQaOptions,
 	type VideoQaReport,

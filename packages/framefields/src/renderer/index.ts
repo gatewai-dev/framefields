@@ -7,6 +7,7 @@ export {
 	type QaSegment,
 	type RenderProgress,
 	renderSemaphore,
+	resetRenderCaches,
 	type VideoQaOptions,
 	type VideoQaReport,
 	type VideoQaStats,

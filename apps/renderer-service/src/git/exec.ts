@@ -47,7 +47,9 @@ export function exec(
 		const child = spawn(file, args, {
 			cwd: options.cwd,
 			env: options.env ?? process.env,
-			stdio: ["pipe", "pipe", "pipe"],
+			// No stdin unless we have input: a child that exits without reading
+			// it would otherwise raise EPIPE on our side.
+			stdio: [options.input === undefined ? "ignore" : "pipe", "pipe", "pipe"],
 			detached: process.platform !== "win32",
 		});
 		const max = options.maxStdoutBytes ?? 64 * 1024 * 1024;
@@ -56,10 +58,10 @@ export function exec(
 		let timedOut = false;
 		let aborted = false;
 
-		child.stdout.setEncoding("utf8").on("data", (d: string) => {
+		child.stdout?.setEncoding("utf8").on("data", (d: string) => {
 			if (stdout.length < max) stdout += d;
 		});
-		child.stderr.setEncoding("utf8").on("data", (d: string) => {
+		child.stderr?.setEncoding("utf8").on("data", (d: string) => {
 			stderr = (stderr + d).slice(-64 * 1024);
 		});
 
@@ -108,7 +110,12 @@ export function exec(
 				);
 		});
 
-		child.stdin.end(options.input ?? "");
+		if (child.stdin) {
+			child.stdin.on("error", () => {
+				// EPIPE: the child exited before reading all input; its exit code says why.
+			});
+			child.stdin.end(options.input);
+		}
 	});
 }
 

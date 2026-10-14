@@ -1,5 +1,4 @@
 import { createHash, timingSafeEqual } from "node:crypto";
-import { rendererLogger } from "@framefields/server-utils";
 import { type Context, Hono, type MiddlewareHandler } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { streamSSE } from "hono/streaming";
@@ -7,6 +6,7 @@ import type { RendererConfig } from "../config/index.js";
 import { RenderError } from "../errors.js";
 import type { JobRunner } from "../jobs/runner.js";
 import { isTerminal, type JobRecord } from "../jobs/store.js";
+import { rendererLogger } from "../logger.js";
 import { loggerMiddleware } from "../middlewares.js";
 import { redact } from "../redact.js";
 

@@ -29,7 +29,8 @@ job ─▶ resolve ref → fetch (mirror cache) → checkout → git LFS pull
         → import your entry → render on the warm GPU → verify (ffprobe) → upload
 ```
 
-- **Your code runs inside the worker process.** Imports of `framefields` and `@framefields/*` resolve to the worker's own copy, so every job shares one initialised GPU device. Each job loads your modules fresh.
+- **Your repo picks the framefields version.** The worker image contains no engine. Each repo depends on `framefields` in its `package.json` (with a committed lockfile), and the worker renders with exactly that install.
+- **Your code runs inside the worker process.** The first job loads its project's framefields and initialises the GPU. Later jobs on the same version reuse that warm engine, even from other repos. A job that needs a different version fails with retryable `ENGINE_SWITCH`, and the worker restarts so the retry loads it. Keep a worker (or endpoint) per framefields version if your projects pin different ones.
 - **Everything is pinned to one commit.** A branch is resolved once per job, and the result reports the SHA it rendered.
 - **Caches survive between jobs:** git mirrors, LFS objects and package stores live on the cache volume, and checkouts and `node_modules` are reused. A warm job spends almost all its time rendering.
 - **The worker protects itself.** It recycles after N jobs, high memory, GPU device loss, or code that won't stop. If it crashes, the job is still reported after the restart.
@@ -70,7 +71,7 @@ docker build -f apps/renderer-service/Dockerfile -t framefields-renderer .
 docker build -f apps/renderer-service/Dockerfile --build-arg VARIANT=full -t framefields-renderer:full .
 ```
 
-The `full` variant adds a C/C++ toolchain, for projects whose native dependencies have no prebuilt binaries.
+The `full` variant adds a C/C++ toolchain, for projects whose native dependencies have no prebuilt binaries. The image is based on Debian trixie, because the prebuilt WebGPU (Dawn) binaries need glibc 2.38 or newer.
 
 ## RunPod
 
@@ -163,6 +164,8 @@ export const deliverables = () => ({
 
 Don't render or call `process.exit()` at import time: the job fails with `EXPORT_SIDE_EFFECT`. Your repo files load as ES modules even without `"type": "module"`.
 
+Versions of `framefields` released before worker support (2.1.3 and older) still render. They report no progress, and the worker restarts after each of their jobs to keep caches correct. Newer versions keep the worker warm between jobs.
+
 ### Render kinds
 
 `render.kind` is one of:
@@ -214,7 +217,6 @@ Everything is set by environment variables. The worker checks them all at startu
 | `FF_CACHE_DIR`, `FF_CACHE_MAX_GB`, `FF_WORK_MAX_GB` | Cache location and size limits. Eviction runs automatically. |
 | `FF_JOB_TIMEOUT_MAX_SEC`, `FF_STALL_TIMEOUT_SEC` | Time limits. |
 | `FF_MAX_JOBS_PER_WORKER` | Recycle after N jobs (default 25). |
-| `FF_ENGINE_POLICY` | `warn` (default) or `fail` when a project asks for a framefields version the worker doesn't have. |
 | `FF_NPMRC` | `.npmrc` contents, for private registries. |
 
 ## Errors
@@ -238,7 +240,9 @@ A failed job returns:
 | `EXPORT_NOT_FOUND` / `EXPORT_INVALID` / `EXPORT_SIDE_EFFECT` | The entry doesn't export a builder the worker can use. |
 | `ASSET_NOT_FOUND` | A file the composition references is missing; often an LFS include that's too narrow. |
 | `RENDER_TIMEOUT` / `RENDER_STALLED` | The render took too long, or stopped making progress. |
-| `GPU_DEVICE_LOST` / `RENDER_OOM` | Retry. The worker replaces itself. |
+| `ENGINE_NOT_FOUND` | The project doesn't depend on `framefields`, so there is nothing to render with. |
+| `ENGINE_SWITCH` | Retry. The project needs another framefields version, or new dependencies; the worker restarts to load them. |
+| `GPU_DEVICE_LOST` / `RENDER_OOM` / `GPU_UNAVAILABLE` | Retry. The worker replaces itself. |
 | `QA_FAILED` | `render.qa.failOn` matched. The outputs are still uploaded and listed. |
 
 ## Security

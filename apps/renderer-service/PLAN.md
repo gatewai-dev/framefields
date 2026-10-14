@@ -5,7 +5,7 @@ Status: **draft, decisions recorded**, 2026-10-14. Branch: `feat/renderer-self-d
 ### Decisions (2026-10-14)
 
 1. **Rendering runs in the main service process** (revised 2026-10-14; this replaces the earlier child-process design). The repo's entry module is imported into the long-lived worker and rendered with the worker's warm GPU device. Section 8 covers what this costs and how each cost is handled.
-2. **Engine source: `bundled`.** This follows from decision 1, because one process can only hold one GPU stack. Imports of `framefields` and `@framefields/*` from repo code resolve to the worker's own copy. The project's lockfile version is still checked (section 7). The earlier `project` default, where each job used the framefields version in its lockfile, is dropped.
+2. **Engine source: the project's own `framefields`** (revised 2026-10-14; this replaces the earlier bundled engine). The image contains no engine. Each repo installs the framefields version it pins in `package.json` and its lockfile, and the worker renders with that install. One process can hold only one GPU stack, so a worker **binds** to the version its first job installs. Later jobs on the same version share that warm engine, even from other repos. A job needing another version fails with retryable `ENGINE_SWITCH`, and the worker recycles so the retry gets a fresh process (§7).
 3. **Script mode is dropped.** A package script always runs as its own process, so it can't render in the main process. Its use cases (several outputs, contact sheets, parametrised variants) are covered by letting an export return several compositions or a render plan (section 4).
 4. **The inline `virtualMedia` path is removed.** That covers the legacy input mapping, the v1 `/run` and `/status` routes, `cli.ts --job <json>`, `configureAssetUrls` and `BASE_URL`, and the `R2_*` env names. There are no callers left.
 5. **Git hosts:** GitHub, GitLab, Bitbucket and self-hosted servers (GitLab self-managed, Gitea/Forgejo, plain git over HTTPS/SSH) are all in scope from the start (section 6.5).
@@ -156,7 +156,7 @@ Security-relevant settings (allowlists, credentials, limits, output buckets) can
   "status": "COMPLETED",
   "jobId": "…",
   "source": { "repo": "https://github.com/acme/promo-videos.git", "ref": "main", "sha": "9f2c1e…", "workdir": "videos/launch" },
-  "engine": { "framefields": "2.1.3", "source": "bundled", "projectDeclared": "^2.1.0" },
+  "engine": { "framefields": "2.1.3", "source": "project", "workerHooks": true, "projectDeclared": "^2.1.0" },
   "outputs": [{ "key": "acme/9f2c1e4/….mp4", "url": "https://…", "bytes": 48213311, "sha256": "…", "contentType": "video/mp4", "durationMs": 12000, "frames": 720 }],
   "qa": { /* VideoQaReport when requested */ },
   "timings": { "resolveMs": 210, "fetchMs": 1830, "lfsMs": 9400, "installMs": 0, "loadMs": 900, "renderMs": 61000, "uploadMs": 3100 },
@@ -315,11 +315,15 @@ Rules that apply to every host:
 - **Install scripts** are on by default, because the native GPU, skia and webcodecs modules need them. `FF_INSTALL_SCRIPTS=false` turns them off. The build toolchain is only present in the `-full` image (section 11).
 - **Private registries:** `FF_NPMRC` (secret, file contents) is written to a temp `.npmrc` that is used only for the install.
 - **Prepare steps (optional):** `install.prepare: ["fonts"]` in the repo file runs those package scripts after the install, under the same timeout. It is used for fetching fonts and similar setup.
-- **Engine alias (always on).** A `module.register` resolve hook, installed once at boot, maps every `framefields` and `@framefields/*` import from inside a workspace to the worker's own copy. This happens however the project declares the dependency (npm range or `workspace:*`). Repo code therefore shares the worker's single, already-initialised GPU stack, and a second copy of Dawn or skia never gets loaded.
-- **The project's own copy of framefields is installed but never loaded.** Leaving it out of the install would mean changing the overrides, which breaks the frozen-lockfile check, so the install runs as is and the alias wins at import time. The cost is mostly prebuild downloads, which the shared store absorbs after the first install.
-- **Skip the install** entirely when the project's only runtime dependencies are framefields packages, which is the common case. This is the fast path.
-- **Engine check:** compare the version range the project declares with the bundled version.
-  - If the bundled version doesn't satisfy it, apply `FF_ENGINE_POLICY=warn|fail` (default `warn`, which adds `ENGINE_MISMATCH` to the warnings).
+- **The project must depend on framefields** (in the workdir's or the workspace root's `package.json`); otherwise the job fails with `ENGINE_NOT_FOUND`. There is no "skip the install" fast path, because the engine itself comes from the install. A warm workspace with an unchanged stamp skips the install instead.
+- **Engine binding** (`render/engine.ts`, `render/engine-alias.ts`):
+  - The first job resolves `framefields` from its workdir, imports it (ESM build), and calls `HeadlessMediaRenderer.initialize()`. That is the worker's engine for the rest of its life.
+  - A synchronous `module.registerHooks` resolve hook then maps every `framefields` / `@framefields/*` import from any workspace to the bound engine's package. Two repos on the same version share one GPU stack, even though each has its own `node_modules`.
+  - A job whose project installs a **different version** fails with `ENGINE_SWITCH` (retryable). The worker recycles, and RunPod or the caller's retry lands on a fresh worker that binds the new version. Workers that serve one project, or projects pinned to one version, never switch.
+  - The janitor never evicts the workspace the bound engine was loaded from.
+- **Dependencies stay cached by path** for the life of the process, and they are shared with the engine (one copy of `mediabunny` and similar). A new install in a workspace this process already loaded modules from can't take effect in-process. So after installing, the job fails with `ENGINE_SWITCH` and the worker recycles; the retry gets a fresh process, and the install is already done.
+- **Older engines without worker hooks.** Some framefields versions predate `resetRenderCaches`, `signal` and `onProgress` (2.1.3, the current release, among them). They still render, but stall detection is off, cancellation relies on the grace period, and the worker recycles after each job rather than risk stale path-keyed caches. The warning is `ENGINE_NO_WORKER_HOOKS`.
+- **npm runs as shipped with Node** unless the project pins `packageManager`. Corepack's unpinned npm can be a different major than the one that wrote the lockfile, which made `npm ci` fail on lockfile sync. pnpm and yarn always go through corepack.
   - `engines.node` mismatches only produce a warning.
 
 ## 8. Render execution (in-process)
@@ -336,7 +340,7 @@ Rules that apply to every host:
    - A missing module gives `ENTRY_NOT_FOUND`. A TS or syntax error gives `ENTRY_COMPILE_FAILED`, with the first frames of the error.
 3. Read the export (`EXPORT_NOT_FOUND`). If it is a function, call it with `args`. A throw here gives `COMPOSITION_BUILD_FAILED`.
 4. Normalise the result to a render plan (section 4). Anything that isn't a Composition, a record of compositions, or a plan gives `EXPORT_INVALID`.
-5. **Composition from a different engine instance.** If the result was built by some other copy of framefields (the alias was bypassed, for example by a bundled `dist/` inside the repo), `instanceof` fails. The worker then falls back to `toVirtualMedia()` and renders that with its own renderer, adding the warning `ENGINE_FOREIGN_INSTANCE`.
+5. **Composition from a different engine instance.** If the result was built by some other copy of framefields (the alias was bypassed, for example by a bundled `dist/` inside the repo), `instanceof` fails. The worker renders it anyway, through its own methods, with the bound engine's renderer, and adds the warning `ENGINE_FOREIGN_INSTANCE`.
 
 ### 8.2 Job sandbox
 
@@ -439,7 +443,8 @@ Every failure maps to a stable `code`. `retryable` is what RunPod or the caller 
 | lfs | `UNSUPPORTED_GIT_FILTER` | no | `git-crypt` and similar. |
 | any | `DISK_FULL` | yes (other worker) | Raised by the preflight or by ENOSPC. |
 | install | `LOCKFILE_MISSING` / `INSTALL_FAILED` / `INSTALL_TIMEOUT` | no / no / yes | The tail of the install log is attached. |
-| install | `ENGINE_INCOMPATIBLE` | no | Only with `FF_ENGINE_POLICY=fail`. |
+| install | `ENGINE_NOT_FOUND` | no | The project doesn't depend on, or didn't install, framefields. |
+| install / render | `ENGINE_SWITCH` | yes (fresh worker) | The project needs a different framefields version than the worker bound, or its dependencies changed after the worker loaded them. The worker recycles. |
 | load | `ENTRY_NOT_FOUND` / `ENTRY_COMPILE_FAILED` / `EXPORT_NOT_FOUND` / `EXPORT_INVALID` / `EXPORT_SIDE_EFFECT` / `COMPOSITION_BUILD_FAILED` | no | The user's stack trace is attached and trimmed to the project's files. |
 | render | `ASSET_NOT_FOUND` | no | A referenced file is missing. Often an LFS include that is too narrow, so the hint says so. |
 | render | `RENDER_FAILED` / `RENDER_STALLED` / `RENDER_TIMEOUT` | no / yes / no | |
@@ -450,7 +455,7 @@ Every failure maps to a stable `code`. `retryable` is what RunPod or the caller 
 | upload | `UPLOAD_AUTH_FAILED` | no | Storage rejected the credentials or the bucket policy (`AccessDenied`, `InvalidAccessKeyId`, `SignatureDoesNotMatch`). |
 | any | `CANCELLED` / `SHUTDOWN` | no / yes | `SHUTDOWN` means the worker was preempted or scaled down mid-job. |
 
-Warnings don't fail a job; they are listed in the result's `warnings`. They include `ENGINE_MISMATCH` (the declared framefields range isn't satisfied by the bundled engine, under `warn` policy), `ENGINE_FOREIGN_INSTANCE` (8.1), and `NODE_ENGINE_MISMATCH`.
+Warnings don't fail a job; they are listed in the result's `warnings`. They include `ENGINE_NO_WORKER_HOOKS` (an older framefields; the worker recycles after the job), `ENGINE_FOREIGN_INSTANCE` (8.1), `LFS_POINTERS_LEFT` and `NODE_ENGINE_MISMATCH`.
 
 ## 11. Configuration reference (env)
 
@@ -463,7 +468,7 @@ On boot the service validates **all** keys and fails with the complete list of p
 | Mode | `FF_MODE` (`runpod-serverless` if `RUNPOD_POD_ID` is set, else `http`), `RENDERER_PORT` (8082), `RENDERER_API_KEY`, `FF_HTTP_INSECURE` (false), `LOG_LEVEL` (info), `LOG_FORMAT` (json) |
 | Source | `FF_DEFAULT_REPO`, `FF_DEFAULT_REF` (`main`), `FF_REPO_ALLOWLIST` (comma globs), `FF_ALLOW_LOCAL_REPOS` (false), `FF_GIT_FETCH` (`mirror`\|`single`), `FF_LFS_CONCURRENCY` (8), `FF_LFS_DEFAULT_INCLUDE` |
 | Git auth & hosts | `GIT_TOKEN`, `GIT_USERNAME`, `FF_GIT_CREDENTIALS` (`{host: token \| {username, token}}`), `FF_GIT_HOSTS` (`{host: github\|gitlab\|bitbucket\|gitea\|generic}`), `FF_GIT_CA_BUNDLE`, `GIT_SSH_KEY`, `GIT_SSH_KNOWN_HOSTS`, `FF_SSH_ACCEPT_NEW` (false), `FF_ALLOW_JOB_CREDENTIALS` (false) |
-| Install | `FF_INSTALL_SCRIPTS` (true), `FF_ALLOW_UNLOCKED_INSTALL` (false), `FF_NPMRC`, `FF_ENGINE_POLICY` (`warn`) |
+| Install | `FF_INSTALL_SCRIPTS` (true), `FF_ALLOW_UNLOCKED_INSTALL` (false), `FF_NPMRC` |
 | Storage | `STORAGE_DRIVER` (`s3`\|`local`\|`none`), `STORAGE_ENDPOINT`, `STORAGE_REGION` (`auto`), `STORAGE_ACCESS_KEY_ID`, `STORAGE_SECRET_ACCESS_KEY`, `STORAGE_BUCKET`, `STORAGE_PUBLIC_BASE_URL`, `STORAGE_FORCE_PATH_STYLE` (MinIO), `FF_OUTPUT_BUCKETS`, `FF_OUTPUT_DIR`, `FF_INLINE_MAX_BYTES`, `FF_OUTPUT_MAX_BYTES`. The `R2_*` names are gone, with no aliases. |
 | Paths & cache | `FF_CACHE_DIR`, `FF_WORK_DIR`, `FF_CACHE_MAX_GB` (50), `FF_WORK_MAX_GB` (40), `FRAMEFIELDS_MODELS_DIR` (`$FF_CACHE_DIR/models`), `FRAMEFIELDS_FONTS_DIR` |
 | Limits | `FF_QUEUE_MAX` (8), `FF_JOB_TIMEOUT_MAX_SEC` (7200), `FF_TIMEOUT_{GIT,LFS,INSTALL,LOAD,RENDER}_SEC`, `FF_STALL_TIMEOUT_SEC` (300), `FF_KILL_GRACE_SEC` (20), `FF_JOB_TTL_SEC` (3600), `FF_JOB_HISTORY_MAX` (500) |
@@ -478,16 +483,15 @@ The service no longer uses `S3StorageService` from `@framefields/server-utils`, 
 
 **Image** (`apps/renderer-service/Dockerfile`, formerly `Dockerfile.renderer`; the build context is still the repo root):
 
-- **Runtime packages added:** `git`, `git-lfs`, `openssh-client`, `ca-certificates`, `tini` (PID 1, reaps git and install subprocesses), `jq`. Corepack is pre-warmed for pnpm, yarn and npm, and `tsx` ships in the service's prod dependencies (its `tsImport` API is used in-process).
-- **Two variants:**
-  - `:<ver>` (slim) has no compiler. It relies on prebuilds and the bundled native modules.
-  - `:<ver>-full` adds `build-essential` and `python3-dev`, for projects whose native dependencies need compiling.
-- The user is renamed from `gatewai` to `framefields`. The `HEALTHCHECK` hits `/health`.
-- **Entrypoint fixes:**
-  - correct paths (`apps/renderer-service`);
-  - `xvfb-run` is used only when `FF_XVFB=auto` and no headless Vulkan/EGL is available;
-  - pre-boot checks: GPU visible (`nvidia-smi`, warn only), cache dirs writable, `git lfs install --skip-repo`.
-- **Published to** `ghcr.io/gatewai-dev/framefields-renderer` by a release workflow, tagged from the package version. Multi-arch is not needed because RunPod is amd64.
+- **Worker only, no engine.**
+  - `turbo prune` cuts the repo down to the service, then `pnpm install --ignore-scripts` and a `tsc` build of the service alone (`tsconfig.build.json`, without tests).
+  - `pnpm deploy --prod --legacy` produces a standalone `/app` holding the service's own dependencies (about 52 MB), with no `framefields` or `@framefields/*`.
+- **Base `node:24-trixie-slim`.** The `webgpu` package's prebuilt Dawn binary needs glibc ≥ 2.38. Bookworm (2.36) fails with ``GLIBC_2.38 not found`` once a project installs framefields from npm. Package names follow trixie's t64 rename (`libasound2t64`, …).
+- **Runtime packages:** the system libraries framefields' native modules need (Vulkan/GL including Mesa's software Vulkan driver, fonts, media), plus `ffmpeg`/`ffprobe`, `git`, `git-lfs` (3.6), `openssh-client`, `tini` (PID 1), and python3 with the `runpod` package. Corepack is enabled for projects' pnpm and yarn.
+- **Two variants:** `:<ver>` (slim, no compiler; projects rely on prebuilt binaries) and `:<ver>-full` (adds `build-essential` and `python3-dev`).
+- Runs as user `framefields`. The `HEALTHCHECK` hits `/health`.
+- **Entrypoint (`docker/entrypoint.sh`):** `http` | `runpod-serverless` | `cli`. `xvfb-run` is used only with `FF_XVFB=1`, and the GPU is logged at boot (`nvidia-smi`).
+- **Published to** `ghcr.io/gatewai-dev/framefields-renderer` by `.github/workflows/renderer-image.yml`.
 
 **RunPod template:** `apps/renderer-service/deploy/runpod/`.
 
@@ -538,14 +542,12 @@ Each phase is its own PR-sized step with tests.
    - CLI `--job-file` / `--job -` with `--result-file`. Exit codes: 0 completed, 1 failed, 2 bad invocation or job.
    - Server and CLI share `worker/boot.ts`.
    - Also done here: cache eviction (§6.4, `worker/janitor.ts`). It runs between jobs (at most every 5 min), and on demand when the LFS disk preflight finds too little space.
-8. **Image + template + compose + docs.** Written, but the image has **not been built yet** (no Docker daemon on the dev machine):
-   - `apps/renderer-service/Dockerfile` (`VARIANT=slim|full`; tini, git, git-lfs, ssh, ffmpeg; user `framefields`; `HEALTHCHECK`) and `docker/entrypoint.sh` (`http` | `runpod-serverless` | `cli`).
-   - Pinned SSH host keys: `deploy/known_hosts`, verified against `deploy/known_hosts.fingerprints` by `deploy/known-hosts.sh`, which the image build runs. The live keys were checked against the published fingerprints on 2026-10-14.
-   - RunPod: `deploy/runpod/{serverless,pod}.template.json` and `create-template.sh` (GraphQL `saveTemplate`).
-   - `deploy/docker-compose.yml` with MinIO (validated with `docker compose config`) and `deploy/env.example`.
-   - `.github/workflows/renderer-image.yml`: tests, then builds both variants, a no-GPU smoke test, and a push to GHCR on `renderer-v*` tags.
-   - `README.md` is the self-hosting guide. A page on the docs website is still to do; the site isn't in this repo.
-   - Still to do: the first image build, a GPU smoke test on a RunPod pod and a serverless endpoint, and the nightly host smoke tests (6.5).
+8. **Image + template + compose + docs.** Built and run locally (arm64, Docker on macOS, without a GPU):
+   - **Inside the container:** a file:// repo pinned to the published `framefields@2.1.3` went through checkout, then `npm ci` from the registry (40 s cold), then engine binding with GPU init on Mesa's software Vulkan, then a VP9 render, verification and delivery. The output was a valid 2 s VP9/Opus file.
+   - **Findings fixed on the way:** glibc 2.38 (moved to trixie); EPIPE from the `exec` helper writing stdin that git never reads; corepack's npm differing from the lockfile's npm; install errors keeping only npm's usage text.
+   - **Engine issue found (not the worker):** on linux-arm64, `@napi-rs/webcodecs` picks the Rockchip `h264_rkmpp` encoder, which fails with "cannot be used for quantizer-based encoding". H.264 renders fail on ARM Linux; VP9 works. amd64/NVIDIA (RunPod) takes a different path, but this should be fixed in framefields.
+   - Pinned SSH host keys, the RunPod templates and `create-template.sh`, `docker-compose.yml` with MinIO, `env.example`, the release workflow, and the README guide as listed above.
+   - **Still to do:** an amd64 build (CI), a GPU smoke test on a RunPod pod and a serverless endpoint, the nightly host smoke tests (6.5), and a page on the docs website.
 9. **(Later)**
    - Chunked distributed rendering: split a frame range across N jobs and concat with a stream copy.
    - Webhooks on completion (`output.webhook` with an HMAC signature).

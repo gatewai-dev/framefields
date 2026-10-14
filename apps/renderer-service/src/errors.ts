@@ -54,7 +54,8 @@ const CODES = {
 	LOCKFILE_MISSING: { phase: "install", retryable: false },
 	INSTALL_FAILED: { phase: "install", retryable: false },
 	INSTALL_TIMEOUT: { phase: "install", retryable: true },
-	ENGINE_INCOMPATIBLE: { phase: "install", retryable: false },
+	ENGINE_NOT_FOUND: { phase: "install", retryable: false },
+	ENGINE_SWITCH: { phase: "render", retryable: true },
 
 	ENTRY_NOT_FOUND: { phase: "load", retryable: false },
 	ENTRY_COMPILE_FAILED: { phase: "load", retryable: false },

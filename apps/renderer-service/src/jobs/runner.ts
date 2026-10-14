@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { loggerContext, rendererLogger } from "@framefields/server-utils";
 import type { RendererConfig } from "../config/index.js";
 import { type JobPhase, RenderError, toRenderError } from "../errors.js";
+import { loggerContext, rendererLogger } from "../logger.js";
 import { redact, redactValue } from "../redact.js";
 import type { CrashJournal } from "./journal.js";
 import type { DeliveredFile, Pipeline, StepContext } from "./pipeline.js";

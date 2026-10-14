@@ -4,6 +4,7 @@
  *   tsx test/render-harness.ts <workDir>
  * Prints one JSON line with each scenario's outcome. Needs a GPU.
  */
+import { writeSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { Composition } from "framefields";
@@ -19,8 +20,36 @@ const workDir = path.resolve(process.argv[2]);
 const ws = path.join(workDir, "ws", "repo", "0");
 await fs.mkdir(path.join(ws, "src"), { recursive: true });
 await fs.mkdir(path.join(ws, "assets"), { recursive: true });
+// The project's own framefields install (here: the one this package tests against).
+await fs.mkdir(path.join(ws, "node_modules"), { recursive: true });
+await fs.symlink(
+	path.resolve(import.meta.dirname, "../node_modules/framefields"),
+	path.join(ws, "node_modules/framefields"),
+);
+// Another repo pinned to a different framefields version.
+const other = path.join(workDir, "ws", "other", "0");
+await fs.mkdir(path.join(other, "node_modules/framefields"), {
+	recursive: true,
+});
+await fs.writeFile(
+	path.join(other, "package.json"),
+	'{ "name": "other", "type": "module" }',
+);
+await fs.writeFile(
+	path.join(other, "node_modules/framefields/package.json"),
+	'{ "name": "framefields", "version": "9.9.9", "type": "module", "exports": "./index.js" }',
+);
+await fs.writeFile(
+	path.join(other, "node_modules/framefields/index.js"),
+	"export {};",
+);
+await fs.writeFile(
+	path.join(other, "film.ts"),
+	"export const buildFilm = () => null;",
+);
 installEngineAlias([await fs.realpath(path.join(workDir, "ws"))]);
-installProcessGuards(() => {});
+// Surface stray errors instead of swallowing them (the worker logs them).
+installProcessGuards((msg, err) => writeSync(2, `[harness] ${msg}: ${err}\n`));
 
 const built = buildConfig(
 	{
@@ -43,6 +72,14 @@ const checkout: CheckoutResult = {
 	cache: {},
 	release: async () => {},
 };
+const otherRoot = await fs.realpath(other);
+const otherCheckout: CheckoutResult = {
+	root: otherRoot,
+	workdir: otherRoot,
+	sha: "y",
+	cache: {},
+	release: async () => {},
+};
 
 async function clip(color: string) {
 	const comp = new Composition({
@@ -62,6 +99,7 @@ async function job(
 	target: Record<string, unknown>,
 	render_: Record<string, unknown> = {},
 	abortAfterMs?: number,
+	on: CheckoutResult = checkout,
 ) {
 	const input = jobSchema.parse({
 		version: 2,
@@ -86,8 +124,12 @@ async function job(
 			abortAfterMs,
 		);
 	}
+	writeSync(
+		2,
+		`[harness] ${new Date().toISOString().slice(11, 19)} ${name} start\n`,
+	);
 	try {
-		const result = await render(checkout, input, ctx);
+		const result = await render(on, input, ctx);
 		const files = await Promise.all(
 			result.files.map(async (f) => ({
 				name: f.name,
@@ -96,8 +138,16 @@ async function job(
 				path: f.path,
 			})),
 		);
+		writeSync(
+			2,
+			`[harness] ${new Date().toISOString().slice(11, 19)} ${name} ok\n`,
+		);
 		return { ok: true, files, warnings, cwdRestored: process.cwd() !== root };
 	} catch (err) {
+		writeSync(
+			2,
+			`[harness] ${new Date().toISOString().slice(11, 19)} ${name} failed: ${err instanceof Error ? err.message : err}\n`,
+		);
 		return {
 			ok: false,
 			code: err instanceof RenderError ? err.code : String(err),
@@ -152,6 +202,14 @@ results.after = await job("after", {
 	entry: "src/film.ts",
 	export: "buildFilm",
 });
+// Last: a repo pinned to another framefields version can't share this process.
+results.switch = await job(
+	"switch",
+	{ entry: "film.ts", export: "buildFilm" },
+	{},
+	undefined,
+	otherCheckout,
+);
 
 const bytes = async (r: unknown) => {
 	const f = (r as { files?: { path: string }[] }).files?.[0];

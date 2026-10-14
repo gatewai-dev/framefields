@@ -1,8 +1,8 @@
 import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { rendererLogger } from "@framefields/server-utils";
 import type { RendererConfig } from "../config/index.js";
+import { rendererLogger } from "../logger.js";
 
 /** Marker whose mtime records when a mirror or workspace was last used. */
 export const LAST_USED = ".ff-last-used";

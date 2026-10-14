@@ -30,12 +30,23 @@ async function codeOf(promise: Promise<unknown>) {
 	}
 }
 
+/** The framefields this package tests against, standing in for a project's install. */
+const ENGINE = path.resolve(
+	import.meta.dirname,
+	"../../node_modules/framefields",
+);
+
 beforeAll(async () => {
 	ws = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), "ff-ws-")));
+	// Workspace "a" installed framefields; workspace "b" (another repo on the
+	// same version) gets it through the bound engine.
 	await write(
-		"package.json",
-		'{ "name": "film", "type": "module", "dependencies": { "framefields": "^0.0.1" } }',
+		"a/package.json",
+		'{ "name": "film", "type": "module", "dependencies": { "framefields": "*" } }',
 	);
+	await fs.mkdir(path.join(ws, "a/node_modules"), { recursive: true });
+	await fs.symlink(ENGINE, path.join(ws, "a/node_modules/framefields"));
+	await write("b/package.json", '{ "name": "other", "type": "module" }');
 });
 afterAll(async () => {
 	await fs.rm(ws, { recursive: true, force: true });
@@ -47,20 +58,31 @@ const fake = () => ({
 });
 
 /** Runs the loader in a real Node process (see test/load-harness.ts). */
-function harness(entry: string, token: string, exportName?: string) {
+function harness(
+	workdir: string,
+	entry: string,
+	token: string,
+	exportName = "",
+	bindFrom = "",
+) {
 	const tsx = path.resolve(import.meta.dirname, "../../node_modules/.bin/tsx");
 	const script = path.resolve(
 		import.meta.dirname,
 		"../../test/load-harness.ts",
 	);
-	const out = execFileSync(
-		tsx,
-		[script, ws, entry, token, ...(exportName ? [exportName] : [])],
-		{
-			encoding: "utf8",
-			env: { ...process.env, NODE_ENV: "test" },
-		},
-	);
+	const args = [
+		script,
+		ws,
+		workdir,
+		entry,
+		token,
+		exportName,
+		...(bindFrom ? [path.join(ws, bindFrom)] : []),
+	];
+	const out = execFileSync(tsx, args, {
+		encoding: "utf8",
+		env: { ...process.env, NODE_ENV: "test" },
+	});
 	const line =
 		out
 			.trim()
@@ -70,29 +92,45 @@ function harness(entry: string, token: string, exportName?: string) {
 	return JSON.parse(line) as Record<string, unknown>;
 }
 
+const FILM = `import { Composition } from "framefields";
+	 const n: number = 1;
+	 export const Ctor = Composition;
+	 export const buildFilm = () => new Composition({ width: 64, height: 64, fps: 24, durationFrames: n });`;
+
 describe("entry loading (real Node loader)", () => {
-	it("gives repo code the worker's framefields, even with none installed", async () => {
-		await write(
-			"src/film.ts",
-			`import { Composition } from "framefields";
-			 const n: number = 1;
-			 export const Ctor = Composition;
-			 export const buildFilm = () => new Composition({ width: 64, height: 64, fps: 24, durationFrames: n });`,
-		);
-		expect(harness("src/film.ts", "job-a", "buildFilm")).toMatchObject({
+	it("renders with the project's own framefields once it's bound", async () => {
+		await write("a/src/film.ts", FILM);
+		expect(
+			harness("a", "src/film.ts", "job-a", "buildFilm", "a"),
+		).toMatchObject({
 			ok: true,
 			sameComposition: true,
-			plan: [{ name: "main", isWorkerComposition: true }],
+			plan: [{ name: "main", isEngineComposition: true }],
+		});
+	}, 60_000);
+
+	it("shares the bound engine with another repo on the same version", async () => {
+		await write("b/src/film.ts", FILM);
+		expect(harness("b", "src/film.ts", "job-b2", "", "a")).toMatchObject({
+			ok: true,
+			sameComposition: true,
+		});
+	}, 60_000);
+
+	it("fails to load framefields when the project didn't install it and nothing is bound", async () => {
+		expect(harness("b", "src/film.ts", "job-b3")).toMatchObject({
+			ok: false,
+			code: "ENTRY_COMPILE_FAILED",
 		});
 	}, 60_000);
 
 	it('gives the same instance to a package without "type": "module"', async () => {
-		await write("cjs/package.json", '{ "name": "legacy" }');
+		await write("a/cjs/package.json", '{ "name": "legacy" }');
 		await write(
-			"cjs/film.ts",
+			"a/cjs/film.ts",
 			'import { Composition } from "framefields"; export const Ctor = Composition;',
 		);
-		expect(harness("cjs/film.ts", "job-cjs")).toMatchObject({
+		expect(harness("a/cjs", "film.ts", "job-cjs", "", "a")).toMatchObject({
 			ok: true,
 			sameComposition: true,
 		});
@@ -100,13 +138,13 @@ describe("entry loading (real Node loader)", () => {
 
 	it("loads changed code at the same path under a new job token", async () => {
 		await write(
-			"src/v.ts",
+			"a/src/v.ts",
 			'import { dep } from "./dep-v.js"; export const v = dep;',
 		);
-		await write("src/dep-v.ts", "export const dep = 1;");
-		expect(harness("src/v.ts", "job-b").v).toBe(1);
-		await write("src/dep-v.ts", "export const dep = 2;");
-		expect(harness("src/v.ts", "job-c").v).toBe(2);
+		await write("a/src/dep-v.ts", "export const dep = 1;");
+		expect(harness("a", "src/v.ts", "job-b").v).toBe(1);
+		await write("a/src/dep-v.ts", "export const dep = 2;");
+		expect(harness("a", "src/v.ts", "job-c").v).toBe(2);
 	}, 60_000);
 
 	it.each([
@@ -131,8 +169,8 @@ describe("entry loading (real Node loader)", () => {
 	])(
 		"classifies %s",
 		async (entry, source, code) => {
-			if (source) await write(entry, source);
-			expect(harness(entry, "job-d")).toMatchObject({ ok: false, code });
+			if (source) await write(path.join("a", entry), source);
+			expect(harness("a", entry, "job-d")).toMatchObject({ ok: false, code });
 		},
 		60_000,
 	);

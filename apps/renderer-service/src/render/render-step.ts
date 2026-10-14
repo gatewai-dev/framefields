@@ -1,12 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import {
-	HeadlessMediaRenderer,
-	resetRenderCaches,
-} from "@framefields/renderer";
-import { Composition, FontManager, Media } from "framefields";
 import { RenderError } from "../errors.js";
-import { bundledEngineVersion } from "../install/installer.js";
 import type {
 	CheckoutResult,
 	Pipeline,
@@ -15,6 +9,7 @@ import type {
 } from "../jobs/pipeline.js";
 import type { JobInput, RenderSettings } from "../jobs/schema.js";
 import { workerHealth } from "../worker/health.js";
+import { type BoundEngine, bindEngine, markDepsLoaded } from "./engine.js";
 import { clearWorkspaceRequireCache } from "./engine-alias.js";
 import { buildPlan, importEntry, type PlanOutput } from "./load.js";
 import { openSandbox } from "./sandbox.js";
@@ -26,9 +21,24 @@ const PROGRESS_INTERVAL_MS = 500;
  * output of its plan on the worker's warm GPU device (PLAN.md §8).
  */
 export const render: Pipeline["render"] = async (checkout, input, ctx) => {
-	// Path-keyed caches from the previous job may hold stale bytes (§8.2).
-	resetRenderCaches();
-	FontManager.clear();
+	// The project's own framefields, bound once per worker (§7).
+	const engine = await bindEngine(checkout.workdir, checkout.root);
+	markDepsLoaded(checkout.root);
+	if (engine.workerHooks) {
+		// Path-keyed caches from the previous job may hold stale bytes (§8.2).
+		engine.mod.resetRenderCaches?.();
+		engine.mod.FontManager?.clear();
+	} else {
+		// No cache reset, progress or abort in this version: render it, then
+		// start fresh rather than risk stale caches in the next job.
+		workerHealth.requestRecycle(
+			`framefields ${engine.version} lacks worker hooks`,
+		);
+		ctx.warn(
+			"ENGINE_NO_WORKER_HOOKS",
+			`framefields ${engine.version} predates worker support (progress, cancel, cache reset); the worker restarts after this job.`,
+		);
+	}
 
 	const outDir = path.join(ctx.jobDir, "out");
 	await fs.mkdir(outDir, { recursive: true });
@@ -58,19 +68,18 @@ export const render: Pipeline["render"] = async (checkout, input, ctx) => {
 				"load",
 			);
 			for (const output of plan) {
-				if (
-					!(
-						output.target instanceof Composition ||
-						output.target instanceof Media
-					)
-				) {
+				const { Composition, Media } = engine.mod;
+				const known =
+					(Composition && output.target instanceof Composition) ||
+					(Media && output.target instanceof Media);
+				if (!known) {
 					warnings.push(output.name);
 				}
 			}
 			if (warnings.length) {
 				ctx.warn(
 					"ENGINE_FOREIGN_INSTANCE",
-					`Outputs ${warnings.join(", ")} were built by another copy of framefields; rendering them with the worker's engine.`,
+					`Outputs ${warnings.join(", ")} were built by a different copy of framefields than the project's; rendering them with the project's engine.`,
 				);
 			}
 			for (const [index, output] of plan.entries()) {
@@ -84,6 +93,7 @@ export const render: Pipeline["render"] = async (checkout, input, ctx) => {
 						outDir,
 						ctx,
 						controller,
+						engine,
 					)),
 				);
 			}
@@ -98,7 +108,11 @@ export const render: Pipeline["render"] = async (checkout, input, ctx) => {
 		);
 		return {
 			files,
-			engine: { framefields: bundledEngineVersion(), source: "bundled" },
+			engine: {
+				framefields: engine.version,
+				source: "project",
+				workerHooks: engine.workerHooks,
+			},
 		};
 	} catch (err) {
 		throw classifyRenderError(
@@ -142,10 +156,15 @@ async function renderOutput(
 	outDir: string,
 	ctx: StepContext,
 	controller: AbortController,
+	engine: BoundEngine,
 ): Promise<RenderedFile[]> {
 	const settings = { ...defaults, ...output.render } as RenderSettings;
-	const renderer = new HeadlessMediaRenderer();
-	const stall = stallWatch(ctx.config.limits.stallTimeoutSec, controller);
+	const renderer = new engine.mod.HeadlessMediaRenderer();
+	// Without progress events there is nothing to measure stalls by.
+	const stall = stallWatch(
+		engine.workerHooks ? ctx.config.limits.stallTimeoutSec : 0,
+		controller,
+	);
 	const base = path.join(outDir, `${index}-${output.name}`);
 
 	try {

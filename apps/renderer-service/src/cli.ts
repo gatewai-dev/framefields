@@ -67,7 +67,7 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
 }
 
 try {
-	await worker.initGpu();
+	await worker.checkTools();
 	const record = worker.runner.submit(raw);
 	const done = await new Promise<JobRecord>((resolve) => {
 		const check = (r: JobRecord) => {

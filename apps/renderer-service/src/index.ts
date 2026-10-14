@@ -1,8 +1,8 @@
 import { Server as HttpServer } from "node:http";
-import { rendererLogger } from "@framefields/server-utils";
 import { serve } from "@hono/node-server";
 import { RenderError } from "./errors.js";
 import { createApp } from "./http/app.js";
+import { rendererLogger } from "./logger.js";
 import { bootWorker, exit } from "./worker/boot.js";
 import { workerHealth } from "./worker/health.js";
 
@@ -67,8 +67,8 @@ if (server instanceof HttpServer) {
 	server.keepAliveTimeout = 65_000;
 }
 
-worker.initGpu().catch(() => {
-	// RunPod should replace a worker without a usable GPU; /health reports it otherwise.
+worker.checkTools().catch(() => {
+	// RunPod should replace a broken worker; /health reports it otherwise.
 	if (config.mode === "runpod-serverless") exit(1);
 });
 

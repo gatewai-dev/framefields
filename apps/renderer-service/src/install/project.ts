@@ -127,43 +127,6 @@ export async function inspectProject(
 	};
 }
 
-/** Packages the worker provides itself (resolved to its copy, PLAN.md §7). */
-export function isEnginePackage(name: string): boolean {
-	return name === "framefields" || name.startsWith("@framefields/");
-}
-
-/** Build/typing tools that never load at render time. */
-const TOOLING = [
-	/^typescript$/,
-	/^tsx$/,
-	/^ts-node$/,
-	/^@types\//,
-	/^vitest$/,
-	/^@vitest\//,
-	/^@biomejs\//,
-	/^eslint/,
-	/^@eslint\//,
-	/^prettier/,
-	/^tsdown$/,
-	/^tsup$/,
-	/^esbuild$/,
-	/^lefthook$/,
-	/^husky$/,
-];
-
-/**
- * True when the package needs nothing beyond what the worker provides: every
- * dependency is a framefields package and every dev dependency is tooling.
- */
-export function needsNoInstall(pkg: PackageJson): boolean {
-	const deps = Object.keys(pkg.dependencies ?? {});
-	const dev = Object.keys(pkg.devDependencies ?? {});
-	return (
-		deps.every(isEnginePackage) &&
-		dev.every((d) => isEnginePackage(d) || TOOLING.some((re) => re.test(d)))
-	);
-}
-
 /** The range the package declares for `framefields`, if any. */
 export function declaredEngineRange(pkg: PackageJson): string | undefined {
 	return pkg.dependencies?.framefields ?? pkg.devDependencies?.framefields;

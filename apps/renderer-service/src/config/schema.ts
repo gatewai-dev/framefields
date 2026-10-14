@@ -91,7 +91,6 @@ export const envSchema = z.object({
 	FF_INSTALL_SCRIPTS: bool(true),
 	FF_ALLOW_UNLOCKED_INSTALL: bool(false),
 	FF_NPMRC: z.string().optional(),
-	FF_ENGINE_POLICY: z.enum(["warn", "fail"]).default("warn"),
 
 	// Storage
 	STORAGE_DRIVER: z.enum(["s3", "local", "none"]).optional(),
@@ -312,7 +311,6 @@ export function buildConfig(
 			scripts: e.FF_INSTALL_SCRIPTS,
 			allowUnlocked: e.FF_ALLOW_UNLOCKED_INSTALL,
 			npmrc: e.FF_NPMRC,
-			enginePolicy: e.FF_ENGINE_POLICY,
 		},
 		storage: {
 			driver: storageDriver,

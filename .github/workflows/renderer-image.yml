@@ -76,8 +76,8 @@ jobs:
           load: ${{ matrix.variant == 'slim' }}
           cache-from: type=gha,scope=renderer-${{ matrix.variant }}
           cache-to: type=gha,mode=max,scope=renderer-${{ matrix.variant }}
-      - name: Smoke test (no GPU; checks the image boots its config and tools)
+      - name: Smoke test (no GPU; checks tools, pinned host keys, and that no engine is baked in)
         if: matrix.variant == 'slim'
         run: |
           tag=$(echo "${{ steps.meta.outputs.tags }}" | cut -d, -f1)
-          docker run --rm --entrypoint bash "$tag" -c 'git --version && git lfs version && ffprobe -version | head -1 && test -s apps/renderer-service/deploy/known_hosts'
+          docker run --rm --entrypoint bash "$tag" -c 'git --version && git lfs version && ffprobe -version | head -1 && test -s /app/deploy/known_hosts && test ! -e /app/node_modules/framefields'

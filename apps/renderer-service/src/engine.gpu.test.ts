@@ -163,6 +163,7 @@ gpu("in-process render step (real Node loader)", () => {
 			expect(r.exits).toMatchObject({ ok: false, code: "EXPORT_SIDE_EFFECT" });
 			expect(r.cancel).toMatchObject({ ok: false, code: "CANCELLED" });
 			expect(r.after.ok).toBe(true);
+			expect(r.switch).toMatchObject({ ok: false, code: "ENGINE_SWITCH" });
 			for (const k of [
 				"video1",
 				"video2",

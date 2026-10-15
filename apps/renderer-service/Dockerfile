@@ -88,4 +88,6 @@ EXPOSE 8082
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
     CMD node -e "fetch('http://127.0.0.1:'+(process.env.RENDERER_PORT||8082)+'/health').then(r=>process.exit(r.status===200?0:1),()=>process.exit(1))"
 
-ENTRYPOINT ["/usr/bin/tini", "-g", "--", "/app/docker/entrypoint.sh"]
+# -s: RunPod starts the container through its own init, so tini isn't PID 1;
+# registering as a subreaper keeps zombie reaping working there.
+ENTRYPOINT ["/usr/bin/tini", "-s", "-g", "--", "/app/docker/entrypoint.sh"]

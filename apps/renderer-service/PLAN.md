@@ -616,6 +616,13 @@ Each phase is its own PR-sized step with tests.
 8. **Image + template + compose + docs.** Built and run locally (arm64, Docker on macOS, without a GPU):
    - **Inside the container:** a file:// repo pinned to the published `framefields@2.1.3` went through checkout, then `npm ci` from the registry (40 s cold), then engine binding with GPU init on Mesa's software Vulkan, then a VP9 render, verification and delivery. The output was a valid 2 s VP9/Opus file.
    - **Findings fixed on the way:** glibc 2.38 (moved to trixie); EPIPE from the `exec` helper writing stdin that git never reads; corepack's npm differing from the lockfile's npm; install errors keeping only npm's usage text.
+   - **RunPod (RTX 3070, Community Cloud, $0.13/h, driver 580.65), with the public smoke repo and the `:beta` image:**
+     - **Health:** `/health` reported the RTX 3070 with `FF_GPU=require`; the Vulkan ICD list was limited to `nvidia_icd.json` plus the Mesa GPU drivers. The 40 GB container disk was reported as 40 GB, so `statfs` is accurate there and no GB cap is needed.
+     - **threeD:** 21 s total (clone + LFS 1.7 s, cold `npm ci` 13.8 s, render 5 s); about 1.7 s for 120 frames on the GPU.
+     - **film:** 366 frames in 16 s, warm (install 2 ms).
+     - **vision:** 60 frames in 388 s. The ONNX models run on the CPU, and this includes their first download.
+     - **Encoding:** NVENC isn't usable on driver 580: node-av 6.1.1's FFmpeg needs NVENC API 13.1, i.e. driver ≥ 610. The encoder selection fell back to libx264 as designed.
+     - **tini:** RunPod doesn't start the container with tini as PID 1, so it now runs with `-s` (subreaper).
    - **LFS end to end:**
      - `src/git/lfs.test.ts` runs real git-lfs (3.8) against file:// origins. It covers a cold download into the shared store, a warm hit, objects shared across repos, include patterns with the `LFS_POINTERS_LEFT` warning, LFS off, and a missing object (`LFS_OBJECT_MISSING`).
      - In the arm64 container (git-lfs 3.6.1), a repo whose framefields tarball and logo PNG are both LFS-tracked installed from the LFS tarball and rendered the logo (centre pixel red). The job reported `cache.lfs: "miss"`.

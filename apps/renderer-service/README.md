@@ -162,6 +162,8 @@ For NVIDIA GPUs in Docker, the NVIDIA Container Toolkit must mount the Vulkan dr
 - NVENC on NVIDIA, VideoToolbox on macOS.
 - Otherwise software: libx264 (H.264), libx265 (HEVC), libvpx (VP9), SVT-AV1.
 
+**NVENC needs NVIDIA driver 610 or newer.** framefields encodes through node-av, whose bundled FFmpeg uses NVENC API 13.1. On RunPod we measured an RTX 3070 host with driver 580.65 (NVENC API 13.0). There, NVENC refused to open ("Required: 13.1 Found: 13.0"), and framefields encoded with libx264 instead. 720p H.264 in software is fast enough that a 12 s, 366-frame film still rendered in 16 s. Frames are drawn on the GPU either way. If hardware encoding matters, pick hosts with newer drivers.
+
 Older framefields versions always try the hardware encoder. That fails on GPUs without NVENC and on Linux ARM (`h264_rkmpp`). Set `FRAMEFIELDS_HW_CODECS=off` to always encode in software.
 
 **Where to see it.** `/health` reports the GPU under `components.gpu`, and each result reports it under `engine.gpu`:

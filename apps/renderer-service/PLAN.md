@@ -337,7 +337,7 @@ Rules that apply to every host:
   - A job whose project installs a **different version** fails with `ENGINE_SWITCH` (retryable). The worker recycles, and RunPod or the caller's retry lands on a fresh worker that binds the new version. Workers that serve one project, or projects pinned to one version, never switch.
   - The janitor never evicts the workspace the bound engine was loaded from.
 - **Dependencies stay cached by path** for the life of the process, and they are shared with the engine (one copy of `mediabunny` and similar). A new install in a workspace this process already loaded modules from can't take effect in-process. So after installing, the job fails with `ENGINE_SWITCH` and the worker recycles; the retry gets a fresh process, and the install is already done.
-- **Older engines without worker hooks.** Some framefields versions predate `resetRenderCaches`, `signal` and `onProgress` (2.1.3, the current release, among them). They still render, but stall detection is off, cancellation relies on the grace period, and the worker recycles after each job rather than risk stale path-keyed caches. The warning is `ENGINE_NO_WORKER_HOOKS`.
+- **Older engines without worker hooks.** Some framefields versions predate `resetRenderCaches`, `signal` and `onProgress` (2.1.3, the current stable release, among them; 2.2.0-beta.0 on npm's `beta` tag has them). They still render, but stall detection is off, cancellation relies on the grace period, and the worker recycles after each job rather than risk stale path-keyed caches. The warning is `ENGINE_NO_WORKER_HOOKS`.
 - **Shared node_modules (§7.1)** — see below.
 - **npm runs as shipped with Node** unless the project pins `packageManager`. Corepack's unpinned npm can be a different major than the one that wrote the lockfile, which made `npm ci` fail on lockfile sync. pnpm and yarn always go through corepack.
   - `engines.node` mismatches only produce a warning.
@@ -559,6 +559,7 @@ The service no longer uses `S3StorageService` from `@framefields/server-utils`, 
 - **Published to** `ghcr.io/gatewai-dev/framefields-renderer` by `.github/workflows/renderer-image.yml`, for linux/amd64:
   - pushes to `main` publish `:main` and `:sha-<short>`;
   - `renderer-v1.2.3` tags publish `:1.2.3`, `:1.2` and `:latest`;
+  - prerelease tags (`renderer-v1.2.3-beta.0`) publish `:1.2.3-beta.0` and `:beta` only. A tag push runs the workflow from the tagged commit, so a branch can publish one before it is merged;
   - the `full` variant gets the same tags with a `-full` suffix;
   - pull requests build and smoke-test only. The smoke test checks the tools and that no engine is baked in, then boots the worker and requires `/health` to be ok with `renderer: cpu`.
 

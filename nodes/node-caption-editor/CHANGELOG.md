@@ -1,5 +1,7 @@
 # @framefields/node-caption-editor
 
+## 2.2.0-beta.0
+
 ## 2.1.3
 
 ## 2.1.2

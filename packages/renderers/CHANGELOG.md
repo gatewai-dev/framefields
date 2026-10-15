@@ -1,5 +1,7 @@
 # @framefields/renderers
 
+## 2.2.0-beta.0
+
 ## 2.1.3
 
 ### Patch Changes

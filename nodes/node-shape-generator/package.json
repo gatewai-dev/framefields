@@ -1,6 +1,6 @@
 {
 	"name": "@framefields/node-shape-generator",
-	"version": "2.1.3",
+	"version": "2.2.0-beta.0",
 	"private": false,
 	"framefields": {
 		"type": "ShapeGenerator",

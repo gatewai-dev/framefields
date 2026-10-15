@@ -21,7 +21,16 @@ import {
 } from "./frame-cache.js";
 import { MatteCompositor } from "./matte-compositor.js";
 
-let sharedRunner: { key: string; runner: VisionRunner } | null = null;
+/**
+ * Runners by model options (variant, models dir, mirror), each with the runners
+ * derived from it by decode options — layers that differ only in classes or
+ * confidence share sessions instead of reloading the models.
+ */
+const sharedRunners = new Map<
+	string,
+	{ runner: VisionRunner; derived: Map<string, VisionRunner> }
+>();
+const MAX_SHARED_RUNNERS = 4;
 let sharedSkeletonRenderer: PoseSkeletonRenderer | null = null;
 let sharedCompositor: MatteCompositor | null = null;
 let sharedCompositorFormat: GPUTextureFormat | null = null;
@@ -175,24 +184,42 @@ function selectSubject(
 /**
  * Lazy shared runner — `create()` is a pure constructor (zero I/O); the first frame that
  * requests a task triggers that task's model download at inference time (never at init).
- * Recreated only when an option that changes inference changes.
+ * Nodes with the same model options share sessions; decode options (classes,
+ * confidence, …) get a derived runner over the same sessions.
  */
 function getSharedRunner(op: VisionOperation): VisionRunner {
-	const options = {
+	const modelOptions = {
 		variant: op.variant,
+		modelsDir: op.modelsDir,
+		baseUrl: op.baseUrl,
+	};
+	const modelKey = JSON.stringify(modelOptions);
+	let entry = sharedRunners.get(modelKey);
+	if (!entry) {
+		if (sharedRunners.size >= MAX_SHARED_RUNNERS) {
+			const [oldestKey, oldest] = sharedRunners.entries().next().value as [
+				string,
+				{ runner: VisionRunner },
+			];
+			oldest.runner.close();
+			sharedRunners.delete(oldestKey);
+		}
+		entry = { runner: VisionRunner.create(modelOptions), derived: new Map() };
+		sharedRunners.set(modelKey, entry);
+	}
+	const decodeOptions = {
 		confidence: op.confidence,
 		classes: op.classes,
 		maskThreshold: op.maskThreshold,
 		featherRadius: op.featherRadius,
-		modelsDir: op.modelsDir,
-		baseUrl: op.baseUrl,
 	};
-	const key = JSON.stringify(options);
-	if (sharedRunner?.key !== key) {
-		sharedRunner?.runner.close();
-		sharedRunner = { key, runner: VisionRunner.create(options) };
+	const decodeKey = JSON.stringify(decodeOptions);
+	let runner = entry.derived.get(decodeKey);
+	if (!runner) {
+		runner = entry.runner.derive(decodeOptions);
+		entry.derived.set(decodeKey, runner);
 	}
-	return sharedRunner.runner;
+	return runner;
 }
 
 function getObjectTracker(

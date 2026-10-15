@@ -46,7 +46,7 @@ export interface VisionRunnerOptions {
 	/** Mirror origin for model downloads (see VisionModelStore). */
 	readonly baseUrl?: string;
 	readonly timeoutMs?: number;
-	/** Session backend. Default: onnxruntime-node (CPU). Browser: `createWebGPUProvider()`. */
+	/** Session backend. Default: WebGPU when possible, else onnxruntime-node (CPU); see `AutoSessionProvider`. Browser: `createWebGPUProvider()`. */
 	readonly provider?: SessionProvider;
 	/** Inject a model store (tests, shared caches). Overrides modelsDir/baseUrl/timeoutMs. */
 	readonly store?: VisionModelStore;
@@ -56,6 +56,35 @@ export interface VisionRunnerOptions {
 		totalBytes: number,
 	) => void;
 }
+
+/** Options that only change how outputs are decoded — not which model runs. */
+export type VisionDecodeOptions = Pick<
+	VisionRunnerOptions,
+	"confidence" | "classes" | "maskThreshold" | "featherRadius"
+>;
+
+/**
+ * Model-side state: sessions, buffers and the per-frame RTMDet-Ins pass. Shared
+ * by a runner and every runner `derive()`d from it.
+ */
+interface RunnerCore {
+	readonly store: VisionModelStore;
+	readonly provider: SessionProvider;
+	readonly sessions: Map<VisionModelKey, Promise<VisionSession>>;
+	readonly tensorScratch: Map<VisionModelKey, Float32Array>;
+	/** Tail of each model's run queue: one inference per session at a time. */
+	readonly runQueue: Map<VisionModelKey, Promise<unknown>>;
+	/**
+	 * Recent RTMDet-Ins passes, newest last, shared by detect() and segment()
+	 * and matched by content — layers showing the same pixels share one pass.
+	 */
+	readonly instancePasses: {
+		readonly content: string;
+		readonly result: Promise<InstancePass>;
+	}[];
+}
+
+const MAX_INSTANCE_PASSES = 4;
 
 /**
  * Lazy vision runner.
@@ -72,34 +101,32 @@ export class VisionRunner {
 	public readonly maskThreshold: number;
 	public readonly featherRadius?: number;
 
-	private readonly _store: VisionModelStore;
-	private readonly _provider: SessionProvider;
-	private readonly _sessions = new Map<
-		VisionModelKey,
-		Promise<VisionSession>
-	>();
-	private readonly _tensorScratch = new Map<VisionModelKey, Float32Array>();
-	/** One RTMDet-Ins pass per frame buffer, shared by detect() and segment(). */
-	private _instancePass?: {
-		readonly frame: VisionImageInput["data"];
-		readonly result: Promise<InstancePass>;
-	};
+	private readonly _core: RunnerCore;
+	/** False for derived runners: their sessions belong to the runner they came from. */
+	private readonly _ownsCore: boolean;
 
-	private constructor(options: VisionRunnerOptions) {
+	private constructor(options: VisionRunnerOptions, core?: RunnerCore) {
 		this.variant = options.variant ?? "s";
 		this.confidence = options.confidence ?? 0.3;
 		this.classes = options.classes;
 		this.maskThreshold = options.maskThreshold ?? 0.5;
 		this.featherRadius = options.featherRadius;
-		this._store =
-			options.store ??
-			new VisionModelStore({
-				modelsDir: options.modelsDir,
-				baseUrl: options.baseUrl,
-				timeoutMs: options.timeoutMs,
-				onProgress: options.onProgress,
-			});
-		this._provider = options.provider ?? createDefaultSessionProvider();
+		this._ownsCore = core === undefined;
+		this._core = core ?? {
+			store:
+				options.store ??
+				new VisionModelStore({
+					modelsDir: options.modelsDir,
+					baseUrl: options.baseUrl,
+					timeoutMs: options.timeoutMs,
+					onProgress: options.onProgress,
+				}),
+			provider: options.provider ?? createDefaultSessionProvider(),
+			sessions: new Map(),
+			tensorScratch: new Map(),
+			runQueue: new Map(),
+			instancePasses: [],
+		};
 	}
 
 	/** Cheap: no downloads, no sessions, no side effects. */
@@ -107,8 +134,30 @@ export class VisionRunner {
 		return new VisionRunner(options);
 	}
 
+	/**
+	 * A runner with other decode options (confidence, classes, mask threshold,
+	 * feather) that shares this runner's models, sessions and per-frame RTMDet-Ins
+	 * pass — e.g. one per layer, without loading a model twice. Its `close()` is a
+	 * no-op; closing this runner releases the shared sessions.
+	 */
+	public derive(options: VisionDecodeOptions): VisionRunner {
+		return new VisionRunner(
+			{
+				variant: this.variant,
+				confidence: options.confidence ?? this.confidence,
+				classes: "classes" in options ? options.classes : this.classes,
+				maskThreshold: options.maskThreshold ?? this.maskThreshold,
+				featherRadius:
+					"featherRadius" in options
+						? options.featherRadius
+						: this.featherRadius,
+			},
+			this._core,
+		);
+	}
+
 	public get modelsDir(): string {
-		return this._store.modelsDir;
+		return this._core.store.modelsDir;
 	}
 
 	/** Every registry model keyed to its current download state (downloaded → "ready"). */
@@ -120,7 +169,7 @@ export class VisionRunner {
 		for (const key of Object.keys(VISION_MODELS) as VisionModelKey[]) {
 			statuses.set(key, "pending");
 		}
-		for (const [key, status] of this._store.statuses()) {
+		for (const [key, status] of this._core.store.statuses()) {
 			statuses.set(key, status);
 		}
 		return statuses;
@@ -147,7 +196,7 @@ export class VisionRunner {
 				keys.add(this.modelKeyFor(task));
 			}
 		}
-		await this._store.preload([...keys]);
+		await this._core.store.preload([...keys]);
 		await Promise.all([...keys].map((key) => this.session(key)));
 	}
 
@@ -210,41 +259,46 @@ export class VisionRunner {
 	}
 
 	public close(): void {
-		for (const promise of this._sessions.values()) {
+		if (!this._ownsCore) return;
+		const core = this._core;
+		for (const promise of core.sessions.values()) {
 			void promise.then((session) => session.release()).catch(() => undefined);
 		}
-		this._sessions.clear();
-		this._instancePass = undefined;
-		this._store.clearMemoryCache();
+		core.sessions.clear();
+		core.runQueue.clear();
+		core.instancePasses.length = 0;
+		core.store.clearMemoryCache();
 	}
 
 	// ── internals ──────────────────────────────────────────────────────────
 
 	private instancePass(image: VisionImageInput): Promise<InstancePass> {
-		if (this._instancePass?.frame === image.data) {
-			return this._instancePass.result;
-		}
+		const passes = this._core.instancePasses;
+		const content = contentKey(image);
+		const byContent = passes.find((pass) => pass.content === content);
+		if (byContent) return byContent.result;
 		const key = this.modelKeyFor("segment");
-		const result = this.infer(key, image).then(
-			({ outputs, transform }) => {
-				const dets = output(outputs, "dets", key);
-				const masks = output(outputs, "masks", key);
-				return {
-					transform,
-					outputs: {
-						dets: dets.data as Float32Array,
-						labels: output(outputs, "labels", key).data,
-						masks: masks.data as Float32Array,
-						count: dets.dims[1] ?? 0,
-						maskHeight: masks.dims[masks.dims.length - 2] ?? 0,
-						maskWidth: masks.dims[masks.dims.length - 1] ?? 0,
-					},
-				};
-			},
-		);
-		this._instancePass = { frame: image.data, result };
+		const result = this.infer(key, image).then(({ outputs, transform }) => {
+			const dets = output(outputs, "dets", key);
+			const masks = output(outputs, "masks", key);
+			return {
+				transform,
+				outputs: {
+					dets: dets.data as Float32Array,
+					labels: output(outputs, "labels", key).data,
+					masks: masks.data as Float32Array,
+					count: dets.dims[1] ?? 0,
+					maskHeight: masks.dims[masks.dims.length - 2] ?? 0,
+					maskWidth: masks.dims[masks.dims.length - 1] ?? 0,
+				},
+			};
+		});
+		const pass = { content, result };
+		passes.push(pass);
+		if (passes.length > MAX_INSTANCE_PASSES) passes.shift();
 		result.catch(() => {
-			if (this._instancePass?.result === result) this._instancePass = undefined;
+			const index = passes.indexOf(pass);
+			if (index >= 0) passes.splice(index, 1);
 		});
 		return result;
 	}
@@ -267,7 +321,29 @@ export class VisionRunner {
 		};
 	}
 
-	private async infer(
+	/**
+	 * Runs one model on one image. Runs of the same model are queued: they share
+	 * the input scratch buffer, and one run already uses the session's threads.
+	 */
+	private infer(
+		key: VisionModelKey,
+		image: VisionImageInput,
+	): Promise<{ outputs: VisionTensorOutputs; transform: InputTransform }> {
+		const queue = this._core.runQueue;
+		const previous = queue.get(key) ?? Promise.resolve();
+		const run = previous.then(
+			() => this.inferNow(key, image),
+			() => this.inferNow(key, image),
+		);
+		const tail = run.catch(() => undefined);
+		queue.set(key, tail);
+		void tail.then(() => {
+			if (queue.get(key) === tail) queue.delete(key);
+		});
+		return run;
+	}
+
+	private async inferNow(
 		key: VisionModelKey,
 		image: VisionImageInput,
 	): Promise<{ outputs: VisionTensorOutputs; transform: InputTransform }> {
@@ -275,10 +351,11 @@ export class VisionRunner {
 		const desc = VISION_MODELS[key];
 		const spec = preprocessSpec(desc.family, desc.input);
 		const size = 3 * spec.width * spec.height;
-		let scratch = this._tensorScratch.get(key);
+		const scratchByKey = this._core.tensorScratch;
+		let scratch = scratchByKey.get(key);
 		if (!scratch || scratch.length < size) {
 			scratch = new Float32Array(size);
-			this._tensorScratch.set(key, scratch);
+			scratchByKey.set(key, scratch);
 		}
 		const { tensor, transform } = imageToTensor(image, spec, scratch);
 		const outputs = await session.run({
@@ -290,20 +367,21 @@ export class VisionRunner {
 	}
 
 	private session(key: VisionModelKey): Promise<VisionSession> {
-		let promise = this._sessions.get(key);
+		const { sessions, store, provider } = this._core;
+		let promise = sessions.get(key);
 		if (!promise) {
-			promise = this._store
+			promise = store
 				.ensure(key)
-				.then((bytes) => this._provider.createSession(bytes))
+				.then((bytes) => provider.createSession(bytes))
 				.catch((err: unknown) => {
 					// Drop both the session cache entry AND the cached file: a parse
 					// failure means the on-disk bytes are corrupt — the next call must
 					// re-download instead of replaying the same bad file.
-					this._sessions.delete(key);
-					void this._store.evict(key);
+					sessions.delete(key);
+					void store.evict(key);
 					throw err;
 				});
-			this._sessions.set(key, promise);
+			sessions.set(key, promise);
 		}
 		return promise;
 	}
@@ -319,6 +397,24 @@ interface InstancePass {
 		readonly maskWidth: number;
 		readonly maskHeight: number;
 	};
+}
+
+/** Size plus a 64-bit hash of the pixels: equal keys mean the same picture. */
+function contentKey(image: VisionImageInput): string {
+	const { data } = image;
+	const words = data.byteOffset % 4 === 0 ? data.byteLength >>> 2 : 0;
+	const view = new Uint32Array(data.buffer, data.byteOffset, words);
+	let h1 = 0x811c9dc5;
+	let h2 = 0x01000193 ^ data.byteLength;
+	for (let i = 0; i < words; i++) {
+		const v = view[i] as number;
+		h1 = Math.imul(h1 ^ v, 0x9e3779b1);
+		h2 = Math.imul(h2 ^ v, 0x85ebca77) ^ (h1 >>> 15);
+	}
+	for (let i = words * 4; i < data.length; i++) {
+		h1 = Math.imul(h1 ^ (data[i] as number), 0x9e3779b1);
+	}
+	return `${image.width}x${image.height}:${(h1 >>> 0).toString(36)}:${(h2 >>> 0).toString(36)}`;
 }
 
 function output(

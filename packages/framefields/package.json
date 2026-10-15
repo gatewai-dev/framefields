@@ -108,6 +108,9 @@
 		"yoga-layout": "^3.2.1",
 		"zod": "^4.3.6"
 	},
+	"optionalDependencies": {
+		"onnxruntime-web": "^1.24.0"
+	},
 	"devDependencies": {
 		"@framefields/client-utils": "workspace:*",
 		"@framefields/compositions": "workspace:*",

@@ -53,9 +53,38 @@ describe("VisionRunner (lazy + decode integration)", () => {
 		expect(m.mask[180 * 640 + 230]).toBe(0); // inside the box, outside the blob
 		expect(m.coverage).toBeGreaterThan(0);
 
-		// A new frame buffer runs the model again.
+		// The same pixels in another buffer (another layer) reuse the pass…
 		await runner.segment(grayImage());
+		expect(provider.created[0].inputs).toHaveLength(1);
+
+		// …a different frame runs the model again.
+		const next = grayImage();
+		next.data[0] = 0;
+		await runner.segment(next);
 		expect(provider.created[0].inputs).toHaveLength(2);
+	});
+
+	it("derived runners share sessions and passes with their base", async () => {
+		const { store } = fakeStore();
+		const provider = new ScriptedProvider([rtmdetInsOutput()]);
+		const base = VisionRunner.create({ store, provider });
+		const people = base.derive({ classes: ["person"], confidence: 0.5 });
+		expect(people.classes).toEqual(["person"]);
+		expect(people.confidence).toBe(0.5);
+		expect(people.variant).toBe(base.variant);
+
+		const frame = grayImage();
+		await base.detect(frame);
+		await people.segment(frame);
+		expect(provider.created).toHaveLength(1);
+		expect(provider.created[0].inputs).toHaveLength(1);
+
+		// Closing a derived runner leaves the shared session alone.
+		people.close();
+		const next = grayImage();
+		next.data[0] = 0;
+		await base.detect(next);
+		expect(provider.created).toHaveLength(1);
 	});
 
 	it("maps boxes and masks back through a top-left letterbox on wide frames", async () => {

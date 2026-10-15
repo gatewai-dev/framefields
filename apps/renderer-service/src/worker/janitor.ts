@@ -58,6 +58,18 @@ const statDisk: DiskProbe = async (dir) => {
 	};
 };
 
+/** One disk as /health and the eviction log report it. */
+export interface DiskSummary {
+	path: string;
+	freeGb: number;
+	totalGb: number;
+	/** Eviction starts below this much free space. */
+	evictBelowGb: number;
+	lowOnSpace: boolean;
+	/** Set when the cache dir is on the work dir's disk. */
+	sameDiskAs?: string;
+}
+
 interface Candidate {
 	path: string;
 	bytes: number;
@@ -113,23 +125,58 @@ export class CacheJanitor {
 		}
 	}
 
-	/** Free space per disk, for logs and /health. */
-	async describeDisks(): Promise<
-		Record<string, { freeGb: number; totalGb: number }>
-	> {
-		const { workDir, cacheDir } = this.config.paths;
-		const out: Record<string, { freeGb: number; totalGb: number }> = {};
-		for (const [name, dir] of [
-			["work", workDir],
-			["cache", cacheDir],
-		] as const) {
-			const d = await this.disk(dir);
-			out[name] = {
-				freeGb: Math.round((d.freeBytes / GB) * 10) / 10,
-				totalGb: Math.round((d.totalBytes / GB) * 10) / 10,
-			};
+	private snapshot:
+		| { at: number; disks: Record<string, DiskSummary> }
+		| undefined;
+	private refreshing: Promise<void> | undefined;
+
+	/**
+	 * The last measured disks, for the synchronous /health handler. Starts a
+	 * background refresh when older than `maxAgeMs`; undefined until the
+	 * first measurement finishes.
+	 */
+	disks(maxAgeMs = 10_000): Record<string, DiskSummary> | undefined {
+		const stale = !this.snapshot || Date.now() - this.snapshot.at > maxAgeMs;
+		if (stale && !this.refreshing) {
+			this.refreshing = this.describeDisks()
+				.then(
+					() => undefined,
+					() => undefined,
+				)
+				.finally(() => {
+					this.refreshing = undefined;
+				});
 		}
-		return out;
+		return this.snapshot?.disks;
+	}
+
+	/** Free space per disk, for logs and /health. */
+	async describeDisks(): Promise<Record<string, DiskSummary>> {
+		const { workDir, cacheDir } = this.config.paths;
+		const [work, cache] = await Promise.all([
+			this.disk(workDir),
+			this.disk(cacheDir),
+		]);
+		const summary = (dir: string, d: DiskInfo): DiskSummary => {
+			const { low } = this.thresholds(d);
+			const gb = (bytes: number) => Math.round((bytes / GB) * 10) / 10;
+			return {
+				path: dir,
+				freeGb: gb(d.freeBytes),
+				totalGb: gb(d.totalBytes),
+				evictBelowGb: gb(low),
+				lowOnSpace: d.freeBytes < low,
+			};
+		};
+		const disks = {
+			work: summary(workDir, work),
+			cache: {
+				...summary(cacheDir, cache),
+				...(cache.id === work.id && { sameDiskAs: "work" }),
+			},
+		};
+		this.snapshot = { at: Date.now(), disks };
+		return disks;
 	}
 
 	private thresholds(d: DiskInfo, extra = 0) {

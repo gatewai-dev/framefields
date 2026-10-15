@@ -179,6 +179,17 @@ Shared files are read-only, because changing one would change it for every proje
 - **Never evicted:** the current repo, the workspace the loaded engine came from, vision models, and other workers' recently used mirrors.
 - **Logging:** every eviction is logged with the disks' free space.
 
+`/health` reports both disks under `disks`. The figures are refreshed at most every 10 seconds:
+
+```json
+"disks": {
+  "work":  {"path": "/tmp/framefields", "freeGb": 31.2, "totalGb": 40, "evictBelowGb": 10, "lowOnSpace": false},
+  "cache": {"path": "/runpod-volume/framefields", "freeGb": 88.4, "totalGb": 100, "evictBelowGb": 15, "lowOnSpace": false}
+}
+```
+
+`sameDiskAs: "work"` marks a cache dir on the workspace disk. `lowOnSpace` means the next job starts by evicting.
+
 `FF_WORK_MAX_GB` / `FF_CACHE_MAX_GB` add hard caps if you want them. They're only needed where the container reports the host's disk size instead of its own allowance. Some Docker storage drivers do that, and the RunPod smoke test will show whether RunPod does.
 
 ## Jobs

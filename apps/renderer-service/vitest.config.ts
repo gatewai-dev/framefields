@@ -8,6 +8,9 @@ export default defineConfig({
 		environment: "node",
 		include: ["**/*.{test,spec}.{ts,tsx}"],
 		pool: "forks",
+		// Git, git-lfs and installs run for real; under a parallel run they
+		// take longer than vitest's 5 s default.
+		testTimeout: 30_000,
 	},
 	resolve: {
 		alias: [

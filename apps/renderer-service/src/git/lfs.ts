@@ -65,11 +65,13 @@ export async function pullLfs(
 
 	const storage = path.join(ctx.config.paths.cacheDir, "lfs");
 	await fs.mkdir(storage, { recursive: true });
+	// The shared object store goes in the repo's own config, not `-c`: with
+	// `-c`, git-lfs's file:// transfer agent (which reads the remote repo)
+	// also used it, and looked for the remote's objects in our store.
+	await git(ctx, ["-C", root, "config", "lfs.storage", storage]);
 	const lfsArgs = [
 		"-C",
 		root,
-		"-c",
-		`lfs.storage=${storage}`,
 		"-c",
 		`lfs.concurrenttransfers=${Math.max(1, ctx.config.source.lfsConcurrency)}`,
 		"-c",

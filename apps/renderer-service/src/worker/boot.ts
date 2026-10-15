@@ -24,7 +24,7 @@ import { render } from "../render/render-step.js";
 import { installProcessGuards, strayErrorCount } from "../render/sandbox.js";
 import { applyGpuPlan, gpuStatus, planGpu, probeGpu } from "./gpu.js";
 import { workerHealth } from "./health.js";
-import { CacheJanitor } from "./janitor.js";
+import { CacheJanitor, type DiskSummary } from "./janitor.js";
 import { currentStats, recycleReason } from "./recycle.js";
 import { startWatchdog } from "./watchdog.js";
 
@@ -39,6 +39,8 @@ export interface Worker {
 	isDraining(): boolean;
 	/** Stops taking jobs and waits for the current one. */
 	drain(reason: RenderError, abortActive: boolean): Promise<void>;
+	/** Disk space of the work and cache dirs (cached; see CacheJanitor.disks). */
+	disks(): Record<string, DiskSummary> | undefined;
 	/** Checks git, git-lfs, ffprobe and the GPU; rejects with TOOL_MISSING or GPU_UNAVAILABLE. */
 	checkTools(): Promise<void>;
 	stop(): void;
@@ -162,6 +164,7 @@ export function bootWorker(
 		runner,
 		readiness,
 		isDraining: () => draining,
+		disks: () => janitor.disks(),
 		async drain(reason, abortActive) {
 			draining = true;
 			runner.queue.close(reason, abortActive);

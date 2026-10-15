@@ -41,6 +41,7 @@ const app = createApp(config, runner, {
 					active: runner.queue.activeId ?? null,
 					waiting: runner.queue.depth,
 				},
+				disks: worker.disks() ?? null,
 				...(status.error && { error: status.error }),
 				...(workerHealth.recycleReason && {
 					recycle: workerHealth.recycleReason,

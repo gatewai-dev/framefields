@@ -91,49 +91,38 @@ describe("CacheJanitor (free space)", () => {
 		expect(names(await j.enforce(["protected"]))).toEqual(["old"]);
 	});
 
-	it(
-		"frees shared module files only when their last workspace goes",
-		{
-			timeout: 30_000,
-		},
-		async () => {
-			const root = path.join(tmp, "shared-case");
-			const store = moduleStoreDir(path.join(root, "work"));
-			const slot = async (repo: string, ageMin: number) => {
-				const dir = path.join(root, "work/ws", repo);
-				await blob(
-					path.join(dir, "0/node_modules/webgpu/dawn.node"),
-					400,
-					0,
-					7,
-				);
-				await blob(path.join(dir, "0/node_modules", `${repo}.js`), 100);
-				await shareModules(path.join(dir, "0"), store);
-				await blob(path.join(dir, LAST_USED), 0, ageMin);
-			};
-			await slot("a", 60);
-			await slot("b", 30);
-			await slot("c", 1);
-			// Stored once: 400 shared + 3 × 100 own = 700 MB.
-			const used = async () =>
-				Math.round((await usage([path.join(root, "work")])) / MB);
-			expect(await used()).toBe(700);
+	it("frees shared module files only when their last workspace goes", async () => {
+		const root = path.join(tmp, "shared-case");
+		const store = moduleStoreDir(path.join(root, "work"));
+		const slot = async (repo: string, ageMin: number) => {
+			const dir = path.join(root, "work/ws", repo);
+			await blob(path.join(dir, "0/node_modules/webgpu/dawn.node"), 400, 0, 7);
+			await blob(path.join(dir, "0/node_modules", `${repo}.js`), 100);
+			await shareModules(path.join(dir, "0"), store);
+			await blob(path.join(dir, LAST_USED), 0, ageMin);
+		};
+		await slot("a", 60);
+		await slot("b", 30);
+		await slot("c", 1);
+		// Stored once: 400 shared + 3 × 100 own = 700 MB.
+		const used = async () =>
+			Math.round((await usage([path.join(root, "work")])) / MB);
+		expect(await used()).toBe(700);
 
-			// 810 MB disk: 110 free < 121 (15%); target 202. Removing "a" frees
-			// only its own 100 MB (b and c still link dawn.node): 210 free.
-			const j = janitor(root, fakeDisks(root, 810));
-			expect(names(await j.enforce(["c"]))).toEqual(["a"]);
-			expect(await used()).toBe(600);
+		// 810 MB disk: 110 free < 121 (15%); target 202. Removing "a" frees
+		// only its own 100 MB (b and c still link dawn.node): 210 free.
+		const j = janitor(root, fakeDisks(root, 810));
+		expect(names(await j.enforce(["c"]))).toEqual(["a"]);
+		expect(await used()).toBe(600);
 
-			// Tighter disk: b goes too, but dawn.node stays for c.
-			const tight = janitor(root, fakeDisks(root, 650));
-			expect(names(await tight.enforce(["c"]))).toEqual(["b"]);
-			await expect(
-				fs.stat(path.join(root, "work/ws/c/0/node_modules/webgpu/dawn.node")),
-			).resolves.toBeTruthy();
-			expect(await used()).toBe(500);
-		},
-	);
+		// Tighter disk: b goes too, but dawn.node stays for c.
+		const tight = janitor(root, fakeDisks(root, 650));
+		expect(names(await tight.enforce(["c"]))).toEqual(["b"]);
+		await expect(
+			fs.stat(path.join(root, "work/ws/c/0/node_modules/webgpu/dawn.node")),
+		).resolves.toBeTruthy();
+		expect(await used()).toBe(500);
+	});
 
 	it("on a separate cache disk: LFS objects, then mirrors, then package caches", async () => {
 		const root = path.join(tmp, "cache-case");
@@ -229,6 +218,18 @@ describe("CacheJanitor (free space)", () => {
 		await sparse(path.join(root, "work/ws/b/0/big.bin"), 700 * 1024 ** 2);
 		const j = janitor(root, fakeDisks(root, 100_000), { FF_WORK_MAX_GB: "1" });
 		expect(names(await j.enforce([]))).toEqual(["a"]);
+	});
+
+	it("reports disks for /health from a background snapshot", async () => {
+		const root = path.join(tmp, "health");
+		await blob(path.join(root, "work/ws/r/0/big.bin"), 900);
+		const j = janitor(root, fakeDisks(root, 1000));
+		expect(j.disks()).toBeUndefined(); // first call starts the measurement
+		await j.describeDisks();
+		expect(j.disks()).toMatchObject({
+			work: { lowOnSpace: true, path: path.join(root, "work") },
+			cache: { sameDiskAs: "work" },
+		});
 	});
 
 	it("drops failed-job dirs older than a day", async () => {

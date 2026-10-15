@@ -110,15 +110,23 @@ export async function openGitSession(
 		LC_ALL: "C",
 		TZ: "UTC",
 		// Isolate from the host's git config (credential stores, insteadOf, hooks).
+		// The file is $HOME/.gitconfig too: git-lfs's file:// agent drops
+		// GIT_CONFIG_GLOBAL (and -c) but still reads the home config.
 		GIT_CONFIG_NOSYSTEM: "1",
-		GIT_CONFIG_GLOBAL: path.join(dir, "gitconfig"),
+		GIT_CONFIG_GLOBAL: path.join(dir, ".gitconfig"),
 		GIT_TERMINAL_PROMPT: "0",
 		GIT_ASKPASS: "/bin/false",
 		SSH_ASKPASS: "/bin/false",
 		GIT_LFS_SKIP_SMUDGE: "1",
 		GCM_INTERACTIVE: "never",
 	};
-	await fs.writeFile(env.GIT_CONFIG_GLOBAL as string, "", { mode: 0o600 });
+	// A local repo (FF_ALLOW_LOCAL_REPOS) usually belongs to another user;
+	// git, and git-lfs's agent running git inside it, must treat it as safe.
+	const safe =
+		repo.protocol === "file"
+			? `[safe]\n\tdirectory = ${new URL(repo.url).pathname}\n`
+			: "";
+	await fs.writeFile(env.GIT_CONFIG_GLOBAL as string, safe, { mode: 0o600 });
 
 	for (const [host, cred] of credentialMap(repo, config, job)) {
 		env[`FF_CRED_${credEnvKey(host)}_USER`] = cred.username;

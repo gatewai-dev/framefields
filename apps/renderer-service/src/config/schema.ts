@@ -109,8 +109,16 @@ export const envSchema = z.object({
 	// Paths & cache
 	FF_CACHE_DIR: z.string().optional(),
 	FF_WORK_DIR: z.string().optional(),
-	FF_CACHE_MAX_GB: int(50),
-	FF_WORK_MAX_GB: int(40),
+	// Eviction keeps this much of each disk free (the larger of the two)…
+	FF_DISK_MIN_FREE_PCT: int(15),
+	FF_DISK_MIN_FREE_GB: int(10),
+	// …and, once triggered, frees up to this much.
+	FF_DISK_TARGET_FREE_PCT: int(25),
+	// Optional hard caps; 0 = off (free space alone decides).
+	FF_CACHE_MAX_GB: int(0),
+	FF_WORK_MAX_GB: int(0),
+	// Hard-link identical node_modules files across workspaces.
+	FF_SHARED_MODULES: bool(true),
 
 	// Limits
 	FF_QUEUE_MAX: int(8),
@@ -217,6 +225,19 @@ export function buildConfig(
 		problems.push({
 			key: "RENDERER_API_KEY",
 			message: "required in http mode (or set FF_HTTP_INSECURE=true)",
+		});
+	}
+
+	if (e.FF_DISK_MIN_FREE_PCT > 50) {
+		problems.push({ key: "FF_DISK_MIN_FREE_PCT", message: "must be 0–50" });
+	}
+	if (
+		e.FF_DISK_TARGET_FREE_PCT > 60 ||
+		e.FF_DISK_TARGET_FREE_PCT < e.FF_DISK_MIN_FREE_PCT
+	) {
+		problems.push({
+			key: "FF_DISK_TARGET_FREE_PCT",
+			message: "must be between FF_DISK_MIN_FREE_PCT and 60",
 		});
 	}
 
@@ -334,6 +355,10 @@ export function buildConfig(
 			workDir,
 			cacheMaxGb: e.FF_CACHE_MAX_GB,
 			workMaxGb: e.FF_WORK_MAX_GB,
+			minFreePct: e.FF_DISK_MIN_FREE_PCT,
+			minFreeGb: e.FF_DISK_MIN_FREE_GB,
+			targetFreePct: e.FF_DISK_TARGET_FREE_PCT,
+			sharedModules: e.FF_SHARED_MODULES,
 		},
 		limits: {
 			queueMax: e.FF_QUEUE_MAX,

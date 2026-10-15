@@ -24,11 +24,20 @@ const version = (() => {
 /** Per-job / per-request fields merged into every log line. */
 export const loggerContext = new AsyncLocalStorage<Record<string, unknown>>();
 
+/**
+ * Adds the context to a log line. Returns a copy: pino merges each call's
+ * fields into the object mixin returns, which would otherwise leak them into
+ * the job's later log lines.
+ */
+export function contextMixin(): Record<string, unknown> {
+	return { ...loggerContext.getStore() };
+}
+
 export const logger = pino({
 	level: process.env.LOG_LEVEL || "info",
 	timestamp: pino.stdTimeFunctions.isoTime,
 	base: { service: "framefields-renderer", version },
-	mixin: () => loggerContext.getStore() ?? {},
+	mixin: contextMixin,
 	redact: {
 		paths: [
 			"req.headers.authorization",

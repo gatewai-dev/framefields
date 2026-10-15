@@ -19,18 +19,29 @@ export const deliver: Pipeline["deliver"] = async (files, job, ctx) => {
 	const { input, sha, ref } = job;
 	const config = ctx.config;
 	if (files.length === 0) {
-		throw new RenderError("OUTPUT_MISSING", "The render produced no files.", { phase: "verify" });
+		throw new RenderError("OUTPUT_MISSING", "The render produced no files.", {
+			phase: "verify",
+		});
 	}
 
 	ctx.progress({ phase: "verifying" });
 	const verified: VerifiedFile[] = [];
 	for (const file of files) {
-		verified.push(await verifyFile(file, { maxBytes: config.storage.outputMaxBytes, signal: ctx.signal }));
+		verified.push(
+			await verifyFile(file, {
+				maxBytes: config.storage.outputMaxBytes,
+				signal: ctx.signal,
+			}),
+		);
 	}
 
-	const failOn = typeof input.render.qa === "object" ? input.render.qa.failOn : undefined;
+	const failOn =
+		typeof input.render.qa === "object" ? input.render.qa.failOn : undefined;
 	const qaIssues = verified.flatMap((f) =>
-		qaFailures(f.qa, failOn as string[] | undefined).map((i) => ({ output: f.name, ...i })),
+		qaFailures(f.qa, failOn as string[] | undefined).map((i) => ({
+			output: f.name,
+			...i,
+		})),
 	);
 	if (qaIssues.length > 0 && config.qaBlockUpload) {
 		throw qaError(qaIssues, []);
@@ -81,7 +92,9 @@ export const deliver: Pipeline["deliver"] = async (files, job, ctx) => {
 		case "local": {
 			const paths = renderKeys(out.path, named, vars);
 			for (const [i, d] of deliveries.entries()) {
-				delivered.push(await deliverLocal(d, config.storage.outputDir as string, paths[i]));
+				delivered.push(
+					await deliverLocal(d, config.storage.outputDir as string, paths[i]),
+				);
 			}
 			break;
 		}
@@ -92,7 +105,10 @@ export const deliver: Pipeline["deliver"] = async (files, job, ctx) => {
 				throw new RenderError(
 					"OUTPUT_TOO_LARGE",
 					`Outputs total ${total} bytes, too large to return inline (FF_INLINE_MAX_BYTES=${config.storage.inlineMaxBytes}).`,
-					{ phase: "upload", hint: 'Use an "s3", "presigned" or "local" output.' },
+					{
+						phase: "upload",
+						hint: 'Use an "s3", "presigned" or "local" output.',
+					},
 				);
 			}
 			delivered = await Promise.all(deliveries.map(deliverInline));
@@ -104,24 +120,40 @@ export const deliver: Pipeline["deliver"] = async (files, job, ctx) => {
 	return delivered;
 };
 
-function qaError(issues: Record<string, unknown>[], outputs: DeliveredFile[]): RenderError {
-	return new RenderError("QA_FAILED", `QA found ${issues.length} issue(s) listed in render.qa.failOn.`, {
-		phase: "verify",
-		details: {
-			issues: issues.slice(0, 50),
-			// Delivered anyway (unless FF_QA_BLOCK_UPLOAD), so callers can inspect them.
-			outputs: outputs.map(({ base64: _, ...rest }) => rest),
+function qaError(
+	issues: Record<string, unknown>[],
+	outputs: DeliveredFile[],
+): RenderError {
+	return new RenderError(
+		"QA_FAILED",
+		`QA found ${issues.length} issue(s) listed in render.qa.failOn.`,
+		{
+			phase: "verify",
+			details: {
+				issues: issues.slice(0, 50),
+				// Delivered anyway (unless FF_QA_BLOCK_UPLOAD), so callers can inspect them.
+				outputs: outputs.map(({ base64: _, ...rest }) => rest),
+			},
 		},
-	});
+	);
 }
 
 /**
  * Pipeline step: finds outputs an earlier attempt of the same job already
  * delivered for this commit (s3 + idempotencyKey only).
  */
-export const findExisting: NonNullable<Pipeline["findExisting"]> = async (input, sha, ctx) => {
+export const findExisting: NonNullable<Pipeline["findExisting"]> = async (
+	input,
+	sha,
+	ctx,
+) => {
 	if (!input.idempotencyKey || input.output.type !== "s3") return undefined;
 	const bucket = input.output.bucket ?? (ctx.config.storage.bucket as string);
-	const manifest = await readManifest(ctx.config, bucket, input.idempotencyKey, sha);
+	const manifest = await readManifest(
+		ctx.config,
+		bucket,
+		input.idempotencyKey,
+		sha,
+	);
 	return manifest?.outputs;
 };

@@ -16,6 +16,7 @@ It runs as a **RunPod serverless endpoint**, a **RunPod pod**, or a **Docker con
 - [Quick start (Docker + MinIO)](#quick-start-docker--minio)
 - [RunPod](#runpod)
 - [GPU and CPU rendering](#gpu-and-cpu-rendering)
+- [Disk and caches](#disk-and-caches)
 - [Jobs](#jobs)
 - [Configuration](#configuration)
 - [Errors](#errors)
@@ -26,7 +27,7 @@ It runs as a **RunPod serverless endpoint**, a **RunPod pod**, or a **Docker con
 
 ```
 job ─▶ resolve ref → fetch (mirror cache) → checkout → git LFS pull
-        → install (skipped when only framefields is needed, or the lockfile is unchanged)
+        → install (skipped when the lockfile is unchanged; files shared across projects)
         → import your entry → render on the warm GPU → verify (ffprobe) → upload
 ```
 
@@ -34,6 +35,8 @@ job ─▶ resolve ref → fetch (mirror cache) → checkout → git LFS pull
 - **Your code runs inside the worker process.** The first job loads its project's framefields and initialises the GPU. Later jobs on the same version reuse that warm engine, even from other repos. A job that needs a different version fails with retryable `ENGINE_SWITCH`, and the worker restarts so the retry loads it. Keep a worker (or endpoint) per framefields version if your projects pin different ones.
 - **Everything is pinned to one commit.** A branch is resolved once per job, and the result reports the SHA it rendered.
 - **Caches survive between jobs:** git mirrors, LFS objects and package stores live on the cache volume, and checkouts and `node_modules` are reused. A warm job spends almost all its time rendering.
+- **Projects share their packages.** Identical `node_modules` files are stored once per worker, as read-only hard links. A second project on the same framefields version adds a few MB of disk instead of about 800 MB.
+- **Disk is managed by free space.** Before each job the worker checks how full its disks are, and evicts the least recently used workspaces and caches when free space runs low. There are no size budgets to tune.
 - **The worker protects itself.** It recycles after N jobs, high memory, GPU device loss, or code that won't stop. If it crashes, the job is still reported after the restart.
 
 ## Quick start (Docker + MinIO)
@@ -154,6 +157,30 @@ Older framefields versions always try the hardware encoder. That fails on GPUs w
 
 Here `renderer` is `gpu` or `cpu`. `hardware` is `null` when the machine has no GPU.
 
+## Disk and caches
+
+What the worker keeps on disk:
+
+| Where | What | Disk |
+|---|---|---|
+| `FF_CACHE_DIR` | Git mirrors, LFS objects, npm/pnpm/yarn download caches | The network volume on RunPod (`/runpod-volume`), shared by workers |
+| `FF_WORK_DIR` | One checkout per repo, with its `node_modules`, and the shared module store | Local container disk |
+
+**Shared `node_modules`.** After each install, every `node_modules` file is linked to one copy in a content store on the workspace disk. Projects on the same framefields version share almost all their files: in a test, the first project took 793 MB and each further one about 4 MB.
+
+Shared files are read-only, because changing one would change it for every project:
+- Installs are unaffected: the worker deletes `node_modules` before reinstalling.
+- Code that writes into `node_modules` while rendering fails with a hint. Write to a temp dir instead, or set `FF_SHARED_MODULES=false`.
+- An install still needs room for one full extraction (about 800 MB for framefields), because sharing happens afterwards. The worker makes room for it first.
+
+**Eviction by free space.** Before each job the worker checks both disks:
+- **When:** if one has less free space than max(`FF_DISK_MIN_FREE_PCT`, `FF_DISK_MIN_FREE_GB`) (15%, 10 GB), it evicts until `FF_DISK_TARGET_FREE_PCT` (25%) is free. The GB floor never exceeds half of a small disk.
+- **Order:** least recently used workspaces (with the shared files only they used), then LFS objects, then git mirrors, then whole package caches.
+- **Never evicted:** the current repo, the workspace the loaded engine came from, vision models, and other workers' recently used mirrors.
+- **Logging:** every eviction is logged with the disks' free space.
+
+`FF_WORK_MAX_GB` / `FF_CACHE_MAX_GB` add hard caps if you want them. They're only needed where the container reports the host's disk size instead of its own allowance. Some Docker storage drivers do that, and the RunPod smoke test will show whether RunPod does.
+
 ## Jobs
 
 ```jsonc
@@ -260,7 +287,10 @@ Everything is set by environment variables. The worker checks them all at startu
 | `FF_GIT_CA_BUNDLE` | A PEM CA certificate for self-hosted servers with a private CA. |
 | `STORAGE_ENDPOINT`, `STORAGE_BUCKET`, `STORAGE_ACCESS_KEY_ID`, `STORAGE_SECRET_ACCESS_KEY` | S3-compatible output storage. |
 | `STORAGE_PUBLIC_BASE_URL` | Turns output keys into public URLs in results. |
-| `FF_CACHE_DIR`, `FF_CACHE_MAX_GB`, `FF_WORK_MAX_GB` | Cache location and size limits. Eviction runs automatically. |
+| `FF_CACHE_DIR`, `FF_WORK_DIR` | Where caches (git mirrors, LFS, package downloads) and workspaces live. |
+| `FF_DISK_MIN_FREE_PCT`, `FF_DISK_MIN_FREE_GB`, `FF_DISK_TARGET_FREE_PCT` | Eviction starts when a disk has less than max(15%, 10 GB) free, and frees up to 25%. See [Disk and caches](#disk-and-caches). |
+| `FF_SHARED_MODULES` | `true` (default): identical `node_modules` files are shared between projects as read-only hard links. |
+| `FF_CACHE_MAX_GB`, `FF_WORK_MAX_GB` | Optional hard caps on top of the free-space rule (default off). |
 | `FF_JOB_TIMEOUT_MAX_SEC`, `FF_STALL_TIMEOUT_SEC` | Time limits. |
 | `FF_MAX_JOBS_PER_WORKER` | Recycle after N jobs (default 25). |
 | `FF_GPU` | `auto` (default), `require` or `cpu`. See [GPU and CPU rendering](#gpu-and-cpu-rendering). |

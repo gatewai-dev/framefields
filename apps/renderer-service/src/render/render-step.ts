@@ -456,6 +456,17 @@ export function classifyRenderError(
 			cause: err,
 		});
 	}
+	if (
+		/EACCES|EPERM|permission denied/i.test(message) &&
+		/node_modules/.test(message)
+	) {
+		return new RenderError("RENDER_FAILED", scrub(message), {
+			phase: "render",
+			hint: "node_modules files are shared read-only between projects (FF_SHARED_MODULES); write to a temp dir instead, or set FF_SHARED_MODULES=false.",
+			details,
+			cause: err,
+		});
+	}
 	if (/Cannot open local media file|ENOENT|no such file/i.test(message)) {
 		return new RenderError("ASSET_NOT_FOUND", scrub(message), {
 			phase: "render",

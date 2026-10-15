@@ -80,8 +80,8 @@ export const checkout: Pipeline["checkout"] = async (job, ctx) => {
 			include,
 			exclude: source.lfs.exclude,
 			scope: include.length ? [] : scope,
-			makeRoom: async () => {
-				await activeJanitor()?.enforce([repoHash(repo)]);
+			makeRoom: async (bytes) => {
+				await activeJanitor()?.enforce([repoHash(repo)], bytes);
 			},
 		});
 		const leftover = await findPointers(ws.root, source.workdir);

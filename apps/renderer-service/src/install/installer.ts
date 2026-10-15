@@ -8,15 +8,24 @@ import type { RendererConfig } from "../config/index.js";
 import { RenderError } from "../errors.js";
 import { CommandError, exec } from "../git/exec.js";
 import type { Pipeline, StepContext } from "../jobs/pipeline.js";
+import { rendererLogger } from "../logger.js";
 import { redact } from "../redact.js";
 import { depsLoadedFrom } from "../render/engine.js";
 import { workerHealth } from "../worker/health.js";
+import { activeJanitor } from "../worker/janitor.js";
 import {
 	declaredEngineRange,
 	inspectProject,
 	type ProjectInfo,
 	readPackageJson,
 } from "./project.js";
+import {
+	expectedInstallSize,
+	moduleStoreDir,
+	recordInstallSize,
+	removeModules,
+	shareModules,
+} from "./shared-modules.js";
 
 export const STAMP_FILE = ".ff-install-stamp";
 
@@ -84,7 +93,39 @@ export const install: Pipeline["install"] = async (checkout, ctx) => {
 
 	// A half-finished install must never be trusted by the next job.
 	await fs.rm(stampPath, { force: true });
+	const shared = ctx.config.paths.sharedModules;
+	// Shared files are read-only hard links: a package manager must never
+	// write into them, so the install starts from an empty node_modules.
+	if (shared) await removeModules(checkout.root);
+	// Room for a full extraction: sharing happens only after the install.
+	const expected = await expectedInstallSize(ctx.config.paths.workDir, stamp);
+	if (expected > 0) {
+		await activeJanitor()?.enforce(
+			[path.basename(path.dirname(checkout.root))],
+			expected,
+		);
+	}
 	await runInstall(project, ctx, checkout.root);
+	if (shared) {
+		const result = await shareModules(
+			checkout.root,
+			moduleStoreDir(ctx.config.paths.workDir),
+		);
+		await recordInstallSize(
+			ctx.config.paths.workDir,
+			stamp,
+			result.installBytes,
+		);
+		rendererLogger.info(
+			{
+				files: result.files,
+				linked: result.linked,
+				savedMb: Math.round(result.savedBytes / 1024 ** 2),
+				skipped: result.skipped,
+			},
+			"Shared node_modules with other workspaces",
+		);
+	}
 	await fs.writeFile(stampPath, stamp);
 
 	// This process holds the old dependencies in its module cache; only a
@@ -354,6 +395,7 @@ export function classifyInstallError(
 	if (/ENOSPC|No space left on device/i.test(output)) {
 		return new RenderError("DISK_FULL", "Ran out of disk during the install.", {
 			phase: "install",
+			hint: "The install extracts every package before sharing them; give FF_WORK_DIR more disk (containerDiskInGb on RunPod).",
 		});
 	}
 	if (

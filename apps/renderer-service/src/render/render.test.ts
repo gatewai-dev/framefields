@@ -301,6 +301,18 @@ describe("render error classification", () => {
 		expect(classifyRenderError(new Error(message), "/ws").code).toBe(code);
 	});
 
+	it("explains writes into shared node_modules", () => {
+		const err = classifyRenderError(
+			new Error(
+				"EACCES: permission denied, open '/ws/node_modules/pkg/cache.json'",
+			),
+			"/ws",
+		);
+		expect(err.code).toBe("RENDER_FAILED");
+		expect(err.hint).toMatch(/FF_SHARED_MODULES/);
+		expect(err.message).toContain("<repo>/node_modules");
+	});
+
 	it("keeps only project stack frames, repo-relative", () => {
 		const err = new Error("x");
 		err.stack =

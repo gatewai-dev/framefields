@@ -86,7 +86,18 @@ export function bootWorker(
 	);
 
 	const readiness = new ReadinessTracker();
-	const janitor = new CacheJanitor(config, workerId());
+	// The bound engine is loaded from a workspace: never evict that one.
+	const engineRepo = () => {
+		const engine = boundEngine();
+		return engine ? [path.basename(path.dirname(engine.workspace))] : [];
+	};
+	const janitor = new CacheJanitor(
+		config,
+		workerId(),
+		undefined,
+		undefined,
+		engineRepo,
+	);
 	const journal = new CrashJournal(
 		path.join(config.paths.workDir, "inflight.json"),
 	);
@@ -103,13 +114,7 @@ export function bootWorker(
 
 	const runner = new JobRunner(config, pipeline, {
 		journal,
-		beforeJob: (job) => {
-			// The bound engine is loaded from a workspace: never evict that one.
-			const engine = boundEngine();
-			const keep = [repoHash(job.repo)];
-			if (engine) keep.push(path.basename(path.dirname(engine.workspace)));
-			return janitor.maybeRun(keep);
-		},
+		beforeJob: (job) => janitor.maybeRun([repoHash(job.repo)]),
 		afterJob: (completed) => {
 			const engine = boundEngine();
 			if (engine && boundVersion !== engine.version) {

@@ -14,7 +14,8 @@ export interface LfsOptions {
 	/** Directories that must be fully usable (workdir, sparse paths). */
 	scope: string[];
 	/** Frees disk (cache eviction) when the preflight finds too little. */
-	makeRoom?: () => Promise<void>;
+	/** Evicts caches so `bytes` more fit (the janitor). */
+	makeRoom?: (bytes: number) => Promise<void>;
 }
 
 export interface LfsResult {
@@ -129,7 +130,7 @@ export async function pullLfs(
 			!options.makeRoom
 		)
 			throw err;
-		await options.makeRoom();
+		await options.makeRoom(Math.max(needed, total) + DISK_MARGIN_BYTES);
 		await fits();
 	}
 

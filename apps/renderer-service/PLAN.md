@@ -277,12 +277,27 @@ Why the files are split this way:
 
 ### 6.4 Cache eviction
 
-`FF_CACHE_MAX_GB` and `FF_WORK_MAX_GB` set the size limits (0 = no limit). Eviction runs between jobs, at most every 5 minutes, and again whenever the LFS preflight needs space. Mirrors and workspaces record their last use in a `.ff-last-used` marker.
+Free disk space decides (`src/worker/janitor.ts`); there is no fixed size budget to configure.
 
-- In `FF_WORK_DIR`: the least recently used workspaces are evicted. Failed-job dirs kept by `FF_KEEP_FAILED_JOBS` are deleted after a day.
-- In `FF_CACHE_DIR`, in this order: LFS objects by last access, then git mirrors by last use, then whole package caches (largest first). Pinned vision models are never evicted.
-- The next job's own workspace and mirror are never evicted.
-- Another worker's mirror on a shared volume is only evicted once it has been idle for over an hour.
+- **When it runs:**
+  - Before every job, `statfs` checks the disks of `FF_WORK_DIR` and `FF_CACHE_DIR`. This is cheap, so it never walks the trees.
+  - A disk with less free space than max(`FF_DISK_MIN_FREE_PCT` (15), `FF_DISK_MIN_FREE_GB` (10)) triggers eviction, which runs until `FF_DISK_TARGET_FREE_PCT` (25) is free.
+  - Eviction also runs at least every 5 minutes, and whenever the LFS preflight or an install needs room for a known number of bytes (`enforce(protect, extraBytes)`).
+  - The GB floor is capped at half the disk, so small disks still work.
+- **Order:**
+  1. On the work disk: the least recently used workspaces go first. Each takes along the shared module files only it linked (§7.1). Then a sweep removes store files nothing links to.
+  2. On the cache disk: LFS objects by last access, then git mirrors by last use, then whole package caches (largest first).
+  3. When both dirs are on the same disk (same `st_dev`), all of the above run in that order against one free-space figure.
+  4. Free space is re-measured after each removal, so hard links and shared volumes are accounted for exactly.
+- **Never evicted:**
+  - the next job's own workspace and mirror;
+  - the workspace the bound engine was loaded from (always protected, also on the emergency paths);
+  - pinned vision models;
+  - another worker's mirror on a shared volume, until it has been idle for over an hour.
+- **Failed-job dirs** kept by `FF_KEEP_FAILED_JOBS` are deleted after a day.
+- **Optional hard caps** `FF_WORK_MAX_GB` / `FF_CACHE_MAX_GB` (default 0 = off) still apply on top. They walk the trees, counting each hard-linked file once.
+- **Container disks:** inside Docker, `statfs` on the overlay root may report the host's disk rather than the container's allowance, depending on the storage driver's quota support. Where that happens (to be checked on RunPod), set `FF_WORK_MAX_GB` below the container disk size.
+- Every eviction is logged ("Cache eviction") with the paths and the disks' free space.
 
 ### 6.5 Git hosts
 
@@ -323,8 +338,35 @@ Rules that apply to every host:
   - The janitor never evicts the workspace the bound engine was loaded from.
 - **Dependencies stay cached by path** for the life of the process, and they are shared with the engine (one copy of `mediabunny` and similar). A new install in a workspace this process already loaded modules from can't take effect in-process. So after installing, the job fails with `ENGINE_SWITCH` and the worker recycles; the retry gets a fresh process, and the install is already done.
 - **Older engines without worker hooks.** Some framefields versions predate `resetRenderCaches`, `signal` and `onProgress` (2.1.3, the current release, among them). They still render, but stall detection is off, cancellation relies on the grace period, and the worker recycles after each job rather than risk stale path-keyed caches. The warning is `ENGINE_NO_WORKER_HOOKS`.
+- **Shared node_modules (§7.1)** — see below.
 - **npm runs as shipped with Node** unless the project pins `packageManager`. Corepack's unpinned npm can be a different major than the one that wrote the lockfile, which made `npm ci` fail on lockfile sync. pnpm and yarn always go through corepack.
   - `engines.node` mismatches only produce a warning.
+
+### 7.1 Shared node_modules (`src/install/shared-modules.ts`)
+
+Projects on one worker mostly install the same packages, and framefields with its native binaries is ~800 MB unpacked. npm and yarn extract a full copy per project. pnpm copies too when its store is on another disk (the network volume), because hard links can't cross filesystems. With `FF_SHARED_MODULES=true` (default):
+
+- **Sharing:**
+  - After each install, every regular file under any `node_modules` in the slot is hashed (SHA-256, plus the exec bit).
+  - Each file is hard-linked to one copy in `<FF_WORK_DIR>/store/v1/<ab>/<hash>`, on the same disk as the workspaces. The swap is atomic: link to a temp name, then rename.
+  - Symlinks, empty files and project sources are left alone. Files already linked to each other are hashed once.
+  - `EMLINK` keeps the file unshared. If the store is on a different disk, nothing is shared.
+- **Read-only.** Shared files are `0444` (`0555` if executable): a write through a hard link would change every project.
+  - Installs never write into them: before a reinstall, the installer deletes the slot's `node_modules`.
+  - Repo code that writes into `node_modules` while rendering gets `EACCES`, which is classified with a hint. `FF_SHARED_MODULES=false` opts out.
+  - This relies on the worker not running as root (the image runs as `framefields`).
+- **Bookkeeping:**
+  - Each slot lists the keys it links in `ws/<repo>/<slot>.modules`, outside the git worktree so `git clean` keeps it.
+  - A reinstall releases keys the new install no longer uses.
+  - Evicting a workspace releases its keys. A store file is deleted once its link count drops to 1 (only the store).
+  - A sweep removes any leftovers.
+- **Install headroom.** Sharing only happens after the install, so an install still needs room for a full extraction.
+  - The size each install wrote is recorded per lockfile stamp (`store/install-sizes.json`, last 20).
+  - Before installing, the janitor makes room for this lockfile's last size, or the largest seen.
+- **Measured** (arm64 container, a project on framefields from npm, 7.8k files):
+  - The first project takes 793 MB, of which 48 MB are duplicates within the install.
+  - Each further project on the same lockfile adds about 4 MB, since 829 MB is linked.
+  - Three projects on a 1.7 GB disk completed; before the third, the janitor evicted the least recently used workspace that wasn't holding the engine.
 
 ## 8. Render execution (in-process)
 
@@ -492,7 +534,7 @@ On boot the service validates **all** keys and fails with the complete list of p
 | Git auth & hosts | `GIT_TOKEN`, `GIT_USERNAME`, `FF_GIT_CREDENTIALS` (`{host: token \| {username, token}}`), `FF_GIT_HOSTS` (`{host: github\|gitlab\|bitbucket\|gitea\|generic}`), `FF_GIT_CA_BUNDLE`, `GIT_SSH_KEY`, `GIT_SSH_KNOWN_HOSTS`, `FF_SSH_ACCEPT_NEW` (false), `FF_ALLOW_JOB_CREDENTIALS` (false) |
 | Install | `FF_INSTALL_SCRIPTS` (true), `FF_ALLOW_UNLOCKED_INSTALL` (false), `FF_NPMRC` |
 | Storage | `STORAGE_DRIVER` (`s3`\|`local`\|`none`), `STORAGE_ENDPOINT`, `STORAGE_REGION` (`auto`), `STORAGE_ACCESS_KEY_ID`, `STORAGE_SECRET_ACCESS_KEY`, `STORAGE_BUCKET`, `STORAGE_PUBLIC_BASE_URL`, `STORAGE_FORCE_PATH_STYLE` (MinIO), `FF_OUTPUT_BUCKETS`, `FF_OUTPUT_DIR`, `FF_INLINE_MAX_BYTES`, `FF_OUTPUT_MAX_BYTES`. The `R2_*` names are gone, with no aliases. |
-| Paths & cache | `FF_CACHE_DIR`, `FF_WORK_DIR`, `FF_CACHE_MAX_GB` (50), `FF_WORK_MAX_GB` (40), `FRAMEFIELDS_MODELS_DIR` (`$FF_CACHE_DIR/models`), `FRAMEFIELDS_FONTS_DIR` |
+| Paths & cache | `FF_CACHE_DIR`, `FF_WORK_DIR`, `FF_DISK_MIN_FREE_PCT` (15), `FF_DISK_MIN_FREE_GB` (10), `FF_DISK_TARGET_FREE_PCT` (25), `FF_SHARED_MODULES` (true), optional caps `FF_CACHE_MAX_GB` / `FF_WORK_MAX_GB` (0 = off), `FRAMEFIELDS_MODELS_DIR` (`$FF_CACHE_DIR/models`), `FRAMEFIELDS_FONTS_DIR` |
 | Limits | `FF_QUEUE_MAX` (8), `FF_JOB_TIMEOUT_MAX_SEC` (7200), `FF_TIMEOUT_{GIT,LFS,INSTALL,LOAD,RENDER}_SEC`, `FF_STALL_TIMEOUT_SEC` (300), `FF_KILL_GRACE_SEC` (20), `FF_JOB_TTL_SEC` (3600), `FF_JOB_HISTORY_MAX` (500) |
 | Recycling | `FF_MAX_JOBS_PER_WORKER` (25; 0 = unlimited), `FF_RECYCLE_HEAP_MB` (4096), `FF_RECYCLE_RSS_MB` (0 = off), `FF_EVENT_LOOP_BLOCK_SEC` (120), `FF_STRAY_ERROR_LIMIT` (3), `FF_LEAKED_HANDLE_LIMIT` (50). `NODE_OPTIONS=--max-old-space-size` is set by the image. |
 | GPU | `FF_GPU` (`auto`\|`require`\|`cpu`; default `auto`, RunPod templates `require`). The engine reads `FRAMEFIELDS_HW_CODECS=off` to force software video encoding. |

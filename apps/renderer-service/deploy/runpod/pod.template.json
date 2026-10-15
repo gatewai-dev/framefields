@@ -26,7 +26,6 @@
 			"key": "STORAGE_SECRET_ACCESS_KEY",
 			"value": "{{ RUNPOD_SECRET_ff_storage_secret }}"
 		},
-		{ "key": "FF_CACHE_MAX_GB", "value": "80" },
 		{ "key": "LOG_LEVEL", "value": "info" }
 	]
 }

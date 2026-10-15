@@ -63,11 +63,44 @@ export interface DiskSummary {
 	path: string;
 	freeGb: number;
 	totalGb: number;
-	/** Eviction starts below this much free space. */
-	evictBelowGb: number;
+	/** Eviction starts below this much free space (null: not measurable). */
+	evictBelowGb: number | null;
 	lowOnSpace: boolean;
+	/**
+	 * False when the filesystem reports an implausible size (some network and
+	 * host-shared mounts do): free-space eviction is off there; only the
+	 * optional FF_WORK_MAX_GB / FF_CACHE_MAX_GB caps apply.
+	 */
+	measurable?: false;
 	/** Set when the cache dir is on the work dir's disk. */
 	sameDiskAs?: string;
+}
+
+/** Percentages never ask for more free space than this. */
+const PCT_CAP = 200 * GB;
+/** Larger reported sizes are taken as unknown (e.g. a shared cluster's total). */
+const MAX_PLAUSIBLE_DISK = 64 * 1024 * GB;
+
+function measurable(d: DiskInfo): boolean {
+	return (
+		d.totalBytes > 0 &&
+		d.totalBytes <= MAX_PLAUSIBLE_DISK &&
+		d.freeBytes <= d.totalBytes
+	);
+}
+
+const warned = new Set<string>();
+function warnUnmeasurable(dir: string, d: DiskInfo): void {
+	if (warned.has(dir)) return;
+	warned.add(dir);
+	rendererLogger.warn(
+		{
+			dir,
+			totalGb: Math.round(d.totalBytes / GB),
+			freeGb: Math.round(d.freeBytes / GB),
+		},
+		"Disk reports an implausible size; free-space eviction is off for it (set FF_WORK_MAX_GB / FF_CACHE_MAX_GB to cap usage)",
+	);
 }
 
 interface Candidate {
@@ -164,8 +197,9 @@ export class CacheJanitor {
 				path: dir,
 				freeGb: gb(d.freeBytes),
 				totalGb: gb(d.totalBytes),
-				evictBelowGb: gb(low),
-				lowOnSpace: d.freeBytes < low,
+				...(measurable(d)
+					? { evictBelowGb: gb(low), lowOnSpace: d.freeBytes < low }
+					: { evictBelowGb: null, lowOnSpace: false, measurable: false }),
 			};
 		};
 		const disks = {
@@ -181,11 +215,13 @@ export class CacheJanitor {
 
 	private thresholds(d: DiskInfo, extra = 0) {
 		const { minFreePct, minFreeGb, targetFreePct } = this.config.paths;
-		// A fixed GB floor can't demand most of a small disk.
+		// A fixed GB floor can't demand most of a small disk, and a percentage
+		// can't demand terabytes of a huge one.
 		const floor = Math.min(minFreeGb * GB, d.totalBytes * 0.5);
-		const low = Math.max((d.totalBytes * minFreePct) / 100, floor) + extra;
+		const pct = (p: number) => Math.min((d.totalBytes * p) / 100, PCT_CAP);
+		const low = Math.max(pct(minFreePct), floor) + extra;
 		const target = Math.max(
-			Math.min((d.totalBytes * targetFreePct) / 100, d.totalBytes * 0.6),
+			Math.min(pct(targetFreePct), d.totalBytes * 0.6),
 			low,
 		);
 		return { low, target };
@@ -196,7 +232,7 @@ export class CacheJanitor {
 		for (const dir of [workDir, cacheDir]) {
 			if (!existsSync(dir)) continue;
 			const d = await this.disk(dir);
-			if (d.freeBytes < this.thresholds(d).low) return true;
+			if (measurable(d) && d.freeBytes < this.thresholds(d).low) return true;
 		}
 		return false;
 	}
@@ -251,6 +287,10 @@ export class CacheJanitor {
 					];
 		for (const { dir, stages } of disks) {
 			const first = await this.disk(dir);
+			if (!measurable(first)) {
+				warnUnmeasurable(dir, first);
+				continue;
+			}
 			const { low, target } = this.thresholds(first, extraBytes);
 			if (first.freeBytes >= low) continue;
 			const enough = async () => (await this.disk(dir)).freeBytes >= target;

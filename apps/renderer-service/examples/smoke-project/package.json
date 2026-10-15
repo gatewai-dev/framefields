@@ -1,0 +1,31 @@
+{
+	"name": "framefields-renderer-smoke",
+	"version": "1.0.0",
+	"private": true,
+	"type": "module",
+	"description": "Smoke-test project for the framefields renderer worker: text, shapes, media, Lottie, SVG, 3D, ONNX vision, effects, charts, captions and audio.",
+	"scripts": {
+		"assets": "node scripts/make-assets.mjs",
+		"render": "tsx scripts/render.ts",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"framefields": "^2.2.0-beta.0"
+	},
+	"devDependencies": {
+		"@types/node": "^24.0.0",
+		"tsx": "^4.20.0",
+		"typescript": "^5.8.0"
+	},
+	"engines": {
+		"node": ">=22"
+	},
+	"allowScripts": {
+		"esbuild@0.28.2": true,
+		"node-av@6.1.1": true,
+		"onnxruntime-node@1.30.0": true,
+		"skia-canvas@3.0.8": true,
+		"webgpu@0.4.0": true,
+		"fsevents": false
+	}
+}

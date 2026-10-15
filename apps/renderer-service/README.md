@@ -13,6 +13,7 @@ It runs as a **RunPod serverless endpoint**, a **RunPod pod**, or a **Docker con
 ## Contents
 
 - [How it works](#how-it-works)
+- [Test project](#test-project)
 - [Quick start (Docker + MinIO)](#quick-start-docker--minio)
 - [RunPod](#runpod)
 - [GPU and CPU rendering](#gpu-and-cpu-rendering)
@@ -46,6 +47,10 @@ job ─▶ resolve ref → fetch (mirror cache) → checkout → git LFS pull
 - **Projects share their packages.** Identical `node_modules` files are stored once per worker, as read-only hard links. A second project on the same framefields version adds a few MB of disk instead of about 800 MB.
 - **Disk is managed by free space.** Before each job the worker checks how full its disks are, and evicts the least recently used workspaces and caches when free space runs low. There are no size budgets to tune.
 - **The worker protects itself.** It recycles after N jobs, high memory, GPU device loss, or code that won't stop. If it crashes, the job is still reported after the restart.
+
+## Test project
+
+[`examples/smoke-project`](examples/smoke-project) is a ready-made repo for testing a deployment. It covers text and shapes, image, SVG, Lottie and video sources, effects, transitions, charts, captions, audio, a lit 3D scene with a glTF model, and ONNX vision. Its README has the jobs to send and what to check in the results.
 
 ## Quick start (Docker + MinIO)
 
@@ -200,6 +205,8 @@ Shared files are read-only, because changing one would change it for every proje
 ```
 
 `sameDiskAs: "work"` marks a cache dir on the workspace disk. `lowOnSpace` means the next job starts by evicting.
+
+Some filesystems report sizes that can't be true, such as Docker Desktop host mounts (around 118 TB) or a network volume reporting a whole storage cluster. Above 64 TiB a disk is marked `measurable: false` and the worker doesn't evict by free space there. Set `FF_WORK_MAX_GB` / `FF_CACHE_MAX_GB` if such a disk needs a limit.
 
 `FF_WORK_MAX_GB` / `FF_CACHE_MAX_GB` add hard caps if you want them. They're only needed where the container reports the host's disk size instead of its own allowance. Some Docker storage drivers do that, and the RunPod smoke test will show whether RunPod does.
 

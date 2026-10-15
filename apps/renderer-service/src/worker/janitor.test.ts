@@ -232,6 +232,43 @@ describe("CacheJanitor (free space)", () => {
 		});
 	});
 
+	it("ignores disks that report an implausible size", async () => {
+		const root = path.join(tmp, "implausible");
+		await blob(path.join(root, "work/ws/r/0/big.bin"), 10);
+		// What a Docker Desktop host mount reported: 117,870 GB, 7.8% free.
+		const disk: DiskProbe = async () => ({
+			id: "host",
+			totalBytes: 117_870 * 1024 ** 3,
+			freeBytes: 9_208 * 1024 ** 3,
+		});
+		const j = janitor(root, disk);
+		expect(await j.enforce([])).toEqual([]);
+		await j.describeDisks();
+		expect(j.disks()?.work).toMatchObject({
+			measurable: false,
+			lowOnSpace: false,
+			evictBelowGb: null,
+		});
+	});
+
+	it("caps percentage thresholds on large disks", async () => {
+		const root = path.join(tmp, "large");
+		await blob(path.join(root, "work/ws/r/0/big.bin"), 10);
+		// 10 TB with 1 TB free: 15% would ask for 1.5 TB; the cap is 200 GB.
+		const disk: DiskProbe = async () => ({
+			id: "big",
+			totalBytes: 10 * 1024 ** 4,
+			freeBytes: 1024 ** 4,
+		});
+		const j = janitor(root, disk);
+		expect(await j.enforce([])).toEqual([]);
+		await j.describeDisks();
+		expect(j.disks()?.work).toMatchObject({
+			evictBelowGb: 200,
+			lowOnSpace: false,
+		});
+	});
+
 	it("drops failed-job dirs older than a day", async () => {
 		const root = path.join(tmp, "jobs-case");
 		const old = path.join(root, "work/jobs/old-job");

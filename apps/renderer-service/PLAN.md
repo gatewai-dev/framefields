@@ -283,7 +283,8 @@ Free disk space decides (`src/worker/janitor.ts`); there is no fixed size budget
   - Before every job, `statfs` checks the disks of `FF_WORK_DIR` and `FF_CACHE_DIR`. This is cheap, so it never walks the trees.
   - A disk with less free space than max(`FF_DISK_MIN_FREE_PCT` (15), `FF_DISK_MIN_FREE_GB` (10)) triggers eviction, which runs until `FF_DISK_TARGET_FREE_PCT` (25) is free.
   - Eviction also runs at least every 5 minutes, and whenever the LFS preflight or an install needs room for a known number of bytes (`enforce(protect, extraBytes)`).
-  - The GB floor is capped at half the disk, so small disks still work.
+  - The GB floor is capped at half the disk, so small disks still work. The percentages are capped at 200 GB, so a large disk is never asked to keep terabytes free.
+  - A disk reporting more than 64 TiB, or more free space than its size, is treated as not measurable. Docker Desktop host mounts reported 117,870 GB, and a shared network volume may report a whole cluster. Free-space eviction is off for such a disk (logged once; `/health` shows `measurable: false`), and only the optional GB caps apply.
 - **Order:**
   1. On the work disk: the least recently used workspaces go first. Each takes along the shared module files only it linked (§7.1). Then a sweep removes store files nothing links to.
   2. On the cache disk: LFS objects by last access, then git mirrors by last use, then whole package caches (largest first).

@@ -514,7 +514,11 @@ The service no longer uses `S3StorageService` from `@framefields/server-utils`, 
 - **Two variants:** `:<ver>` (slim, no compiler; projects rely on prebuilt binaries) and `:<ver>-full` (adds `build-essential` and `python3-dev`).
 - Runs as user `framefields`. The `HEALTHCHECK` hits `/health`.
 - **Entrypoint (`docker/entrypoint.sh`):** `http` | `runpod-serverless` | `cli`. `xvfb-run` is used only with `FF_XVFB=1`, and the GPU is logged at boot (`nvidia-smi`).
-- **Published to** `ghcr.io/gatewai-dev/framefields-renderer` by `.github/workflows/renderer-image.yml`.
+- **Published to** `ghcr.io/gatewai-dev/framefields-renderer` by `.github/workflows/renderer-image.yml`, for linux/amd64:
+  - pushes to `main` publish `:main` and `:sha-<short>`;
+  - `renderer-v1.2.3` tags publish `:1.2.3`, `:1.2` and `:latest`;
+  - the `full` variant gets the same tags with a `-full` suffix;
+  - pull requests build and smoke-test only. The smoke test checks the tools and that no engine is baked in, then boots the worker and requires `/health` to be ok with `renderer: cpu`.
 
 **RunPod template:** `apps/renderer-service/deploy/runpod/`.
 

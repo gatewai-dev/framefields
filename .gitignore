@@ -78,6 +78,8 @@ debug/
 examples/output/
 examples/**/output/
 **/output/
+# Source module, not render output.
+!apps/renderer-service/src/output/
 
 # Lazy-downloaded vision model weights (never source)
 *.onnx

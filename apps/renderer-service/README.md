@@ -65,6 +65,18 @@ curl -s  localhost:8082/v2/jobs/<id>        -H "authorization: Bearer $RENDERER_
 curl -s -X POST localhost:8082/v2/jobs/<id>/cancel -H "authorization: Bearer $RENDERER_API_KEY"
 ```
 
+### Images
+
+CI ([`renderer-image.yml`](../../.github/workflows/renderer-image.yml)) publishes `ghcr.io/gatewai-dev/framefields-renderer` (linux/amd64):
+
+| Tag | When |
+|---|---|
+| `latest`, `1.2.3`, `1.2` | A `renderer-v1.2.3` git tag. Use these in production. |
+| `main`, `sha-<commit>` | Each push to `main` that touches the renderer or the packages. |
+| `<tag>-full` | The same tags, `full` variant. |
+
+Pull requests only build and smoke-test the image. A manual run (**Actions → renderer-image → Run workflow**) publishes the selected branch.
+
 Building the image yourself, from the repo root:
 
 ```bash

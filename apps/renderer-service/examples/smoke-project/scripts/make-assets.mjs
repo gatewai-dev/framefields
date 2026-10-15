@@ -38,9 +38,15 @@ function gem(r, h, sides = 8) {
 			normals.push(...n.map((c) => c / len));
 		}
 	}
+	// Planar UVs: some GPU drivers need every attribute the shader reads.
+	const uvs = [];
+	for (let i = 0; i < positions.length; i += 3) {
+		uvs.push(positions[i] / (2 * r) + 0.5, positions[i + 1] / h + 0.5);
+	}
 	return {
 		positions: new Float32Array(positions),
 		normals: new Float32Array(normals),
+		uvs: new Float32Array(uvs),
 	};
 }
 
@@ -107,7 +113,12 @@ await fs.writeFile(
 			meshes: [
 				{
 					name: "gem",
-					primitives: [{ attributes: { POSITION: 0, NORMAL: 1 }, material: 0 }],
+					primitives: [
+						{
+							attributes: { POSITION: 0, NORMAL: 1, TEXCOORD_0: 2 },
+							material: 0,
+						},
+					],
 				},
 			],
 			materials: [
@@ -123,9 +134,10 @@ await fs.writeFile(
 			accessors: [
 				{ bufferView: 0, componentType: 5126, count, type: "VEC3", min, max },
 				{ bufferView: 1, componentType: 5126, count, type: "VEC3" },
+				{ bufferView: 2, componentType: 5126, count, type: "VEC2" },
 			],
 		},
-		[g.positions, g.normals],
+		[g.positions, g.normals, g.uvs],
 	),
 );
 

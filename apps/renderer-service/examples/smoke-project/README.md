@@ -68,7 +68,11 @@ Keep the repo **private** unless you're sure the example media may be published:
 
 ## Jobs
 
-Each output is under 5 MB, so `inline` works without storage: the video comes back base64-encoded in the result. With S3 storage configured, use `{"type": "s3", "key": "smoke/{jobId}/{name}.{ext}"}` instead.
+`inline` works without storage: the videos come back base64-encoded in the result. The limit, `FF_INLINE_MAX_BYTES` (5 MB by default), applies to the job's outputs together:
+
+- A single export (`film` about 3 MB, `threeD` about 1 MB, `vision` about 1 MB) fits the default.
+- `all` returns about 7 MB, so set `FF_INLINE_MAX_BYTES=20971520` (20 MB) on the worker. Otherwise the job fails with `OUTPUT_TOO_LARGE` after rendering.
+- With S3 storage configured, use `{"type": "s3", "key": "smoke/{jobId}/{name}.{ext}"}` instead; there's no size limit.
 
 Everything:
 

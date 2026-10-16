@@ -1,5 +1,5 @@
 // Generates the assets that aren't copied media: a glTF model, a Lottie
-// animation and captions. Run with `npm run assets`; the outputs are
+// animation and captions. Run with `pnpm assets`; the outputs are
 // committed, so the renderer never runs this.
 import fs from "node:fs/promises";
 import path from "node:path";

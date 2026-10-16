@@ -10,7 +10,7 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
-		"framefields": "^2.2.0-beta.0"
+		"framefields": "^2.2.0-beta.1"
 	},
 	"devDependencies": {
 		"@types/node": "^24.0.0",
@@ -20,12 +20,17 @@
 	"engines": {
 		"node": ">=22"
 	},
-	"allowScripts": {
-		"esbuild@0.28.2": true,
-		"node-av@6.1.1": true,
-		"onnxruntime-node@1.30.0": true,
-		"skia-canvas@3.0.8": true,
-		"webgpu@0.4.0": true,
-		"fsevents": false
+	"packageManager": "pnpm@10.13.1",
+	"pnpm": {
+		"onlyBuiltDependencies": [
+			"esbuild",
+			"node-av",
+			"onnxruntime-node",
+			"skia-canvas",
+			"webgpu"
+		],
+		"ignoredBuiltDependencies": [
+			"protobufjs"
+		]
 	}
 }

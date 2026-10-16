@@ -13,8 +13,15 @@ import { type InputTransform, toSourcePoint } from "./preprocess.js";
 export interface RtmdetInsOutputs {
 	readonly dets: ArrayLike<number>;
 	readonly labels: ArrayLike<number | bigint>;
-	/** Omit to decode boxes only (detection without masks). */
+	/** Omit (and `maskPlane`) to decode boxes only (detection without masks). */
 	readonly masks?: ArrayLike<number>;
+	/**
+	 * Alternative to `masks`: detection `i`'s plane, computed on demand, so only
+	 * detections that pass the filters cost anything.
+	 */
+	readonly maskPlane?: (index: number) => ArrayLike<number>;
+	/** The planes hold logits (sigmoid applied after upsampling), not probabilities. */
+	readonly maskLogits?: boolean;
 	readonly count: number;
 	readonly maskWidth: number;
 	readonly maskHeight: number;
@@ -88,12 +95,13 @@ export function decodeRtmdetIns(
 
 	const detections = kept.map((k) => k.detection);
 	const masks: InstanceMask[] = [];
-	if (!out.masks) return { detections, masks };
+	if (!out.masks && !out.maskPlane) return { detections, masks };
 
-	const alphaOf = probabilityToAlpha(
-		opts.maskThreshold ?? 0.5,
-		opts.featherRadius ?? 0.05,
-	);
+	const threshold = opts.maskThreshold ?? 0.5;
+	const feather = opts.featherRadius ?? 0.05;
+	const alphaOf = out.maskLogits
+		? logitToAlpha(threshold, feather)
+		: probabilityToAlpha(threshold, feather);
 	const { maskWidth: mw, maskHeight: mh } = out;
 	const plane = mw * mh;
 	// Mask grid px per input px (exports may emit masks below input resolution).
@@ -103,7 +111,10 @@ export function decodeRtmdetIns(
 	for (let d = 0; d < kept.length; d++) {
 		const { index, detection } = kept[d];
 		const box = detection.boundingBox;
-		const base = index * plane;
+		const data = out.maskPlane
+			? out.maskPlane(index)
+			: (out.masks as ArrayLike<number>);
+		const base = out.maskPlane ? 0 : index * plane;
 		const bx0 = Math.max(0, Math.floor(box.originX) - MASK_BOX_PAD_PX);
 		const by0 = Math.max(0, Math.floor(box.originY) - MASK_BOX_PAD_PX);
 		const bx1 = Math.min(
@@ -131,10 +142,10 @@ export function decodeRtmdetIns(
 				const mx1 = Math.min(mw - 1, mx0 + 1);
 				const fx = clamp(mx - mx0, 0, 1);
 				const p =
-					out.masks[base + my0 * mw + mx0] * (1 - fx) * (1 - fy) +
-					out.masks[base + my0 * mw + mx1] * fx * (1 - fy) +
-					out.masks[base + my1 * mw + mx0] * (1 - fx) * fy +
-					out.masks[base + my1 * mw + mx1] * fx * fy;
+					data[base + my0 * mw + mx0] * (1 - fx) * (1 - fy) +
+					data[base + my0 * mw + mx1] * fx * (1 - fy) +
+					data[base + my1 * mw + mx0] * (1 - fx) * fy +
+					data[base + my1 * mw + mx1] * fx * fy;
 				const alpha = alphaOf(p);
 				if (alpha > 0) {
 					mask[row + sx] = alpha;
@@ -173,6 +184,26 @@ export function probabilityToAlpha(
 	const lo = threshold - feather;
 	const inv = 255 / (2 * feather);
 	return (p) => (p <= lo ? 0 : p >= threshold + feather ? 255 : (p - lo) * inv);
+}
+
+/**
+ * Logit → 0..255 alpha: `probabilityToAlpha` after a sigmoid, which is only
+ * evaluated inside the feather band.
+ */
+export function logitToAlpha(
+	threshold: number,
+	feather: number,
+): (logit: number) => number {
+	const toAlpha = probabilityToAlpha(threshold, feather);
+	const logit = (p: number) =>
+		p <= 0 ? -Infinity : p >= 1 ? Infinity : Math.log(p / (1 - p));
+	if (feather <= 0) {
+		const edge = logit(threshold);
+		return (l) => (l > edge ? 255 : 0);
+	}
+	const lo = logit(threshold - feather);
+	const hi = logit(threshold + feather);
+	return (l) => (l <= lo ? 0 : l >= hi ? 255 : toAlpha(1 / (1 + Math.exp(-l))));
 }
 
 function clamp(v: number, lo: number, hi: number): number {

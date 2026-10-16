@@ -4,13 +4,23 @@ import {
 	imageToTensor,
 	preprocessSpec,
 } from "../decode/preprocess.js";
-import { decodeRtmdetIns } from "../decode/rtmdet-ins.js";
+import {
+	decodeRtmdetIns,
+	type RtmdetInsOutputs,
+} from "../decode/rtmdet-ins.js";
+import {
+	maskLogits,
+	RTMDET_INS_HEAD,
+	type RtmdetInsHeadOutputs,
+	selectInstances,
+} from "../decode/rtmdet-ins-head.js";
 import { decodeRtmo } from "../decode/rtmo.js";
 import { decodeSelfie } from "../decode/selfie.js";
 import {
 	type ModelDownloadStatus,
 	VisionModelStore,
 } from "../model/model-store.js";
+import { extractSubgraph } from "../model/onnx-subgraph.js";
 import {
 	COCO_CLASSES,
 	modelKeyFor,
@@ -206,7 +216,7 @@ export class VisionRunner {
 	): Promise<readonly DetectedObject[]> {
 		const pass = await this.instancePass(image);
 		return decodeRtmdetIns(
-			{ ...pass.outputs, masks: undefined },
+			{ ...pass.outputs, masks: undefined, maskPlane: undefined },
 			this.instanceDecodeOptions(image, pass.transform),
 		).detections;
 	}
@@ -278,21 +288,13 @@ export class VisionRunner {
 		const byContent = passes.find((pass) => pass.content === content);
 		if (byContent) return byContent.result;
 		const key = this.modelKeyFor("segment");
-		const result = this.infer(key, image).then(({ outputs, transform }) => {
-			const dets = output(outputs, "dets", key);
-			const masks = output(outputs, "masks", key);
-			return {
-				transform,
-				outputs: {
-					dets: dets.data as Float32Array,
-					labels: output(outputs, "labels", key).data,
-					masks: masks.data as Float32Array,
-					count: dets.dims[1] ?? 0,
-					maskHeight: masks.dims[masks.dims.length - 2] ?? 0,
-					maskWidth: masks.dims[masks.dims.length - 1] ?? 0,
-				},
-			};
-		});
+		const result = this.infer(key, image).then(({ outputs, transform }) => ({
+			transform,
+			outputs:
+				RTMDET_INS_HEAD.scores in outputs
+					? headPassOutputs(outputs, key, transform)
+					: end2endPassOutputs(outputs, key),
+		}));
 		const pass = { content, result };
 		passes.push(pass);
 		if (passes.length > MAX_INSTANCE_PASSES) passes.shift();
@@ -372,7 +374,13 @@ export class VisionRunner {
 		if (!promise) {
 			promise = store
 				.ensure(key)
-				.then((bytes) => provider.createSession(bytes))
+				.then((bytes) =>
+					provider.createSession(
+						VISION_MODELS[key].family === "rtmdet-ins"
+							? rtmdetInsBody(bytes)
+							: bytes,
+					),
+				)
 				.catch((err: unknown) => {
 					// Drop both the session cache entry AND the cached file: a parse
 					// failure means the on-disk bytes are corrupt — the next call must
@@ -389,13 +397,84 @@ export class VisionRunner {
 
 interface InstancePass {
 	readonly transform: InputTransform;
-	readonly outputs: {
-		readonly dets: Float32Array;
-		readonly labels: VisionTensor["data"];
-		readonly masks: Float32Array;
-		readonly count: number;
-		readonly maskWidth: number;
-		readonly maskHeight: number;
+	readonly outputs: RtmdetInsOutputs;
+}
+
+/**
+ * The RTMDet-Ins graph up to its head (see `RTMDET_INS_HEAD`): no NMS or
+ * full-size masks in the graph, so the GPU part has fixed shapes and only
+ * ~9 MB comes back. Models without those tensors run end to end.
+ */
+function rtmdetInsBody(bytes: Uint8Array): Uint8Array {
+	try {
+		return extractSubgraph(bytes, Object.values(RTMDET_INS_HEAD));
+	} catch {
+		return bytes;
+	}
+}
+
+/** Outputs of the end2end graph: NMS done, one input-sized mask per detection. */
+function end2endPassOutputs(
+	outputs: VisionTensorOutputs,
+	key: VisionModelKey,
+): RtmdetInsOutputs {
+	const dets = output(outputs, "dets", key);
+	const masks = output(outputs, "masks", key);
+	return {
+		dets: dets.data as Float32Array,
+		labels: output(outputs, "labels", key).data,
+		masks: masks.data as Float32Array,
+		count: dets.dims[1] ?? 0,
+		maskHeight: masks.dims[masks.dims.length - 2] ?? 0,
+		maskWidth: masks.dims[masks.dims.length - 1] ?? 0,
+	};
+}
+
+/** Outputs of the head: selection here, mask logits only for detections asked for. */
+function headPassOutputs(
+	outputs: VisionTensorOutputs,
+	key: VisionModelKey,
+	transform: InputTransform,
+): RtmdetInsOutputs {
+	const scores = output(outputs, RTMDET_INS_HEAD.scores, key);
+	const features = output(outputs, RTMDET_INS_HEAD.maskFeatures, key);
+	const head: RtmdetInsHeadOutputs = {
+		scores: scores.data as Float32Array,
+		boxes: output(outputs, RTMDET_INS_HEAD.boxes, key).data as Float32Array,
+		kernels: output(outputs, RTMDET_INS_HEAD.kernels, key).data as Float32Array,
+		maskFeatures: features.data as Float32Array,
+		anchors: scores.dims[1] ?? 0,
+		classes: scores.dims[2] ?? 0,
+		maskHeight: features.dims[2] ?? 0,
+		maskWidth: features.dims[3] ?? 0,
+		inputWidth: transform.inputWidth,
+		inputHeight: transform.inputHeight,
+	};
+	const picked = selectInstances(head);
+	const dets = new Float32Array(picked.length * 5);
+	const labels = new Int32Array(picked.length);
+	picked.forEach(({ anchor, classIndex, score }, i) => {
+		dets.set(head.boxes.subarray(anchor * 4, anchor * 4 + 4), i * 5);
+		dets[i * 5 + 4] = score;
+		labels[i] = classIndex;
+	});
+	// Shared by every layer that reads this pass: each plane is computed once.
+	const planes = new Map<number, Float32Array>();
+	return {
+		dets,
+		labels,
+		count: picked.length,
+		maskWidth: head.maskWidth,
+		maskHeight: head.maskHeight,
+		maskLogits: true,
+		maskPlane: (index) => {
+			let plane = planes.get(index);
+			if (!plane) {
+				plane = maskLogits(head, (picked[index] as { anchor: number }).anchor);
+				planes.set(index, plane);
+			}
+			return plane;
+		},
 	};
 }
 

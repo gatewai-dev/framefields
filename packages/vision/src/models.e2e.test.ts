@@ -12,8 +12,11 @@
 import { fileURLToPath } from "node:url";
 import { Canvas, loadImage } from "skia-canvas";
 import { beforeAll, describe, expect, it } from "vitest";
+import { imageToTensor, preprocessSpec } from "./decode/preprocess.js";
+import { decodeRtmdetIns } from "./decode/rtmdet-ins.js";
 import { VisionModelStore } from "./model/model-store.js";
 import {
+	COCO_CLASSES,
 	VISION_MODELS,
 	VISION_VARIANTS,
 	type VisionModelKey,
@@ -70,6 +73,84 @@ describe.skipIf(!enabled)("vision models (real weights)", () => {
 
 	describe.each(VISION_VARIANTS)("variant %s", (variant) => {
 		const runner = VisionRunner.create({ variant });
+
+		it("matches the end2end graph (head cut + own NMS and masks)", async () => {
+			const key = runner.modelKeyFor("segment");
+			const ort = await import("onnxruntime-node");
+			const full = await ort.InferenceSession.create(
+				await new VisionModelStore().ensure(key),
+			);
+			const decodeOptions = {
+				confidence: 0.3,
+				classNames: COCO_CLASSES,
+				maskThreshold: 0.5,
+			};
+			for (const name of ["dancer", "crema", "tunnel", "spotlight"] as const) {
+				const frame = frames[name];
+				const spec = preprocessSpec("rtmdet-ins", VISION_MODELS[key].input);
+				const { tensor, transform } = imageToTensor(frame, spec);
+				const out = await full.run({
+					input: new ort.Tensor("float32", tensor, [
+						1,
+						3,
+						spec.height,
+						spec.width,
+					]),
+				});
+				const dets = out.dets as unknown as {
+					data: Float32Array;
+					dims: readonly number[];
+				};
+				const masks = out.masks as unknown as {
+					data: Float32Array;
+					dims: readonly number[];
+				};
+				const expected = decodeRtmdetIns(
+					{
+						dets: dets.data,
+						labels: (out.labels as { data: BigInt64Array }).data,
+						masks: masks.data,
+						count: dets.dims[1] ?? 0,
+						maskHeight: masks.dims[2] ?? 0,
+						maskWidth: masks.dims[3] ?? 0,
+					},
+					{
+						...decodeOptions,
+						transform,
+						sourceWidth: frame.width,
+						sourceHeight: frame.height,
+					},
+				);
+				const actual = await runner.segment(frame);
+
+				expect(actual.detections.map((d) => d.category)).toEqual(
+					expected.detections.map((d) => d.category),
+				);
+				actual.detections.forEach((d, i) => {
+					const e = expected.detections[i] as (typeof expected.detections)[0];
+					expect(d.score).toBeCloseTo(e.score, 4);
+					expect(d.boundingBox.originX).toBeCloseTo(e.boundingBox.originX, 2);
+					expect(d.boundingBox.width).toBeCloseTo(e.boundingBox.width, 2);
+				});
+				expect(actual.masks).toHaveLength(expected.masks.length);
+				actual.masks.forEach((m, i) => {
+					const e = expected.masks[i] as (typeof expected.masks)[0];
+					let inter = 0;
+					let union = 0;
+					for (let p = 0; p < m.mask.length; p++) {
+						const a = (m.mask[p] as number) >= 128;
+						const b = (e.mask[p] as number) >= 128;
+						if (a && b) inter++;
+						if (a || b) union++;
+					}
+					// Edges differ slightly: end2end upsamples twice (graph ×8, then to
+					// the frame) with the sigmoid in between; the head path upsamples the
+					// logits once, straight to the frame.
+					expect(union === 0 ? 1 : inter / union).toBeGreaterThan(0.98);
+				});
+			}
+			await full.release();
+		}, 600_000);
 
 		it("cuts out the whole dancer, dress included", async () => {
 			const seg = await runner.segment(frames.dancer);

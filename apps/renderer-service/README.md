@@ -123,6 +123,7 @@ Checklist for serverless endpoints:
 
 - **Set the endpoint's execution timeout** above your longest render. RunPod's default is much shorter than a long video.
 - **Attach a network volume** in the same data centre as the GPUs. Without one, every worker starts cold: a full clone, LFS download and install.
+- **Set `FF_CACHE_MAX_GB`** to about 80% of the volume's size. A network volume reports the size of the whole storage cluster (petabytes), so the worker can't evict by free space there. The template sets 40, for a 50 GB volume.
 - **FlashBoot** keeps warm workers around between jobs, which is what makes the caches pay off.
 - **Choose GPUs with a hardware video encoder (NVENC):** L4, L40S, A40, RTX A4000/A5000/A6000, RTX 4090/5090. A100 and H100 are built for AI training and have no NVENC: they render, but encode on the CPU, and cost more. VRAM needs grow with resolution and effects.
 - The templates set `FF_GPU=require`, so a RunPod worker never renders on the CPU. A worker whose GPU is unusable reports `GPU_UNAVAILABLE` and asks RunPod for a fresh worker.
@@ -210,7 +211,7 @@ Shared files are read-only, because changing one would change it for every proje
 
 Some filesystems report sizes that can't be true, such as Docker Desktop host mounts (around 118 TB) or a network volume reporting a whole storage cluster. Above 64 TiB a disk is marked `measurable: false` and the worker doesn't evict by free space there. Set `FF_WORK_MAX_GB` / `FF_CACHE_MAX_GB` if such a disk needs a limit.
 
-`FF_WORK_MAX_GB` / `FF_CACHE_MAX_GB` add hard caps if you want them. They're only needed where the container reports the host's disk size instead of its own allowance. Some Docker storage drivers do that, and the RunPod smoke test will show whether RunPod does.
+`FF_WORK_MAX_GB` / `FF_CACHE_MAX_GB` add hard caps if you want them. On RunPod the container disk reports its real size (no cap needed), but a network volume reports 2.3 PB, so set `FF_CACHE_MAX_GB` for it.
 
 ## Jobs
 

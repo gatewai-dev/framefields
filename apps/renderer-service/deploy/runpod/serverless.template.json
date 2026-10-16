@@ -26,6 +26,7 @@
 			"value": "{{ RUNPOD_SECRET_ff_storage_secret }}"
 		},
 		{ "key": "STORAGE_PUBLIC_BASE_URL", "value": "" },
+		{ "key": "FF_CACHE_MAX_GB", "value": "40" },
 		{ "key": "FF_JOB_TIMEOUT_MAX_SEC", "value": "3600" },
 		{ "key": "LOG_LEVEL", "value": "info" }
 	]

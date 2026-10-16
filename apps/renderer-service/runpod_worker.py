@@ -7,11 +7,33 @@ relays progress, and returns the result or a structured error.
 
 import json
 import os
+import re
+import sys
 import time
 import urllib.error
 import urllib.request
 
-import runpod
+
+def fix_result_urls():
+    """The SDK appends `&isStream=...` to RunPod's result URLs, assuming they
+    already carry a query string. Some endpoints get URLs without one, and
+    every result POST then fails with 500 and the job is re-run. Must run
+    before `import runpod`, which reads these variables at import time."""
+    for key in ("RUNPOD_WEBHOOK_POST_OUTPUT", "RUNPOD_WEBHOOK_POST_STREAM"):
+        url = os.environ.get(key)
+        if not url:
+            continue
+        # Path and parameter names only: no parameter values in the log.
+        shape = re.sub(r"=[^&]*", "=…", url.split("://", 1)[-1].split("/", 1)[-1])
+        fixed = "?" not in url
+        if fixed:
+            os.environ[key] = url + "?"
+        print(f"[runpod-shim] {key}: {shape}{' (added ?)' if fixed else ''}", file=sys.stderr, flush=True)
+
+
+fix_result_urls()
+
+import runpod  # noqa: E402
 
 BASE = f"http://127.0.0.1:{os.environ.get('RENDERER_PORT', '8082')}"
 API_KEY = os.environ.get("RENDERER_API_KEY", "")

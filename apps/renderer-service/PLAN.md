@@ -623,13 +623,19 @@ Each phase is its own PR-sized step with tests.
      - **vision:** 60 frames in 388 s. The ONNX models run on the CPU, and this includes their first download.
      - **Encoding:** NVENC isn't usable on driver 580: node-av 6.1.1's FFmpeg needs NVENC API 13.1, i.e. driver ≥ 610. The encoder selection fell back to libx264 as designed.
      - **tini:** RunPod doesn't start the container with tini as PID 1, so it now runs with `-s` (subreaper).
+   - **RunPod Serverless (RTX A4500, EU-RO-1, `AMPERE_16`, driver 595.91, 10 GB network volume, R2 output), `:2.2.0-beta.1`:**
+     - **all:** checkout 13.8 s, install 17.0 s, render 195.6 s (film, threeD, vision), upload to R2 3.3 s. Vision is twice as fast as on the RTX 3070 Pod, on a host with more CPU.
+     - **threeD on a second worker:** 34 s total, render 6.5 s. The network-volume cache barely sped up the checkout (12.4 s vs 13.8 s).
+     - **Results never reached RunPod:** every POST to the SDK's `job-done` URL returned 500, so RunPod re-queued finished jobs. The URL in the log was `…/job-done/<worker>/<job>&isStream=false`: the platform's URL had no query string, and the SDK appends `&isStream=…`. The shim now adds the missing `?` before importing the SDK and logs the URL's shape.
+     - **The network volume reports 2.3 PB,** so free-space eviction is off for it; the serverless template sets `FF_CACHE_MAX_GB`.
+     - RunPod started three workers on an endpoint with `max: 1`.
    - **LFS end to end:**
      - `src/git/lfs.test.ts` runs real git-lfs (3.8) against file:// origins. It covers a cold download into the shared store, a warm hit, objects shared across repos, include patterns with the `LFS_POINTERS_LEFT` warning, LFS off, and a missing object (`LFS_OBJECT_MISSING`).
      - In the arm64 container (git-lfs 3.6.1), a repo whose framefields tarball and logo PNG are both LFS-tracked installed from the LFS tarball and rendered the logo (centre pixel red). The job reported `cache.lfs: "miss"`.
      - Two file://-only bugs were found and fixed. With `-c lfs.storage`, git-lfs's local transfer agent also looked for the remote's objects in our store, so the setting now goes in the repo config. The agent drops `GIT_CONFIG_GLOBAL` and `-c` but reads `$HOME/.gitconfig`, so the session's isolated config now lives there, with `safe.directory` for local repos (otherwise "dubious ownership" on a mounted repo).
    - **Engine issue found and fixed in framefields (§8.7):** on linux-arm64, H.264 renders failed with "Encoder 'h264_rkmpp' cannot be used for quantizer-based encoding". The cause was @mediabunny/server taking FFmpeg's first registered H.264 encoder (node-av's build lists `h264_rkmpp` before libx264), not `@napi-rs/webcodecs`. With the fixed framefields (packed locally), an H.264 job in the arm64 container rendered 48/48 frames with libx264 on lavapipe. `FF_GPU=require` on the same container fails readiness with `GPU_UNAVAILABLE`.
    - Pinned SSH host keys, the RunPod templates and `create-template.sh`, `docker-compose.yml` with MinIO, `env.example`, the release workflow, and the README guide as listed above.
-   - **Still to do:** an amd64 build (CI), a GPU smoke test on a RunPod pod and a serverless endpoint, the nightly host smoke tests (6.5), and a page on the docs website.
+   - **Still to do:** an amd64 build (CI), a serverless run that returns its result (after the shim fix), the nightly host smoke tests (6.5), and a page on the docs website.
 9. **(Later)**
    - Chunked distributed rendering: split a frame range across N jobs and concat with a stream copy.
    - Webhooks on completion (`output.webhook` with an HMAC signature).

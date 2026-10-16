@@ -84,6 +84,7 @@
     "@framefields/webgpu-renderers": "2.1.3"
   },
   "changesets": [
-    "renderer-worker-gpu"
+    "renderer-worker-gpu",
+    "vision-gpu-shared-sessions"
   ]
 }

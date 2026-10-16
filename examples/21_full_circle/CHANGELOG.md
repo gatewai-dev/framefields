@@ -1,5 +1,7 @@
 # @framefields/example-21-full-circle
 
+## 2.2.0-beta.1
+
 ## 2.2.0-beta.0
 
 ## 2.1.3

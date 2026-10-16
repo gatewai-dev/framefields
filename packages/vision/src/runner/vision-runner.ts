@@ -16,6 +16,7 @@ import {
 } from "../decode/rtmdet-ins-head.js";
 import { decodeRtmo } from "../decode/rtmo.js";
 import { decodeSelfie } from "../decode/selfie.js";
+import { FrameTensorPipeline, readTexturePixels } from "../gpu/frame-tensor.js";
 import {
 	type ModelDownloadStatus,
 	VisionModelStore,
@@ -36,11 +37,13 @@ import {
 	type VisionTensor,
 	type VisionTensorOutputs,
 } from "../runtime/session-provider.js";
-import type {
-	PersonMatte,
-	PoseResult,
-	SegmentationResult,
-	VisionImageInput,
+import {
+	isGpuImage,
+	type PersonMatte,
+	type PoseResult,
+	type SegmentationResult,
+	type VisionFrame,
+	type VisionImageInput,
 } from "../types.js";
 
 export interface VisionRunnerOptions {
@@ -84,6 +87,11 @@ interface RunnerCore {
 	readonly tensorScratch: Map<VisionModelKey, Float32Array>;
 	/** Tail of each model's run queue: one inference per session at a time. */
 	readonly runQueue: Map<VisionModelKey, Promise<unknown>>;
+	/** Each model's input on the GPU (GPU frames); runs are queued, so one each. */
+	readonly gpuInputs: Map<
+		VisionModelKey,
+		{ readonly device: GPUDevice; readonly buffer: GPUBuffer }
+	>;
 	/**
 	 * Recent RTMDet-Ins passes, newest last, shared by detect() and segment()
 	 * and matched by content — layers showing the same pixels share one pass.
@@ -135,6 +143,7 @@ export class VisionRunner {
 			sessions: new Map(),
 			tensorScratch: new Map(),
 			runQueue: new Map(),
+			gpuInputs: new Map(),
 			instancePasses: [],
 		};
 	}
@@ -211,9 +220,7 @@ export class VisionRunner {
 	}
 
 	/** COCO-80 boxes (sorted by score, source pixels). Masks are not decoded. */
-	public async detect(
-		image: VisionImageInput,
-	): Promise<readonly DetectedObject[]> {
+	public async detect(image: VisionFrame): Promise<readonly DetectedObject[]> {
 		const pass = await this.instancePass(image);
 		return decodeRtmdetIns(
 			{ ...pass.outputs, masks: undefined, maskPlane: undefined },
@@ -222,7 +229,7 @@ export class VisionRunner {
 	}
 
 	/** COCO-80 boxes plus a frame-aligned soft mask per instance. */
-	public async segment(image: VisionImageInput): Promise<SegmentationResult> {
+	public async segment(image: VisionFrame): Promise<SegmentationResult> {
 		const pass = await this.instancePass(image);
 		return decodeRtmdetIns(
 			pass.outputs,
@@ -231,7 +238,7 @@ export class VisionRunner {
 	}
 
 	/** COCO-17 keypoints per person (source pixels), highest score first. */
-	public async pose(image: VisionImageInput): Promise<PoseResult> {
+	public async pose(image: VisionFrame): Promise<PoseResult> {
 		const key = this.modelKeyFor("pose");
 		const { outputs, transform } = await this.infer(key, image);
 		const dets = output(outputs, "dets", key);
@@ -253,7 +260,7 @@ export class VisionRunner {
 	}
 
 	/** Person-vs-background alpha for the whole frame (Selfie Segmenter). */
-	public async matte(image: VisionImageInput): Promise<PersonMatte> {
+	public async matte(image: VisionFrame): Promise<PersonMatte> {
 		const key = this.modelKeyFor("matte", image.width / image.height);
 		const [w, h] = VISION_MODELS[key].input;
 		const { outputs } = await this.infer(key, image);
@@ -276,15 +283,21 @@ export class VisionRunner {
 		}
 		core.sessions.clear();
 		core.runQueue.clear();
+		for (const { buffer } of core.gpuInputs.values()) buffer.destroy();
+		core.gpuInputs.clear();
 		core.instancePasses.length = 0;
 		core.store.clearMemoryCache();
 	}
 
 	// ── internals ──────────────────────────────────────────────────────────
 
-	private instancePass(image: VisionImageInput): Promise<InstancePass> {
+	private async instancePass(image: VisionFrame): Promise<InstancePass> {
 		const passes = this._core.instancePasses;
-		const content = contentKey(image);
+		const content = isGpuImage(image)
+			? await FrameTensorPipeline.for(image.device).contentKey(image)
+			: contentKey(image);
+		// Checked after the await: a caller that hashed the same frame meanwhile
+		// has registered its pass by now.
 		const byContent = passes.find((pass) => pass.content === content);
 		if (byContent) return byContent.result;
 		const key = this.modelKeyFor("segment");
@@ -305,10 +318,7 @@ export class VisionRunner {
 		return result;
 	}
 
-	private instanceDecodeOptions(
-		image: VisionImageInput,
-		transform: InputTransform,
-	) {
+	private instanceDecodeOptions(image: VisionFrame, transform: InputTransform) {
 		return {
 			confidence: this.confidence,
 			classes: this.classes,
@@ -329,7 +339,7 @@ export class VisionRunner {
 	 */
 	private infer(
 		key: VisionModelKey,
-		image: VisionImageInput,
+		image: VisionFrame,
 	): Promise<{ outputs: VisionTensorOutputs; transform: InputTransform }> {
 		const queue = this._core.runQueue;
 		const previous = queue.get(key) ?? Promise.resolve();
@@ -347,11 +357,34 @@ export class VisionRunner {
 
 	private async inferNow(
 		key: VisionModelKey,
-		image: VisionImageInput,
+		frame: VisionFrame,
 	): Promise<{ outputs: VisionTensorOutputs; transform: InputTransform }> {
 		const session = await this.session(key);
 		const desc = VISION_MODELS[key];
 		const spec = preprocessSpec(desc.family, desc.input);
+		const dims = [1, 3, spec.height, spec.width];
+		let image: VisionImageInput;
+		if (isGpuImage(frame)) {
+			if (this._core.provider.device === frame.device) {
+				// Same device as the sessions: preprocess on the GPU, no readback.
+				const buffer = this.gpuInput(key, frame.device, spec);
+				const transform = FrameTensorPipeline.for(frame.device).toTensor(
+					frame,
+					spec,
+					buffer,
+				);
+				const outputs = await session.run({
+					name: "input",
+					data: EMPTY_TENSOR,
+					gpuBuffer: buffer,
+					dims,
+				});
+				return { outputs, transform };
+			}
+			image = await readTexturePixels(frame);
+		} else {
+			image = frame;
+		}
 		const size = 3 * spec.width * spec.height;
 		const scratchByKey = this._core.tensorScratch;
 		let scratch = scratchByKey.get(key);
@@ -360,12 +393,29 @@ export class VisionRunner {
 			scratchByKey.set(key, scratch);
 		}
 		const { tensor, transform } = imageToTensor(image, spec, scratch);
-		const outputs = await session.run({
-			name: "input",
-			data: tensor,
-			dims: [1, 3, spec.height, spec.width],
-		});
+		const outputs = await session.run({ name: "input", data: tensor, dims });
 		return { outputs, transform };
+	}
+
+	private gpuInput(
+		key: VisionModelKey,
+		device: GPUDevice,
+		spec: ReturnType<typeof preprocessSpec>,
+	): GPUBuffer {
+		const inputs = this._core.gpuInputs;
+		const size = FrameTensorPipeline.tensorBytes(spec);
+		const current = inputs.get(key);
+		if (current?.device === device && current.buffer.size >= size) {
+			return current.buffer;
+		}
+		current?.buffer.destroy();
+		const buffer = device.createBuffer({
+			label: `vision_input_${key}`,
+			size,
+			usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
+		});
+		inputs.set(key, { device, buffer });
+		return buffer;
 	}
 
 	private session(key: VisionModelKey): Promise<VisionSession> {
@@ -394,6 +444,8 @@ export class VisionRunner {
 		return promise;
 	}
 }
+
+const EMPTY_TENSOR = new Float32Array(0);
 
 interface InstancePass {
 	readonly transform: InputTransform;

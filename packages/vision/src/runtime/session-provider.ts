@@ -14,7 +14,10 @@ export interface VisionTensor {
 
 export interface VisionTensorInput {
 	readonly name: string;
+	/** Ignored (may be empty) when `gpuBuffer` is set. */
 	readonly data: Float32Array;
+	/** The input already on the GPU; only for providers with a `device` (it must be that device's). */
+	readonly gpuBuffer?: GPUBuffer;
 	readonly dims: readonly number[];
 }
 
@@ -27,10 +30,23 @@ export interface VisionSession {
 
 export interface SessionProvider {
 	readonly kind: "node" | "webgpu";
+	/** The GPU device sessions run on, when they accept `gpuBuffer` inputs from it. */
+	readonly device?: GPUDevice;
 	createSession(modelBytes: Uint8Array): Promise<VisionSession>;
 }
 
 let defaultProvider: (() => SessionProvider) | undefined;
+let visionDevice: GPUDevice | undefined;
+
+/**
+ * The GPU device the default provider runs WebGPU sessions on — the renderer's,
+ * so frames can go from its textures into the models without a CPU round trip.
+ * Applies to sessions created afterwards; without it, onnxruntime-web creates
+ * its own device.
+ */
+export function setVisionDevice(device: GPUDevice | undefined): void {
+	visionDevice = device;
+}
 
 /**
  * Sets the provider runners use when none is passed, for hosts that create
@@ -78,6 +94,10 @@ export class AutoSessionProvider implements SessionProvider {
 		return this._resolved?.kind ?? "webgpu";
 	}
 
+	public get device(): GPUDevice | undefined {
+		return this._resolved?.device;
+	}
+
 	public async createSession(modelBytes: Uint8Array): Promise<VisionSession> {
 		if (this._resolved) return this._resolved.createSession(modelBytes);
 		if (!this._resolving) {
@@ -106,7 +126,10 @@ export class AutoSessionProvider implements SessionProvider {
 				}),
 			};
 		}
-		const webgpu = new NodeWebGPUProvider({ wasmFallback: false });
+		const webgpu = new NodeWebGPUProvider({
+			wasmFallback: false,
+			device: visionDevice,
+		});
 		try {
 			return {
 				provider: webgpu,

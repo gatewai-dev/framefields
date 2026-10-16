@@ -11,9 +11,10 @@
 
 import { fileURLToPath } from "node:url";
 import { Canvas, loadImage } from "skia-canvas";
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { imageToTensor, preprocessSpec } from "./decode/preprocess.js";
 import { decodeRtmdetIns } from "./decode/rtmdet-ins.js";
+import { FrameTensorPipeline } from "./gpu/frame-tensor.js";
 import { VisionModelStore } from "./model/model-store.js";
 import {
 	COCO_CLASSES,
@@ -22,6 +23,7 @@ import {
 	type VisionModelKey,
 } from "./model/registry.js";
 import { VisionRunner } from "./runner/vision-runner.js";
+import { NodeWebGPUProvider } from "./runtime/node-webgpu-provider.js";
 import { mergeSubjectMask } from "./segmentation/subject.js";
 import type { VisionImageInput } from "./types.js";
 
@@ -70,6 +72,101 @@ describe.skipIf(!enabled)("vision models (real weights)", () => {
 		expect(shape.slice(2)).toEqual([h, w]);
 		await session.release();
 	}, 600_000);
+
+	describe("GPU frames", () => {
+		let device: GPUDevice;
+		// Held for the test's lifetime: Dawn crashes if its instance is collected
+		// while a device is alive.
+		const keepAlive: unknown[] = [];
+		const upload = (frame: VisionImageInput) => {
+			const texture = device.createTexture({
+				size: [frame.width, frame.height],
+				format: "rgba8unorm",
+				usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
+			});
+			device.queue.writeTexture(
+				{ texture },
+				frame.data as Uint8Array<ArrayBuffer>,
+				{ bytesPerRow: frame.width * 4 },
+				[frame.width, frame.height],
+			);
+			return { texture, device, width: frame.width, height: frame.height };
+		};
+
+		beforeAll(async () => {
+			const { create, globals } = await import("webgpu");
+			Object.assign(globalThis, globals);
+			const instance = create([]);
+			keepAlive.push(instance);
+			const adapter = await instance.requestAdapter();
+			if (!adapter) throw new Error("no WebGPU adapter");
+			device = await adapter.requestDevice();
+		});
+
+		// Dawn can crash the worker at exit while a device is alive.
+		afterAll(() => {
+			device?.destroy();
+			keepAlive.length = 0;
+		});
+
+		it("preprocesses on the GPU like imageToTensor", async () => {
+			for (const family of ["rtmdet-ins", "rtmo", "selfie"] as const) {
+				const spec = preprocessSpec(
+					family,
+					family === "selfie" ? [256, 144] : [640, 640],
+				);
+				const frame = frames.dancer;
+				const expected = imageToTensor(frame, spec).tensor;
+				const out = device.createBuffer({
+					size: FrameTensorPipeline.tensorBytes(spec),
+					usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
+				});
+				const staging = device.createBuffer({
+					size: out.size,
+					usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
+				});
+				FrameTensorPipeline.for(device).toTensor(upload(frame), spec, out);
+				const encoder = device.createCommandEncoder();
+				encoder.copyBufferToBuffer(out, 0, staging, 0, out.size);
+				device.queue.submit([encoder.finish()]);
+				await staging.mapAsync(GPUMapMode.READ);
+				const actual = new Float32Array(staging.getMappedRange().slice(0));
+				let worst = 0;
+				for (let i = 0; i < expected.length; i++) {
+					worst = Math.max(
+						worst,
+						Math.abs((actual[i] as number) - (expected[i] as number)),
+					);
+				}
+				// A step of one 8-bit level is 1/std ≈ 0.017 (rtmdet), 1 (rtmo), 1/255 (selfie).
+				expect(worst).toBeLessThan(family === "rtmo" ? 0.05 : 1e-3);
+			}
+		}, 120_000);
+
+		it("gives the same detections, masks and poses as CPU frames", async () => {
+			const gpu = VisionRunner.create({
+				provider: new NodeWebGPUProvider({ device }),
+			});
+			const cpu = VisionRunner.create();
+			for (const name of ["dancer", "crema"] as const) {
+				const a = await gpu.segment(upload(frames[name]));
+				const b = await cpu.segment(frames[name]);
+				expect(a.detections.map((d) => d.category)).toEqual(
+					b.detections.map((d) => d.category),
+				);
+				a.detections.forEach((d, i) => {
+					expect(d.score).toBeCloseTo((b.detections[i] as typeof d).score, 2);
+				});
+				expect(a.masks.map((m) => Math.round(m.coverage * 1000))).toEqual(
+					b.masks.map((m) => Math.round(m.coverage * 1000)),
+				);
+			}
+			const pose = await gpu.pose(upload(frames.dancer));
+			expect(pose.people).toHaveLength(1);
+			gpu.close();
+			cpu.close();
+		}, 600_000);
+	});
 
 	describe.each(VISION_VARIANTS)("variant %s", (variant) => {
 		const runner = VisionRunner.create({ variant });

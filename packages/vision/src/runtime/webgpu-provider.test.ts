@@ -17,12 +17,21 @@ class FakeOrtSession implements OrtWebSession {
 }
 
 function fakeModule(opts: { failWebGPU?: boolean } = {}) {
-	const calls: { executionProviders: string[] }[] = [];
+	const calls: { executionProviders: string[]; devices: unknown[] }[] = [];
+	const fromGpuBuffer: unknown[] = [];
 	const module: OrtWebModule = {
 		InferenceSession: {
 			async create(_bytes, options) {
-				calls.push({ executionProviders: [...options.executionProviders] });
-				if (opts.failWebGPU && options.executionProviders.includes("webgpu")) {
+				const names = options.executionProviders.map((p) =>
+					typeof p === "string" ? p : p.name,
+				);
+				calls.push({
+					executionProviders: names,
+					devices: options.executionProviders.map((p) =>
+						typeof p === "string" ? undefined : p.device,
+					),
+				});
+				if (opts.failWebGPU && names.includes("webgpu")) {
 					throw new Error("webgpu unavailable");
 				}
 				return new FakeOrtSession();
@@ -34,12 +43,33 @@ function fakeModule(opts: { failWebGPU?: boolean } = {}) {
 				public data: Float32Array,
 				public dims: readonly number[],
 			) {}
+			static fromGpuBuffer(buffer: unknown) {
+				fromGpuBuffer.push(buffer);
+				return { buffer };
+			}
 		} as unknown as OrtWebModule["Tensor"],
 	};
-	return { module, calls };
+	return { module, calls, fromGpuBuffer };
 }
 
 describe("WebGPUProvider", () => {
+	it("runs sessions on a given device and feeds GPU-buffer inputs", async () => {
+		const { module, calls, fromGpuBuffer } = fakeModule();
+		const device = { label: "renderer" } as unknown as GPUDevice;
+		const provider = new WebGPUProvider({ loader: async () => module, device });
+		expect(provider.device).toBe(device);
+		const session = await provider.createSession(new Uint8Array([1]));
+		expect(calls[0]?.devices).toEqual([device, undefined]);
+		const buffer = { label: "input" } as unknown as GPUBuffer;
+		await session.run({
+			name: "input",
+			data: new Float32Array(0),
+			gpuBuffer: buffer,
+			dims: [1, 3, 8, 8],
+		});
+		expect(fromGpuBuffer).toEqual([buffer]);
+	});
+
 	it("creates a session with the injected module and maps tensor outputs", async () => {
 		const { module, calls } = fakeModule();
 		let loads = 0;

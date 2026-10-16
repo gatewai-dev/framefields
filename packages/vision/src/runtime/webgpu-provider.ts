@@ -34,19 +34,24 @@ export interface OrtWebModule {
 		create(
 			modelBytes: Uint8Array,
 			options: {
-				executionProviders: string[];
+				executionProviders: (string | { name: string; device?: GPUDevice })[];
 				graphOptimizationLevel?: "disabled" | "basic" | "extended" | "all";
 				/** 0 verbose … 4 fatal. */
 				logSeverityLevel?: 0 | 1 | 2 | 3 | 4;
 			},
 		): Promise<OrtWebSession>;
 	};
-	/** ORT tensor constructor (called with `new`). */
-	readonly Tensor: new (
+	/** ORT tensor constructor (called with `new`), with `fromGpuBuffer` on WebGPU builds. */
+	readonly Tensor: (new (
 		type: "float32",
 		data: Float32Array,
 		dims: readonly number[],
-	) => unknown;
+	) => unknown) & {
+		fromGpuBuffer?(
+			buffer: GPUBuffer,
+			options: { dataType: "float32"; dims: readonly number[] },
+		): unknown;
+	};
 }
 
 export interface WebGPUProviderOptions {
@@ -56,6 +61,11 @@ export interface WebGPUProviderOptions {
 	readonly executionProviders?: readonly string[];
 	/** Fall back to WASM automatically if the WebGPU session fails to create. Default true. */
 	readonly wasmFallback?: boolean;
+	/**
+	 * Run WebGPU sessions on this device (e.g. the renderer's) instead of one
+	 * onnxruntime-web creates. Sessions then accept `gpuBuffer` inputs from it.
+	 */
+	readonly device?: GPUDevice;
 }
 
 const ORT_WEB_SPECIFIER = "onnxruntime-web";
@@ -72,11 +82,13 @@ export class WebGPUProvider implements SessionProvider {
 	private readonly _providers: readonly string[];
 	private readonly _wasmFallback: boolean;
 	private _ortPromise?: Promise<OrtWebModule>;
+	public readonly device?: GPUDevice;
 
 	constructor(options: WebGPUProviderOptions = {}) {
 		this._loader = options.loader ?? defaultLoader;
 		this._providers = options.executionProviders ?? ["webgpu", "wasm"];
 		this._wasmFallback = options.wasmFallback !== false;
+		this.device = options.device;
 	}
 
 	private ort(): Promise<OrtWebModule> {
@@ -97,8 +109,11 @@ export class WebGPUProvider implements SessionProvider {
 
 		let session: OrtWebSession;
 		try {
+			const device = this.device;
 			session = await ort.InferenceSession.create(modelBytes, {
-				executionProviders: [...this._providers],
+				executionProviders: this._providers.map((name) =>
+					name === "webgpu" && device ? { name, device } : name,
+				),
 				graphOptimizationLevel: "all",
 				// Errors only: node-placement notes print as console errors otherwise.
 				logSeverityLevel: 3,
@@ -118,9 +133,14 @@ export class WebGPUProvider implements SessionProvider {
 				const inputName = session.inputNames.includes(input.name)
 					? input.name
 					: (session.inputNames[0] ?? input.name);
-				const results = await session.run({
-					[inputName]: new ort.Tensor("float32", input.data, [...input.dims]),
-				});
+				const tensor =
+					input.gpuBuffer && ort.Tensor.fromGpuBuffer
+						? ort.Tensor.fromGpuBuffer(input.gpuBuffer, {
+								dataType: "float32",
+								dims: [...input.dims],
+							})
+						: new ort.Tensor("float32", input.data, [...input.dims]);
+				const results = await session.run({ [inputName]: tensor });
 				const outputs: Record<string, VisionTensorOutputs[string]> = {};
 				for (const [name, tensor] of Object.entries(results)) {
 					outputs[name] = {

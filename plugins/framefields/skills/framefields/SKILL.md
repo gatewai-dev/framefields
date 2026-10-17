@@ -21,7 +21,7 @@ This skill takes a project from nothing to a verified first render. For anything
 ## 1. Check the environment
 
 - **Node.js 22 or later.** Run `node --version`. Older versions fail at import.
-- **A WebGPU-capable GPU.** macOS uses Metal; Linux and Windows use Vulkan. Linux without a GPU falls back to a CPU Vulkan driver (Mesa lavapipe) when one is installed, 10–100× slower; `describeGpu()` reports `software: true` then. Machines with neither cannot render.
+- **A GPU, or Linux with lavapipe.** macOS uses Metal; Linux and Windows use Vulkan. On Linux without a GPU (a sandbox, CI runner or container), framefields renders on the CPU through Mesa lavapipe: install it with `apt-get install -y libvulkan1 mesa-vulkan-drivers`. Every feature renders the same there (text, media, Lottie, effects, 3D, vision), only slower: about 12× slower than an M1 Pro's GPU in our test. `describeGpu()` reports `software: true`. Fine for frames, grids and short exports; for long films, use a GPU machine or the render worker (`framefields-render`).
 - **An ES module project.** The project's `package.json` needs `"type": "module"`.
 
 ## 2. Install
@@ -246,7 +246,7 @@ Video inputs (`Layer.video("assets/footage/clip.mp4")`), Lottie animations (`Lay
 
 ## 4. Verify, cheapest step first
 
-Never go straight to a full video render. Rendering needs a WebGPU-capable GPU (Metal on macOS, Vulkan on Linux/Windows); CPU rendering through lavapipe works on 2.2 but is far slower. Each step catches problems in seconds that a video render takes minutes to show:
+Never go straight to a full video render. On a machine without a GPU every render runs on the CPU (lavapipe), so the cheap steps matter even more. Each step catches problems in seconds that a video render takes minutes to show:
 
 1. `npm run typecheck`
 2. `npm run frames -- 0 30 60` and look at the PNGs in `output/`. A black frame usually means a missing font, a layer outside the canvas, or opacity stuck at 0.

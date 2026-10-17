@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       framefields:
-        specifier: ^2.2.0-beta.1
-        version: 2.2.0-beta.1(@types/node@24.19.2)
+        specifier: ^2.2.0-beta.3
+        version: 2.2.0-beta.3(@types/node@24.19.2)
     devDependencies:
       '@types/node':
         specifier: ^24.0.0
@@ -833,8 +833,8 @@ packages:
   fontkit@2.0.4:
     resolution: {integrity: sha512-syetQadaUEDNdxdugga9CpEYVaQIxOwk7GlwZWWZ19//qW4zE5bknOKeMBDYAASwnpaSHKJITRLMF9m1fp3s6g==}
 
-  framefields@2.2.0-beta.1:
-    resolution: {integrity: sha512-11jEgf6SgryJCt8tCsXuf48rsc5lneDxF1sZwitlStZcguiZrsz4PfkqR7bxngl/ydTYadTqy3G8+L50vkRPwA==}
+  framefields@2.2.0-beta.3:
+    resolution: {integrity: sha512-UcjuqOCDjikV1WZ8I4J6wmrJHBlqlNYFBgjmuNLT5s9Sc4853pBKuItNl1bQgI8uu+D4OYPnISJow2Nxcs1wfA==}
 
   fs-extra@11.3.1:
     resolution: {integrity: sha512-eXvGGwZ5CL17ZSwHWd3bbgk7UUpF6IFHtP57NYYakPvHOs8GDgDe5KJI36jIJzDkJ6eJjuzRA8eBQb6SkKue0g==}
@@ -1819,7 +1819,7 @@ snapshots:
       unicode-properties: 1.4.1
       unicode-trie: 2.0.0
 
-  framefields@2.2.0-beta.1(@types/node@24.19.2):
+  framefields@2.2.0-beta.3(@types/node@24.19.2):
     dependencies:
       '@lottiefiles/dotlottie-web': 0.74.0
       '@mediabunny/mp3-encoder': 1.61.6(mediabunny@1.61.6)
@@ -2211,7 +2211,7 @@ snapshots:
   werift-common@0.0.3:
     dependencies:
       '@shinyoshiaki/jspack': 0.0.6
-      debug: 4.4.0
+      debug: 4.4.3
     transitivePeerDependencies:
       - supports-color
     optional: true

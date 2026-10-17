@@ -15,7 +15,7 @@ A test project for the framefields renderer worker. It exercises most of framefi
 
 `film` includes `title`, `media`, `effects` and `charts`. Render a single scene when you need to isolate a failure.
 
-Everything comes from `framefields@beta` (2.2.0-beta.1). The models for `vision` download on first use (about 80 MB) into `$FRAMEFIELDS_MODELS_DIR`, which the worker keeps on its cache volume. They run on the GPU through WebGPU (`onnxruntime-web`), and on the CPU when the adapter is a software one.
+Everything comes from `framefields@beta` (2.2.0-beta.3). The models for `vision` download on first use (about 80 MB) into `$FRAMEFIELDS_MODELS_DIR`, which the worker keeps on its cache volume. They run on the GPU through WebGPU (`onnxruntime-web`), and on the CPU when the adapter is a software one.
 
 ## Media files
 

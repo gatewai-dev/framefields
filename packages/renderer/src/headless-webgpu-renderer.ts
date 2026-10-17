@@ -50,6 +50,20 @@ import { preloadFonts } from "./asset-preloader.js";
 import { bootstrapMediabunny } from "./bootstrap-mediabunny.js";
 import { discoverAndRegisterNodeRenderers } from "./dynamic-node-discovery.js";
 import { rendererLogger } from "./logger.js";
+
+// Vision reports its inference backend once per process (see
+// VISION_BACKEND_LISTENER in @framefields/vision).
+(globalThis as Record<symbol, unknown>)[
+	Symbol.for("framefields.vision.backend")
+] = (info: { backend: string; sharedDevice: boolean; reason?: string }) => {
+	rendererLogger.info(
+		info,
+		info.backend === "webgpu"
+			? "[vision] Inference on the GPU (WebGPU)"
+			: `[vision] Inference on the ${info.backend.toUpperCase()}`,
+	);
+};
+
 import {
 	type AudioQaStats,
 	analyzeAudio,

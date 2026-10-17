@@ -10,6 +10,7 @@
  * provide it; the main `@framefields/vision` entry never touches it.
  */
 
+import { needsNchwLayout } from "../model/conv-layout.js";
 import type {
 	SessionProvider,
 	VisionSession,
@@ -118,9 +119,10 @@ export class WebGPUProvider implements SessionProvider {
 		let session: OrtWebSession;
 		try {
 			const device = this.device;
+			const layout = needsNchwLayout(modelBytes) ? "NCHW" : "NHWC";
 			session = await ort.InferenceSession.create(modelBytes, {
 				executionProviders: this._providers.map((name) =>
-					withProviderOptions(name, device),
+					withProviderOptions(name, device, layout),
 				),
 				graphOptimizationLevel: "all",
 				// Errors only: node-placement notes print as console errors otherwise.
@@ -189,9 +191,8 @@ export function hasWebGPU(): boolean {
 function withProviderOptions(
 	name: string,
 	device: GPUDevice | undefined,
+	preferredLayout: "NCHW" | "NHWC",
 ): string | OrtWebExecutionProvider {
 	if (name !== "webgpu") return name;
-	return device
-		? { name, preferredLayout: "NCHW", device }
-		: { name, preferredLayout: "NCHW" };
+	return device ? { name, preferredLayout, device } : { name, preferredLayout };
 }

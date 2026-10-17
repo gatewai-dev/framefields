@@ -15,6 +15,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { imageToTensor, preprocessSpec } from "./decode/preprocess.js";
 import { decodeRtmdetIns } from "./decode/rtmdet-ins.js";
 import { FrameTensorPipeline } from "./gpu/frame-tensor.js";
+import { needsNchwLayout } from "./model/conv-layout.js";
 import { VisionModelStore } from "./model/model-store.js";
 import {
 	COCO_CLASSES,
@@ -71,6 +72,13 @@ describe.skipIf(!enabled)("vision models (real weights)", () => {
 		const [w, h] = VISION_MODELS[key].input;
 		expect(shape.slice(2)).toEqual([h, w]);
 		await session.release();
+	}, 600_000);
+
+	it("runs only RTMO in NCHW (its grouped convs break the NHWC kernels)", async () => {
+		const store = new VisionModelStore();
+		expect(needsNchwLayout(await store.ensure("rtmo-s"))).toBe(true);
+		expect(needsNchwLayout(await store.ensure("rtmdet-ins-s"))).toBe(false);
+		expect(needsNchwLayout(await store.ensure("selfie-landscape"))).toBe(false);
 	}, 600_000);
 
 	describe("GPU frames", () => {

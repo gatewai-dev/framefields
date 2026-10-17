@@ -59,6 +59,34 @@ export function setDefaultSessionProvider(
 	defaultProvider = factory;
 }
 
+/** Which backend the process's default provider chose, reported once. */
+export interface VisionBackendInfo {
+	readonly backend: "webgpu" | "cpu" | "cuda";
+	/** WebGPU on the renderer's device: frames reach the models without leaving the GPU. */
+	readonly sharedDevice: boolean;
+	/** Why WebGPU wasn't used, when it fell back. */
+	readonly reason?: string;
+}
+
+/**
+ * Hosts (the renderer) register a listener under this symbol to log the
+ * backend; a global keeps it working however the packages are bundled.
+ */
+export const VISION_BACKEND_LISTENER = Symbol.for("framefields.vision.backend");
+
+function reportBackend(info: VisionBackendInfo): void {
+	const listener = (globalThis as Record<symbol, unknown>)[
+		VISION_BACKEND_LISTENER
+	];
+	if (typeof listener === "function") {
+		try {
+			(listener as (info: VisionBackendInfo) => void)(info);
+		} catch {
+			// Logging must never break inference.
+		}
+	}
+}
+
 /** Inference backend: `FRAMEFIELDS_VISION_PROVIDER`, default "auto". */
 export type VisionBackend = "auto" | "webgpu" | "cuda" | "cpu";
 
@@ -118,8 +146,16 @@ export class AutoSessionProvider implements SessionProvider {
 		modelBytes: Uint8Array,
 	): Promise<{ provider: SessionProvider; first?: VisionSession }> {
 		const backend = requestedVisionBackend();
-		if (backend === "cpu") return { provider: new NodeSessionProvider() };
+		if (backend === "cpu") {
+			reportBackend({
+				backend: "cpu",
+				sharedDevice: false,
+				reason: "FRAMEFIELDS_VISION_PROVIDER=cpu",
+			});
+			return { provider: new NodeSessionProvider() };
+		}
 		if (backend === "cuda") {
+			reportBackend({ backend: "cuda", sharedDevice: false });
 			return {
 				provider: new NodeSessionProvider({
 					executionProviders: ["cuda", "cpu"],
@@ -131,13 +167,17 @@ export class AutoSessionProvider implements SessionProvider {
 			device: visionDevice,
 		});
 		try {
-			return {
-				provider: webgpu,
-				first: await webgpu.createSession(modelBytes),
-			};
+			const first = await webgpu.createSession(modelBytes);
+			reportBackend({ backend: "webgpu", sharedDevice: !!visionDevice });
+			return { provider: webgpu, first };
 		} catch (err) {
 			if (backend === "webgpu") throw err;
 			// WebGPU isn't possible here — use CPU from now on.
+			reportBackend({
+				backend: "cpu",
+				sharedDevice: false,
+				reason: err instanceof Error ? err.message : String(err),
+			});
 			return { provider: new NodeSessionProvider() };
 		}
 	}

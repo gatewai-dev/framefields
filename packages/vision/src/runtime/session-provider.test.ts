@@ -1,10 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+	AutoSessionProvider,
 	availableCpus,
 	cpuSessionThreads,
 	createDefaultSessionProvider,
 	requestedVisionBackend,
 	setDefaultSessionProvider,
+	VISION_BACKEND_LISTENER,
+	type VisionBackendInfo,
 } from "./session-provider.js";
 
 afterEach(() => {
@@ -19,6 +22,29 @@ describe("session provider selection", () => {
 		expect(requestedVisionBackend()).toBe("cuda");
 		vi.stubEnv("FRAMEFIELDS_VISION_PROVIDER", "tpu");
 		expect(requestedVisionBackend()).toBe("auto");
+	});
+
+	it("reports the backend it picks to a registered listener", async () => {
+		const reports: VisionBackendInfo[] = [];
+		const g = globalThis as Record<symbol, unknown>;
+		g[VISION_BACKEND_LISTENER] = (info: VisionBackendInfo) =>
+			reports.push(info);
+		try {
+			vi.stubEnv("FRAMEFIELDS_VISION_PROVIDER", "cpu");
+			// Not a model: the session fails, but the backend is decided first.
+			await expect(
+				new AutoSessionProvider().createSession(new Uint8Array([1, 2, 3])),
+			).rejects.toThrow();
+			expect(reports).toEqual([
+				{
+					backend: "cpu",
+					sharedDevice: false,
+					reason: "FRAMEFIELDS_VISION_PROVIDER=cpu",
+				},
+			]);
+		} finally {
+			delete g[VISION_BACKEND_LISTENER];
+		}
 	});
 
 	it("shares one default provider per process", () => {

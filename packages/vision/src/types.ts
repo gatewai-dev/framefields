@@ -13,6 +13,25 @@ export interface VisionImageInput {
 	readonly height: number;
 }
 
+/**
+ * A frame that is already on the GPU: an 8-bit RGBA/BGRA texture of `device`.
+ * When the runner's sessions run on the same device (see `setVisionDevice`),
+ * preprocessing happens on the GPU and the frame never comes back to the CPU;
+ * otherwise the runner reads it back.
+ */
+export interface VisionGpuImage {
+	readonly texture: GPUTexture;
+	readonly device: GPUDevice;
+	readonly width: number;
+	readonly height: number;
+}
+
+export type VisionFrame = VisionImageInput | VisionGpuImage;
+
+export function isGpuImage(image: VisionFrame): image is VisionGpuImage {
+	return (image as Partial<VisionGpuImage>).texture !== undefined;
+}
+
 /** Instance segmentation mask aligned to the ORIGINAL source frame. */
 export interface InstanceMask {
 	readonly category: string;

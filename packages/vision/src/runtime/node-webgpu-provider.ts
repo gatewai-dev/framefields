@@ -151,6 +151,7 @@ export type NodeWebGPUProviderOptions = WebGPUProviderOptions;
 
 export class NodeWebGPUProvider implements SessionProvider {
 	public readonly kind = "webgpu" as const;
+	public readonly device?: GPUDevice;
 
 	private readonly _inner: WebGPUProvider;
 
@@ -177,6 +178,7 @@ export class NodeWebGPUProvider implements SessionProvider {
 		// No WASM fallback inside the WebGPU provider: when WebGPU isn't possible
 		// the caller (AutoSessionProvider) falls back to the node CPU provider,
 		// which is faster than wasm and already installed.
+		this.device = options.device;
 		this._inner = new WebGPUProvider({
 			wasmFallback: false,
 			...options,

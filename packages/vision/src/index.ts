@@ -3,6 +3,7 @@ export * from "./decode/preprocess.js";
 export * from "./decode/rtmdet-ins.js";
 export * from "./decode/rtmo.js";
 export * from "./decode/selfie.js";
+export * from "./gpu/frame-tensor.js";
 export * from "./gpu/pose-skeleton-renderer.js";
 export * from "./gpu/segmentation-texture-pool.js";
 export * from "./model/model-store.js";

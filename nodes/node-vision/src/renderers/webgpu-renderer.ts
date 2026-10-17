@@ -8,9 +8,12 @@ import {
 	type PersonMatte,
 	type PoseResult,
 	PoseSkeletonRenderer,
+	readTexturePixels,
+	setVisionDevice,
 	TemporalObjectTracker,
 	type TrackedObject,
 	type VisionBundle,
+	type VisionGpuImage,
 	VisionRunner,
 } from "@framefields/vision";
 import type { VisionOperation } from "../shared/config.js";
@@ -38,8 +41,9 @@ let sharedCompositorFormat: GPUTextureFormat | null = null;
 const frameCache = new VisionFrameCache();
 /** The frame each node's child texture holds (drawn on its last call). */
 const heldFrameByNode = new Map<string, number>();
-/** Per node: a copy of the held frame, and the composited matte. */
+/** Per node: a copy of the held frame, the frame being analysed, and the composited matte. */
 const heldTextures = new Map<string, GPUTexture>();
+const analysisTextures = new Map<string, GPUTexture>();
 const matteTextures = new Map<string, GPUTexture>();
 /** One tracker per vision node — track ids must not mix across nodes/sources. */
 const objectTrackers = new Map<string, TemporalObjectTracker>();
@@ -104,6 +108,18 @@ const heldTexture = (device: GPUDevice, key: string, like: GPUTexture) =>
 		like,
 		GPUTextureUsage.COPY_DST | GPUTextureUsage.TEXTURE_BINDING,
 		"vision_held_frame",
+	);
+
+const analysisTexture = (device: GPUDevice, key: string, like: GPUTexture) =>
+	nodeTexture(
+		analysisTextures,
+		device,
+		key,
+		like,
+		GPUTextureUsage.COPY_DST |
+			GPUTextureUsage.TEXTURE_BINDING |
+			GPUTextureUsage.COPY_SRC,
+		"vision_analysis_frame",
 	);
 
 const matteTexture = (device: GPUDevice, key: string, like: GPUTexture) =>
@@ -392,7 +408,7 @@ function growMaskIntoForeground(
 	mask: Uint8Array,
 	width: number,
 	height: number,
-	pixels: Uint8ClampedArray,
+	pixels: Uint8ClampedArray | Uint8Array,
 	threshold: number,
 	featherRadius?: number,
 ): Uint8Array {
@@ -517,6 +533,9 @@ export const VisionWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 	} = args;
 
 	const { virtualMedia } = props;
+	// Vision sessions run on the renderer's device, so frames reach the models
+	// without leaving the GPU.
+	setVisionDevice(ctx.device);
 	const rawOp = virtualMedia?.operation as
 		| VisionOperation
 		| Record<string, unknown>
@@ -634,48 +653,31 @@ export const VisionWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 		]);
 	}
 
-	// 3. Read back the held frame's pixels, only when it still needs inference.
-	let framePixels: Uint8ClampedArray | null = null;
+	// 3. The held frame, when it still needs inference: copied now (submitted
+	//    before this frame redraws the child) and analysed on the GPU. Pixels
+	//    come back to the CPU only for the opt-in background key.
+	let frame: VisionGpuImage | undefined;
+	let framePixels: Uint8ClampedArray | Uint8Array | null = null;
 	if (hasPreviousFrame && !cached) {
-		const bytesPerPixel = 4;
-		const unalignedBytesPerRow = targetWidth * bytesPerPixel;
-		const bytesPerRow = Math.ceil(unalignedBytesPerRow / 256) * 256;
-		const bufferSize = bytesPerRow * targetHeight;
-
-		const stagingBuffer = ctx.device.createBuffer({
-			size: bufferSize,
-			usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
-			label: "vision_frame_staging",
+		const analysis = analysisTexture(ctx.device, nodeKeyStr, childTex);
+		const copy = ctx.device.createCommandEncoder({
+			label: "vision_analysis_copy",
 		});
-
-		const readbackEncoder = ctx.device.createCommandEncoder({
-			label: "vision_readback_encoder",
-		});
-		readbackEncoder.copyTextureToBuffer(
-			{ texture: childTex },
-			{ buffer: stagingBuffer, bytesPerRow, rowsPerImage: targetHeight },
-			[targetWidth, targetHeight, 1],
-		);
-		ctx.device.queue.submit([readbackEncoder.finish()]);
-
-		await stagingBuffer.mapAsync(GPUMapMode.READ);
-		const mappedBytes = new Uint8Array(stagingBuffer.getMappedRange());
-		framePixels = new Uint8ClampedArray(targetWidth * targetHeight * 4);
-		if (bytesPerRow === unalignedBytesPerRow) {
-			framePixels.set(mappedBytes.subarray(0, framePixels.length));
-		} else {
-			for (let y = 0; y < targetHeight; y++) {
-				framePixels.set(
-					mappedBytes.subarray(
-						y * bytesPerRow,
-						y * bytesPerRow + unalignedBytesPerRow,
-					),
-					y * unalignedBytesPerRow,
-				);
-			}
+		copy.copyTextureToTexture({ texture: childTex }, { texture: analysis }, [
+			targetWidth,
+			targetHeight,
+			1,
+		]);
+		ctx.device.queue.submit([copy.finish()]);
+		frame = {
+			texture: analysis,
+			device: ctx.device,
+			width: targetWidth,
+			height: targetHeight,
+		};
+		if (isMatteMode && op.keyBackground === true) {
+			framePixels = (await readTexturePixels(frame)).data;
 		}
-		stagingBuffer.unmap();
-		stagingBuffer.destroy();
 	}
 
 	// 4. Draw THIS frame's child into the persistent texture (recorded into the
@@ -725,13 +727,9 @@ export const VisionWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 			subject = fromCachedMask(cached.subject.mask);
 			lastSubjectByNode.set(nodeKeyStr, { mask: subject, frame: frameIdx });
 		}
-	} else if (framePixels) {
+	} else if (frame) {
 		const runner = getSharedRunner(op);
-		const image = {
-			data: framePixels,
-			width: targetWidth,
-			height: targetHeight,
-		};
+		const image = frame;
 
 		// detect + segment share one RTMDet-Ins pass per frame inside the runner.
 		// Tracked objects are kept locally (like masks below) so `boxes` /
@@ -791,7 +789,7 @@ export const VisionWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 			// Opt-in: grow the subject into connected pixels that stand out from
 			// the backdrop (catches edges the model's soft mask leaves behind).
 			const threshold = keyThresholdAt(heldFrame ?? frameIdx);
-			if (subject && threshold !== undefined) {
+			if (subject && threshold !== undefined && framePixels) {
 				subject = {
 					...subject,
 					mask: growMaskIntoForeground(

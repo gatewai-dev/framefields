@@ -173,7 +173,7 @@ Inference runs on the GPU through `onnxruntime-web`'s WebGPU backend (an optiona
 
 - **One-frame delay.** Vision reads the layer's *previous* rendered frame, so the very first frame has no results (a cutout renders transparent) and masks trail the plate by one frame. This is invisible at normal playback speed.
 - **Render vision frames in order.** `renderVideo` does this for you. For stills, render at least two consecutive frames with the same renderer and keep the last one. Jumping straight to a later frame (or using a frame grid) cuts out pixels from whatever frame was rendered before it, which shows up as a ghosted double of the subject.
-- **Subject choice.** `mask` / `matte` / `crop` use the largest person; with no person, the most confident instance. Instances overlapping the subject and no more than twice its size are merged in (a dress, a held instrument) — large containers around it (a tunnel, a window frame) are not.
+- **Subject choice.** `mask` / `matte` / `crop` use the largest person; with no person, the most confident instance. Instances overlapping the subject and no more than twice its size are merged in (a dress, a held instrument) — large containers around it (a tunnel, a window frame) are not. `classes` limits what the subject can be, not what merges into it: COCO has no clothing class, so a flowing dress often comes back as a "kite" or "umbrella" and still joins a `classes: ["person"]` cutout.
 - Each vision layer tracks objects independently; track ids from two layers are unrelated.
 
 ### Troubleshooting

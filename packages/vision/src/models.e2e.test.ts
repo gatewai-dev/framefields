@@ -266,6 +266,16 @@ describe.skipIf(!enabled)("vision models (real weights)", () => {
 			expect(subject?.coverage).toBeLessThan(0.2);
 		}, 120_000);
 
+		it("cuts out the whole dancer when the subject is limited to people", async () => {
+			// The dress comes back as other classes ("kite", "umbrella"); a person-only
+			// filter before the merge leaves just the bare person (~3%).
+			const seg = await runner.segment(frames.dancer);
+			const subject = mergeSubjectMask(seg.masks, { classes: ["person"] });
+			expect(subject?.category).toBe("person");
+			expect(subject?.coverage).toBeGreaterThan(0.08);
+			expect(subject?.coverage).toBeLessThan(0.2);
+		}, 120_000);
+
 		it("finds one dancer with a full skeleton", async () => {
 			const { people } = await runner.pose(frames.dancer);
 			expect(people).toHaveLength(1);

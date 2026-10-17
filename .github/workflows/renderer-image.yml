@@ -139,8 +139,8 @@ jobs:
           done
           curl -fsS localhost:8083/health | jq -e '.status == "ok" and .disks.cache.path == "/runpod-volume/framefields"' \
             || { docker logs smoke-vol; exit 1; }
-          test "$(docker top smoke-vol -eo uid,args | awk '/dist\/src\/index.js/ {print $1}')" = 1001 \
-            || { docker top smoke-vol -eo uid,args; exit 1; }
+          test "$(docker top smoke-vol -eo pid,uid,args | awk '/dist\/src\/index.js/ {print $2}')" = 1001 \
+            || { docker top smoke-vol -eo pid,uid,args; exit 1; }
           docker rm -f smoke-vol && docker volume rm ff-smoke-vol
       - uses: docker/login-action@v3
         if: env.PUBLISH == 'true'

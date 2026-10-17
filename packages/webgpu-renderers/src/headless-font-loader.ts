@@ -1,7 +1,7 @@
 import { BASE_URL } from "@framefields/client-utils";
 import { debugLog } from "./debug-log.js";
 
-let tempDir: string | null = null;
+let tempDir: Promise<string> | null = null;
 const fontPathCache = new Map<string, string>();
 const registeredFonts = new Set<string>();
 const fontPaths = new Map<string, string>();
@@ -54,10 +54,15 @@ async function getLocalFontPath(family: string, url: string): Promise<string> {
 	const path = await import(/* webpackIgnore: true */ "path");
 	const os = await import(/* webpackIgnore: true */ "os");
 
-	if (!tempDir) {
-		tempDir = path.join(os.tmpdir(), "gatewai-fonts");
-		await fs.mkdir(tempDir, { recursive: true }).catch(() => {});
-	}
+	// A fresh dir per session, so clearHeadlessFonts() can delete the last
+	// one without racing new downloads.
+	tempDir ??= fs
+		.mkdtemp(path.join(os.tmpdir(), "gatewai-fonts-"))
+		.catch((err) => {
+			tempDir = null;
+			throw err;
+		});
+	const dir = await tempDir;
 
 	const safeFamily = family.replace(/[^a-zA-Z0-9_-]/g, "_");
 	const urlObj = new URL(resolvedUrl);
@@ -65,7 +70,7 @@ async function getLocalFontPath(family: string, url: string): Promise<string> {
 	if (!ext || ext.length > 5) {
 		ext = ".ttf";
 	}
-	const destPath = path.join(tempDir, `${safeFamily}-${Date.now()}${ext}`);
+	const destPath = path.join(dir, `${safeFamily}-${Date.now()}${ext}`);
 
 	const response = await fetch(resolvedUrl);
 	if (!response.ok) {
@@ -78,6 +83,26 @@ async function getLocalFontPath(family: string, url: string): Promise<string> {
 
 	fontPathCache.set(resolvedUrl, destPath);
 	return destPath;
+}
+
+/**
+ * Forgets every registered font and deletes the fonts downloaded from URLs.
+ * A long-lived process calls it between jobs (via `resetRenderCaches`): the
+ * next job may register the same family from another file, or fetch a URL
+ * whose font changed.
+ */
+export async function clearHeadlessFonts(): Promise<void> {
+	fontPathCache.clear();
+	fontPaths.clear();
+	fontDataCache.clear();
+	registeredFonts.clear();
+	const pending = tempDir;
+	tempDir = null;
+	if (pending) {
+		const fs = await import(/* webpackIgnore: true */ "fs/promises");
+		const dir = await pending.catch(() => undefined);
+		if (dir) await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
+	}
 }
 
 export async function registerHeadlessFont(

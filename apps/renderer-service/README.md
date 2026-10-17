@@ -211,6 +211,8 @@ Shared files are read-only, because changing one would change it for every proje
 
 Some filesystems report sizes that can't be true, such as Docker Desktop host mounts (around 118 TB) or a network volume reporting a whole storage cluster. Above 64 TiB a disk is marked `measurable: false` and the worker doesn't evict by free space there. Set `FF_WORK_MAX_GB` / `FF_CACHE_MAX_GB` if such a disk needs a limit.
 
+**After each job** the worker deletes the job's folder and empties its temp dir (`$FF_WORK_DIR/tmp`, where the engine writes videos before they're copied out), and frees the engine's caches. At startup it empties both again, which clears what a crashed job left behind (keep failed jobs with `FF_KEEP_FAILED_JOBS=true`).
+
 `FF_WORK_MAX_GB` / `FF_CACHE_MAX_GB` add hard caps if you want them. On RunPod the container disk reports its real size (no cap needed), but a network volume reports 2.3 PB, so set `FF_CACHE_MAX_GB` for it.
 
 ## Jobs
@@ -288,7 +290,7 @@ Versions of `framefields` released before worker support (2.1.3 and older) still
 | `s3` | `key` (template), `bucket` | The bucket must be in `FF_OUTPUT_BUCKETS` (defaults to `STORAGE_BUCKET`). Any S3-compatible store works: R2, MinIO, AWS. |
 | `presigned` | `urls` (one per output), `headers` | The worker needs no storage credentials. Sign with an expiry longer than the job timeout. |
 | `local` | `path` (template) | Written under `FF_OUTPUT_DIR`. |
-| `inline` | — | Base64 in the result, up to `FF_INLINE_MAX_BYTES`. |
+| `inline` | — | Base64 in the result, up to `FF_INLINE_MAX_BYTES`. Read it within `FF_INLINE_TTL_SEC` (10 min): after that the record keeps the output's details with `base64Expired: true`, to free memory. |
 
 Key and path templates can use `{jobId}`, `{sha}`, `{shortSha}`, `{ref}`, `{date}`, `{name}`, `{index}` and `{ext}`.
 
@@ -325,6 +327,7 @@ Everything is set by environment variables. The worker checks them all at startu
 | `FF_CACHE_MAX_GB`, `FF_WORK_MAX_GB` | Optional hard caps on top of the free-space rule (default off). |
 | `FF_JOB_TIMEOUT_MAX_SEC`, `FF_STALL_TIMEOUT_SEC` | Time limits. |
 | `FF_MAX_JOBS_PER_WORKER` | Recycle after N jobs (default 25). |
+| `FF_INLINE_TTL_SEC` | How long a finished job keeps its inline (base64) outputs in memory (default 600). |
 | `FF_GPU` | `auto` (default), `require` or `cpu`. See [GPU and CPU rendering](#gpu-and-cpu-rendering). |
 | `FRAMEFIELDS_HW_CODECS` | `off` encodes video in software even when a hardware encoder works. |
 | `FF_NPMRC` | `.npmrc` contents, for private registries. |

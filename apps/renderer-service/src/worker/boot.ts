@@ -1,4 +1,4 @@
-import { mkdirSync, realpathSync } from "node:fs";
+import { mkdirSync, readdirSync, realpathSync, rmSync } from "node:fs";
 import path from "node:path";
 import {
 	describeConfig,
@@ -70,6 +70,23 @@ export function bootWorker(
 			: "Rendering on the GPU",
 	);
 
+	// Temp files (the engine renders video there before copying it out,
+	// installs put their HOME there) live under the work dir, where the
+	// janitor sees their disk use and a crash's leftovers get cleared.
+	// os.tmpdir() reads TMPDIR on every call.
+	const tmpDir = path.join(config.paths.workDir, "tmp");
+	rmSync(tmpDir, { recursive: true, force: true });
+	mkdirSync(tmpDir, { recursive: true });
+	process.env.TMPDIR = tmpDir;
+	// Job dirs left by a process that died mid-job; the crash journal reports
+	// the job, so only kept failures (FF_KEEP_FAILED_JOBS) are worth keeping.
+	if (!config.keepFailedJobs) {
+		rmSync(path.join(config.paths.workDir, "jobs"), {
+			recursive: true,
+			force: true,
+		});
+	}
+
 	// Workspaces live here; repo code under it gets the engine alias (§7).
 	const workspaces = path.join(config.paths.workDir, "ws");
 	mkdirSync(workspaces, { recursive: true });
@@ -118,6 +135,7 @@ export function bootWorker(
 		journal,
 		beforeJob: (job) => janitor.maybeRun([repoHash(job.repo)]),
 		afterJob: (completed) => {
+			emptyTmp(tmpDir);
 			const engine = boundEngine();
 			if (engine && boundVersion !== engine.version) {
 				// The engine's own timers and GPU handles aren't leaks.
@@ -206,4 +224,23 @@ export function bootWorker(
 		},
 		stop: stopWatchdog,
 	};
+}
+
+/**
+ * Engine versions up to 2.2.0-beta.3 cache downloaded fonts by URL for the
+ * life of the process, in `gatewai-fonts`; deleting them would break the next
+ * job that uses the same URL.
+ */
+const KEEP_IN_TMP = new Set(["gatewai-fonts"]);
+
+/** Removes what the job left in the temp dir (jobs run one at a time). */
+function emptyTmp(dir: string): void {
+	try {
+		for (const name of readdirSync(dir)) {
+			if (KEEP_IN_TMP.has(name)) continue;
+			rmSync(path.join(dir, name), { recursive: true, force: true });
+		}
+	} catch (err) {
+		rendererLogger.warn({ dir, err: String(err) }, "Temp dir cleanup failed");
+	}
 }

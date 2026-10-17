@@ -228,6 +228,24 @@ describe("JobStore", () => {
 		store.update("a", { status: "COMPLETED" });
 		expect(store.get("a")?.status).toBe("CANCELLED");
 	});
+
+	it("drops inline payloads after the inline TTL but keeps the record", () => {
+		let now = 0;
+		const store = new JobStore(60_000, 10, () => now, 1000);
+		store.create("a");
+		store.update("a", {
+			status: "COMPLETED",
+			result: { outputs: [{ name: "film", base64: "AAAA" }] },
+		});
+		now = 500;
+		expect(store.get("a")?.result?.outputs).toEqual([
+			{ name: "film", base64: "AAAA" },
+		]);
+		now = 2000;
+		expect(store.get("a")?.result?.outputs).toEqual([
+			{ name: "film", base64Expired: true },
+		]);
+	});
 });
 
 describe("JobQueue", () => {

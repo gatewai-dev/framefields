@@ -53,6 +53,8 @@ export interface DeliveredFile {
 	url?: string;
 	path?: string;
 	base64?: string;
+	/** The inline payload was dropped after FF_INLINE_TTL_SEC. */
+	base64Expired?: boolean;
 	durationMs?: number;
 	frames?: number;
 	/** QA report, when render.qa was set. */

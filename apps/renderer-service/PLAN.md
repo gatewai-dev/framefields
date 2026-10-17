@@ -197,7 +197,7 @@ The worker emits phase events:
 
 The v1 routes `/run` and `/status/:id` are removed.
 
-Finished jobs are evicted from memory after `FF_JOB_TTL_SEC` (default 1h). At most `FF_JOB_HISTORY_MAX` jobs are kept.
+Finished jobs are evicted from memory after `FF_JOB_TTL_SEC` (default 1h). At most `FF_JOB_HISTORY_MAX` jobs are kept. Inline outputs are dropped from finished records after `FF_INLINE_TTL_SEC` (default 10 min), so the history doesn't keep every rendered video in memory: a later read returns the output with `base64Expired: true`. After each job the worker also calls the engine's `resetRenderCaches()`, so an idle worker holds no decoders, textures or fonts from the last job.
 
 **Concurrency.** There is exactly one active job per worker (section 3). Extra jobs queue in-process up to `FF_QUEUE_MAX`, and anything beyond that gets `429 BUSY`. To scale, run more workers.
 
@@ -225,6 +225,7 @@ $FF_CACHE_DIR/
 $FF_WORK_DIR/  (local container disk, default /tmp/framefields)
   ws/<repo-hash>/<slot>/              # warm checkout + node_modules, leased one job at a time
   jobs/<jobId>/{out,logs}
+  tmp/                                # TMPDIR for the engine and installs; emptied at boot and after each job
   inflight.json                       # the running job, so a crash can be reported after restart (8.3)
 ```
 
@@ -295,7 +296,8 @@ Free disk space decides (`src/worker/janitor.ts`); there is no fixed size budget
   - the workspace the bound engine was loaded from (always protected, also on the emergency paths);
   - pinned vision models;
   - another worker's mirror on a shared volume, until it has been idle for over an hour.
-- **Failed-job dirs** kept by `FF_KEEP_FAILED_JOBS` are deleted after a day.
+- **Failed-job dirs** kept by `FF_KEEP_FAILED_JOBS` are deleted after a day. Without that flag, `jobs/` is emptied at boot, which clears what a process that died mid-job left behind.
+- **Temp files:** the worker points `TMPDIR` at `$FF_WORK_DIR/tmp`, so the engine's render temp files and install homes count against the work disk. It empties that dir at boot and after every job. A render killed mid-file can't leave gigabytes in the system temp dir.
 - **Optional hard caps** `FF_WORK_MAX_GB` / `FF_CACHE_MAX_GB` (default 0 = off) still apply on top. They walk the trees, counting each hard-linked file once.
 - **Container disks:** inside Docker, `statfs` on the overlay root may report the host's disk rather than the container's allowance, depending on the storage driver's quota support. Where that happens (to be checked on RunPod), set `FF_WORK_MAX_GB` below the container disk size.
 - Every eviction is logged ("Cache eviction") with the paths and the disks' free space.
@@ -536,7 +538,7 @@ On boot the service validates **all** keys and fails with the complete list of p
 | Install | `FF_INSTALL_SCRIPTS` (true), `FF_ALLOW_UNLOCKED_INSTALL` (false), `FF_NPMRC` |
 | Storage | `STORAGE_DRIVER` (`s3`\|`local`\|`none`), `STORAGE_ENDPOINT`, `STORAGE_REGION` (`auto`), `STORAGE_ACCESS_KEY_ID`, `STORAGE_SECRET_ACCESS_KEY`, `STORAGE_BUCKET`, `STORAGE_PUBLIC_BASE_URL`, `STORAGE_FORCE_PATH_STYLE` (MinIO), `FF_OUTPUT_BUCKETS`, `FF_OUTPUT_DIR`, `FF_INLINE_MAX_BYTES`, `FF_OUTPUT_MAX_BYTES`. The `R2_*` names are gone, with no aliases. |
 | Paths & cache | `FF_CACHE_DIR`, `FF_WORK_DIR`, `FF_DISK_MIN_FREE_PCT` (15), `FF_DISK_MIN_FREE_GB` (10), `FF_DISK_TARGET_FREE_PCT` (25), `FF_SHARED_MODULES` (true), optional caps `FF_CACHE_MAX_GB` / `FF_WORK_MAX_GB` (0 = off), `FRAMEFIELDS_MODELS_DIR` (`$FF_CACHE_DIR/models`), `FRAMEFIELDS_FONTS_DIR` |
-| Limits | `FF_QUEUE_MAX` (8), `FF_JOB_TIMEOUT_MAX_SEC` (7200), `FF_TIMEOUT_{GIT,LFS,INSTALL,LOAD,RENDER}_SEC`, `FF_STALL_TIMEOUT_SEC` (300), `FF_KILL_GRACE_SEC` (20), `FF_JOB_TTL_SEC` (3600), `FF_JOB_HISTORY_MAX` (500) |
+| Limits | `FF_QUEUE_MAX` (8), `FF_JOB_TIMEOUT_MAX_SEC` (7200), `FF_TIMEOUT_{GIT,LFS,INSTALL,LOAD,RENDER}_SEC`, `FF_STALL_TIMEOUT_SEC` (300), `FF_KILL_GRACE_SEC` (20), `FF_JOB_TTL_SEC` (3600), `FF_JOB_HISTORY_MAX` (500), `FF_INLINE_TTL_SEC` (600) |
 | Recycling | `FF_MAX_JOBS_PER_WORKER` (25; 0 = unlimited), `FF_RECYCLE_HEAP_MB` (4096), `FF_RECYCLE_RSS_MB` (0 = off), `FF_EVENT_LOOP_BLOCK_SEC` (120), `FF_STRAY_ERROR_LIMIT` (3), `FF_LEAKED_HANDLE_LIMIT` (50). `NODE_OPTIONS=--max-old-space-size` is set by the image. |
 | GPU | `FF_GPU` (`auto`\|`require`\|`cpu`; default `auto`, RunPod templates `require`). The engine reads `FRAMEFIELDS_HW_CODECS=off` to force software video encoding. |
 | Job env | `FF_JOB_ENV_ALLOW` (`*` minus a reserved denylist), `FF_KEEP_FAILED_JOBS` (false), `FF_QA_BLOCK_UPLOAD` (false) |

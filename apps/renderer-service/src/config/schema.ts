@@ -132,6 +132,7 @@ export const envSchema = z.object({
 	FF_KILL_GRACE_SEC: int(20),
 	FF_JOB_TTL_SEC: int(3600),
 	FF_JOB_HISTORY_MAX: int(500),
+	FF_INLINE_TTL_SEC: int(600),
 
 	// GPU: auto = the GPU when the machine has one, else the CPU.
 	FF_GPU: z.enum(["auto", "require", "cpu"]).default("auto"),
@@ -374,6 +375,7 @@ export function buildConfig(
 			killGraceSec: e.FF_KILL_GRACE_SEC,
 			jobTtlSec: e.FF_JOB_TTL_SEC,
 			jobHistoryMax: e.FF_JOB_HISTORY_MAX,
+			inlineTtlSec: e.FF_INLINE_TTL_SEC,
 		},
 		gpu: e.FF_GPU,
 		recycle: {

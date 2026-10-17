@@ -33,7 +33,11 @@ export class JobRunner {
 		this.store = new JobStore(
 			config.limits.jobTtlSec * 1000,
 			config.limits.jobHistoryMax,
+			Date.now,
+			config.limits.inlineTtlSec * 1000,
 		);
+		// Frees expired records and inline payloads while the worker is idle.
+		setInterval(() => this.store.prune(), 60_000).unref();
 		this.queue = new JobQueue(config.limits.queueMax);
 	}
 

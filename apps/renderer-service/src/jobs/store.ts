@@ -57,7 +57,9 @@ export function isTerminal(status: JobStatus): boolean {
 
 /**
  * In-memory job records with TTL and size-bounded eviction. Emits `update`
- * with the record on every change (SSE progress).
+ * with the record on every change (SSE progress). Inline (base64) outputs are
+ * dropped from finished records after `inlineTtlMs`, so a busy worker doesn't
+ * hold every rendered video in memory for the whole TTL.
  */
 export class JobStore extends EventEmitter<{ update: [JobRecord] }> {
 	private readonly jobs = new Map<string, JobRecord>();
@@ -66,6 +68,7 @@ export class JobStore extends EventEmitter<{ update: [JobRecord] }> {
 		private readonly ttlMs: number,
 		private readonly maxHistory: number,
 		private readonly now: () => number = Date.now,
+		private readonly inlineTtlMs = Number.POSITIVE_INFINITY,
 	) {
 		super();
 		this.setMaxListeners(0);
@@ -88,7 +91,9 @@ export class JobStore extends EventEmitter<{ update: [JobRecord] }> {
 	}
 
 	get(id: string): JobRecord | undefined {
-		return this.jobs.get(id);
+		const record = this.jobs.get(id);
+		if (record) this.expireInline(record, this.now() - this.inlineTtlMs);
+		return record;
 	}
 
 	update(
@@ -117,9 +122,12 @@ export class JobStore extends EventEmitter<{ update: [JobRecord] }> {
 
 	prune(): void {
 		const cutoff = this.now() - this.ttlMs;
+		const inlineCutoff = this.now() - this.inlineTtlMs;
 		for (const [id, job] of this.jobs) {
 			if (isTerminal(job.status) && Date.parse(job.updatedAt) < cutoff) {
 				this.jobs.delete(id);
+			} else {
+				this.expireInline(job, inlineCutoff);
 			}
 		}
 		// Oldest finished jobs go first; active jobs are never evicted.
@@ -127,6 +135,19 @@ export class JobStore extends EventEmitter<{ update: [JobRecord] }> {
 			for (const [id, job] of this.jobs) {
 				if (this.jobs.size <= this.maxHistory) break;
 				if (isTerminal(job.status)) this.jobs.delete(id);
+			}
+		}
+	}
+
+	/** Replaces old inline payloads with `base64Expired: true`. */
+	private expireInline(job: JobRecord, cutoff: number): void {
+		if (!isTerminal(job.status) || Date.parse(job.updatedAt) >= cutoff) return;
+		const outputs = job.result?.outputs;
+		if (!Array.isArray(outputs)) return;
+		for (const output of outputs as Record<string, unknown>[]) {
+			if (typeof output?.base64 === "string") {
+				delete output.base64;
+				output.base64Expired = true;
 			}
 		}
 	}

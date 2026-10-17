@@ -8,6 +8,7 @@ import type {
 	StepContext,
 } from "../jobs/pipeline.js";
 import type { JobInput, RenderSettings } from "../jobs/schema.js";
+import { rendererLogger } from "../logger.js";
 import { gpuStatus } from "../worker/gpu.js";
 import { workerHealth } from "../worker/health.js";
 import { type BoundEngine, bindEngine, markDepsLoaded } from "./engine.js";
@@ -126,6 +127,16 @@ export const render: Pipeline["render"] = async (checkout, input, ctx) => {
 		sandbox.restore();
 		clearWorkspaceRequireCache();
 		await dispose?.().catch(() => {});
+		if (engine.workerHooks) {
+			// Free this job's decoders, textures and fonts now rather than when
+			// the next job starts: an idle worker shouldn't hold them.
+			try {
+				engine.mod.resetRenderCaches?.();
+				engine.mod.FontManager?.clear();
+			} catch (err) {
+				rendererLogger.warn({ err: String(err) }, "Render cache reset failed");
+			}
+		}
 	}
 };
 

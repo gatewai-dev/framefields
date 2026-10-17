@@ -34,13 +34,8 @@ job ─▶ resolve ref → fetch (mirror cache) → checkout → git LFS pull
 
 - **Your repo picks the framefields version.** The worker image contains no engine. Each repo depends on `framefields` in its `package.json` (with a committed lockfile), and the worker renders with exactly that install.
 
-> **Use framefields 2.2 (beta for now).** The worker features (progress, cancel, staying warm between jobs, working video encoders on every GPU) need framefields 2.2. It is published under npm's `beta` tag:
->
-> ```bash
-> npm i framefields@beta   # → "framefields": "^2.2.0-beta.0"; 2.2.0 satisfies it once released
-> ```
->
-> A plain `npm i framefields` still installs the stable 2.1.x. Projects on 2.1.x render too, but without those features.
+> **Use framefields 2.2 or newer.** The worker features (progress, cancel, staying warm between jobs, working video encoders on every GPU) need it. Projects on 2.1.x render too, but without those features.
+
 - **Your code runs inside the worker process.** The first job loads its project's framefields and initialises the GPU. Later jobs on the same version reuse that warm engine, even from other repos. A job that needs a different version fails with retryable `ENGINE_SWITCH`, and the worker restarts so the retry loads it. Keep a worker (or endpoint) per framefields version if your projects pin different ones.
 - **Everything is pinned to one commit.** A branch is resolved once per job, and the result reports the SHA it rendered.
 - **Caches survive between jobs:** git mirrors, LFS objects and package stores live on the cache volume, and checkouts and `node_modules` are reused. A warm job spends almost all its time rendering.
@@ -94,7 +89,7 @@ CI ([`renderer-image.yml`](../../.github/workflows/renderer-image.yml)) publishe
 
 Pull requests only build and smoke-test the image. A manual run (**Actions → renderer-image → Run workflow**) publishes the selected branch.
 
-Until the first stable `renderer-v*` release, the RunPod templates and docker-compose use `:beta`. Switch them to `:latest` (or a fixed version) afterwards.
+The RunPod templates and docker-compose use `:latest`. Pin a version (`:2.2.0`) to control when workers upgrade.
 
 Building the image yourself, from the repo root:
 
@@ -158,7 +153,7 @@ At startup the worker looks for the GPU's device files (`/dev/nvidia*`, or `/dev
 
 For NVIDIA GPUs in Docker, the NVIDIA Container Toolkit must mount the Vulkan driver. The image sets `NVIDIA_DRIVER_CAPABILITIES=graphics,utility,video,compute`, which does that. Keep `graphics` in the list if you override it, or the worker reports that the GPU has no Vulkan driver.
 
-**Encoding video.** framefields 2.2 (`framefields@beta` until 2.2.0 is released) tests the hardware encoder once per codec, and uses it only if it works:
+**Encoding video.** framefields 2.2 tests the hardware encoder once per codec, and uses it only if it works:
 
 - NVENC on NVIDIA, VideoToolbox on macOS.
 - Otherwise software: libx264 (H.264), libx265 (HEVC), libvpx (VP9), SVT-AV1.

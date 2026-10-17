@@ -5,7 +5,7 @@
 # Needs the NVIDIA Container Toolkit. API on :8082, MinIO console on :9001.
 services:
   renderer:
-    image: ${FF_IMAGE:-ghcr.io/gatewai-dev/framefields-renderer:beta}
+    image: ${FF_IMAGE:-ghcr.io/gatewai-dev/framefields-renderer:latest}
     restart: unless-stopped # recycling exits the process on purpose
     env_file: .env
     environment:

@@ -1,6 +1,6 @@
 {
 	"name": "framefields-renderer (pod, HTTP API)",
-	"imageName": "ghcr.io/gatewai-dev/framefields-renderer:beta",
+	"imageName": "ghcr.io/gatewai-dev/framefields-renderer:latest",
 	"isServerless": false,
 	"containerDiskInGb": 40,
 	"volumeInGb": 100,

@@ -1,6 +1,6 @@
 {
 	"name": "framefields-renderer (serverless)",
-	"imageName": "ghcr.io/gatewai-dev/framefields-renderer:beta",
+	"imageName": "ghcr.io/gatewai-dev/framefields-renderer:latest",
 	"isServerless": true,
 	"containerDiskInGb": 40,
 	"volumeInGb": 0,

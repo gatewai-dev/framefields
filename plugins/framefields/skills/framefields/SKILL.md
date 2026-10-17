@@ -21,8 +21,7 @@ This skill takes a project from nothing to a verified first render. For anything
 ## 1. Check the environment
 
 - **Node.js 22 or later.** Run `node --version`. Older versions fail at import.
-- **A WebGPU-capable GPU.** macOS uses Metal; Linux and Windows use Vulkan. From framefields 2.2, Linux without a GPU falls back to a CPU Vulkan driver (Mesa lavapipe) when one is installed, 10–100× slower; `describeGpu()` reports `software: true` then. Machines with neither cannot render.
-- **framefields version.** `framefields` installs the stable 2.1. GPU vision, render progress/cancel and the render worker need 2.2, on `framefields@beta` until 2.2.0 is released. Use the beta when the user wants those.
+- **A WebGPU-capable GPU.** macOS uses Metal; Linux and Windows use Vulkan. Linux without a GPU falls back to a CPU Vulkan driver (Mesa lavapipe) when one is installed, 10–100× slower; `describeGpu()` reports `software: true` then. Machines with neither cannot render.
 - **An ES module project.** The project's `package.json` needs `"type": "module"`.
 
 ## 2. Install

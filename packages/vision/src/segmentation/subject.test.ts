@@ -64,6 +64,23 @@ describe("subject selection", () => {
 		expect(merged?.area).toBe(body.area + dress.area - 5 * 11);
 	});
 
+	it("limits the subject to `classes` but merges parts of any class", () => {
+		// The smoke project's cutout: classes ["person"], a dress detected as a "kite".
+		const body = rect("person", 8, 2, 12, 17, 1);
+		const dress = rect("kite", 4, 6, 16, 16, 0);
+		const merged = mergeSubjectMask([dress, body], { classes: ["Person"] });
+		expect(merged?.category).toBe("person");
+		expect(merged?.mask[10 * W + 5]).toBe(255);
+		expect(merged?.area).toBe(body.area + dress.area - 5 * 11);
+	});
+
+	it("finds no subject when no instance is of `classes`", () => {
+		const car = rect("car", 5, 5, 15, 15);
+		expect(selectSubjectMask([car], ["person"])).toBeUndefined();
+		expect(mergeSubjectMask([car], { classes: ["person"] })).toBeUndefined();
+		expect(selectSubjectMask([car], ["car"])).toBe(car);
+	});
+
 	it("maskBounds returns tight bounds or null", () => {
 		expect(maskBounds(rect("x", 3, 4, 7, 9))).toEqual({
 			x0: 3,

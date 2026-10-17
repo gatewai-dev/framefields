@@ -274,6 +274,16 @@ function normalizePoseKeypoints(
 	};
 }
 
+/** Case-insensitive class filter, as the runner's decode applies it. */
+function matchesClasses(
+	category: string,
+	classes: readonly string[] | undefined,
+): boolean {
+	if (!classes) return true;
+	const c = category.toLowerCase();
+	return classes.some((k) => k.toLowerCase() === c);
+}
+
 /** Assigns each decoded instance mask to the temporal track whose box center is nearest the mask's centroid. */
 function assignMasksToTracks(
 	masks: readonly InstanceMask[],
@@ -750,9 +760,24 @@ export const VisionWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 
 		// Decoded masks are kept locally so mask-family modes render even without
 		// an attached visionBundle (the round-trip through the bundle is for signal DX).
+		// The subject is built from every class: `classes` picks the subject, but
+		// parts COCO mislabels (a dress as a "kite") must still merge into it.
+		let subjectMasks: readonly InstanceMask[] = [];
 		if (wantsSegmentation) {
-			const segRes = await runner.segment(image);
-			frameMasks = assignMasksToTracks(segRes.masks, frameObjects);
+			const subjectFromAllClasses =
+				isMatteMode && op.matteSource !== "selfie" && op.classes !== undefined;
+			// Same models and per-frame pass as `runner`, decoded without the filter.
+			const segRunner = subjectFromAllClasses
+				? getSharedRunner({ ...op, classes: undefined })
+				: runner;
+			const segRes = await segRunner.segment(image);
+			frameMasks = assignMasksToTracks(
+				subjectFromAllClasses
+					? segRes.masks.filter((m) => matchesClasses(m.category, op.classes))
+					: segRes.masks,
+				frameObjects,
+			);
+			subjectMasks = subjectFromAllClasses ? segRes.masks : frameMasks;
 			visionBundle?.setMaskResult(frameIdx, frameMasks);
 		}
 
@@ -779,9 +804,10 @@ export const VisionWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				op.matteSource === "selfie"
 					? personMatteAsMask(personMatte)
 					: mergeSubjectMask(
-							frameMasks.length > 0
-								? frameMasks
+							subjectMasks.length > 0
+								? subjectMasks
 								: (visionBundle?.getMaskResult(frameIdx) ?? []),
+							{ classes: op.classes },
 						),
 				nodeKeyStr,
 				frameIdx,

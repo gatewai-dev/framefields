@@ -164,11 +164,13 @@ Pass `qa: true` to have the engine check the output while it renders (see **Buil
 
 ## Rendering Without a GPU
 
-Agents often run in Linux sandboxes or CI runners with no GPU. framefields then renders on the CPU through Mesa lavapipe, with the same output for every feature (text, media, Lottie, effects, 3D, vision; vision inference moves to the CPU too).
+Agents often run in sandboxes or CI runners with no GPU. framefields then renders on the CPU, with the same output for every feature (text, media, Lottie, effects, 3D, vision; vision inference moves to the CPU too).
 
-- **Install the driver:** `apt-get install -y libvulkan1 mesa-vulkan-drivers`. Without a Vulkan driver at all, nothing can render.
+- **Linux:** install Mesa lavapipe, `apt-get install -y libvulkan1 mesa-vulkan-drivers`. Without a Vulkan driver at all, nothing can render.
+- **Windows:** Direct3D 12's WARP renderer is built in; lavapipe (e.g. from mesa-dist-win) works through Vulkan too.
+- **macOS:** always has a Metal GPU, VMs included; framefields' WebGPU build has no Vulkan, so lavapipe isn't used there.
 - **Confirm it:** `await describeGpu()` returns `software: true`.
-- **Budget for speed:** about 12× slower than an Apple M1 Pro's GPU in our test (the smoke project's three videos: 9.7 min against 49 s); it scales with CPU cores. Frames, grids and short exports are fine. Vision layers are the slowest part.
+- **Budget for speed:** about 12× slower than an Apple M1 Pro's GPU in our Linux test (the smoke project's three videos: 9.7 min against 49 s); it scales with CPU cores. Frames, grids and short exports are fine. Vision layers are the slowest part.
 - **Long films:** render on a GPU machine, or push the project and submit it to the framefields render worker (Docker or RunPod, renders a git commit on a GPU). Its project checklist and job format: https://framefields.dev/docs/guides/render-service/
 
 ## Production Render Script Pattern

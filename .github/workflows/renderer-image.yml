@@ -128,6 +128,20 @@ jobs:
           curl -fsS localhost:8082/health | jq -e '.status == "ok" and .components.gpu.renderer == "cpu"' \
             || { docker logs smoke; exit 1; }
           docker rm -f smoke
+          # A root-owned volume at /runpod-volume, as RunPod mounts a pod volume:
+          # the entrypoint hands the cache dir to framefields, then drops root.
+          docker run -d --name smoke-vol -p 8083:8082 -e FF_MODE=http \
+            -e RENDERER_API_KEY=ci-smoke-key-0123456789 -e FF_REPO_ALLOWLIST='github.com/example/*' \
+            -v ff-smoke-vol:/runpod-volume framefields-renderer:ci
+          for i in $(seq 1 30); do
+            if curl -fsS localhost:8083/health >/dev/null; then break; fi
+            sleep 1
+          done
+          curl -fsS localhost:8083/health | jq -e '.status == "ok" and .disks.cache.path == "/runpod-volume/framefields"' \
+            || { docker logs smoke-vol; exit 1; }
+          test "$(docker top smoke-vol -eo uid,args | awk '/dist\/src\/index.js/ {print $1}')" = 1001 \
+            || { docker top smoke-vol -eo uid,args; exit 1; }
+          docker rm -f smoke-vol && docker volume rm ff-smoke-vol
       - uses: docker/login-action@v3
         if: env.PUBLISH == 'true'
         with:

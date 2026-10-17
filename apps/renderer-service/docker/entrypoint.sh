@@ -7,6 +7,22 @@
 set -euo pipefail
 
 SERVICE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
+# As root: give framefields its cache, work and output dirs (volumes such as a
+# RunPod pod volume are mounted root-owned), then rerun this script as
+# framefields. The cache default matches the worker's (config/schema.ts).
+if [ "$(id -u)" = 0 ]; then
+  cache="${FF_CACHE_DIR:-}"
+  if [ -z "$cache" ]; then
+    if [ -e /runpod-volume ]; then cache=/runpod-volume/framefields; else cache=/var/cache/framefields; fi
+  fi
+  for dir in "$cache" "${FF_WORK_DIR:-/tmp/framefields}" ${FF_OUTPUT_DIR:+"$FF_OUTPUT_DIR"}; do
+    mkdir -p "$dir" && chown framefields:framefields "$dir" \
+      || echo "cannot hand $dir to the framefields user; the worker may not be able to write there" >&2
+  done
+  exec gosu framefields "$0" "$@"
+fi
+
 MODE="${FF_MODE:-}"
 if [ -z "$MODE" ]; then
   if [ -n "${RUNPOD_POD_ID:-}" ]; then MODE=runpod-serverless; else MODE=http; fi

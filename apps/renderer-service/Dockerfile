@@ -47,7 +47,8 @@ ARG VARIANT=slim
 
 # Rendering (Vulkan/GL/fonts/media libs for framefields' native modules),
 # ffmpeg/ffprobe (output checks), git + LFS + ssh (checkouts), tini (PID 1:
-# forwards signals, reaps git/install subprocesses), python3 + runpod (shim).
+# forwards signals, reaps git/install subprocesses), python3 + runpod (shim),
+# gosu (the entrypoint drops from root to framefields).
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates openssl \
     libnss3 libatk1.0-0t64 libatk-bridge2.0-0t64 libcups2t64 libdrm2 \
@@ -55,7 +56,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgbm1 libpango-1.0-0 libcairo2 libasound2t64 \
     libgl1-mesa-dri libglapi-mesa libegl1 libvulkan1 mesa-vulkan-drivers libfontconfig1 \
     ffmpeg xvfb xauth \
-    git git-lfs openssh-client tini \
+    git git-lfs openssh-client tini gosu \
     python3 python3-pip \
     && if [ "$VARIANT" = "full" ]; then \
          apt-get install -y --no-install-recommends build-essential python3-dev pkg-config; \
@@ -82,7 +83,9 @@ RUN groupadd --system --gid 1001 framefields && \
 WORKDIR /app
 COPY --from=builder --chown=framefields:framefields /out .
 
-USER framefields
+# No USER: the entrypoint starts as root only to hand the cache and work dirs
+# to framefields (a RunPod pod volume is mounted root-owned), then runs
+# everything as framefields (uid 1001). `docker run --user` skips that step.
 EXPOSE 8082
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \

@@ -480,7 +480,7 @@ The worker **executes code from the repo**. Anyone who can submit a job and poin
 - `FF_REPO_ALLOWLIST` is **required** in git mode (e.g. `github.com/acme/*`). With `FF_DEFAULT_REPO` set and no allowlist, only that repo is allowed.
 - HTTP mode requires `RENDERER_API_KEY`. RunPod endpoints already require the RunPod API key.
 - **Repo code runs in the same process as the worker's credentials.** Secrets are removed from `process.env` before any repo code runs (8.2), and they are never written to disk in the workspace. Even so, code running in-process can in principle reach anything in memory. **The repos on the allowlist must be trusted to the same degree as the worker image.** Use a storage key scoped to the output bucket, and a read-only git token scoped to the allowed repos. With a `presigned` output the worker needs no storage credentials at all.
-- The process runs as non-root user `framefields`. The workspace and cache are owned by it, and nothing outside them is writable.
+- The worker runs as non-root user `framefields` (uid 1001). The container starts as root only so the entrypoint can create the cache, work and output dirs and hand them to `framefields` (a RunPod pod volume is mounted root-owned); it then drops to `framefields` with `gosu` before anything else runs. `docker run --user` skips that step. The workspace and cache are owned by `framefields`, and nothing outside them is writable.
 - Logs and results go through a **redactor**. It strips tokens, URL userinfo, presigned query strings, and the `job.env` values the config marks secret.
 - Documented risk: install scripts and repo code have network access. Self-hosters who need more can run with egress firewalling; that is out of scope here.
 

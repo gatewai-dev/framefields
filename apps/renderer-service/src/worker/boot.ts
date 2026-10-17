@@ -1,4 +1,11 @@
-import { mkdirSync, readdirSync, realpathSync, rmSync } from "node:fs";
+import {
+	accessSync,
+	constants,
+	mkdirSync,
+	readdirSync,
+	realpathSync,
+	rmSync,
+} from "node:fs";
 import path from "node:path";
 import {
 	describeConfig,
@@ -75,6 +82,8 @@ export function bootWorker(
 	// janitor sees their disk use and a crash's leftovers get cleared.
 	// os.tmpdir() reads TMPDIR on every call.
 	const tmpDir = path.join(config.paths.workDir, "tmp");
+	writableDir(config.paths.workDir, "FF_WORK_DIR");
+	writableDir(config.paths.cacheDir, "FF_CACHE_DIR");
 	rmSync(tmpDir, { recursive: true, force: true });
 	mkdirSync(tmpDir, { recursive: true });
 	process.env.TMPDIR = tmpDir;
@@ -227,17 +236,42 @@ export function bootWorker(
 }
 
 /**
- * Engine versions up to 2.2.0-beta.3 cache downloaded fonts by URL for the
- * life of the process, in `gatewai-fonts`; deleting them would break the next
- * job that uses the same URL.
+ * Kept between jobs: compile caches (tsx's `tsx-<uid>`, Node's
+ * `node-compile-cache`), keyed by content, so the next job doesn't recompile
+ * the project; and `gatewai-fonts`, where engine versions up to
+ * 2.2.0-beta.3 cache downloaded fonts by URL for the life of the process.
  */
-const KEEP_IN_TMP = new Set(["gatewai-fonts"]);
+function keepInTmp(name: string): boolean {
+	return (
+		name === "gatewai-fonts" ||
+		name === "node-compile-cache" ||
+		name.startsWith("tsx-")
+	);
+}
+
+/**
+ * Creates `dir` and checks this process can write to it, so a volume mounted
+ * read-only or owned by another user fails with the setting to fix instead of
+ * a bare EACCES stack trace.
+ */
+function writableDir(dir: string, setting: string): void {
+	try {
+		mkdirSync(dir, { recursive: true });
+		accessSync(dir, constants.W_OK);
+	} catch (err) {
+		const uid = process.getuid?.();
+		console.error(
+			`❌ CONFIG_INVALID\n  - ${setting}: ${dir} is not writable${uid === undefined ? "" : ` by uid ${uid}`} (${(err as NodeJS.ErrnoException).code}). Point it at a writable path, or start the image as root so its entrypoint can hand the dir to the framefields user.`,
+		);
+		exit(1);
+	}
+}
 
 /** Removes what the job left in the temp dir (jobs run one at a time). */
 function emptyTmp(dir: string): void {
 	try {
 		for (const name of readdirSync(dir)) {
-			if (KEEP_IN_TMP.has(name)) continue;
+			if (keepInTmp(name)) continue;
 			rmSync(path.join(dir, name), { recursive: true, force: true });
 		}
 	} catch (err) {

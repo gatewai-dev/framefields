@@ -82,6 +82,9 @@
 		"@framefields/webgpu-renderers": "2.1.3"
 	},
 	"changesets": [
+		"drop-base-url",
+		"mediabunny-1-61-6",
+		"render-caches-fonts",
 		"renderer-worker-gpu",
 		"vision-gpu-frames",
 		"vision-gpu-shared-sessions",

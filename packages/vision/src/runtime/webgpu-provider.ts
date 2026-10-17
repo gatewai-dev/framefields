@@ -17,6 +17,12 @@ import type {
 	VisionTensorOutputs,
 } from "./session-provider.js";
 
+/** An execution provider with options, e.g. `{ name: "webgpu", preferredLayout: "NCHW" }`. */
+export interface OrtWebExecutionProvider {
+	readonly name: string;
+	readonly preferredLayout?: "NCHW" | "NHWC";
+}
+
 /** Minimal structural view of the `onnxruntime-web` module — isolates the ORT API surface. */
 export interface OrtWebTensor {
 	readonly data: Float32Array | BigInt64Array | Int32Array;
@@ -34,7 +40,7 @@ export interface OrtWebModule {
 		create(
 			modelBytes: Uint8Array,
 			options: {
-				executionProviders: string[];
+				executionProviders: (string | OrtWebExecutionProvider)[];
 				graphOptimizationLevel?: "disabled" | "basic" | "extended" | "all";
 				/** 0 verbose … 4 fatal. */
 				logSeverityLevel?: 0 | 1 | 2 | 3 | 4;
@@ -98,7 +104,7 @@ export class WebGPUProvider implements SessionProvider {
 		let session: OrtWebSession;
 		try {
 			session = await ort.InferenceSession.create(modelBytes, {
-				executionProviders: [...this._providers],
+				executionProviders: this._providers.map(withProviderOptions),
 				graphOptimizationLevel: "all",
 				// Errors only: node-placement notes print as console errors otherwise.
 				logSeverityLevel: 3,
@@ -150,4 +156,14 @@ export function createWebGPUProvider(
 /** True when the environment exposes a WebGPU device (synchronous capability probe). */
 export function hasWebGPU(): boolean {
 	return typeof navigator !== "undefined" && "gpu" in navigator;
+}
+
+/**
+ * The WebGPU EP runs in NCHW. Its default NHWC layout computes grouped convolutions wrong
+ * when the channels per group aren't a multiple of 4 (onnxruntime-web 1.30) — RTMO's head
+ * has group=8 convs over 104 channels (13 per group), which turned one dancer into several
+ * skeletons. NCHW matches the CPU EP on every pinned model.
+ */
+function withProviderOptions(name: string): string | OrtWebExecutionProvider {
+	return name === "webgpu" ? { name, preferredLayout: "NCHW" } : name;
 }

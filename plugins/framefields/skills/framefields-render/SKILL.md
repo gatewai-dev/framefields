@@ -9,7 +9,7 @@ description: Render, inspect, test, and export high-performance WebGPU video and
 Import everything from the [`framefields`](https://www.npmjs.com/package/framefields) npm package. If the project doesn't have framefields set up yet, follow the `framefields` skill first (install, project scaffold, first render).
 
 ## Overview
-`framefields` renders headlessly in Node.js on top of native WebGPU (Dawn) and mediabunny WebCodecs hardware encoders. It does not run a browser, Puppeteer, or Chromium.
+`framefields` renders headlessly in Node.js on top of native WebGPU (Dawn), encoding through FFmpeg with a hardware encoder when one works (NVENC, VideoToolbox) and a software one otherwise. It does not run a browser, Puppeteer, or Chromium.
 
 Because video rendering is resource-intensive and native GPU pipelines run asynchronously in worker pools, framefields workflows enforce a strict **verification ladder**: inspect inexpensive intermediate artifacts first before committing to a full video render.
 
@@ -292,5 +292,8 @@ ffmpeg -i output/final-video.mp4 -af "volumedetect" -f null -
 | Vision cutout / mask is empty on a single `renderFrame` | Vision reads the previous rendered frame; frame 0 has none | Render two or more consecutive frames with the same `HeadlessMediaRenderer` and keep the last. `renderVideo` handles this automatically. |
 | Ghosted double of the subject in a vision cutout | Frames rendered out of order (frame grid, or jumping from frame 3 to 48), so the cutout uses pixels from another frame | Verify vision layers with sequential frames or the exported MP4, not `renderFrameGrid`. |
 | Script hangs after rendering | Background worker thread pool held open | Always include `process.exit(0)` at the end of render scripts. |
+| Render very slow on a Linux server | Frames drawn on a CPU adapter (lavapipe) | `await describeGpu()` shows `software: true`; fix the GPU's Vulkan driver (`vulkaninfo --summary`). |
+| Encoder fails to open (`h264_rkmpp`, NVENC) | framefields < 2.2 uses the hardware encoder untested | Use framefields 2.2+, which falls back to libx264 etc., or set `FRAMEFIELDS_HW_CODECS=off`. |
+| Render worker job fails | Project not render-ready (lockfile, export, LFS) | Read the job's `code` and `hint`; checklist at https://framefields.dev/docs/guides/render-service/ |
 | Text looks misaligned or truncated | Layout node box smaller than text string | Set explicit wrapping `width` (e.g. `width: 1400`) or use `width: "fill"`. |
 | Colors appear washed out / dark edges | Unpremultiplied alpha blending | The engine operates with premultiplied alpha. Ensure custom shaders use `srcFactor: "one"`. |

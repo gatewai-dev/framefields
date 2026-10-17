@@ -1,5 +1,25 @@
 # @framefields/vision
 
+## 2.2.0-beta.2
+
+### Minor Changes
+
+- 5c55a7b: Vision layers no longer copy frames to the CPU. ONNX Runtime's WebGPU sessions now run on the renderer's own device (`setVisionDevice`), and a compute shader turns the layer's texture straight into each model's input tensor. It does the same resize, letterbox, channel order and normalisation as `imageToTensor`, within float32 rounding. A small GPU checksum replaces hashing the pixels on the CPU, so layers showing the same frame still share a pass. Frames come back to the CPU only for the opt-in background key (`keyBackground`).
+
+  `VisionRunner` methods accept a `VisionGpuImage` (`{ texture, device, width, height }`) as well as RGBA pixels. When its sessions run on another device, or on the CPU, the runner reads the texture back itself. `WebGPUProvider` takes a `device` option and feeds `gpuBuffer` inputs with `Tensor.fromGpuBuffer`.
+
+### Patch Changes
+
+- 931435f: Instance segmentation does far less work per frame. The RTMDet-Ins export ran NMS on the CPU in the middle of its graph and returned a full 640×640 mask for every detection: about 40 per frame, 65 MB of floats, computed on the GPU and copied back. The runner now cuts the graph at load time before its first data-dependent step and does the rest itself: top-k, per-class NMS with the export's thresholds, and each mask's three dynamic 1×1 layers at 80×80, only for the detections a layer keeps. `detect()` computes no masks at all.
+
+  Results match the end2end graph: the same detections, scores and boxes, and masks with IoU above 0.98 on the reference frames (edges differ by one interpolation step). The model file and its SHA-256 check are unchanged; a model without the expected head tensors still runs end to end.
+
+  The smoke project's `vision` export on an Apple Silicon Mac: 22.3 s → 15 s.
+
+- 34f497a: Fix duplicate pose skeletons on the GPU path. In its default NHWC layout, onnxruntime-web (1.30)'s WebGPU execution provider computes grouped convolutions wrong when a group has more than one channel and the count isn't a multiple of 4. That corrupts RTMO's head (18 channels per group) and turned one person into several detections. Models with such a convolution (RTMO) now run in NCHW layout; the others (RTMDet-Ins, Selfie, whose grouped convolutions are depthwise) keep NHWC, which is about 30% faster. Outputs match the CPU provider on every pinned model.
+
+  Vision now reports its inference backend once per process, and the renderer logs it: `[vision] Inference on the GPU (WebGPU)` with `sharedDevice`, or `[vision] Inference on the CPU` with the reason.
+
 ## 2.2.0-beta.1
 
 ### Minor Changes

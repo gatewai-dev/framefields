@@ -85,6 +85,9 @@
   },
   "changesets": [
     "renderer-worker-gpu",
-    "vision-gpu-shared-sessions"
+    "vision-gpu-frames",
+    "vision-gpu-shared-sessions",
+    "vision-rtmdet-head",
+    "vision-webgpu-nchw"
   ]
 }

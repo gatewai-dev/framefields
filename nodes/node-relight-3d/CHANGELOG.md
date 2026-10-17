@@ -1,5 +1,7 @@
 # @framefields/node-relight-3d
 
+## 2.2.0-beta.2
+
 ## 2.2.0-beta.1
 
 ## 2.2.0-beta.0

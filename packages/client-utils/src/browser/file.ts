@@ -2,29 +2,7 @@ const isNodeEnv = () =>
 	(typeof process !== "undefined" && Boolean(process.versions?.node)) ||
 	Boolean((globalThis as any).__IS_HEADLESS_RENDERER__);
 
-import type {
-	FileAsset,
-	FileData,
-	VirtualMediaData,
-} from "@framefields/core";
-import { getEnv } from "./env.js";
-
-export interface AssetUrlOptions {
-	baseUrl?: string;
-	r2CustomDomain?: string;
-}
-
-export let BASE_URL = getEnv("BASE_URL") as string;
-export let R2_CUSTOM_DOMAIN = getEnv("R2_CUSTOM_DOMAIN") as string;
-
-export function configureAssetUrls(options: AssetUrlOptions) {
-	if (options.baseUrl !== undefined) {
-		BASE_URL = options.baseUrl;
-	}
-	if (options.r2CustomDomain !== undefined) {
-		R2_CUSTOM_DOMAIN = options.r2CustomDomain;
-	}
-}
+import type { FileAsset, FileData, VirtualMediaData } from "@framefields/core";
 
 /**
  * Resolve the actual playable URL from a VirtualMediaData.
@@ -33,7 +11,11 @@ export function configureAssetUrls(options: AssetUrlOptions) {
 function normalizeLocalBrowserUrl(url: string | undefined): string | undefined {
 	if (!url || isNodeEnv() || typeof window === "undefined") return url;
 	const clean = url.replace(/^file:\/\//, "");
-	if (clean.startsWith("/") && !clean.startsWith("/@fs/") && !clean.startsWith("/api/")) {
+	if (
+		clean.startsWith("/") &&
+		!clean.startsWith("/@fs/") &&
+		!clean.startsWith("/api/")
+	) {
 		return `/@fs${clean}`;
 	}
 	return url;
@@ -41,7 +23,6 @@ function normalizeLocalBrowserUrl(url: string | undefined): string | undefined {
 
 export function resolveMediaSourceUrl(
 	vv: VirtualMediaData | undefined | null,
-	options?: AssetUrlOptions,
 ): string | undefined {
 	if (!vv) return undefined;
 
@@ -54,18 +35,21 @@ export function resolveMediaSourceUrl(
 
 	const directEntity = (vv as any)?.entity;
 	if (directEntity) {
-		if (typeof directEntity === "string") return normalizeLocalBrowserUrl(directEntity);
-		if (directEntity.url && typeof directEntity.url === "string") return normalizeLocalBrowserUrl(directEntity.url);
-		return GetAssetEndpoint(directEntity, options);
+		if (typeof directEntity === "string")
+			return normalizeLocalBrowserUrl(directEntity);
+		if (directEntity.url && typeof directEntity.url === "string")
+			return normalizeLocalBrowserUrl(directEntity.url);
+		return GetAssetEndpoint(directEntity);
 	}
 
 	// New structure: leaf source node
 	if (vv.operation?.op === "source") {
 		const source = (vv.operation as any).source;
 		if (typeof source === "string") return normalizeLocalBrowserUrl(source);
-		if (source?.url && typeof source.url === "string") return normalizeLocalBrowserUrl(source.url);
+		if (source?.url && typeof source.url === "string")
+			return normalizeLocalBrowserUrl(source.url);
 		if (source?.entity) {
-			return GetAssetEndpoint(source.entity, options);
+			return GetAssetEndpoint(source.entity);
 		}
 		if (
 			(vv.operation as any).sourceUrl &&
@@ -123,7 +107,7 @@ export function resolveMediaSourceUrl(
 	// Recursively search children (e.g. Blur, Adjust, LUT, Compositor wrapping a media source)
 	if (Array.isArray(vv.children)) {
 		for (const child of vv.children) {
-			const found = resolveMediaSourceUrl(child, options);
+			const found = resolveMediaSourceUrl(child);
 			if (found) return found;
 		}
 	}
@@ -138,7 +122,6 @@ export function resolveMediaSourceUrl(
 			) {
 				const found = resolveMediaSourceUrl(
 					entry.outputItem.data as VirtualMediaData,
-					options,
 				);
 				if (found) return found;
 			}
@@ -151,10 +134,7 @@ export function resolveMediaSourceUrl(
 /**
  * Appends a file extension hint to the URL.
  */
-export function GetAssetEndpoint(
-	fileAsset: Pick<FileAsset, "id" | "key">,
-	options?: AssetUrlOptions,
-) {
+export function GetAssetEndpoint(fileAsset: Pick<FileAsset, "id" | "key">) {
 	if (!fileAsset) return "";
 	if ((fileAsset as any).url && typeof (fileAsset as any).url === "string") {
 		const u = (fileAsset as any).url as string;
@@ -172,12 +152,6 @@ export function GetAssetEndpoint(
 	}
 
 	const { id, key } = fileAsset;
-	const r2CustomDomain =
-		options?.r2CustomDomain ??
-		(getEnv("R2_CUSTOM_DOMAIN") as string) ??
-		R2_CUSTOM_DOMAIN;
-	const baseUrl =
-		options?.baseUrl ?? (getEnv("BASE_URL") as string) ?? BASE_URL ?? "";
 
 	if (
 		key &&
@@ -199,39 +173,15 @@ export function GetAssetEndpoint(
 		return key.startsWith("/") ? `file://${key}` : key;
 	}
 
-	// 1. If using Custom Domain, return the direct link (R2 keys include extensions)
-	if (r2CustomDomain) {
-		return `https://${r2CustomDomain}/${key}`;
-	}
-
-	// If using file:// base URL (local storage in CLI/in-memory mode)
-	if (baseUrl && baseUrl.startsWith("file://")) {
-		const basePath = baseUrl.replace(/\/+$/, "");
-		return `${basePath}/${key}`;
-	}
-
-	// 2. If using Local API, determine if an extension suffix is needed from the key
+	// An asset known only by id: the asset API path on the page's own origin.
 	const extension = key.includes(".") ? key.split(".").pop() : null;
 	const suffix = extension ? `.${extension}` : "";
 
-	return `${baseUrl}/api/v1/assets/${id}${suffix}`;
+	return `/api/v1/assets/${id}${suffix}`;
 }
 
-export function GetFontAssetUrl(name: string, options?: AssetUrlOptions) {
-	const r2CustomDomain =
-		options?.r2CustomDomain ??
-		(getEnv("R2_CUSTOM_DOMAIN") as string) ??
-		R2_CUSTOM_DOMAIN;
-	const baseUrl =
-		options?.baseUrl ?? (getEnv("BASE_URL") as string) ?? BASE_URL ?? "";
-
-	// 1. If using Custom Domain, return the direct link (R2 keys include extensions)
-	if (r2CustomDomain) {
-		return `https://${r2CustomDomain}/fonts/${name}/font_file.ttf`;
-	}
-	if (baseUrl) {
-		return `${baseUrl}/api/v1/fonts/load/${name}`;
-	}
+/** Conventional path of a font that wasn't registered with a file. */
+export function GetFontAssetUrl(name: string) {
 	return `assets/fonts/${name}.ttf`;
 }
 
@@ -257,8 +207,8 @@ export const isFileData = (data: unknown): data is FileData => {
 	return typeof data === "object" && data !== null && "entity" in data;
 };
 
-export function ResolveFileDataUrl(data: FileData, options?: AssetUrlOptions) {
+export function ResolveFileDataUrl(data: FileData) {
 	if (!data) return null;
-	if (data.entity) return GetAssetEndpoint(data.entity, options);
+	if (data.entity) return GetAssetEndpoint(data.entity);
 	return null;
 }

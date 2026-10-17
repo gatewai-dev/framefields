@@ -1,30 +1,16 @@
-import {
-	BASE_URL,
-	GetFontAssetUrl,
-	localFontManager,
-} from "@framefields/client-utils";
+import { GetFontAssetUrl, localFontManager } from "@framefields/client-utils";
 import { DotLottie, type Fit } from "@lottiefiles/dotlottie-web";
 import { premultiplyPixels } from "../color.js";
-import {
-	getHeadlessFontData,
-	registerHeadlessFont,
-} from "../headless-font-loader.js";
-
-function resolveUrl(url: string): string {
-	if (!url) return url;
-	if (url.startsWith("/")) {
-		const base = BASE_URL || "http://localhost:8081";
-		return `${base}${url}`;
-	}
-	return url;
-}
-
 import { debugLog } from "../debug-log.js";
 import {
 	createHeadlessDOMElement,
 	installIntersectionObserverStub,
 	patchCanvasPrototypeForDOM,
 } from "../headless/dom-shims.js";
+import {
+	getHeadlessFontData,
+	registerHeadlessFont,
+} from "../headless-font-loader.js";
 import type { RenderContextValue } from "../render-context.js";
 import { textureCache } from "../texture-cache.js";
 import type { LottieNodeProps } from "./types.js";
@@ -184,11 +170,10 @@ async function registerLottieFont(family: string): Promise<void> {
 	// Step 3: Fallback — let DotLottie fetch the font via URL
 	if (!registered) {
 		try {
-			const resolvedFontUrl = resolveUrl(fontUrl);
-			registered = await DotLottie.registerFont(family, resolvedFontUrl);
+			registered = await DotLottie.registerFont(family, fontUrl);
 			if (!registered) {
 				console.warn(
-					`[LottieRenderer] DotLottie.registerFont via URL also failed for "${family}" (${resolvedFontUrl})`,
+					`[LottieRenderer] DotLottie.registerFont via URL also failed for "${family}" (${fontUrl})`,
 				);
 			}
 		} catch (err) {
@@ -226,7 +211,7 @@ class LottieInstance {
 		this.canvas = new OffscreenCanvas(width, height);
 		this.dotLottie = new DotLottie({
 			canvas: this.canvas,
-			...(data ? { data } : { src: resolveUrl(src) }),
+			...(data ? { data } : { src }),
 			autoplay: false,
 			loop: false,
 			speed: 0,
@@ -499,7 +484,7 @@ class LottieLoader {
 						isRemote &&
 						(resolvedSrc.endsWith(".json") || resolvedSrc.includes("/assets/"))
 					) {
-						const response = await fetch(resolveUrl(resolvedSrc));
+						const response = await fetch(resolvedSrc);
 						if (response.ok) {
 							lottieJson = await response.json();
 						}

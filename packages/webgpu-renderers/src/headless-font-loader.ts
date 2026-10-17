@@ -1,4 +1,3 @@
-import { BASE_URL } from "@framefields/client-utils";
 import { debugLog } from "./debug-log.js";
 
 let tempDir: Promise<string> | null = null;
@@ -8,19 +7,13 @@ const fontPaths = new Map<string, string>();
 const fontDataCache = new Map<string, Uint8Array>();
 
 async function getLocalFontPath(family: string, url: string): Promise<string> {
-	let resolvedUrl = url;
+	const resolvedUrl = url;
 	if (url.startsWith("/")) {
-		if (BASE_URL) {
-			resolvedUrl = `${BASE_URL}${url}`;
-		} else {
-			const fs = await import(/* webpackIgnore: true */ "fs/promises");
-			try {
-				await fs.access(url);
-			} catch {
-				throw new Error(
-					`Relative font URL "${url}" cannot be resolved because BASE_URL is not configured.`,
-				);
-			}
+		const fs = await import(/* webpackIgnore: true */ "fs/promises");
+		try {
+			await fs.access(url);
+		} catch {
+			throw new Error(`Font file "${url}" not found.`);
 		}
 	}
 

@@ -1,6 +1,6 @@
 {
 	"name": "@framefields/node-signal-gate",
-	"version": "2.2.0-beta.4",
+	"version": "2.2.0",
 	"private": false,
 	"framefields": {
 		"type": "SignalGate",

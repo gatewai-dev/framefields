@@ -87,6 +87,7 @@
     "renderer-worker-gpu",
     "vision-gpu-frames",
     "vision-gpu-shared-sessions",
+    "vision-matte-classes",
     "vision-rtmdet-head",
     "vision-webgpu-nchw"
   ]

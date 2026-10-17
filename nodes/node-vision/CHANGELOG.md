@@ -1,5 +1,7 @@
 # @framefields/node-vision
 
+## 2.2.0-beta.3
+
 ## 2.2.0-beta.2
 
 ### Patch Changes

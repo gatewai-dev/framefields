@@ -1,5 +1,7 @@
 # @framefields/node-halftone-screen
 
+## 2.2.0-beta.3
+
 ## 2.2.0-beta.2
 
 ## 2.2.0-beta.1

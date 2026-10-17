@@ -60,7 +60,7 @@
 			"@seydx/node-av-win32-x64-mingw": "6.0.0",
 			"@seydx/node-av-win32-arm64-msvc": "6.0.0",
 			"@seydx/node-av-win32-arm64-mingw": "6.0.0",
-			"mediabunny": "^1.51.0",
+			"mediabunny": "^1.61.6",
 			"tar@<=7.5.3": ">=7.5.4",
 			"tar@<7.5.7": ">=7.5.7",
 			"tar@<=7.5.2": ">=7.5.3",

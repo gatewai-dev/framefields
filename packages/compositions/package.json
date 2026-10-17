@@ -56,7 +56,7 @@
 		"@framefields/node-sdk": "workspace:*",
 		"@framefields/renderers": "workspace:*",
 		"@framefields/webgpu-renderers": "workspace:*",
-		"@mediabunny/mp3-encoder": "^1.51.0",
+		"@mediabunny/mp3-encoder": "^1.61.6",
 		"yoga-layout": "^3.2.1"
 	},
 	"publishConfig": {

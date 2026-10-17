@@ -17,12 +17,18 @@ class FakeOrtSession implements OrtWebSession {
 }
 
 function fakeModule(opts: { failWebGPU?: boolean } = {}) {
-	const calls: { executionProviders: string[] }[] = [];
+	const calls: { executionProviders: string[]; raw: unknown[] }[] = [];
+	const name = (ep: string | { name: string }) =>
+		typeof ep === "string" ? ep : ep.name;
 	const module: OrtWebModule = {
 		InferenceSession: {
 			async create(_bytes, options) {
-				calls.push({ executionProviders: [...options.executionProviders] });
-				if (opts.failWebGPU && options.executionProviders.includes("webgpu")) {
+				const providers = options.executionProviders.map(name);
+				calls.push({
+					executionProviders: providers,
+					raw: [...options.executionProviders],
+				});
+				if (opts.failWebGPU && providers.includes("webgpu")) {
 					throw new Error("webgpu unavailable");
 				}
 				return new FakeOrtSession();
@@ -60,6 +66,11 @@ describe("WebGPUProvider", () => {
 		expect(outputs.output0.dims).toEqual([1, 1, 1]);
 		expect(outputs.output0.data[0]).toBeCloseTo(0.5, 6);
 		expect(calls[0].executionProviders).toEqual(["webgpu", "wasm"]);
+		// NHWC miscomputes grouped convs with channels/group not a multiple of 4 (RTMO)
+		expect(calls[0].raw[0]).toEqual({
+			name: "webgpu",
+			preferredLayout: "NCHW",
+		});
 
 		// loader is memoized across sessions
 		await provider.createSession(new Uint8Array([1]));

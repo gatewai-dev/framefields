@@ -1,29 +1,25 @@
-import { generateId } from "@framefields/core";
-import { apiLogger, loggerContext } from "@framefields/server-utils";
+import { randomUUID } from "node:crypto";
 import type { Context, Next } from "hono";
+import { apiLogger, loggerContext } from "./logger.js";
 
-// 1. Request/Response Middleware
+/** Tags each request with an id (x-request-id) and logs client errors. */
 export const loggerMiddleware = async (c: Context, next: Next) => {
-	const requestId = c.req.header("x-request-id") || generateId();
-	c.set("requestId", requestId);
+	const requestId = c.req.header("x-request-id") || randomUUID();
 	c.header("x-request-id", requestId);
-
-	const { method, url } = c.req;
+	const { method, path } = c.req;
 	const start = Date.now();
 
-	await loggerContext.run({ component: "api", requestId }, async () => {
+	await loggerContext.run({ requestId }, async () => {
 		await next();
-
 		const status = c.res.status;
-		const duration = `${Date.now() - start}ms`;
-
-		const logPayload = { method, url, status, duration, requestId };
-
-		if (status < 400) {
-			apiLogger.trace(logPayload, "✅ Request Success");
-		} else if (status < 500) {
-			apiLogger.warn(logPayload, "⚠️ Client Error");
-		}
-		// Note: 500+ errors are handled by app.onError in index.ts
+		const payload = {
+			method,
+			path,
+			status,
+			duration: `${Date.now() - start}ms`,
+		};
+		if (status < 400) apiLogger.trace(payload, "request");
+		else if (status < 500) apiLogger.warn(payload, "client error");
+		// 5xx are logged by app.onError.
 	});
 };

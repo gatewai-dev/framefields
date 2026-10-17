@@ -36,7 +36,8 @@ class MovingProvider implements SessionProvider {
 async function* frames(count: number): AsyncIterable<VisionImageInput> {
 	for (let i = 0; i < count; i++) {
 		yield {
-			data: new Uint8ClampedArray(640 * 640 * 4).fill(128),
+			// A distinct picture per frame: equal pixels share one model pass.
+			data: new Uint8ClampedArray(640 * 640 * 4).fill(100 + i),
 			width: 640,
 			height: 640,
 		};

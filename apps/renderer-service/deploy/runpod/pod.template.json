@@ -1,0 +1,31 @@
+{
+	"name": "framefields-renderer (pod, HTTP API)",
+	"imageName": "ghcr.io/gatewai-dev/framefields-renderer:beta",
+	"isServerless": false,
+	"containerDiskInGb": 40,
+	"volumeInGb": 100,
+	"volumeMountPath": "/runpod-volume",
+	"dockerArgs": "",
+	"ports": "8082/http",
+	"env": [
+		{ "key": "FF_MODE", "value": "http" },
+		{ "key": "FF_GPU", "value": "require" },
+		{ "key": "RENDERER_API_KEY", "value": "{{ RUNPOD_SECRET_ff_api_key }}" },
+		{ "key": "FF_REPO_ALLOWLIST", "value": "github.com/your-org/*" },
+		{ "key": "GIT_TOKEN", "value": "{{ RUNPOD_SECRET_ff_git_token }}" },
+		{
+			"key": "STORAGE_ENDPOINT",
+			"value": "https://<account>.r2.cloudflarestorage.com"
+		},
+		{ "key": "STORAGE_BUCKET", "value": "renders" },
+		{
+			"key": "STORAGE_ACCESS_KEY_ID",
+			"value": "{{ RUNPOD_SECRET_ff_storage_key_id }}"
+		},
+		{
+			"key": "STORAGE_SECRET_ACCESS_KEY",
+			"value": "{{ RUNPOD_SECRET_ff_storage_secret }}"
+		},
+		{ "key": "LOG_LEVEL", "value": "info" }
+	]
+}

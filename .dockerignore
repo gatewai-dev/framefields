@@ -1,4 +1,7 @@
 node_modules
+**/node_modules
+# Test projects for the renderer; never part of an image.
+apps/renderer-service/examples
 .git
 .turbo
 dist

@@ -1,0 +1,33 @@
+{
+	"name": "framefields-renderer (serverless)",
+	"imageName": "ghcr.io/gatewai-dev/framefields-renderer:beta",
+	"isServerless": true,
+	"containerDiskInGb": 40,
+	"volumeInGb": 0,
+	"dockerArgs": "",
+	"ports": "",
+	"env": [
+		{ "key": "FF_MODE", "value": "runpod-serverless" },
+		{ "key": "FF_GPU", "value": "require" },
+		{ "key": "FF_REPO_ALLOWLIST", "value": "github.com/your-org/*" },
+		{ "key": "FF_DEFAULT_REF", "value": "main" },
+		{ "key": "GIT_TOKEN", "value": "{{ RUNPOD_SECRET_ff_git_token }}" },
+		{
+			"key": "STORAGE_ENDPOINT",
+			"value": "https://<account>.r2.cloudflarestorage.com"
+		},
+		{ "key": "STORAGE_BUCKET", "value": "renders" },
+		{
+			"key": "STORAGE_ACCESS_KEY_ID",
+			"value": "{{ RUNPOD_SECRET_ff_storage_key_id }}"
+		},
+		{
+			"key": "STORAGE_SECRET_ACCESS_KEY",
+			"value": "{{ RUNPOD_SECRET_ff_storage_secret }}"
+		},
+		{ "key": "STORAGE_PUBLIC_BASE_URL", "value": "" },
+		{ "key": "FF_CACHE_MAX_GB", "value": "40" },
+		{ "key": "FF_JOB_TIMEOUT_MAX_SEC", "value": "3600" },
+		{ "key": "LOG_LEVEL", "value": "info" }
+	]
+}

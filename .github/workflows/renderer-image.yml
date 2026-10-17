@@ -1,0 +1,167 @@
+# Builds and publishes the renderer worker image (apps/renderer-service) to GHCR.
+#   push to main      → :main, :sha-<short>            (+ -full variants)
+#   tag renderer-v1.2.3 → :1.2.3, :1.2, :latest        (+ -full variants)
+#   tag renderer-v1.2.3-beta.0 → :1.2.3-beta.0, :beta  (+ -full variants)
+# A tag push runs this file as it is in the tagged commit, so any branch
+# can publish a prerelease image before it is merged.
+#   pull request      → build + smoke test only, nothing pushed
+#   manual run        → :<branch>, :sha-<short> (publish input, default on)
+# The full variant adds a C/C++ toolchain.
+name: renderer-image
+
+on:
+  push:
+    branches: [main]
+    tags: ["renderer-v*"]
+    paths:
+      - "apps/renderer-service/**"
+      - "packages/**"
+      - "nodes/**"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/renderer-image.yml"
+  pull_request:
+    paths:
+      - "apps/renderer-service/**"
+      - "packages/**"
+      - "nodes/**"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/renderer-image.yml"
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Push to GHCR
+        type: boolean
+        default: true
+
+concurrency:
+  group: renderer-image-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/framefields-renderer
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: sudo apt-get update && sudo apt-get install -y git-lfs ffmpeg
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec turbo run build --filter=@framefields/renderer-service...
+      - run: pnpm --filter @framefields/renderer-service typecheck
+      # GPU tests are skipped here (FF_GPU_TESTS unset); run them on a GPU host.
+      - run: pnpm --filter @framefields/renderer-service test
+      - run: apps/renderer-service/deploy/known-hosts.sh
+
+  image:
+    needs: test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        variant: [slim, full]
+    env:
+      PUBLISH: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: version
+        name: Version from the renderer-v* tag
+        run: |
+          ref="${GITHUB_REF#refs/tags/renderer-v}"
+          if [ "$ref" != "$GITHUB_REF" ]; then
+            echo "version=$ref" >> "$GITHUB_OUTPUT"
+            case "$ref" in *-*) echo "prerelease=true" >> "$GITHUB_OUTPUT";; esac
+          fi
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          flavor: |
+            latest=false
+            suffix=${{ matrix.variant == 'full' && '-full' || '' }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=sha-
+            # Prereleases get only their exact version (plus :beta below);
+            # stable releases also get :<major.minor> and :latest.
+            type=semver,pattern={{version}},value=${{ steps.version.outputs.version }},enable=${{ steps.version.outputs.version != '' }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ steps.version.outputs.version }},enable=${{ steps.version.outputs.version != '' }}
+            type=raw,value=latest,enable=${{ steps.version.outputs.version != '' && steps.version.outputs.prerelease != 'true' }}
+            type=raw,value=beta,enable=${{ steps.version.outputs.prerelease == 'true' }}
+          labels: |
+            org.opencontainers.image.title=framefields-renderer
+            org.opencontainers.image.description=framefields render worker (git checkout, install, GPU render, upload)
+      - uses: docker/setup-buildx-action@v3
+      - name: Build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/renderer-service/Dockerfile
+          platforms: linux/amd64
+          build-args: VARIANT=${{ matrix.variant }}
+          tags: framefields-renderer:ci
+          labels: ${{ steps.meta.outputs.labels }}
+          load: true
+          cache-from: type=gha,scope=renderer-${{ matrix.variant }}
+          cache-to: type=gha,mode=max,scope=renderer-${{ matrix.variant }}
+      - name: Smoke test (no GPU)
+        run: |
+          # Tools, pinned host keys, and no engine baked in.
+          docker run --rm --entrypoint bash framefields-renderer:ci -c \
+            'git --version && git lfs version && ffprobe -version | head -1 && test -s /app/deploy/known_hosts && test ! -e /app/node_modules/framefields'
+          # Boots and reports healthy; renders on the CPU without a GPU.
+          docker run -d --name smoke -p 8082:8082 -e FF_MODE=http \
+            -e RENDERER_API_KEY=ci-smoke-key-0123456789 -e FF_REPO_ALLOWLIST='github.com/example/*' \
+            framefields-renderer:ci
+          for i in $(seq 1 30); do
+            if curl -fsS localhost:8082/health; then echo; break; fi
+            sleep 1
+          done
+          curl -fsS localhost:8082/health | jq -e '.status == "ok" and .components.gpu.renderer == "cpu"' \
+            || { docker logs smoke; exit 1; }
+          docker rm -f smoke
+          # A root-owned volume at /runpod-volume, as RunPod mounts a pod volume:
+          # the entrypoint hands the cache dir to framefields, then drops root.
+          docker run -d --name smoke-vol -p 8083:8082 -e FF_MODE=http \
+            -e RENDERER_API_KEY=ci-smoke-key-0123456789 -e FF_REPO_ALLOWLIST='github.com/example/*' \
+            -v ff-smoke-vol:/runpod-volume framefields-renderer:ci
+          for i in $(seq 1 30); do
+            if curl -fsS localhost:8083/health >/dev/null; then break; fi
+            sleep 1
+          done
+          curl -fsS localhost:8083/health | jq -e '.status == "ok" and .disks.cache.path == "/runpod-volume/framefields"' \
+            || { docker logs smoke-vol; exit 1; }
+          test "$(docker top smoke-vol -eo pid,uid,args | awk '/dist\/src\/index.js/ {print $2}')" = 1001 \
+            || { docker top smoke-vol -eo pid,uid,args; exit 1; }
+          docker rm -f smoke-vol && docker volume rm ff-smoke-vol
+      - uses: docker/login-action@v3
+        if: env.PUBLISH == 'true'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish
+        if: env.PUBLISH == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/renderer-service/Dockerfile
+          platforms: linux/amd64
+          build-args: VARIANT=${{ matrix.variant }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          push: true
+          cache-from: type=gha,scope=renderer-${{ matrix.variant }}
+      - name: Summary
+        if: env.PUBLISH == 'true'
+        run: |
+          echo "### Published (${{ matrix.variant }})" >> "$GITHUB_STEP_SUMMARY"
+          echo '${{ steps.meta.outputs.tags }}' | sed 's/^/- `/; s/$/`/' >> "$GITHUB_STEP_SUMMARY"

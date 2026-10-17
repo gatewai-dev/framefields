@@ -1,4 +1,4 @@
-import { getEnv, resolveMediaSourceUrl } from "@framefields/client-utils";
+import { resolveMediaSourceUrl } from "@framefields/client-utils";
 import {
 	getActiveMediaMetadata,
 	resolveMediaMimeType,
@@ -24,16 +24,6 @@ export type RenderParams = {
 	effectiveDurationSec: number;
 	mimeType: string | null;
 };
-
-const BASE_URL = getEnv("BASE_URL") as string;
-const CDN_DOMAIN = getEnv("R2_CUSTOM_DOMAIN") as string;
-
-export function getFontUrl(name: string) {
-	if (CDN_DOMAIN) {
-		return `https://${CDN_DOMAIN}/fonts/${name}/font_file.ttf`;
-	}
-	return `${BASE_URL}/api/v1/fonts/load/${name}`;
-}
 
 /**
  * Compute render parameters for the CURRENT node only — does NOT recurse into

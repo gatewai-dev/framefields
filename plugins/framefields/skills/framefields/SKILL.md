@@ -21,7 +21,8 @@ This skill takes a project from nothing to a verified first render. For anything
 ## 1. Check the environment
 
 - **Node.js 22 or later.** Run `node --version`. Older versions fail at import.
-- **A WebGPU-capable GPU.** macOS uses Metal; Linux and Windows use Vulkan. Rendering strictly requires a GPU; headless CI environments or virtual machines without a GPU cannot render (there is no CPU software rasterization fallback).
+- **A WebGPU-capable GPU.** macOS uses Metal; Linux and Windows use Vulkan. From framefields 2.2, Linux without a GPU falls back to a CPU Vulkan driver (Mesa lavapipe) when one is installed, 10–100× slower; `describeGpu()` reports `software: true` then. Machines with neither cannot render.
+- **framefields version.** `framefields` installs the stable 2.1. GPU vision, render progress/cancel and the render worker need 2.2, on `framefields@beta` until 2.2.0 is released. Use the beta when the user wants those.
 - **An ES module project.** The project's `package.json` needs `"type": "module"`.
 
 ## 2. Install
@@ -53,7 +54,7 @@ For a new project, create `package.json` with all three blocks. In an existing p
 }
 ```
 
-`allowScripts` is read by npm, `pnpm` by pnpm, and `trustedDependencies` by bun; each tool ignores the others' fields. Yarn runs install scripts by default and needs none of them. Then install:
+`allowScripts` is read by npm, `pnpm` by pnpm, and `trustedDependencies` by bun; each tool ignores the others' fields. Yarn runs install scripts by default and needs none of them. Also add `"packageManager"` with the exact manager and version you install with (e.g. `"pnpm@10.13.1"`), and commit the lockfile the install writes (pnpm, npm or yarn; bun lockfiles can't be rendered by the worker). Then install:
 
 ```bash
 npm install framefields
@@ -81,7 +82,7 @@ A minimal `tsconfig.json`:
 
 ## 3. Scaffold the project
 
-Keep the composition separate from the script that renders it, so tests and the render script build the same film:
+Keep the composition separate from the script that renders it, so tests, the preview, the render script and the render worker all build the same film. `film.ts` must only build: no rendering, no `process.exit()`, no writes at import time.
 
 ```
 src/
@@ -246,7 +247,7 @@ Video inputs (`Layer.video("assets/footage/clip.mp4")`), Lottie animations (`Lay
 
 ## 4. Verify, cheapest step first
 
-Never go straight to a full video render. Rendering strictly requires a WebGPU-capable GPU (Metal on macOS, Vulkan on Linux/Windows; CPU software rendering is not supported). Each step catches problems in seconds that a video render takes minutes to show:
+Never go straight to a full video render. Rendering needs a WebGPU-capable GPU (Metal on macOS, Vulkan on Linux/Windows); CPU rendering through lavapipe works on 2.2 but is far slower. Each step catches problems in seconds that a video render takes minutes to show:
 
 1. `npm run typecheck`
 2. `npm run frames -- 0 30 60` and look at the PNGs in `output/`. A black frame usually means a missing font, a layer outside the canvas, or opacity stuck at 0.
@@ -267,6 +268,17 @@ Show the user the frame PNGs or the grid before the full render. `framefields-re
 - Link to a moment with `#t=12.5` (seconds). In a browser you can script, `window.framefieldsPreview` has `seek(seconds)`, `play()`, `pause()` and `state()`; `seek` resolves once the frame is drawn, so screenshot after it.
 - **The user can pin notes on the picture.** Pausing and clicking (or dragging an area) adds a note at that spot and moment. Each one prints in the preview's output and is saved in `.framefields/preview-notes/`: `notes.json`, plus `note-<id>.jpg`, the frame with the spot marked. When the user says they left notes, read `notes.json` and look at each open note's picture before you edit. Then run the preview again so they can check the changes and tick them off. `framefields-render` has the details.
 
-## 5. Grow the film
+## 5. Render on a server
+
+The framefields render worker (Docker, RunPod pod or serverless) renders a pushed commit: it pulls LFS assets, installs from the lockfile, imports `src/film.ts`, calls `buildFilm`, and uploads the result. A project built as above works unchanged if:
+
+- `framefields` is 2.2+, the lockfile is committed and matches `package.json`, and `packageManager` is pinned;
+- every input is under `assets/`, tracked by Git LFS and pushed (`git lfs ls-files` lists it);
+- asset paths come from `import.meta.url`, never `process.cwd()`;
+- nothing writes into `node_modules` while rendering (files are shared read-only).
+
+A failed job returns `{ code, hint, retryable }`; resubmit unchanged only when `retryable` is true. Job format and error codes: https://framefields.dev/docs/guides/render-service/
+
+## 6. Grow the film
 
 Once the first render works, move to the specialist skills: `framefields-compose` for splitting the film into scene modules on a beat grid, `framefields-effects` for grading, grain, and vision-driven effects, and `framefields-render` for tests and delivery checks. Keep `theme.ts` as the single source of sizes, colors, fonts, and timing as the project grows.

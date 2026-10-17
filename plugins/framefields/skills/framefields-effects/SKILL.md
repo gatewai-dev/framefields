@@ -160,11 +160,20 @@ Measured per 1280–2048 px frame on CPU (`onnxruntime-node`):
 - Raise `confidence` (e.g. `0.5`) on abstract or stylized footage — at the default `0.3` the model will put loose labels ("teddy bear", "donut") on smoke, eyes and planets.
 - Restrict `classes` when you only care about one thing; it also stops the subject from switching to another object when the person leaves frame.
 
+### GPU or CPU
+
+Inference runs on the GPU through `onnxruntime-web`'s WebGPU backend (an optional dependency of `framefields`, installed by default) on a hardware adapter, and on the CPU through `onnxruntime-node` otherwise: when `onnxruntime-web` is missing, the only adapter is a software one (lavapipe, SwiftShader), or WebGPU fails. On an Apple Silicon Mac the GPU roughly halves render time against the CPU. Layers that use the same `variant` share their models, and layers showing the same pixels share one detect/segment pass.
+
+| Variable | Effect |
+| --- | --- |
+| `FRAMEFIELDS_VISION_PROVIDER` | `auto` (default), `webgpu`, `cpu`, or `cuda` (onnxruntime-node's CUDA EP on Linux x64; needs the CUDA 12 and cuDNN 9 libraries). A forced backend that fails throws instead of falling back. |
+| `FRAMEFIELDS_VISION_THREADS` | CPU threads per model. Default on Linux: the CPUs the process may use, cgroup quota included; elsewhere ONNX Runtime's default. |
+
 ### How it behaves at render time
 
 - **One-frame delay.** Vision reads the layer's *previous* rendered frame, so the very first frame has no results (a cutout renders transparent) and masks trail the plate by one frame. This is invisible at normal playback speed.
 - **Render vision frames in order.** `renderVideo` does this for you. For stills, render at least two consecutive frames with the same renderer and keep the last one. Jumping straight to a later frame (or using a frame grid) cuts out pixels from whatever frame was rendered before it, which shows up as a ghosted double of the subject.
-- **Subject choice.** `mask` / `matte` / `crop` use the largest person; with no person, the most confident instance. Instances overlapping the subject and no more than twice its size are merged in (a dress, a held instrument) — large containers around it (a tunnel, a window frame) are not.
+- **Subject choice.** `mask` / `matte` / `crop` use the largest person; with no person, the most confident instance. Instances overlapping the subject and no more than twice its size are merged in (a dress, a held instrument) — large containers around it (a tunnel, a window frame) are not. `classes` limits what the subject can be, not what merges into it: COCO has no clothing class, so a flowing dress often comes back as a "kite" or "umbrella" and still joins a `classes: ["person"]` cutout.
 - Each vision layer tracks objects independently; track ids from two layers are unrelated.
 
 ### Troubleshooting

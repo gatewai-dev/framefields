@@ -1,101 +1,90 @@
-import "reflect-metadata";
-import { configureAssetUrls } from "@framefields/client-utils";
-import { HeadlessMediaRenderer } from "@framefields/renderer";
-import "@framefields/renderer/offscreen-gl-polyfill";
-import {
-	container,
-	rendererLogger,
-	type StorageService,
-	TOKENS,
-} from "@framefields/server-utils";
-import { registerBackendServices } from "./di-setup.js";
-import { RENDERER_ENV_CONFIG } from "./env-config.js";
-import { renderAndUpload } from "./render-upload.js";
+import { readFileSync, writeFileSync } from "node:fs";
+import { parseArgs } from "node:util";
+import { RenderError } from "./errors.js";
+import { isTerminal, type JobRecord } from "./jobs/store.js";
+import { bootWorker, exit } from "./worker/boot.js";
 
-async function main() {
-	const jobArgIndex = process.argv.indexOf("--job");
-	if (jobArgIndex === -1 || !process.argv[jobArgIndex + 1]) {
-		console.error("Missing --job parameter containing JSON input payload");
-		process.exit(1);
+/**
+ * One-shot render (FF_MODE=cli, PLAN.md §5):
+ *   node dist/src/cli.js --job-file job.json [--result-file result.json]
+ *   cat job.json | node dist/src/cli.js --job -
+ * Logs go to stdout as JSON lines; the job record is written to
+ * --result-file, or printed last on stdout as `{"ffResult": …}`.
+ * Exit codes: 0 completed, 1 failed/cancelled, 2 bad invocation or job.
+ */
+const USAGE =
+	"usage: cli.js (--job-file <path> | --job -) [--result-file <path>]";
+
+function readJob(): unknown {
+	const { values } = parseArgs({
+		options: {
+			"job-file": { type: "string" },
+			job: { type: "string" },
+			"result-file": { type: "string" },
+		},
+	});
+	const source =
+		values["job-file"] ?? (values.job === "-" ? "/dev/stdin" : undefined);
+	if (!source) {
+		console.error(USAGE);
+		exit(2);
 	}
-
-	let jobData: any;
 	try {
-		jobData = JSON.parse(process.argv[jobArgIndex + 1]);
-	} catch (e: any) {
-		console.error("Failed to parse JSON job input:", e.message);
-		process.exit(1);
-	}
-
-	const { virtualMedia, type, frame, bucket, key, codec, audioCodec, quality } =
-		jobData;
-
-	if (!virtualMedia || !type || !bucket || !key) {
+		return JSON.parse(readFileSync(source as string, "utf8"));
+	} catch (err) {
 		console.error(
-			"Missing required job data fields (virtualMedia, type, bucket, key)",
+			`Could not read the job from ${source}: ${err instanceof Error ? err.message : err}`,
 		);
-		process.exit(1);
-	}
-
-	try {
-		// Initialize configurations
-		configureAssetUrls({
-			baseUrl: RENDERER_ENV_CONFIG.BASE_URL,
-			r2CustomDomain: RENDERER_ENV_CONFIG.R2_CUSTOM_DOMAIN,
-		});
-
-		// Boot DI services
-		await registerBackendServices();
-
-		// Eagerly initialize renderer
-		await HeadlessMediaRenderer.initialize();
-
-		const normalizedType = type.toLowerCase();
-		rendererLogger.info(
-			{ type: normalizedType, key },
-			"[CLI] Starting render process...",
-		);
-
-		let probedMeta: any;
-
-		const contentType = await renderAndUpload({
-			virtualMedia,
-			type,
-			frame,
-			codec,
-			audioCodec,
-			quality,
-			key,
-			bucket,
-			logPrefix: "[CLI]",
-		});
-
-		const storage = container.get<StorageService>(TOKENS.STORAGE);
-		const publicUrl = storage.getPublicUrl?.(key, bucket);
-		rendererLogger.info(
-			{ key, bucket, contentType },
-			"[CLI] Render complete and uploaded to R2 successfully.",
-		);
-
-		// Print the final result in JSON format as stdout for the wrapper script to read
-		console.log(
-			JSON.stringify({
-				success: true,
-				key,
-				bucket,
-				publicUrl,
-				metadata: probedMeta,
-			}),
-		);
-		process.exit(0);
-	} catch (error: any) {
-		rendererLogger.error(
-			{ err: error.message || String(error) },
-			"[CLI] Rendering job failed.",
-		);
-		console.error(error.message || String(error));
-		process.exit(1);
+		return exit(2);
 	}
 }
 
-main();
+function report(record: JobRecord | { status: "FAILED"; error: unknown }) {
+	const { values } = parseArgs({
+		options: { "result-file": { type: "string" } },
+		strict: false,
+	});
+	const file = values["result-file"];
+	if (typeof file === "string")
+		writeFileSync(file, JSON.stringify(record, null, 2));
+	else process.stdout.write(`${JSON.stringify({ ffResult: record })}\n`);
+}
+
+process.env.FF_MODE ??= "cli";
+const raw = readJob();
+const worker = bootWorker();
+
+let interrupted = false;
+for (const signal of ["SIGINT", "SIGTERM"] as const) {
+	process.on(signal, () => {
+		if (interrupted) exit(130);
+		interrupted = true;
+		void worker.drain(
+			new RenderError("CANCELLED", `Received ${signal}.`),
+			true,
+		);
+	});
+}
+
+try {
+	await worker.checkTools();
+	const record = worker.runner.submit(raw);
+	const done = await new Promise<JobRecord>((resolve) => {
+		const check = (r: JobRecord) => {
+			if (r.id === record.id && isTerminal(r.status)) resolve(r);
+		};
+		worker.runner.store.on("update", check);
+		check(worker.runner.store.get(record.id) ?? record);
+	});
+	report(done);
+	worker.stop();
+	exit(done.status === "COMPLETED" ? 0 : 1);
+} catch (err) {
+	const error =
+		err instanceof RenderError
+			? err.toJSON()
+			: { code: "INTERNAL", message: String(err) };
+	report({ status: "FAILED", error });
+	worker.stop();
+	exit(err instanceof RenderError && err.code === "JOB_INVALID" ? 2 : 1);
+}

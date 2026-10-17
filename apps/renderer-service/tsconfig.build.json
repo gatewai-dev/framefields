@@ -1,0 +1,10 @@
+{
+	"extends": "./tsconfig.json",
+	"compilerOptions": {
+		"composite": false,
+		"incremental": false,
+		"tsBuildInfoFile": null
+	},
+	"include": ["src/**/*"],
+	"exclude": ["src/**/*.test.ts", "src/test-helpers.ts"]
+}

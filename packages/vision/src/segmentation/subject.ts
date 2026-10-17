@@ -4,12 +4,16 @@ import type { InstanceMask } from "../types.js";
  * The frame's primary instance: the largest person when present, else the most confident
  * instance (lowest `detectionIndex` — detections are score-sorted). Size alone is a poor
  * signal without a person: the largest instance is usually a backdrop ("dining table").
+ * `classes` (case-insensitive) limits which instances can be the subject.
  */
 export function selectSubjectMask(
 	masks: readonly InstanceMask[],
+	classes?: readonly string[],
 ): InstanceMask | undefined {
+	const allowed = classes && new Set(classes.map((c) => c.toLowerCase()));
 	let best: InstanceMask | undefined;
 	for (const m of masks) {
+		if (allowed && !allowed.has(m.category.toLowerCase())) continue;
 		if (!best) {
 			best = m;
 			continue;
@@ -58,22 +62,34 @@ export function maskBounds(mask: InstanceMask): MaskBounds | null {
 	return x1 < 0 ? null : { x0, y0, x1, y1 };
 }
 
+export interface MergeSubjectOptions {
+	/**
+	 * Classes the subject may be (case-insensitive; any when omitted). Parts merged into it
+	 * may be of any class — pass every instance, not only these classes.
+	 */
+	readonly classes?: readonly string[];
+	/** Minimum intersection / smaller box area for a part. Default 0.5. */
+	readonly overlap?: number;
+	/** Largest part box area relative to the subject's. Default 2. */
+	readonly maxGrowth?: number;
+}
+
 /**
  * Builds the full subject silhouette: the primary instance plus every comparably sized
- * instance whose bounds sit mostly inside or across it (`overlap` = intersection / smaller
- * box area; `maxGrowth` caps a part's box area relative to the subject's).
+ * instance whose bounds sit mostly inside or across it.
  *
  * COCO has no "clothing" class, so a flowing dress, a held guitar or a ridden bike comes back
  * as its own instance (often mislabeled) — merging them keeps the whole figure in the cutout.
- * The size cap keeps containers out: a small figure inside a tunnel or window detected as a
- * huge "clock" must not drag the whole frame into the subject.
+ * That is why `classes` only picks the subject: a dress detected as a "kite" still merges
+ * into a "person" subject. The size cap keeps containers out: a small figure inside a tunnel
+ * or window detected as a huge "clock" must not drag the whole frame into the subject.
  */
 export function mergeSubjectMask(
 	masks: readonly InstanceMask[],
-	overlap = 0.5,
-	maxGrowth = 2,
+	options: MergeSubjectOptions = {},
 ): InstanceMask | undefined {
-	const subject = selectSubjectMask(masks);
+	const { classes, overlap = 0.5, maxGrowth = 2 } = options;
+	const subject = selectSubjectMask(masks, classes);
 	if (!subject) return undefined;
 	const sb = maskBounds(subject);
 	if (!sb) return subject;

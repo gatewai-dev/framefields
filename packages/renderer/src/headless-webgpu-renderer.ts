@@ -47,9 +47,23 @@ import {
 import sharp from "sharp";
 import { Canvas as SkiaCanvas, Image as SkiaImage } from "skia-canvas";
 import { preloadFonts } from "./asset-preloader.js";
-import { bootstrapMediabunny, isAMD } from "./bootstrap-mediabunny.js";
+import { bootstrapMediabunny } from "./bootstrap-mediabunny.js";
 import { discoverAndRegisterNodeRenderers } from "./dynamic-node-discovery.js";
 import { rendererLogger } from "./logger.js";
+
+// Vision reports its inference backend once per process (see
+// VISION_BACKEND_LISTENER in @framefields/vision).
+(globalThis as Record<symbol, unknown>)[
+	Symbol.for("framefields.vision.backend")
+] = (info: { backend: string; sharedDevice: boolean; reason?: string }) => {
+	rendererLogger.info(
+		info,
+		info.backend === "webgpu"
+			? "[vision] Inference on the GPU (WebGPU)"
+			: `[vision] Inference on the ${info.backend.toUpperCase()}`,
+	);
+};
+
 import {
 	type AudioQaStats,
 	analyzeAudio,
@@ -1035,6 +1049,13 @@ export class HeadlessWebGPURenderer {
 			 * and return the findings as `qa`. `true` uses default thresholds.
 			 */
 			qa?: boolean | VideoQaOptions;
+			/**
+			 * Aborts the render between frames; the promise rejects with
+			 * `signal.reason` and the partial output is deleted.
+			 */
+			signal?: AbortSignal;
+			/** Called after each frame is queued for encoding, then once for audio. */
+			onProgress?: (progress: RenderProgress) => void;
 		},
 	): Promise<{
 		filePath: string;
@@ -1181,7 +1202,8 @@ export class HeadlessWebGPURenderer {
 				codec: videoCodec,
 				bitrate: quality,
 				latencyMode: "realtime",
-				hardwareAcceleration: isAMD() ? "prefer-software" : "prefer-hardware",
+				// The codec server options pick hardware or software (video-encoders.ts).
+				hardwareAcceleration: "prefer-hardware",
 			} as any);
 			output.addVideoTrack(videoSource);
 		}
@@ -1265,6 +1287,7 @@ export class HeadlessWebGPURenderer {
 
 				// Render and encode frames using pipelined double-buffered DMA staging ring
 				for (let i = 0; i < totalFrames; i++) {
+					options?.signal?.throwIfAborted();
 					if (i % 10 === 0) {
 						rendererLogger.info(
 							{ renderId, frame: i, totalFrames },
@@ -1321,6 +1344,11 @@ export class HeadlessWebGPURenderer {
 						);
 
 						await pipeline.enqueueFrame(i, targetTexture, encoder);
+						options?.onProgress?.({
+							phase: "render",
+							frame: i + 1,
+							totalFrames,
+						});
 					} else {
 						throw new Error("Invalid render context state");
 					}
@@ -1347,6 +1375,12 @@ export class HeadlessWebGPURenderer {
 			}
 
 			// ── Audio ──────────────────────────────────────────────────────────────
+			options?.signal?.throwIfAborted();
+			options?.onProgress?.({
+				phase: "audio",
+				frame: totalFrames,
+				totalFrames,
+			});
 			const { channels, sampleRate } = await mixAudioTracks(
 				virtualMedia,
 				fps,
@@ -1391,6 +1425,7 @@ export class HeadlessWebGPURenderer {
 				}
 			}
 
+			options?.signal?.throwIfAborted();
 			await output.finalize();
 			outputFinalized = true;
 
@@ -1472,6 +1507,15 @@ export class HeadlessWebGPURenderer {
 			);
 		}
 	}
+}
+
+/** Progress reported by `renderVideo({ onProgress })`. */
+export interface RenderProgress {
+	/** "render" while frames are drawn and encoded, "audio" while mixing. */
+	phase: "render" | "audio";
+	/** Frames finished so far (1-based). */
+	frame: number;
+	totalFrames: number;
 }
 
 export const HeadlessMediaRenderer = HeadlessWebGPURenderer;

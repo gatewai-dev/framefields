@@ -1,5 +1,15 @@
 # @framefields/node-procedural-vfx
 
+## 2.2.0-beta.4
+
+## 2.2.0-beta.3
+
+## 2.2.0-beta.2
+
+## 2.2.0-beta.1
+
+## 2.2.0-beta.0
+
 ## 2.1.3
 
 ## 2.1.2

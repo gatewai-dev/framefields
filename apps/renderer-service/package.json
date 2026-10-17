@@ -1,9 +1,15 @@
 {
 	"name": "@framefields/renderer-service",
 	"private": true,
-	"version": "2.1.3",
+	"version": "2.2.0-beta.4",
 	"type": "module",
 	"types": "./dist/src/index.d.ts",
+	"files": [
+		"dist/src",
+		"runpod_worker.py",
+		"docker",
+		"deploy"
+	],
 	"exports": {
 		".": {
 			"types": "./dist/src/index.d.ts",
@@ -13,28 +19,29 @@
 	"scripts": {
 		"dev": "tsx watch --tsconfig tsconfig.dev.json --conditions=development src/index.ts",
 		"typecheck": "tsc -b tsconfig.json",
-		"build": "tsc -b tsconfig.json",
-		"start-cli": "node dist/src/cli.js",
+		"build": "tsc -p tsconfig.build.json",
+		"start": "node dist/src/index.js",
+		"render": "node dist/src/cli.js",
 		"test": "vitest run"
 	},
 	"dependencies": {
-		"@framefields/client-utils": "workspace:*",
-		"@framefields/core": "workspace:*",
-		"@framefields/renderer": "workspace:*",
-		"@framefields/media": "workspace:*",
-		"@framefields/server-utils": "workspace:*",
+		"@aws-sdk/client-s3": "^3.1151.0",
+		"@aws-sdk/lib-storage": "^3.1151.0",
 		"@hono/node-server": "^1.19.11",
 		"dotenv": "^17.0.1",
 		"hono": "^4.13.7",
-		"inversify": "^7.11.0",
-		"reflect-metadata": "^0.2.2",
+		"pino": "^10.3.1",
+		"semver": "^7.8.5",
+		"tsx": "^4.21.0",
 		"zod": "^4.3.6"
 	},
 	"devDependencies": {
+		"@framefields/renderer": "workspace:*",
+		"@framefields/tsconfig": "workspace:*",
 		"@types/node": "^24.1.0",
-		"tsx": "^4.20.3",
+		"@types/semver": "^7.8.0",
+		"framefields": "workspace:*",
 		"typescript": "^5.8.3",
-		"vitest": "^4.1.5",
-		"@framefields/tsconfig": "workspace:*"
+		"vitest": "^4.1.5"
 	}
 }

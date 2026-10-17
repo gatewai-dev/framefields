@@ -1,0 +1,67 @@
+# Self-hosted renderer with local S3 (MinIO) on any NVIDIA host:
+#   cd apps/renderer-service/deploy
+#   cp env.example .env    # set RENDERER_API_KEY, FF_REPO_ALLOWLIST, GIT_TOKEN
+#   docker compose up -d
+# Needs the NVIDIA Container Toolkit. API on :8082, MinIO console on :9001.
+services:
+  renderer:
+    image: ${FF_IMAGE:-ghcr.io/gatewai-dev/framefields-renderer:beta}
+    restart: unless-stopped # recycling exits the process on purpose
+    env_file: .env
+    environment:
+      FF_MODE: http
+      FF_CACHE_DIR: /var/cache/framefields
+      STORAGE_ENDPOINT: http://minio:9000
+      STORAGE_FORCE_PATH_STYLE: "true"
+      STORAGE_BUCKET: renders
+      STORAGE_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-framefields}
+      STORAGE_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env}
+      STORAGE_PUBLIC_BASE_URL: http://localhost:9000/renders
+    ports:
+      - "8082:8082"
+    volumes:
+      - cache:/var/cache/framefields
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu, graphics, video, compute, utility]
+    depends_on:
+      minio-init:
+        condition: service_completed_successfully
+
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    command: server /data --console-address :9001
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-framefields}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      retries: 20
+
+  minio-init:
+    image: minio/mc:RELEASE.2025-04-16T18-13-26Z
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      sh -c "mc alias set local http://minio:9000 $${MINIO_ROOT_USER:-framefields} $${MINIO_ROOT_PASSWORD}
+      && mc mb --ignore-existing local/renders
+      && mc anonymous set download local/renders"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-framefields}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env}
+
+volumes:
+  cache:
+  minio:

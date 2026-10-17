@@ -2,6 +2,7 @@ export * from "./asset-preloader.js";
 export * from "./dma-staging-ring.js";
 export * from "./dynamic-node-discovery.js";
 export * from "./headless-webgpu-renderer.js";
+export * from "./job-reset.js";
 export * from "./logger.js";
 export * from "./node-manifest.js";
 export * from "./video-qa.js";

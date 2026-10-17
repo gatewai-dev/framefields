@@ -1,1 +1,380 @@
-# Gatewai Backend
+# framefields renderer worker
+
+A GPU worker that renders framefields projects straight from git. You send it a job naming a repo, a branch/tag/commit and an exported composition. It then does the following, and returns where the output went:
+
+1. Fetches the code and pulls the assets with git LFS.
+2. Installs dependencies.
+3. Renders the composition on its warm GPU.
+4. Checks the output.
+5. Uploads it.
+
+It runs as a **RunPod serverless endpoint**, a **RunPod pod**, or a **Docker container** on any NVIDIA host. The design, edge cases and error codes are in [PLAN.md](PLAN.md).
+
+## Contents
+
+- [How it works](#how-it-works)
+- [Test project](#test-project)
+- [Quick start (Docker + MinIO)](#quick-start-docker--minio)
+- [RunPod](#runpod)
+- [GPU and CPU rendering](#gpu-and-cpu-rendering)
+- [Disk and caches](#disk-and-caches)
+- [Jobs](#jobs)
+- [Configuration](#configuration)
+- [Errors](#errors)
+- [Security](#security)
+- [Development](#development)
+
+## How it works
+
+```
+job ─▶ resolve ref → fetch (mirror cache) → checkout → git LFS pull
+        → install (skipped when the lockfile is unchanged; files shared across projects)
+        → import your entry → render on the warm GPU → verify (ffprobe) → upload
+```
+
+- **Your repo picks the framefields version.** The worker image contains no engine. Each repo depends on `framefields` in its `package.json` (with a committed lockfile), and the worker renders with exactly that install.
+
+> **Use framefields 2.2 (beta for now).** The worker features (progress, cancel, staying warm between jobs, working video encoders on every GPU) need framefields 2.2. It is published under npm's `beta` tag:
+>
+> ```bash
+> npm i framefields@beta   # → "framefields": "^2.2.0-beta.0"; 2.2.0 satisfies it once released
+> ```
+>
+> A plain `npm i framefields` still installs the stable 2.1.x. Projects on 2.1.x render too, but without those features.
+- **Your code runs inside the worker process.** The first job loads its project's framefields and initialises the GPU. Later jobs on the same version reuse that warm engine, even from other repos. A job that needs a different version fails with retryable `ENGINE_SWITCH`, and the worker restarts so the retry loads it. Keep a worker (or endpoint) per framefields version if your projects pin different ones.
+- **Everything is pinned to one commit.** A branch is resolved once per job, and the result reports the SHA it rendered.
+- **Caches survive between jobs:** git mirrors, LFS objects and package stores live on the cache volume, and checkouts and `node_modules` are reused. A warm job spends almost all its time rendering.
+- **Projects share their packages.** Identical `node_modules` files are stored once per worker, as read-only hard links. A second project on the same framefields version adds a few MB of disk instead of about 800 MB.
+- **Disk is managed by free space.** Before each job the worker checks how full its disks are, and evicts the least recently used workspaces and caches when free space runs low. There are no size budgets to tune.
+- **The worker protects itself.** It recycles after N jobs, high memory, GPU device loss, or code that won't stop. If it crashes, the job is still reported after the restart.
+
+## Test project
+
+[`examples/smoke-project`](examples/smoke-project) is a ready-made repo for testing a deployment. It covers text and shapes, image, SVG, Lottie and video sources, effects, transitions, charts, captions, audio, a lit 3D scene with a glTF model, and ONNX vision. Its README has the jobs to send and what to check in the results.
+
+## Quick start (Docker + MinIO)
+
+Use an NVIDIA GPU with the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/). Without a GPU the worker still runs, but renders on the CPU, which is much slower (see [GPU and CPU rendering](#gpu-and-cpu-rendering)).
+
+```bash
+cd apps/renderer-service/deploy
+cp env.example .env        # set RENDERER_API_KEY, FF_REPO_ALLOWLIST, GIT_TOKEN, MINIO_ROOT_PASSWORD
+docker compose up -d
+curl localhost:8082/health
+```
+
+Submit a job and follow it:
+
+```bash
+curl -s localhost:8082/v2/jobs \
+  -H "authorization: Bearer $RENDERER_API_KEY" -H "content-type: application/json" \
+  -d '{
+    "version": 2,
+    "source": { "repo": "https://github.com/your-org/films.git", "ref": "main", "workdir": "videos/launch" },
+    "target": { "entry": "src/film.ts", "export": "buildFilm" },
+    "output": { "type": "s3", "key": "launch/{shortSha}/{name}.{ext}" }
+  }'
+# → {"id":"…","status":"IN_QUEUE"}
+
+curl -sN localhost:8082/v2/jobs/<id>/events -H "authorization: Bearer $RENDERER_API_KEY"   # live progress (SSE)
+curl -s  localhost:8082/v2/jobs/<id>        -H "authorization: Bearer $RENDERER_API_KEY"   # status + result
+curl -s -X POST localhost:8082/v2/jobs/<id>/cancel -H "authorization: Bearer $RENDERER_API_KEY"
+```
+
+### Images
+
+CI ([`renderer-image.yml`](../../.github/workflows/renderer-image.yml)) publishes `ghcr.io/gatewai-dev/framefields-renderer` (linux/amd64):
+
+| Tag | When |
+|---|---|
+| `latest`, `1.2.3`, `1.2` | A `renderer-v1.2.3` git tag. Use these in production. |
+| `beta`, `1.2.3-beta.0` | A prerelease tag such as `renderer-v1.2.3-beta.0`, from any branch. `beta` is the newest prerelease. Prereleases never move `latest` or `1.2`. |
+| `main`, `sha-<commit>` | Each push to `main` that touches the renderer or the packages. |
+| `<tag>-full` | The same tags, `full` variant. |
+
+Pull requests only build and smoke-test the image. A manual run (**Actions → renderer-image → Run workflow**) publishes the selected branch.
+
+Until the first stable `renderer-v*` release, the RunPod templates and docker-compose use `:beta`. Switch them to `:latest` (or a fixed version) afterwards.
+
+Building the image yourself, from the repo root:
+
+```bash
+docker build -f apps/renderer-service/Dockerfile -t framefields-renderer .
+docker build -f apps/renderer-service/Dockerfile --build-arg VARIANT=full -t framefields-renderer:full .
+```
+
+The `full` variant adds a C/C++ toolchain, for projects whose native dependencies have no prebuilt binaries. The image is based on Debian trixie, because the prebuilt WebGPU (Dawn) binaries need glibc 2.38 or newer.
+
+## RunPod
+
+The templates are in [`deploy/runpod/`](deploy/runpod). Edit the env values (allowlist, storage), create the secrets they reference under **RunPod → Secrets**, then create the template:
+
+```bash
+RUNPOD_API_KEY=… deploy/runpod/create-template.sh deploy/runpod/serverless.template.json
+```
+
+| | Serverless (`serverless.template.json`) | Pod (`pod.template.json`) |
+|---|---|---|
+| API | RunPod's `/run`, `/status`, `/stream`, `/cancel` | This service's HTTP API on port 8082 |
+| Scaling | RunPod scales workers 0→N | One long-running worker |
+| Cache | Attach a **network volume** to the endpoint (mounted at `/runpod-volume`) | Pod volume at `/runpod-volume` |
+
+Checklist for serverless endpoints:
+
+- **Set the endpoint's execution timeout** above your longest render. RunPod's default is much shorter than a long video.
+- **Attach a network volume** in the same data centre as the GPUs. Without one, every worker starts cold: a full clone, LFS download and install.
+- **Set `FF_CACHE_MAX_GB`** to about 80% of the volume's size. A network volume reports the size of the whole storage cluster (petabytes), so the worker can't evict by free space there. The template sets 40, for a 50 GB volume.
+- **FlashBoot** keeps warm workers around between jobs, which is what makes the caches pay off.
+- **Choose GPUs with a hardware video encoder (NVENC):** L4, L40S, A40, RTX A4000/A5000/A6000, RTX 4090/5090. A100 and H100 are built for AI training and have no NVENC: they render, but encode on the CPU, and cost more. VRAM needs grow with resolution and effects.
+- The templates set `FF_GPU=require`, so a RunPod worker never renders on the CPU. A worker whose GPU is unusable reports `GPU_UNAVAILABLE` and asks RunPod for a fresh worker.
+
+A serverless job is the same JSON as above, wrapped as `{"input": …}`:
+
+```bash
+curl -s https://api.runpod.ai/v2/<endpoint-id>/run \
+  -H "authorization: Bearer $RUNPOD_API_KEY" -H "content-type: application/json" \
+  -d '{"input": {"version": 2, "source": {"ref": "main"}, "target": {"entry": "src/film.ts", "export": "buildFilm"}, "output": {"type": "s3", "key": "{jobId}.{ext}"}}}'
+```
+
+How results come back:
+
+- A failed job's `error` is the JSON of a [structured error](#errors), including `retryable`.
+- Progress events appear in `/status` and `/stream`.
+- The worker asks RunPod for a fresh worker (`refresh_worker`) when it recycles.
+
+## GPU and CPU rendering
+
+framefields draws frames with WebGPU, which runs on Vulkan on Linux. Video is then encoded with FFmpeg. The two steps choose their hardware separately.
+
+**Drawing frames.** `FF_GPU` decides where frames are drawn:
+
+| `FF_GPU` | Machine with a GPU | Machine without a GPU |
+|---|---|---|
+| `auto` (default) | Renders on the GPU. Fails with `GPU_UNAVAILABLE` if the GPU is unusable, instead of falling back to the CPU. | Renders on the CPU (Mesa lavapipe, included in the image). |
+| `require` (RunPod templates) | Renders on the GPU. | The worker fails its health check with `GPU_UNAVAILABLE`. |
+| `cpu` | Renders on the CPU. | Renders on the CPU. |
+
+At startup the worker looks for the GPU's device files (`/dev/nvidia*`, or `/dev/dri` render nodes for AMD and Intel) and limits Vulkan to that GPU's driver, so it can't fall back to the CPU driver silently. After the first job loads framefields, the worker checks which adapter WebGPU actually picked.
+
+For NVIDIA GPUs in Docker, the NVIDIA Container Toolkit must mount the Vulkan driver. The image sets `NVIDIA_DRIVER_CAPABILITIES=graphics,utility,video,compute`, which does that. Keep `graphics` in the list if you override it, or the worker reports that the GPU has no Vulkan driver.
+
+**Encoding video.** framefields 2.2 (`framefields@beta` until 2.2.0 is released) tests the hardware encoder once per codec, and uses it only if it works:
+
+- NVENC on NVIDIA, VideoToolbox on macOS.
+- Otherwise software: libx264 (H.264), libx265 (HEVC), libvpx (VP9), SVT-AV1.
+
+**NVENC needs NVIDIA driver 610 or newer.** framefields encodes through node-av, whose bundled FFmpeg uses NVENC API 13.1. On RunPod we measured an RTX 3070 host with driver 580.65 (NVENC API 13.0). There, NVENC refused to open ("Required: 13.1 Found: 13.0"), and framefields encoded with libx264 instead. 720p H.264 in software is fast enough that a 12 s, 366-frame film still rendered in 16 s. Frames are drawn on the GPU either way. If hardware encoding matters, pick hosts with newer drivers.
+
+Older framefields versions always try the hardware encoder. That fails on GPUs without NVENC and on Linux ARM (`h264_rkmpp`). Set `FRAMEFIELDS_HW_CODECS=off` to always encode in software.
+
+**Where to see it.** `/health` reports the GPU under `components.gpu`, and each result reports it under `engine.gpu`:
+
+```json
+"gpu": {"mode": "auto", "hardware": "NVIDIA L4", "renderer": "gpu",
+        "adapter": {"name": "NVIDIA L4", "software": false}}
+```
+
+Here `renderer` is `gpu` or `cpu`. `hardware` is `null` when the machine has no GPU.
+
+## Disk and caches
+
+What the worker keeps on disk:
+
+| Where | What | Disk |
+|---|---|---|
+| `FF_CACHE_DIR` | Git mirrors, LFS objects, npm/pnpm/yarn download caches | The network volume on RunPod (`/runpod-volume`), shared by workers |
+| `FF_WORK_DIR` | One checkout per repo, with its `node_modules`, and the shared module store | Local container disk |
+
+**Shared `node_modules`.** After each install, every `node_modules` file is linked to one copy in a content store on the workspace disk. Projects on the same framefields version share almost all their files: in a test, the first project took 793 MB and each further one about 4 MB.
+
+Shared files are read-only, because changing one would change it for every project:
+- Installs are unaffected: the worker deletes `node_modules` before reinstalling.
+- Code that writes into `node_modules` while rendering fails with a hint. Write to a temp dir instead, or set `FF_SHARED_MODULES=false`.
+- An install still needs room for one full extraction (about 800 MB for framefields), because sharing happens afterwards. The worker makes room for it first.
+
+**Eviction by free space.** Before each job the worker checks both disks:
+- **When:** if one has less free space than max(`FF_DISK_MIN_FREE_PCT`, `FF_DISK_MIN_FREE_GB`) (15%, 10 GB), it evicts until `FF_DISK_TARGET_FREE_PCT` (25%) is free. The GB floor never exceeds half of a small disk.
+- **Order:** least recently used workspaces (with the shared files only they used), then LFS objects, then git mirrors, then whole package caches.
+- **Never evicted:** the current repo, the workspace the loaded engine came from, vision models, and other workers' recently used mirrors.
+- **Logging:** every eviction is logged with the disks' free space.
+
+`/health` reports both disks under `disks`. The figures are refreshed at most every 10 seconds:
+
+```json
+"disks": {
+  "work":  {"path": "/tmp/framefields", "freeGb": 31.2, "totalGb": 40, "evictBelowGb": 10, "lowOnSpace": false},
+  "cache": {"path": "/runpod-volume/framefields", "freeGb": 88.4, "totalGb": 100, "evictBelowGb": 15, "lowOnSpace": false}
+}
+```
+
+`sameDiskAs: "work"` marks a cache dir on the workspace disk. `lowOnSpace` means the next job starts by evicting.
+
+Some filesystems report sizes that can't be true, such as Docker Desktop host mounts (around 118 TB) or a network volume reporting a whole storage cluster. Above 64 TiB a disk is marked `measurable: false` and the worker doesn't evict by free space there. Set `FF_WORK_MAX_GB` / `FF_CACHE_MAX_GB` if such a disk needs a limit.
+
+**After each job** the worker deletes the job's folder and empties its temp dir (`$FF_WORK_DIR/tmp`, where the engine writes videos before they're copied out), and frees the engine's caches. At startup it empties both again, which clears what a crashed job left behind (keep failed jobs with `FF_KEEP_FAILED_JOBS=true`).
+
+`FF_WORK_MAX_GB` / `FF_CACHE_MAX_GB` add hard caps if you want them. On RunPod the container disk reports its real size (no cap needed), but a network volume reports 2.3 PB, so set `FF_CACHE_MAX_GB` for it.
+
+## Jobs
+
+```jsonc
+{
+  "version": 2,
+  "source": {
+    "repo": "https://github.com/acme/films.git",   // or git@host:owner/repo.git; default FF_DEFAULT_REPO
+    "ref": "main",                                 // branch, tag, refs/…, or a commit SHA (≥ 7 chars)
+    "commit": "9f2c1e4",                           // optional: fail if the ref moved elsewhere
+    "workdir": "videos/launch",                    // package dir inside the repo
+    "lfs": { "include": ["videos/launch/assets/**"] }, // only pull what this render needs
+    "sparse": ["videos/launch", "shared/fonts"],   // optional sparse checkout
+    "submodules": false
+  },
+  "target": {
+    "entry": "src/film.ts",
+    "export": "buildFilm",           // a Composition, a function returning one, a record, or a plan
+    "args": { "locale": "tr" },      // passed to the export when it's a function
+    "select": ["teaser"]             // pick named outputs from a record / plan
+  },
+  "render": { "kind": "video", "codec": "h264", "quality": "high", "qa": { "failOn": ["black_frames", "error"] } },
+  "output": { "type": "s3", "bucket": "renders", "key": "{ref}/{shortSha}/{name}.{ext}" },
+  "env": { "LOCALE": "tr" },
+  "timeoutSec": 1800,
+  "idempotencyKey": "launch-v12"     // a retry of the same commit returns the earlier upload
+}
+```
+
+### What the export can return
+
+Your entry exports a builder, using the same `{ entry, export }` convention as `startPreview()`:
+
+```ts
+import { Composition } from "framefields";
+
+// One video:
+export function buildFilm(args?: { locale?: string }) {
+  const comp = new Composition({ width: 1920, height: 1080, fps: 30, durationFrames: 300 });
+  // …
+  return comp;
+}
+
+// Several named outputs:
+export const cuts = () => ({ main: buildFilm(), teaser: buildTeaser() });
+
+// Or a plan, with per-output render settings:
+export const deliverables = () => ({
+  outputs: [
+    { name: "film", composition: buildFilm() },
+    { name: "sheet", composition: buildFilm(), render: { kind: "frameGrid", grid: { step: 30 } } },
+  ],
+});
+```
+
+Don't render or call `process.exit()` at import time: the job fails with `EXPORT_SIDE_EFFECT`. Your repo files load as ES modules even without `"type": "module"`.
+
+Versions of `framefields` released before worker support (2.1.3 and older) still render. They report no progress, and the worker restarts after each of their jobs to keep caches correct. Newer versions keep the worker warm between jobs.
+
+### Render kinds
+
+`render.kind` is one of:
+
+- `video`, with codecs `h264` (default), `vp9`, `vp8` or `gif`;
+- `audio` (`aac`, `mp3`, `opus`);
+- `frames` (`frames: [0, 120]` → PNGs);
+- `frameGrid` (a contact sheet);
+- `lut`.
+
+### Output targets
+
+| `output.type` | Fields | Notes |
+|---|---|---|
+| `s3` | `key` (template), `bucket` | The bucket must be in `FF_OUTPUT_BUCKETS` (defaults to `STORAGE_BUCKET`). Any S3-compatible store works: R2, MinIO, AWS. |
+| `presigned` | `urls` (one per output), `headers` | The worker needs no storage credentials. Sign with an expiry longer than the job timeout. |
+| `local` | `path` (template) | Written under `FF_OUTPUT_DIR`. |
+| `inline` | — | Base64 in the result, up to `FF_INLINE_MAX_BYTES`. Read it within `FF_INLINE_TTL_SEC` (10 min): after that the record keeps the output's details with `base64Expired: true`, to free memory. |
+
+Key and path templates can use `{jobId}`, `{sha}`, `{shortSha}`, `{ref}`, `{date}`, `{name}`, `{index}` and `{ext}`.
+
+### CLI
+
+To run one job without the HTTP server (for CI or debugging):
+
+```bash
+node apps/renderer-service/dist/src/cli.js --job-file job.json --result-file result.json
+docker run --gpus all -e FF_MODE=cli -v $PWD:/jobs … framefields-renderer --job-file /jobs/job.json
+```
+
+Exit codes: 0 completed, 1 failed, 2 bad invocation or job.
+
+## Configuration
+
+Everything is set by environment variables. The worker checks them all at startup and lists every problem at once. The full reference is [PLAN.md §11](PLAN.md#11-configuration-reference-env). The ones you'll set:
+
+| Variable | Purpose |
+|---|---|
+| `FF_REPO_ALLOWLIST` | **Required.** Repos this worker may render, e.g. `github.com/acme/*`. `*` matches one path segment, `**` any number. |
+| `FF_DEFAULT_REPO`, `FF_DEFAULT_REF` | Defaults for jobs that leave out `source.repo` / `source.ref`. |
+| `RENDERER_API_KEY` | Bearer token for the HTTP API. Required in `http` mode. |
+| `GIT_TOKEN`, `GIT_USERNAME` | HTTPS token for the job's repo host. The username defaults per host: GitHub `x-access-token`, GitLab `oauth2`, Bitbucket `x-token-auth`. |
+| `FF_GIT_CREDENTIALS` | Per-host tokens: `{"git.acme.dev": {"username": "bot", "token": "…"}}`. |
+| `FF_GIT_HOSTS` | Host kinds for self-hosted servers: `{"git.acme.dev": "gitea"}`. Values: `github`, `gitlab`, `bitbucket`, `gitea`, `generic`. |
+| `GIT_SSH_KEY`, `GIT_SSH_KNOWN_HOSTS` | For SSH remotes. Keys for github.com, gitlab.com and bitbucket.org are built in and verified at build time. |
+| `FF_GIT_CA_BUNDLE` | A PEM CA certificate for self-hosted servers with a private CA. |
+| `STORAGE_ENDPOINT`, `STORAGE_BUCKET`, `STORAGE_ACCESS_KEY_ID`, `STORAGE_SECRET_ACCESS_KEY` | S3-compatible output storage. |
+| `STORAGE_PUBLIC_BASE_URL` | Turns output keys into public URLs in results. |
+| `FF_CACHE_DIR`, `FF_WORK_DIR` | Where caches (git mirrors, LFS, package downloads) and workspaces live. |
+| `FF_DISK_MIN_FREE_PCT`, `FF_DISK_MIN_FREE_GB`, `FF_DISK_TARGET_FREE_PCT` | Eviction starts when a disk has less than max(15%, 10 GB) free, and frees up to 25%. See [Disk and caches](#disk-and-caches). |
+| `FF_SHARED_MODULES` | `true` (default): identical `node_modules` files are shared between projects as read-only hard links. |
+| `FF_CACHE_MAX_GB`, `FF_WORK_MAX_GB` | Optional hard caps on top of the free-space rule (default off). |
+| `FF_JOB_TIMEOUT_MAX_SEC`, `FF_STALL_TIMEOUT_SEC` | Time limits. |
+| `FF_MAX_JOBS_PER_WORKER` | Recycle after N jobs (default 25). |
+| `FF_INLINE_TTL_SEC` | How long a finished job keeps its inline (base64) outputs in memory (default 600). |
+| `FF_GPU` | `auto` (default), `require` or `cpu`. See [GPU and CPU rendering](#gpu-and-cpu-rendering). |
+| `FRAMEFIELDS_HW_CODECS` | `off` encodes video in software even when a hardware encoder works. |
+| `FF_NPMRC` | `.npmrc` contents, for private registries. |
+
+## Errors
+
+A failed job returns:
+
+```json
+{ "code": "LFS_POINTER_UNRESOLVED", "message": "…", "phase": "lfs", "retryable": false, "hint": "…", "details": { … } }
+```
+
+`retryable` tells you whether running the same job again can succeed (network errors, a recycled worker) or not (a bad ref, a missing export, an exhausted LFS quota). Every code is listed in [PLAN.md §10](PLAN.md#10-error-model). The common ones:
+
+| Code | Usual cause |
+|---|---|
+| `REPO_NOT_ALLOWED` | The repo isn't in `FF_REPO_ALLOWLIST`. |
+| `GIT_AUTH_FAILED` / `REPO_NOT_FOUND` | The token can't read the repo. Private repos also report "not found". |
+| `REF_NOT_FOUND` / `REF_AMBIGUOUS` | Typo, deleted branch, or a name that's both a branch and a tag. |
+| `LFS_POINTER_UNRESOLVED` | An asset wasn't downloaded. Widen `source.lfs.include`. |
+| `LFS_QUOTA_EXCEEDED` | The host's LFS bandwidth or storage is used up. |
+| `LOCKFILE_MISSING` / `INSTALL_FAILED` | Commit a lockfile that matches `package.json`. |
+| `EXPORT_NOT_FOUND` / `EXPORT_INVALID` / `EXPORT_SIDE_EFFECT` | The entry doesn't export a builder the worker can use. |
+| `ASSET_NOT_FOUND` | A file the composition references is missing; often an LFS include that's too narrow. |
+| `RENDER_TIMEOUT` / `RENDER_STALLED` | The render took too long, or stopped making progress. |
+| `ENGINE_NOT_FOUND` | The project doesn't depend on `framefields`, so there is nothing to render with. |
+| `ENGINE_SWITCH` | Retry. The project needs another framefields version, or new dependencies; the worker restarts to load them. |
+| `GPU_DEVICE_LOST` / `RENDER_OOM` | Retry. The worker replaces itself. |
+| `GPU_UNAVAILABLE` | The machine has no usable GPU (`FF_GPU=require`), or has one that WebGPU couldn't use. Retry on another worker; on RunPod this happens automatically. Check the GPU's Vulkan driver with `vulkaninfo --summary`. |
+| `QA_FAILED` | `render.qa.failOn` matched. The outputs are still uploaded and listed. |
+
+## Security
+
+The worker **runs code from the repos you allow**. That code runs in the same process as the worker's credentials. Secrets are removed from the environment before your code runs, but in-process code could still reach them in memory. Therefore:
+
+- Only allowlist repos you trust as much as the worker image itself.
+- Give the worker a **read-only** git token scoped to those repos, and storage credentials scoped to the output bucket.
+- Better still, use `presigned` outputs, so the worker has no storage credentials at all.
+- Credentials are only sent to allowlisted hosts (never to an LFS CDN). They are never written into URLs or `.git/config`, and they are redacted from logs and results.
+
+## Development
+
+```bash
+pnpm --filter @framefields/renderer-service dev        # watch mode (set FF_HTTP_INSECURE=true, FF_REPO_ALLOWLIST)
+pnpm --filter @framefields/renderer-service test       # unit + integration tests (no GPU needed)
+FF_GPU_TESTS=1 pnpm --filter @framefields/renderer-service test   # also the GPU render tests
+apps/renderer-service/deploy/known-hosts.sh --refresh  # re-pin SSH host keys (review the diff!)
+```
+
+Integration tests use local bare git repos, an in-memory S3, and subprocess harnesses (`test/*.ts`). The harnesses exist because vitest's sandbox bypasses Node's loader hooks.

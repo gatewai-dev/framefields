@@ -17,12 +17,26 @@ class FakeOrtSession implements OrtWebSession {
 }
 
 function fakeModule(opts: { failWebGPU?: boolean } = {}) {
-	const calls: { executionProviders: string[] }[] = [];
+	const calls: {
+		executionProviders: string[];
+		raw: unknown[];
+		devices: unknown[];
+	}[] = [];
+	const fromGpuBuffer: unknown[] = [];
+	const name = (ep: string | { name: string }) =>
+		typeof ep === "string" ? ep : ep.name;
 	const module: OrtWebModule = {
 		InferenceSession: {
 			async create(_bytes, options) {
-				calls.push({ executionProviders: [...options.executionProviders] });
-				if (opts.failWebGPU && options.executionProviders.includes("webgpu")) {
+				const providers = options.executionProviders.map(name);
+				calls.push({
+					executionProviders: providers,
+					raw: [...options.executionProviders],
+					devices: options.executionProviders.map((p) =>
+						typeof p === "string" ? undefined : p.device,
+					),
+				});
+				if (opts.failWebGPU && providers.includes("webgpu")) {
 					throw new Error("webgpu unavailable");
 				}
 				return new FakeOrtSession();
@@ -34,12 +48,33 @@ function fakeModule(opts: { failWebGPU?: boolean } = {}) {
 				public data: Float32Array,
 				public dims: readonly number[],
 			) {}
+			static fromGpuBuffer(buffer: unknown) {
+				fromGpuBuffer.push(buffer);
+				return { buffer };
+			}
 		} as unknown as OrtWebModule["Tensor"],
 	};
-	return { module, calls };
+	return { module, calls, fromGpuBuffer };
 }
 
 describe("WebGPUProvider", () => {
+	it("runs sessions on a given device and feeds GPU-buffer inputs", async () => {
+		const { module, calls, fromGpuBuffer } = fakeModule();
+		const device = { label: "renderer" } as unknown as GPUDevice;
+		const provider = new WebGPUProvider({ loader: async () => module, device });
+		expect(provider.device).toBe(device);
+		const session = await provider.createSession(new Uint8Array([1]));
+		expect(calls[0]?.devices).toEqual([device, undefined]);
+		const buffer = { label: "input" } as unknown as GPUBuffer;
+		await session.run({
+			name: "input",
+			data: new Float32Array(0),
+			gpuBuffer: buffer,
+			dims: [1, 3, 8, 8],
+		});
+		expect(fromGpuBuffer).toEqual([buffer]);
+	});
+
 	it("creates a session with the injected module and maps tensor outputs", async () => {
 		const { module, calls } = fakeModule();
 		let loads = 0;
@@ -60,6 +95,11 @@ describe("WebGPUProvider", () => {
 		expect(outputs.output0.dims).toEqual([1, 1, 1]);
 		expect(outputs.output0.data[0]).toBeCloseTo(0.5, 6);
 		expect(calls[0].executionProviders).toEqual(["webgpu", "wasm"]);
+		// NHWC miscomputes grouped convs with channels/group not a multiple of 4 (RTMO)
+		expect(calls[0].raw[0]).toEqual({
+			name: "webgpu",
+			preferredLayout: "NCHW",
+		});
 
 		// loader is memoized across sessions
 		await provider.createSession(new Uint8Array([1]));

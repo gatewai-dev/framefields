@@ -5,13 +5,19 @@ export {
 	HeadlessWebGPURenderer,
 	type QaIssue,
 	type QaSegment,
+	type RenderProgress,
 	renderSemaphore,
+	resetRenderCaches,
 	type VideoQaOptions,
 	type VideoQaReport,
 	type VideoQaStats,
 } from "@framefields/renderer";
 
-export { initHeadlessWebGPU } from "@framefields/webgpu-renderers";
+export {
+	describeGpu,
+	type GpuAdapterDescription,
+	initHeadlessWebGPU,
+} from "@framefields/webgpu-renderers";
 
 export {
 	computeGridLayout,

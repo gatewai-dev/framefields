@@ -241,6 +241,11 @@ import {
 	type VisionProps,
 } from "./effects/index.js";
 import {
+	type PersonTrack,
+	type TrackPersonOptions,
+	trackPerson,
+} from "./person-track.js";
+import {
 	type FrameGridOptions,
 	HeadlessMediaRenderer,
 	type RenderProgress,
@@ -786,6 +791,39 @@ export {
 	type LightingRigOptions,
 } from "./lighting.js";
 export {
+	PersonTrack,
+	type PersonTrackJSON,
+	type PersonTrackPlacement,
+	type PoseKeypointName,
+	type TrackPersonOptions,
+} from "./person-track.js";
+export {
+	type Body2DOptions,
+	type Body3DOptions,
+	type BodyCommonOptions,
+	type FieldSample2D,
+	type FieldSample3D,
+	Physics,
+	type PhysicsBakeOptions,
+	PhysicsBody2D,
+	PhysicsBody3D,
+	type PhysicsBox3D,
+	type PhysicsCollision,
+	type PhysicsDriver,
+	type PhysicsGroundOptions,
+	type PhysicsRect,
+	type PhysicsRope3DOptions,
+	type PhysicsRopeOptions,
+	type PhysicsSpring3DOptions,
+	type PhysicsSpringOptions,
+	type PhysicsWallsOptions,
+	PhysicsWorld2D,
+	PhysicsWorld3D,
+	type PhysicsWorldOptions,
+	type World2DOptions,
+	type World3DOptions,
+} from "./physics/index.js";
+export {
 	type Carousel3DOptions,
 	type Cube3DOptions,
 	type CubeFaceConfig,
@@ -1104,6 +1142,25 @@ export class Composition {
 			visionBundle: this._visionBundle,
 		};
 		return this._visionBundle;
+	}
+
+	/**
+	 * Tracks one person through a clip before rendering: smoothed pose
+	 * keypoints and a soft silhouette per frame (see {@link PersonTrack}).
+	 * Use it to drive physics with a performer (limbs as kinematic bodies,
+	 * the silhouette as a force field) or to keyframe things to a body.
+	 * Analysis takes a few hundred ms per frame; cache it with `toJSON()` /
+	 * `PersonTrack.fromJSON()`.
+	 */
+	public async trackPerson(
+		source: string,
+		options: TrackPersonOptions = {},
+	): Promise<PersonTrack> {
+		const fps = options.fps ?? this.fps;
+		const durationMs = this.durationMs ?? (await this.computeDuration());
+		const totalFrames =
+			options.totalFrames ?? Math.max(1, Math.round((durationMs / 1000) * fps));
+		return trackPerson(source, { ...options, fps, totalFrames });
 	}
 
 	/**

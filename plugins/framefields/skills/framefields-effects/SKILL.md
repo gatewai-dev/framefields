@@ -236,7 +236,18 @@ const vision = comp.withVision({ classes: ["person"] });
 layer.blurRegion(vision.objects.byCategory("person"), { strength: 30 });
 ```
 
-### 5. Analyze Before Authoring
+### 5. Track a Performer Before Rendering
+Render-time vision signals lag a frame and only exist while rendering. For anything that must know the motion up front (physics, keyframes, layout), track the person first:
+```typescript
+const person = (await comp.trackPerson("assets/dancer.mp4")).place({ width: W, height: H, fit: "cover" });
+person.point("rightWrist", 48);          // { x, y, visibility } in composition px, smoothed, gaps filled
+person.signals("nose").x;                // per-frame signal for .signal("x", …)
+person.sample(48, x, y);                 // silhouette alpha + inward gradient (dress and held things included)
+writeFileSync("dancer-track.json", JSON.stringify(person.toJSON()));   // reuse with PersonTrack.fromJSON
+```
+Options: `pose`, `mask` (both default true), `maskCell` (silhouette grid, default 8 px), `smoothing` (frames, default 2), `variant`. See *Physics* in `framefields-compose` for limbs as colliders and the silhouette as a force field.
+
+### 6. Analyze Before Authoring
 One-shot, ffmpeg-free report of what is in a clip (tracks, classes, mask coverage):
 ```typescript
 const report = await comp.analyzeVisionSequence("assets/street.mp4", {

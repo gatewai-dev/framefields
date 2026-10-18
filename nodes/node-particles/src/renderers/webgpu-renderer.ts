@@ -477,7 +477,9 @@ function packParams(
 	v(6, s.direction * deg, s.spread * deg, s.lifetime[0], s.lifetime[1]);
 	const attractors = f.attractors.slice(0, MAX_ATTRACTORS);
 	v(7, BOUNDS[s.bounds], s.floor ?? -1, s.bounce, attractors.length);
-	attractors.forEach((a, i) => v(8 + i, a.x, a.y, a.strength, a.radius));
+	for (const [i, a] of attractors.entries()) {
+		v(8 + i, a.x, a.y, a.strength, a.radius);
+	}
 	const m = f.push?.mask;
 	v(16, m ? 1 : 0, f.push?.strength ?? 0, f.push?.sweep ?? 0, s.sizeJitter);
 	v(17, m?.originX ?? 0, m?.originY ?? 0, m?.scaleX ?? 1, m?.scaleY ?? 1);
@@ -492,7 +494,7 @@ function packParams(
 	);
 	const colors = s.colors.slice(0, MAX_COLORS);
 	v(21, colors.length, view.scaleX, view.scaleY, s.opacity);
-	colors.forEach((c, i) => v(22 + i, c[0], c[1], c[2], c[3]));
+	for (const [i, c] of colors.entries()) v(22 + i, c[0], c[1], c[2], c[3]);
 }
 
 function stateFor(program: ParticleProgram, device: GPUDevice): SystemState {

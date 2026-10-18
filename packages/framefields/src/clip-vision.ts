@@ -143,7 +143,8 @@ export class ClipVision {
 	}
 
 	private async compute(from: number, to: number): Promise<void> {
-		await (this.cacheLoaded ??= this.loadCache());
+		this.cacheLoaded ??= this.loadCache();
+		await this.cacheLoaded;
 		let missing = false;
 		for (let c = from; c <= to; c++) if (!this.results.has(c)) missing = true;
 		if (!missing) return;
@@ -179,9 +180,9 @@ export class ClipVision {
 				const person = (await this.runner.pose(image)).people[0];
 				if (person) {
 					kp = new Float32Array(51);
-					person.keypoints.forEach((p, k) =>
-						kp?.set([p.x, p.y, p.visibility], k * 3),
-					);
+					for (const [k, p] of person.keypoints.entries()) {
+						kp.set([p.x, p.y, p.visibility], k * 3);
+					}
 				}
 			}
 			if (wantMask) {

@@ -6,6 +6,22 @@ import type { EffectMeta } from "../with-defaults.js";
 
 /** Ranges and allowed values per effect prop, used by `withDefaults()` checks. */
 export const effectMeta = {
+	Ascii: {
+		cellSize: {
+			min: 4,
+			max: 64,
+		},
+		colorMode: {
+			enum: ["mono", "source", "green"],
+		},
+		fg: {},
+		bg: {},
+		contrast: {
+			min: 0.5,
+			max: 3,
+		},
+		invert: {},
+	},
 	AudioCompressor: {
 		threshold: {
 			min: -60,
@@ -305,8 +321,65 @@ export const effectMeta = {
 			enum: ["Desaturate", "Neutralize", "None"],
 		},
 	},
+	Contour: {
+		levels: {
+			min: 2,
+			max: 64,
+		},
+		lineWidth: {
+			min: 0.5,
+			max: 8,
+		},
+		lineColor: {},
+		fill: {
+			enum: ["source", "flat", "none"],
+		},
+		fillColor: {},
+		smoothing: {
+			min: 0,
+			max: 8,
+		},
+	},
 	CornerPin: {
 		points: {},
+	},
+	CRT: {
+		scanlines: {
+			min: 0,
+			max: 1,
+		},
+		lineCount: {
+			min: 100,
+			max: 2160,
+		},
+		curvature: {
+			min: 0,
+			max: 1,
+		},
+		mask: {
+			min: 0,
+			max: 1,
+		},
+		vignette: {
+			min: 0,
+			max: 1,
+		},
+		noise: {
+			min: 0,
+			max: 1,
+		},
+		flicker: {
+			min: 0,
+			max: 1,
+		},
+		tracking: {
+			min: 0,
+			max: 1,
+		},
+		chroma: {
+			min: 0,
+			max: 20,
+		},
 	},
 	Datamosh: {
 		keyframes: {},
@@ -342,6 +415,22 @@ export const effectMeta = {
 			enum: ["Clamp", "Repeat", "Mirror"],
 		},
 	},
+	Dither: {
+		mode: {
+			enum: ["bayer", "noise", "halftone"],
+		},
+		levels: {
+			min: 2,
+			max: 16,
+		},
+		scale: {
+			min: 1,
+			max: 16,
+		},
+		monochrome: {},
+		dark: {},
+		light: {},
+	},
 	ExtractLUT: {
 		strategy: {
 			enum: ["deterministic", "statistical"],
@@ -374,6 +463,59 @@ export const effectMeta = {
 				"bottomToTop",
 				"quadrant",
 			],
+		},
+	},
+	Gooey: {
+		radius: {
+			min: 1,
+			max: 60,
+		},
+		threshold: {
+			min: 0,
+			max: 1,
+		},
+		softness: {
+			min: 0.001,
+			max: 0.5,
+		},
+	},
+	Iridescence: {
+		strength: {
+			min: 0,
+			max: 1,
+		},
+		scale: {
+			min: 0.1,
+			max: 10,
+		},
+		shift: {
+			min: -3600,
+			max: 3600,
+		},
+		mode: {
+			enum: ["luminance", "relief"],
+		},
+	},
+	Kaleidoscope: {
+		segments: {
+			min: 2,
+			max: 32,
+		},
+		rotation: {
+			min: -3600,
+			max: 3600,
+		},
+		centerX: {
+			min: 0,
+			max: 1,
+		},
+		centerY: {
+			min: 0,
+			max: 1,
+		},
+		zoom: {
+			min: 0.2,
+			max: 4,
 		},
 	},
 	KenBurns: {
@@ -696,6 +838,29 @@ export const effectMeta = {
 			max: 120,
 		},
 	},
+	OpArt: {
+		pattern: {
+			enum: ["stripes", "rings", "checker", "waves"],
+		},
+		frequency: {
+			min: 2,
+			max: 300,
+		},
+		angle: {
+			min: -360,
+			max: 360,
+		},
+		warp: {
+			min: 0,
+			max: 3,
+		},
+		source: {
+			min: 0,
+			max: 1,
+		},
+		colorA: {},
+		colorB: {},
+	},
 	Paint: {
 		width: {
 			min: 1,
@@ -709,6 +874,27 @@ export const effectMeta = {
 		aspectRatio: {},
 		backgroundColor: {},
 		strokes: {},
+	},
+	Painterly: {
+		style: {
+			enum: ["oil", "watercolor"],
+		},
+		radius: {
+			min: 2,
+			max: 12,
+		},
+		edgeDarkening: {
+			min: 0,
+			max: 1,
+		},
+		paper: {
+			min: 0,
+			max: 1,
+		},
+		saturation: {
+			min: 0,
+			max: 2,
+		},
 	},
 	PatchHeal: {
 		patches: {},
@@ -748,6 +934,47 @@ export const effectMeta = {
 			enum: ["Clone", "SeamlessHeal", "TextureTransfer"],
 		},
 	},
+	Pixelate: {
+		size: {
+			min: 1,
+			max: 256,
+		},
+		shape: {
+			enum: ["square", "circle", "diamond"],
+		},
+		gap: {
+			min: 0,
+			max: 0.9,
+		},
+	},
+	Posterize: {
+		levels: {
+			min: 2,
+			max: 64,
+		},
+		palette: {
+			enum: [
+				"none",
+				"gameboy",
+				"teletext",
+				"cga",
+				"pico8",
+				"c64",
+				"grayscale",
+				"sepia",
+				"custom",
+			],
+		},
+		colors: {},
+		dither: {
+			min: 0,
+			max: 1,
+		},
+		pixelSize: {
+			min: 1,
+			max: 64,
+		},
+	},
 	ProceduralVFX: {
 		effectType: {
 			enum: [
@@ -762,6 +989,7 @@ export const effectMeta = {
 				"LensFlare",
 				"Embers",
 				"EnergyBeam",
+				"Aurora",
 			],
 		},
 		outputType: {
@@ -940,6 +1168,17 @@ export const effectMeta = {
 			enum: ["top", "center", "bottom"],
 		},
 	},
+	RGBSplit: {
+		amount: {
+			min: 0,
+			max: 200,
+		},
+		angle: {
+			min: -360,
+			max: 360,
+		},
+		radial: {},
+	},
 	Rotate: {
 		angle: {},
 		fit: {
@@ -954,6 +1193,25 @@ export const effectMeta = {
 		pan: {
 			min: -1,
 			max: 1,
+		},
+	},
+	Toon: {
+		levels: {
+			min: 2,
+			max: 12,
+		},
+		edgeThreshold: {
+			min: 0,
+			max: 1,
+		},
+		edgeWidth: {
+			min: 0.5,
+			max: 4,
+		},
+		edgeColor: {},
+		saturation: {
+			min: 0,
+			max: 2,
 		},
 	},
 	Trails: {

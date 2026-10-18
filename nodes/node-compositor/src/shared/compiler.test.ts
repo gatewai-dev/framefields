@@ -1158,6 +1158,52 @@ describe("keyframe tail truncation (review M8)", () => {
 		expect(stub.x).toBe(160);
 	});
 
+	it("holds values for frameStep frames (stepped timing)", () => {
+		const virtualMedia: any = {
+			metadata: { width: 1920, height: 1080, durationMs: 2000 },
+			operation: { op: "Compositor" },
+			children: [
+				{
+					operation: {
+						op: "CompositorLayer",
+						id: "stepped-node",
+						x: 0,
+						startFrame: 1,
+						durationFrames: 48,
+						animation: {
+							frameStep: 3,
+							tracks: [
+								{
+									id: "t_x",
+									prop: "x" as const,
+									keyframes: [
+										{ frame: 0, value: 0 },
+										{ frame: 30, value: 300 },
+									],
+								},
+							],
+						},
+					},
+				},
+			],
+		};
+		const compiled = compileTimeline("render-stepped-test", virtualMedia, {
+			fps: 24,
+			durationSec: 2,
+		});
+		const stub = compiled.targetsById["stepped-node"];
+		const at = (f: number) => {
+			seekTimeline(compiled, f, 24);
+			return stub.x;
+		};
+		// Layer frames 0–2 hold frame 0, 3–5 hold frame 3, …
+		expect(at(1)).toBeCloseTo(0);
+		expect(at(3)).toBeCloseTo(0);
+		expect(at(4)).toBeCloseTo(30);
+		expect(at(6)).toBeCloseTo(30);
+		expect(at(7)).toBeCloseTo(60);
+	});
+
 	it("compiles and evaluates procedural wiggle and signal tracks", () => {
 		const virtualMedia: any = {
 			metadata: { width: 1920, height: 1080, durationMs: 2000 },

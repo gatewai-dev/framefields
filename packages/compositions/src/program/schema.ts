@@ -79,6 +79,8 @@ export const AnimatablePropSchema = z.enum([
 	"color",
 	"letterSpacing",
 	// Vector Shape & Stroke properties
+	/** A shape's SVG path: keyframed paths morph into each other. */
+	"d",
 	"trimStart",
 	"trimEnd",
 	"trimOffset",
@@ -482,6 +484,11 @@ export type AnimationTrack = z.infer<typeof AnimationTrackSchema>;
 export const LayerAnimationSchema = z
 	.object({
 		tracks: z.array(AnimationTrackSchema).max(24),
+		/**
+		 * Stepped timing: hold each value for this many frames ("on twos" = 2),
+		 * so motion reads hand-animated / stop-motion instead of smooth.
+		 */
+		frameStep: z.number().int().min(1).max(24).optional(),
 	})
 	.strict()
 	.superRefine(animationInvariants);

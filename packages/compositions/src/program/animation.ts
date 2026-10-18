@@ -276,6 +276,8 @@ function parseEase(ease?: string | EaseRef): EaseRef | undefined {
  */
 export class LayerAnimation implements LayerAnimationSpec {
 	public tracks: AnimationTrack[] = [];
+	/** Hold each value for this many frames (see {@link LayerAnimation.stepped}). */
+	public frameStep?: number;
 
 	constructor(tracks: AnimationTrack[] = []) {
 		this.tracks = [...tracks];
@@ -283,6 +285,22 @@ export class LayerAnimation implements LayerAnimationSpec {
 
 	public static create(): LayerAnimation {
 		return new LayerAnimation();
+	}
+
+	/**
+	 * Stepped timing for the whole layer: every animated value is held for
+	 * `frames` frames ("on twos" = 2, "on threes" = 3), the choppy, hand-made
+	 * look of stop motion and cel animation. Applies to all of the layer's
+	 * tracks, including ones added by other `.animate()` calls.
+	 */
+	public static stepped(frames = 2): LayerAnimation {
+		return new LayerAnimation().stepped(frames);
+	}
+
+	/** See {@link LayerAnimation.stepped}. */
+	public stepped(frames = 2): this {
+		this.frameStep = Math.max(1, Math.min(24, Math.round(frames)));
+		return this;
 	}
 
 	public static fromTo(

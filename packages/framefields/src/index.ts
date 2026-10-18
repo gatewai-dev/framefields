@@ -223,6 +223,8 @@ import {
 	type MotionBlurProps,
 	PBRGlass,
 	type PBRGlassProps,
+	ProceduralVFX,
+	type ProceduralVFXProps,
 	Relight3D,
 	type Relight3DProps,
 	SelectiveColor,
@@ -676,6 +678,8 @@ export {
 export {
 	ApplyLUT,
 	type ApplyLUTProps,
+	Ascii,
+	type AsciiProps,
 	AudioCompressor,
 	type AudioCompressorProps,
 	AudioDelay,
@@ -702,8 +706,12 @@ export {
 	type ColorBalanceProps,
 	ColorKey,
 	type ColorKeyProps,
+	Contour,
+	type ContourProps,
 	CornerPin,
 	type CornerPinProps,
+	CRT,
+	type CRTProps,
 	Crop,
 	type CropProps,
 	Curves,
@@ -717,6 +725,8 @@ export {
 	type DepthOfFieldProps,
 	DisplacementMap,
 	type DisplacementMapProps,
+	Dither,
+	type DitherProps,
 	ExtractLUT,
 	type ExtractLUTProps,
 	effectFactories,
@@ -725,6 +735,8 @@ export {
 	type FilmGrainProps,
 	Flip,
 	type FlipProps,
+	Gooey,
+	type GooeyProps,
 	GradientMap,
 	type GradientMapProps,
 	type GradientMapStop,
@@ -734,6 +746,10 @@ export {
 	type HalftoneScreenProps,
 	HighPass,
 	type HighPassProps,
+	Iridescence,
+	type IridescenceProps,
+	Kaleidoscope,
+	type KaleidoscopeProps,
 	KenBurns,
 	type KenBurnsProps,
 	LayerStyle,
@@ -753,12 +769,20 @@ export {
 	type MotionBlurProps,
 	NoiseGenerator,
 	type NoiseGeneratorProps,
+	OpArt,
+	type OpArtProps,
 	Paint,
+	Painterly,
+	type PainterlyProps,
 	type PaintProps,
 	PatchHeal,
 	type PatchHealProps,
 	PBRGlass,
 	type PBRGlassProps,
+	Pixelate,
+	type PixelateProps,
+	Posterize,
+	type PosterizeProps,
 	ProceduralVFX,
 	type ProceduralVFXProps,
 	RefineEdge,
@@ -769,6 +793,8 @@ export {
 	type Relight3DProps,
 	ResizerScaler,
 	type ResizerScalerProps,
+	RGBSplit,
+	type RGBSplitProps,
 	Rotate,
 	type RotateProps,
 	SelectiveColor,
@@ -784,6 +810,8 @@ export {
 	TileOffset,
 	type TileOffsetEdgeMode,
 	type TileOffsetProps,
+	Toon,
+	type ToonProps,
 	Trails,
 	type TrailsProps,
 	UnsharpMask,
@@ -850,6 +878,7 @@ export {
 	type Surface3DOptions,
 	type Text3DOptions,
 } from "./shapes3d.js";
+export { type StyleName, Styles } from "./styles.js";
 export {
 	type SceneSequenceOptions,
 	type SequenceEntry,
@@ -2078,11 +2107,20 @@ function withAnimation<T extends LayoutNode>(node: T): AnimatableNode<T> {
 						? a.tracks
 						: ((a as { tracks?: AnimationTrack[] }).tracks ?? []),
 				);
-			const existing =
-				(target.animation as { tracks?: AnimationTrack[] } | undefined)
-					?.tracks ?? [];
+			const current = target.animation as
+				| { tracks?: AnimationTrack[]; frameStep?: number }
+				| undefined;
+			const existing = current?.tracks ?? [];
+			// The last `.stepped()` wins; stepping applies to the whole layer.
+			const frameStep =
+				anims
+					.flat()
+					.map((a) => (a as { frameStep?: number }).frameStep)
+					.filter((n): n is number => n !== undefined)
+					.at(-1) ?? current?.frameStep;
 			target.animation = {
 				tracks: mergeAnimationTracks([...existing, ...incoming]),
+				...(frameStep !== undefined && frameStep > 1 && { frameStep }),
 			};
 			return target;
 		},
@@ -2555,6 +2593,48 @@ export const Layer = {
 				durationFrames: options.durationFrames,
 			}),
 			...(options.zIndex !== undefined && { zIndex: options.zIndex }),
+		} as unknown as MediaNode);
+	},
+	/**
+	 * A procedural VFX layer (smoke, fire, rain, snow, aurora, …) drawn by
+	 * the GPU, transparent where there is no effect. Put it above or below
+	 * other layers like any clip.
+	 */
+	vfx: (
+		options: Partial<ProceduralVFXProps> & {
+			x?: number;
+			y?: number;
+			width: number;
+			height: number;
+			id?: string;
+			startFrame?: number;
+			durationFrames?: number;
+			zIndex?: number;
+		},
+	): AnimatableNode<MediaNode> => {
+		const { x, y, id, startFrame, durationFrames, zIndex, ...props } = options;
+		const vfx = new ProceduralVFX({
+			outputType: "Video",
+			...props,
+		} as ProceduralVFXProps);
+		const source = {
+			metadata: { width: options.width, height: options.height },
+			operation: { ...vfx.toOperation(), effect: vfx, dataType: "Video" },
+			children: [],
+		};
+		return withAnimation({
+			id: id ?? autoId("vfx"),
+			kind: "media",
+			dataType: "Video",
+			src: source,
+			position: "absolute",
+			x: x ?? 0,
+			y: y ?? 0,
+			width: options.width,
+			height: options.height,
+			...(startFrame !== undefined && { startFrame }),
+			...(durationFrames !== undefined && { durationFrames }),
+			...(zIndex !== undefined && { zIndex }),
 		} as unknown as MediaNode);
 	},
 	section: (

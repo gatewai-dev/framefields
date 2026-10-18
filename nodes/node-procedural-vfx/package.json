@@ -7,9 +7,6 @@
 		"kind": "effect",
 		"schema": "ProceduralVFXNodeConfigSchema"
 	},
-	"gatewai": {
-		"enabled": false
-	},
 	"type": "module",
 	"license": "Apache-2.0",
 	"exports": {

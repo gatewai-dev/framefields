@@ -3387,7 +3387,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					shapeType,
 					width: layerW,
 					height: layerH,
-					path: lop.d ?? lop.path,
+					path: target?.d ?? lop.d ?? lop.path,
 					cornerRadius:
 						target?.cornerRadius ??
 						lop.cornerRadius ??

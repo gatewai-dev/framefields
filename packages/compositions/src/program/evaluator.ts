@@ -1,7 +1,9 @@
 import { mixColors } from "@framefields/core";
 import { signalRegistry } from "@framefields/webgpu-renderers";
+import { morphPath } from "./path-morph.js";
 import type {
 	AnimationTrack,
+	EaseRef,
 	LayerAnimationSpec as LayerAnimation,
 	TrackSource,
 } from "./schema.js";
@@ -639,6 +641,11 @@ const COLOR_PROPS = new Set([
 export function evaluateKeyframes(
 	track: AnimationTrack,
 	localFrame: number,
+	/**
+	 * Shapes a segment's progress by its ease (`kf1.ease ?? kf0.ease`); the
+	 * compositor passes GSAP's eases. Linear when omitted.
+	 */
+	ease?: (ease: EaseRef | undefined, deltaFrames: number, t: number) => number,
 ): number | boolean | string {
 	const keyframes = track.keyframes ?? [];
 	if (keyframes.length === 0) return 0;
@@ -657,13 +664,15 @@ export function evaluateKeyframes(
 
 		if (localFrame >= kf0.frame && localFrame <= kf1.frame) {
 			const delta = kf1.frame - kf0.frame;
-			const t = delta > 0 ? (localFrame - kf0.frame) / delta : 0;
+			const linear = delta > 0 ? (localFrame - kf0.frame) / delta : 0;
+			const t = ease ? ease(kf1.ease ?? kf0.ease, delta, linear) : linear;
 
 			if (typeof kf0.value === "boolean") {
-				return t >= 1 ? kf1.value : kf0.value;
+				return linear >= 1 ? kf1.value : kf0.value;
 			}
 
 			if (typeof kf0.value === "string" && typeof kf1.value === "string") {
+				if (track.prop === "d") return morphPath(kf0.value, kf1.value, t);
 				return lerpColor(kf0.value, kf1.value, t);
 			}
 

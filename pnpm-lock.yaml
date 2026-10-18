@@ -463,6 +463,31 @@ importers:
         specifier: ^0.4.0
         version: 0.4.0
 
+  nodes/node-ascii:
+    dependencies:
+      '@framefields/node-sdk':
+        specifier: workspace:*
+        version: link:../../packages/node-sdk
+      zod:
+        specifier: ^4.3.6
+        version: 4.3.6
+    devDependencies:
+      '@framefields/tsconfig':
+        specifier: workspace:*
+        version: link:../../packages/tsconfig
+      '@types/node':
+        specifier: ^24.1.0
+        version: 24.10.14
+      tsdown:
+        specifier: ^0.19.0
+        version: 0.19.0(oxc-resolver@11.19.1)(typescript@5.9.3)
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      webgpu:
+        specifier: ^0.4.0
+        version: 0.4.0
+
   nodes/node-audio-compressor:
     dependencies:
       '@framefields/core':
@@ -993,6 +1018,31 @@ importers:
         specifier: ^0.4.0
         version: 0.4.0
 
+  nodes/node-contour:
+    dependencies:
+      '@framefields/node-sdk':
+        specifier: workspace:*
+        version: link:../../packages/node-sdk
+      zod:
+        specifier: ^4.3.6
+        version: 4.3.6
+    devDependencies:
+      '@framefields/tsconfig':
+        specifier: workspace:*
+        version: link:../../packages/tsconfig
+      '@types/node':
+        specifier: ^24.1.0
+        version: 24.10.14
+      tsdown:
+        specifier: ^0.19.0
+        version: 0.19.0(oxc-resolver@11.19.1)(typescript@5.9.3)
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      webgpu:
+        specifier: ^0.4.0
+        version: 0.4.0
+
   nodes/node-corner-pin:
     dependencies:
       '@framefields/core':
@@ -1042,6 +1092,31 @@ importers:
       typescript:
         specifier: ^5.8.3
         version: 5.8.3
+
+  nodes/node-crt:
+    dependencies:
+      '@framefields/node-sdk':
+        specifier: workspace:*
+        version: link:../../packages/node-sdk
+      zod:
+        specifier: ^4.3.6
+        version: 4.3.6
+    devDependencies:
+      '@framefields/tsconfig':
+        specifier: workspace:*
+        version: link:../../packages/tsconfig
+      '@types/node':
+        specifier: ^24.1.0
+        version: 24.10.14
+      tsdown:
+        specifier: ^0.19.0
+        version: 0.19.0(oxc-resolver@11.19.1)(typescript@5.9.3)
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      webgpu:
+        specifier: ^0.4.0
+        version: 0.4.0
 
   nodes/node-curves:
     dependencies:
@@ -1161,6 +1236,31 @@ importers:
         specifier: ^0.4.0
         version: 0.4.0
 
+  nodes/node-dither:
+    dependencies:
+      '@framefields/node-sdk':
+        specifier: workspace:*
+        version: link:../../packages/node-sdk
+      zod:
+        specifier: ^4.3.6
+        version: 4.3.6
+    devDependencies:
+      '@framefields/tsconfig':
+        specifier: workspace:*
+        version: link:../../packages/tsconfig
+      '@types/node':
+        specifier: ^24.1.0
+        version: 24.10.14
+      tsdown:
+        specifier: ^0.19.0
+        version: 0.19.0(oxc-resolver@11.19.1)(typescript@5.9.3)
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      webgpu:
+        specifier: ^0.4.0
+        version: 0.4.0
+
   nodes/node-extract-frame:
     dependencies:
       '@framefields/core':
@@ -1276,6 +1376,31 @@ importers:
         specifier: ^0.4.0
         version: 0.4.0
 
+  nodes/node-gooey:
+    dependencies:
+      '@framefields/node-sdk':
+        specifier: workspace:*
+        version: link:../../packages/node-sdk
+      zod:
+        specifier: ^4.3.6
+        version: 4.3.6
+    devDependencies:
+      '@framefields/tsconfig':
+        specifier: workspace:*
+        version: link:../../packages/tsconfig
+      '@types/node':
+        specifier: ^24.1.0
+        version: 24.10.14
+      tsdown:
+        specifier: ^0.19.0
+        version: 0.19.0(oxc-resolver@11.19.1)(typescript@5.9.3)
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      webgpu:
+        specifier: ^0.4.0
+        version: 0.4.0
+
   nodes/node-gradient-map:
     dependencies:
       '@framefields/core':
@@ -1368,6 +1493,56 @@ importers:
       typescript:
         specifier: ^5.8.3
         version: 5.8.3
+      webgpu:
+        specifier: ^0.4.0
+        version: 0.4.0
+
+  nodes/node-iridescence:
+    dependencies:
+      '@framefields/node-sdk':
+        specifier: workspace:*
+        version: link:../../packages/node-sdk
+      zod:
+        specifier: ^4.3.6
+        version: 4.3.6
+    devDependencies:
+      '@framefields/tsconfig':
+        specifier: workspace:*
+        version: link:../../packages/tsconfig
+      '@types/node':
+        specifier: ^24.1.0
+        version: 24.10.14
+      tsdown:
+        specifier: ^0.19.0
+        version: 0.19.0(oxc-resolver@11.19.1)(typescript@5.9.3)
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      webgpu:
+        specifier: ^0.4.0
+        version: 0.4.0
+
+  nodes/node-kaleidoscope:
+    dependencies:
+      '@framefields/node-sdk':
+        specifier: workspace:*
+        version: link:../../packages/node-sdk
+      zod:
+        specifier: ^4.3.6
+        version: 4.3.6
+    devDependencies:
+      '@framefields/tsconfig':
+        specifier: workspace:*
+        version: link:../../packages/tsconfig
+      '@types/node':
+        specifier: ^24.1.0
+        version: 24.10.14
+      tsdown:
+        specifier: ^0.19.0
+        version: 0.19.0(oxc-resolver@11.19.1)(typescript@5.9.3)
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
       webgpu:
         specifier: ^0.4.0
         version: 0.4.0
@@ -1602,6 +1777,31 @@ importers:
         specifier: ^0.4.0
         version: 0.4.0
 
+  nodes/node-op-art:
+    dependencies:
+      '@framefields/node-sdk':
+        specifier: workspace:*
+        version: link:../../packages/node-sdk
+      zod:
+        specifier: ^4.3.6
+        version: 4.3.6
+    devDependencies:
+      '@framefields/tsconfig':
+        specifier: workspace:*
+        version: link:../../packages/tsconfig
+      '@types/node':
+        specifier: ^24.1.0
+        version: 24.10.14
+      tsdown:
+        specifier: ^0.19.0
+        version: 0.19.0(oxc-resolver@11.19.1)(typescript@5.9.3)
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      webgpu:
+        specifier: ^0.4.0
+        version: 0.4.0
+
   nodes/node-paint:
     dependencies:
       '@framefields/core':
@@ -1629,6 +1829,31 @@ importers:
       typescript:
         specifier: ^5.8.3
         version: 5.8.3
+
+  nodes/node-painterly:
+    dependencies:
+      '@framefields/node-sdk':
+        specifier: workspace:*
+        version: link:../../packages/node-sdk
+      zod:
+        specifier: ^4.3.6
+        version: 4.3.6
+    devDependencies:
+      '@framefields/tsconfig':
+        specifier: workspace:*
+        version: link:../../packages/tsconfig
+      '@types/node':
+        specifier: ^24.1.0
+        version: 24.10.14
+      tsdown:
+        specifier: ^0.19.0
+        version: 0.19.0(oxc-resolver@11.19.1)(typescript@5.9.3)
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      webgpu:
+        specifier: ^0.4.0
+        version: 0.4.0
 
   nodes/node-particles:
     dependencies:
@@ -1679,6 +1904,56 @@ importers:
       typescript:
         specifier: ^5.8.3
         version: 5.8.3
+      webgpu:
+        specifier: ^0.4.0
+        version: 0.4.0
+
+  nodes/node-pixelate:
+    dependencies:
+      '@framefields/node-sdk':
+        specifier: workspace:*
+        version: link:../../packages/node-sdk
+      zod:
+        specifier: ^4.3.6
+        version: 4.3.6
+    devDependencies:
+      '@framefields/tsconfig':
+        specifier: workspace:*
+        version: link:../../packages/tsconfig
+      '@types/node':
+        specifier: ^24.1.0
+        version: 24.10.14
+      tsdown:
+        specifier: ^0.19.0
+        version: 0.19.0(oxc-resolver@11.19.1)(typescript@5.9.3)
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      webgpu:
+        specifier: ^0.4.0
+        version: 0.4.0
+
+  nodes/node-posterize:
+    dependencies:
+      '@framefields/node-sdk':
+        specifier: workspace:*
+        version: link:../../packages/node-sdk
+      zod:
+        specifier: ^4.3.6
+        version: 4.3.6
+    devDependencies:
+      '@framefields/tsconfig':
+        specifier: workspace:*
+        version: link:../../packages/tsconfig
+      '@types/node':
+        specifier: ^24.1.0
+        version: 24.10.14
+      tsdown:
+        specifier: ^0.19.0
+        version: 0.19.0(oxc-resolver@11.19.1)(typescript@5.9.3)
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
       webgpu:
         specifier: ^0.4.0
         version: 0.4.0
@@ -1834,6 +2109,31 @@ importers:
       typescript:
         specifier: ^5.8.3
         version: 5.8.3
+      webgpu:
+        specifier: ^0.4.0
+        version: 0.4.0
+
+  nodes/node-rgb-split:
+    dependencies:
+      '@framefields/node-sdk':
+        specifier: workspace:*
+        version: link:../../packages/node-sdk
+      zod:
+        specifier: ^4.3.6
+        version: 4.3.6
+    devDependencies:
+      '@framefields/tsconfig':
+        specifier: workspace:*
+        version: link:../../packages/tsconfig
+      '@types/node':
+        specifier: ^24.1.0
+        version: 24.10.14
+      tsdown:
+        specifier: ^0.19.0
+        version: 0.19.0(oxc-resolver@11.19.1)(typescript@5.9.3)
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
       webgpu:
         specifier: ^0.4.0
         version: 0.4.0
@@ -2132,6 +2432,31 @@ importers:
       vitest:
         specifier: ^4.1.11
         version: 4.1.11(@opentelemetry/api@1.9.0)(@types/node@24.10.14)(@vitest/coverage-v8@4.1.11)(jsdom@29.1.0(@noble/hashes@2.0.1)(canvas@3.2.3))(vite@8.2.1(@types/node@24.10.14)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.3))
+      webgpu:
+        specifier: ^0.4.0
+        version: 0.4.0
+
+  nodes/node-toon:
+    dependencies:
+      '@framefields/node-sdk':
+        specifier: workspace:*
+        version: link:../../packages/node-sdk
+      zod:
+        specifier: ^4.3.6
+        version: 4.3.6
+    devDependencies:
+      '@framefields/tsconfig':
+        specifier: workspace:*
+        version: link:../../packages/tsconfig
+      '@types/node':
+        specifier: ^24.1.0
+        version: 24.10.14
+      tsdown:
+        specifier: ^0.19.0
+        version: 0.19.0(oxc-resolver@11.19.1)(typescript@5.9.3)
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
       webgpu:
         specifier: ^0.4.0
         version: 0.4.0
@@ -2664,6 +2989,9 @@ importers:
       '@framefields/core':
         specifier: workspace:*
         version: link:../core
+      '@framefields/node-ascii':
+        specifier: workspace:*
+        version: link:../../nodes/node-ascii
       '@framefields/node-audio-compressor':
         specifier: workspace:*
         version: link:../../nodes/node-audio-compressor
@@ -2709,12 +3037,18 @@ importers:
       '@framefields/node-compositor':
         specifier: workspace:*
         version: link:../../nodes/node-compositor
+      '@framefields/node-contour':
+        specifier: workspace:*
+        version: link:../../nodes/node-contour
       '@framefields/node-corner-pin':
         specifier: workspace:*
         version: link:../../nodes/node-corner-pin
       '@framefields/node-crop':
         specifier: workspace:*
         version: link:../../nodes/node-crop
+      '@framefields/node-crt':
+        specifier: workspace:*
+        version: link:../../nodes/node-crt
       '@framefields/node-curves':
         specifier: workspace:*
         version: link:../../nodes/node-curves
@@ -2727,6 +3061,9 @@ importers:
       '@framefields/node-displacement-map':
         specifier: workspace:*
         version: link:../../nodes/node-displacement-map
+      '@framefields/node-dither':
+        specifier: workspace:*
+        version: link:../../nodes/node-dither
       '@framefields/node-extract-frame':
         specifier: workspace:*
         version: link:../../nodes/node-extract-frame
@@ -2739,6 +3076,9 @@ importers:
       '@framefields/node-flip':
         specifier: workspace:*
         version: link:../../nodes/node-flip
+      '@framefields/node-gooey':
+        specifier: workspace:*
+        version: link:../../nodes/node-gooey
       '@framefields/node-gradient-map':
         specifier: workspace:*
         version: link:../../nodes/node-gradient-map
@@ -2748,6 +3088,12 @@ importers:
       '@framefields/node-high-pass':
         specifier: workspace:*
         version: link:../../nodes/node-high-pass
+      '@framefields/node-iridescence':
+        specifier: workspace:*
+        version: link:../../nodes/node-iridescence
+      '@framefields/node-kaleidoscope':
+        specifier: workspace:*
+        version: link:../../nodes/node-kaleidoscope
       '@framefields/node-kenburns':
         specifier: workspace:*
         version: link:../../nodes/node-kenburns
@@ -2775,15 +3121,30 @@ importers:
       '@framefields/node-noise-generator':
         specifier: workspace:*
         version: link:../../nodes/node-noise-generator
+      '@framefields/node-op-art':
+        specifier: workspace:*
+        version: link:../../nodes/node-op-art
       '@framefields/node-paint':
         specifier: workspace:*
         version: link:../../nodes/node-paint
+      '@framefields/node-painterly':
+        specifier: workspace:*
+        version: link:../../nodes/node-painterly
       '@framefields/node-particles':
         specifier: workspace:*
         version: link:../../nodes/node-particles
       '@framefields/node-patch-heal':
         specifier: workspace:*
         version: link:../../nodes/node-patch-heal
+      '@framefields/node-pixelate':
+        specifier: workspace:*
+        version: link:../../nodes/node-pixelate
+      '@framefields/node-posterize':
+        specifier: workspace:*
+        version: link:../../nodes/node-posterize
+      '@framefields/node-procedural-vfx':
+        specifier: workspace:*
+        version: link:../../nodes/node-procedural-vfx
       '@framefields/node-refine-edge':
         specifier: workspace:*
         version: link:../../nodes/node-refine-edge
@@ -2796,6 +3157,9 @@ importers:
       '@framefields/node-resizer-scaler':
         specifier: workspace:*
         version: link:../../nodes/node-resizer-scaler
+      '@framefields/node-rgb-split':
+        specifier: workspace:*
+        version: link:../../nodes/node-rgb-split
       '@framefields/node-rotate':
         specifier: workspace:*
         version: link:../../nodes/node-rotate
@@ -2820,6 +3184,9 @@ importers:
       '@framefields/node-tile-offset':
         specifier: workspace:*
         version: link:../../nodes/node-tile-offset
+      '@framefields/node-toon':
+        specifier: workspace:*
+        version: link:../../nodes/node-toon
       '@framefields/node-trails':
         specifier: workspace:*
         version: link:../../nodes/node-trails

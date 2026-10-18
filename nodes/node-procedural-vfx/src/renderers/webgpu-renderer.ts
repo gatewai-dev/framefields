@@ -329,6 +329,34 @@ fn fxEnergyBeam(p: vec2<f32>, time: f32, scl: f32, dens: f32, inten: f32, cA: ve
     return vec4<f32>(col * (1.0 + glow * 2.0), a);
 }
 
+fn fxAurora(p: vec2<f32>, seedOff: f32, time: f32, scl: f32, dens: f32, inten: f32, cA: vec3<f32>, cB: vec3<f32>) -> vec4<f32> {
+    // Northern lights: curtains hanging from a wavy band across the upper sky,
+    // rippling sideways, with fine vertical rays. cA at the base, cB at the top.
+    var acc = vec3<f32>(0.0);
+    var keep = 1.0;
+    for (var k = 0; k < 3; k++) {
+        let fk = f32(k);
+        let x = p.x * (1.0 + fk * 0.35) * scl * 1.5 + seedOff * 13.0 + fk * 3.1;
+        // Curtain base line, a slow wave across the frame.
+        let base = 0.42 + fk * 0.06 + 0.12 * (fbm(vec2<f32>(x * 1.3, time * 0.05 + fk), 3) - 0.5)
+            + 0.05 * sin(x * 4.0 + time * 0.3 + fk);
+        let h = 0.38 + 0.2 * fbm(vec2<f32>(x * 2.0 + 7.0, time * 0.04), 3);
+        let d = base - p.y; // 0 at the base, rising upward
+        let body = smoothstep(-0.06, 0.035, d) * pow(1.0 - smoothstep(0.0, h, d), 1.5);
+        // Vertical rays drifting sideways.
+        let rn = fbm(vec2<f32>(x * 40.0 + time * 0.3, d * 2.0 - time * 0.1), 3);
+        let rays = 0.25 + 1.2 * rn * rn;
+        let fold = 0.6 + 0.4 * sin(x * 9.0 + time * 0.5 + fbm(vec2<f32>(x * 3.0, time * 0.1), 2) * 6.0);
+        let a = body * rays * fold * (1.0 - fk * 0.25);
+        let col = mix(cA, cB, clamp(d / max(h, 1e-3), 0.0, 1.0));
+        acc += col * a;
+        keep *= 1.0 - clamp(a, 0.0, 1.0);
+    }
+    let alpha = 1.0 - keep;
+    let a = clamp(alpha * (0.35 + 0.65 * dens) * inten * 1.4, 0.0, 1.0);
+    return vec4<f32>(acc / max(alpha, 1e-3) * min(alpha * 2.0, 1.0), a);
+}
+
 // ---- main dispatch ---------------------------------------------------------
 @fragment fn fs(in : VSOut) -> @location(0) vec4<f32> {
     let density   = get_field(u.density,   u.hasSigDensity,   densityTex,   signalSamp);
@@ -374,8 +402,10 @@ fn fxEnergyBeam(p: vec2<f32>, time: f32, scl: f32, dens: f32, inten: f32, cA: ve
         eff = fxLensFlare(sp, time, factor, density, intensity, cA, cB);
     } else if (u.effectType < 9.5) {
         eff = fxEmbers(sp, time, factor, density, intensity, cA, cB);
-    } else {
+    } else if (u.effectType < 10.5) {
         eff = fxEnergyBeam(sp, time, factor, density, intensity, cA, cB);
+    } else {
+        eff = fxAurora(p, seedOff, time, factor, density, intensity, cA, cB);
     }
 
     // Straight alpha is fine for compositing onto a transparent canvas.
@@ -449,6 +479,7 @@ const VFX_EFFECT_INDEX: Record<string, number> = {
 	LensFlare: 8,
 	Embers: 9,
 	EnergyBeam: 10,
+	Aurora: 11,
 };
 
 export const ProceduralVFXWebGPURenderer: WebGPUNodeRenderer = async (args) => {

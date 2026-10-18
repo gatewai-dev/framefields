@@ -92,7 +92,9 @@ All `Layer.*` builders return `AnimatableNode<T>` instances with chainable `.ani
 | `Layer.svg(src, options)` | `"media"` | Vector SVG asset. Options: `fit: "contain"`. |
 | `Layer.lottie(src, options)` | `"media"` | Lottie vector animation file (`.json`, `.lottie`). Decoded and rendered via ThorVG. Options: `fit: "contain" \| "cover" \| "fill"`, `width`, `height`. |
 | `Layer.audio(src, options)` | `"media"` | Audio track layer. Options: `volume`, `startFrame`, `durationFrames`. |
-| `Layer.shape(type, options)` | `"shape"` | Parametric vector graphics (`"rect"`, `"circle"`, `"ellipse"`, `"polygon"`, `"star"`, `"arrow"`, `"path"`). Options: `fill` (a color or CSS gradient), `d` (SVG path data with arcs), `strokeWidth`, `strokeColor`, `trimStart`, `trimEnd`. |
+| `Layer.shape(type, options)` | `"shape"` | Parametric vector graphics (`"rect"`, `"circle"`, `"ellipse"`, `"polygon"`, `"star"`, `"arrow"`, `"path"`). Options: `fill` (a color or CSS gradient), `d` (SVG path data with arcs; keyframe it to morph shapes), `strokeWidth`, `strokeColor`, `trimStart`, `trimEnd`. |
+| `Layer.particles(options)` | `"media"` | GPU particle system (see *GPU Particles*). |
+| `Layer.vfx(options)` | `"media"` | Procedural full-frame VFX: smoke, fire, rain, snow, aurora… (see *Procedural VFX*). |
 | `Layer.caption(src, options)` | `"media"` | SRT-driven synchronized subtitle engine. Bottom-anchored auto-wrapping cues. |
 | `Layer.chart(options, props)` | `"box"` | Charts built from native nodes (d3 scales and geometry). `type`: `"line" \| "area" \| "bar" \| "scatter" \| "candlestick" \| "pie" \| "donut"`. Options: `width`, `height`, `series: [{ name, data, color, type, curve, pointRadius }]` or `data`, `categories`, `stacked`, `xAxis`/`yAxis` (`min`, `max`, `ticks`, `grid`, `format`: a d3-format string like `"$,.0f"`), `legend`, `valueLabels`, `fontFamily`, `fontSize`, `colors`, `animate: { start, duration, stagger, ease } \| false`. `props` positions the chart box. Children get ids `<id>-bar-<series>-<i>`, `<id>-line-<series>`, `<id>-slice-<i>`. Keep scatter charts to a few hundred points: each point is a node. |
 | `Layer.camera(options)` | `"camera"` | 3D scene camera with FOV, lens rack focus, and orbital coordinates. |
@@ -276,6 +278,46 @@ const glow   = LayerAnimation.keys("color", [[42, GLOW], [60, REST, "sine.inOut"
 key.animate(rainIn).animate(press, glow);   // or LayerAnimation.merge(rainIn, press, glow)
 ```
 
+### Stepped timing ("on twos")
+
+`LayerAnimation.stepped(n)` holds every animated value of the layer for `n` frames: `2` is "on twos", the choppy, hand-made feel of cel animation, stop motion and paper cut-outs. It applies to all of the layer's tracks (keyframes keep their eases; signals and wiggles step too). Mix stepped characters over a smooth camera or background for the classic look.
+
+```typescript
+puppet.animate(walkCycle, bob, LayerAnimation.stepped(2));
+```
+
+### Shape morphing
+
+A path shape's `d` is animatable: keyframe two or more SVG paths and they morph. Any paths work (different point counts, curves, arcs, several subpaths); they are resampled and lined up so the morph does not twist. Eases apply as usual.
+
+```typescript
+Layer.shape("path", { position: "absolute", x: 0, y: 0, width: 400, height: 400, d: BLOB_A, fillColor: "#3B82F6" })
+  .animate(LayerAnimation.keys("d", [[0, BLOB_A], [24, STAR, "back.out(1.4)"], [48, HEART, "expo.inOut"]]));
+```
+
+For liquid merges between separate shapes, draw them into one SVG or particle layer and add `Gooey` (blur + alpha threshold = metaballs).
+
+---
+
+## Blend Modes
+
+Any layer takes `blendMode`, which sets how it mixes with what is drawn beneath it. Use it on glows, textures, light leaks, grain, color washes and type over footage.
+
+| Mode | Use it for |
+|---|---|
+| `"normal"` (default) | Plain over. |
+| `"screen"`, `"lighter"` (add), `"color-dodge"`, `"lighten"` | Light: glows, flares, light leaks, fire/sparks footage shot on black. |
+| `"multiply"`, `"color-burn"`, `"darken"` | Shade: paper and grunge textures, shadows, ink on paper. |
+| `"overlay"`, `"soft-light"`, `"hard-light"` | Contrast textures, film grain, color washes that keep the image's shading. |
+| `"difference"`, `"exclusion"` | Inverting type over video, glitchy flashes. |
+| `"hue"`, `"saturation"`, `"color"`, `"luminosity"` | Recolour footage with a flat color layer (`"color"` = tint, keeps the light). |
+| `"mask-in"` / `"mask-out"`, `"luma-in"` / `"luma-out"`, `"source-*"`, `"destination-*"`, `"xor"` | Compositing operators: keep the base where this layer is opaque / transparent / bright / dark. Prefer `withMatte` for reveals. |
+
+```typescript
+Layer.video("assets/light-leak.mp4", { position: "absolute", x: 0, y: 0, width: W, height: H, fit: "cover", blendMode: "screen", opacity: 0.8 })
+Layer.box({ position: "absolute", x: 0, y: 0, width: W, height: H, background: "#ff3d7f", blendMode: "color", opacity: 0.6 })   // duotone-ish tint
+```
+
 ---
 
 ## Track Mattes (masks, wipes, reveals)
@@ -441,6 +483,18 @@ comp.add(Layer.particles({
 - `emitter.x` / `emitter.y`, `rate`, `gravity`, `drag`, `noise.strength`, attractor positions/strengths and `push` strengths take a number, a signal (audio, physics `impact`) or `(frame) => value`, read every frame: bursts on the beat, wind gusts, an attractor following a tracked hand (`person.point("rightWrist", f)`). `emitter.bursts: [{ frame, count }]` adds one-off explosions.
 - Recipes: **light painting** an additive `"soft"` point emitter whose `x`/`y` follow a tracked wrist (`(f) => person.point("rightWrist", f).x`), lifetime ~1 s, small speed, births spread along the hand's path so fast moves stay continuous; **sparks/fountain** `shape: "spark"`, `blend: "add"`, gravity, `floor`; **smoke/ink** `shape: "soft"`, low opacity, `noise`, sizes growing; **snow/dust** `rect` emitter above the frame, small gravity, `noise`, `bounds: "wrap"`; **swirl** `ring` emitter + attractor + `colorBySpeed`; **fluid around a dancer** `push: { person }` + `drag` 2 + gentle noise, and a vision cutout of the clip above the particle layer.
 - The system steps as frames render and snapshots itself every 24 frames, so scrubbing back restores instead of replaying from the start; the same GPU gives the same frames.
+
+---
+
+## Procedural VFX (`Layer.vfx`)
+
+Full-frame procedural looks drawn by one shader, transparent where there is no effect. Stack them above or below footage, and set a `blendMode` (usually `"screen"`) for light effects.
+
+```typescript
+Layer.vfx({ effectType: "Aurora", width: W, height: H, colorStart: "#2bff88", colorEnd: "#7a3cff", density: 0.7, speed: 1 })
+```
+
+`effectType`: `Smoke`, `Fire`, `Rain`, `Sparks`, `Snow`, `Dust`, `Lightning`, `Magic`, `LensFlare`, `Embers`, `EnergyBeam`, `Aurora`. Shared knobs: `density`, `scale`, `speed`, `intensity` and `seed` (numbers or signals), plus `colorStart` / `colorEnd`. For particles that react to physics, a performer or attractors, use `Layer.particles` instead.
 
 ---
 

@@ -17,6 +17,11 @@ export const BUILTIN_NODE_RENDERERS: readonly BuiltinNodeRenderer[] = [
 		load: () => import("@framefields/node-lut/renderer"),
 	},
 	{
+		packageName: "@framefields/node-ascii",
+		ops: ["Ascii"],
+		load: () => import("@framefields/node-ascii/renderer"),
+	},
+	{
 		packageName: "@framefields/node-audio-compressor",
 		ops: ["AudioCompressor"],
 		load: () => import("@framefields/node-audio-compressor/renderer"),
@@ -92,6 +97,11 @@ export const BUILTIN_NODE_RENDERERS: readonly BuiltinNodeRenderer[] = [
 		load: () => import("@framefields/node-compositor/renderer"),
 	},
 	{
+		packageName: "@framefields/node-contour",
+		ops: ["Contour"],
+		load: () => import("@framefields/node-contour/renderer"),
+	},
+	{
 		packageName: "@framefields/node-corner-pin",
 		ops: ["CornerPin"],
 		load: () => import("@framefields/node-corner-pin/renderer"),
@@ -100,6 +110,11 @@ export const BUILTIN_NODE_RENDERERS: readonly BuiltinNodeRenderer[] = [
 		packageName: "@framefields/node-crop",
 		ops: ["Crop"],
 		load: () => import("@framefields/node-crop/renderer"),
+	},
+	{
+		packageName: "@framefields/node-crt",
+		ops: ["CRT"],
+		load: () => import("@framefields/node-crt/renderer"),
 	},
 	{
 		packageName: "@framefields/node-curves",
@@ -122,6 +137,11 @@ export const BUILTIN_NODE_RENDERERS: readonly BuiltinNodeRenderer[] = [
 		load: () => import("@framefields/node-displacement-map/renderer"),
 	},
 	{
+		packageName: "@framefields/node-dither",
+		ops: ["Dither"],
+		load: () => import("@framefields/node-dither/renderer"),
+	},
+	{
 		packageName: "@framefields/node-extract-frame",
 		ops: ["ExtractFrame"],
 		load: () => import("@framefields/node-extract-frame/renderer"),
@@ -142,6 +162,11 @@ export const BUILTIN_NODE_RENDERERS: readonly BuiltinNodeRenderer[] = [
 		load: () => import("@framefields/node-flip/renderer"),
 	},
 	{
+		packageName: "@framefields/node-gooey",
+		ops: ["Gooey"],
+		load: () => import("@framefields/node-gooey/renderer"),
+	},
+	{
 		packageName: "@framefields/node-gradient-map",
 		ops: ["GradientMap"],
 		load: () => import("@framefields/node-gradient-map/renderer"),
@@ -155,6 +180,16 @@ export const BUILTIN_NODE_RENDERERS: readonly BuiltinNodeRenderer[] = [
 		packageName: "@framefields/node-high-pass",
 		ops: ["HighPass"],
 		load: () => import("@framefields/node-high-pass/renderer"),
+	},
+	{
+		packageName: "@framefields/node-iridescence",
+		ops: ["Iridescence"],
+		load: () => import("@framefields/node-iridescence/renderer"),
+	},
+	{
+		packageName: "@framefields/node-kaleidoscope",
+		ops: ["Kaleidoscope"],
+		load: () => import("@framefields/node-kaleidoscope/renderer"),
 	},
 	{
 		packageName: "@framefields/node-kenburns",
@@ -197,9 +232,19 @@ export const BUILTIN_NODE_RENDERERS: readonly BuiltinNodeRenderer[] = [
 		load: () => import("@framefields/node-noise-generator/renderer"),
 	},
 	{
+		packageName: "@framefields/node-op-art",
+		ops: ["OpArt"],
+		load: () => import("@framefields/node-op-art/renderer"),
+	},
+	{
 		packageName: "@framefields/node-paint",
 		ops: ["Paint"],
 		load: () => import("@framefields/node-paint/renderer"),
+	},
+	{
+		packageName: "@framefields/node-painterly",
+		ops: ["Painterly"],
+		load: () => import("@framefields/node-painterly/renderer"),
 	},
 	{
 		packageName: "@framefields/node-particles",
@@ -210,6 +255,21 @@ export const BUILTIN_NODE_RENDERERS: readonly BuiltinNodeRenderer[] = [
 		packageName: "@framefields/node-patch-heal",
 		ops: ["PatchHeal"],
 		load: () => import("@framefields/node-patch-heal/renderer"),
+	},
+	{
+		packageName: "@framefields/node-pixelate",
+		ops: ["Pixelate"],
+		load: () => import("@framefields/node-pixelate/renderer"),
+	},
+	{
+		packageName: "@framefields/node-posterize",
+		ops: ["Posterize"],
+		load: () => import("@framefields/node-posterize/renderer"),
+	},
+	{
+		packageName: "@framefields/node-procedural-vfx",
+		ops: ["ProceduralVFX"],
+		load: () => import("@framefields/node-procedural-vfx/renderer"),
 	},
 	{
 		packageName: "@framefields/node-refine-edge",
@@ -230,6 +290,11 @@ export const BUILTIN_NODE_RENDERERS: readonly BuiltinNodeRenderer[] = [
 		packageName: "@framefields/node-resizer-scaler",
 		ops: ["ResizerScaler"],
 		load: () => import("@framefields/node-resizer-scaler/renderer"),
+	},
+	{
+		packageName: "@framefields/node-rgb-split",
+		ops: ["RGBSplit"],
+		load: () => import("@framefields/node-rgb-split/renderer"),
 	},
 	{
 		packageName: "@framefields/node-rotate",
@@ -265,6 +330,11 @@ export const BUILTIN_NODE_RENDERERS: readonly BuiltinNodeRenderer[] = [
 		packageName: "@framefields/node-tile-offset",
 		ops: ["TileOffset"],
 		load: () => import("@framefields/node-tile-offset/renderer"),
+	},
+	{
+		packageName: "@framefields/node-toon",
+		ops: ["Toon"],
+		load: () => import("@framefields/node-toon/renderer"),
 	},
 	{
 		packageName: "@framefields/node-trails",

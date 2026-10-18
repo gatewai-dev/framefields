@@ -432,6 +432,65 @@ export interface TonalShift {
 	yellowBlue: number;
 }
 
+export interface AsciiProps {
+	/**
+	 * Character cell size, px.
+	 * Range 4 to 64. Accepts a signal.
+	 * @default 10
+	 */
+	cellSize?: EffectProp<number>;
+	/**
+	 * Glyph color: `fg`, the layer's own colors, or green phosphor.
+	 * @default "mono"
+	 */
+	colorMode?: "mono" | "source" | "green";
+	/**
+	 * Glyph color (mono).
+	 * @default "#e8e8e8"
+	 */
+	fg?: string;
+	/**
+	 * Background color.
+	 * @default "#0b0b0b"
+	 */
+	bg?: string;
+	/**
+	 * Brightness contrast before picking glyphs.
+	 * Range 0.5 to 3. Accepts a signal.
+	 * @default 1.2
+	 */
+	contrast?: EffectProp<number>;
+	/**
+	 * Dark areas get dense glyphs.
+	 * @default false
+	 */
+	invert?: boolean;
+}
+
+const asciiDefaults: AsciiProps = {
+	cellSize: 10,
+	colorMode: "mono",
+	fg: "#e8e8e8",
+	bg: "#0b0b0b",
+	contrast: 1.2,
+	invert: false,
+};
+
+export class Ascii extends Effect<AsciiProps> {
+	public readonly op = "Ascii";
+
+	public declare cellSize: number;
+	public declare colorMode: "mono" | "source" | "green";
+	public declare fg: string;
+	public declare bg: string;
+	public declare contrast: number;
+	public declare invert: boolean;
+
+	constructor(config: AsciiProps = {}) {
+		super(withDefaults("Ascii", asciiDefaults, config, effectMeta.Ascii));
+	}
+}
+
 export interface AudioCompressorProps {
 	/**
 	 * Level (dBFS) above which gain reduction begins (-60 to 0 dB). Can be modulated by a static number or dynamic signal.
@@ -1194,6 +1253,66 @@ export class ColorKey extends Effect<ColorKeyProps> {
 	}
 }
 
+export interface ContourProps {
+	/**
+	 * Contour lines from dark to light.
+	 * Range 2 to 64. Accepts a signal.
+	 * @default 14
+	 */
+	levels?: EffectProp<number>;
+	/**
+	 * Line width, px.
+	 * Range 0.5 to 8. Accepts a signal.
+	 * @default 1.2
+	 */
+	lineWidth?: EffectProp<number>;
+	/**
+	 * Line color.
+	 * @default "#2b1d0e"
+	 */
+	lineColor?: string;
+	/**
+	 * Under the lines: the layer, `fillColor`, or transparent.
+	 * @default "source"
+	 */
+	fill?: "source" | "flat" | "none";
+	/**
+	 * Paper color (flat fill).
+	 * @default "#f3ead8"
+	 */
+	fillColor?: string;
+	/**
+	 * Blur before tracing, px (smoother lines).
+	 * Range 0 to 8. Accepts a signal.
+	 * @default 2
+	 */
+	smoothing?: EffectProp<number>;
+}
+
+const contourDefaults: ContourProps = {
+	levels: 14,
+	lineWidth: 1.2,
+	lineColor: "#2b1d0e",
+	fill: "source",
+	fillColor: "#f3ead8",
+	smoothing: 2,
+};
+
+export class Contour extends Effect<ContourProps> {
+	public readonly op = "Contour";
+
+	public declare levels: number;
+	public declare lineWidth: number;
+	public declare lineColor: string;
+	public declare fill: "source" | "flat" | "none";
+	public declare fillColor: string;
+	public declare smoothing: number;
+
+	constructor(config: ContourProps = {}) {
+		super(withDefaults("Contour", contourDefaults, config, effectMeta.Contour));
+	}
+}
+
 export interface CornerPinProps {
 	points?: CornerPinPointsItem[];
 }
@@ -1214,6 +1333,93 @@ export class CornerPin extends Effect<CornerPinProps> {
 				effectMeta.CornerPin,
 			),
 		);
+	}
+}
+
+export interface CRTProps {
+	/**
+	 * Scanline darkness.
+	 * Range 0 to 1. Accepts a signal.
+	 * @default 0.45
+	 */
+	scanlines?: EffectProp<number>;
+	/**
+	 * Scanlines over the height.
+	 * Range 100 to 2160. Accepts a signal.
+	 * @default 540
+	 */
+	lineCount?: EffectProp<number>;
+	/**
+	 * Barrel distortion of the tube.
+	 * Range 0 to 1. Accepts a signal.
+	 * @default 0.12
+	 */
+	curvature?: EffectProp<number>;
+	/**
+	 * RGB aperture-grille strength.
+	 * Range 0 to 1. Accepts a signal.
+	 * @default 0.25
+	 */
+	mask?: EffectProp<number>;
+	/**
+	 * Darkening toward the edges.
+	 * Range 0 to 1. Accepts a signal.
+	 * @default 0.35
+	 */
+	vignette?: EffectProp<number>;
+	/**
+	 * Animated static.
+	 * Range 0 to 1. Accepts a signal.
+	 * @default 0.08
+	 */
+	noise?: EffectProp<number>;
+	/**
+	 * Brightness flicker.
+	 * Range 0 to 1. Accepts a signal.
+	 * @default 0.03
+	 */
+	flicker?: EffectProp<number>;
+	/**
+	 * VHS tracking error: line jitter and a rolling band.
+	 * Range 0 to 1. Accepts a signal.
+	 * @default 0
+	 */
+	tracking?: EffectProp<number>;
+	/**
+	 * VHS color bleed, px.
+	 * Range 0 to 20. Accepts a signal.
+	 * @default 0
+	 */
+	chroma?: EffectProp<number>;
+}
+
+const cRTDefaults: CRTProps = {
+	scanlines: 0.45,
+	lineCount: 540,
+	curvature: 0.12,
+	mask: 0.25,
+	vignette: 0.35,
+	noise: 0.08,
+	flicker: 0.03,
+	tracking: 0,
+	chroma: 0,
+};
+
+export class CRT extends Effect<CRTProps> {
+	public readonly op = "CRT";
+
+	public declare scanlines: number;
+	public declare lineCount: number;
+	public declare curvature: number;
+	public declare mask: number;
+	public declare vignette: number;
+	public declare noise: number;
+	public declare flicker: number;
+	public declare tracking: number;
+	public declare chroma: number;
+
+	constructor(config: CRTProps = {}) {
+		super(withDefaults("CRT", cRTDefaults, config, effectMeta.CRT));
 	}
 }
 
@@ -1321,6 +1527,65 @@ export class DisplacementMap extends Effect<DisplacementMapProps> {
 				effectMeta.DisplacementMap,
 			),
 		);
+	}
+}
+
+export interface DitherProps {
+	/**
+	 * Pattern: Bayer matrix, blue-ish noise or round halftone dots.
+	 * @default "bayer"
+	 */
+	mode?: "bayer" | "noise" | "halftone";
+	/**
+	 * Levels per channel (2 = 1-bit).
+	 * Range 2 to 16. Accepts a signal.
+	 * @default 2
+	 */
+	levels?: EffectProp<number>;
+	/**
+	 * Dither pixel size, px.
+	 * Range 1 to 16. Accepts a signal.
+	 * @default 2
+	 */
+	scale?: EffectProp<number>;
+	/**
+	 * Map brightness to the dark → light colors instead of dithering each channel.
+	 * @default true
+	 */
+	monochrome?: boolean;
+	/**
+	 * Dark color (monochrome).
+	 * @default "#111111"
+	 */
+	dark?: string;
+	/**
+	 * Light color (monochrome).
+	 * @default "#f2efe6"
+	 */
+	light?: string;
+}
+
+const ditherDefaults: DitherProps = {
+	mode: "bayer",
+	levels: 2,
+	scale: 2,
+	monochrome: true,
+	dark: "#111111",
+	light: "#f2efe6",
+};
+
+export class Dither extends Effect<DitherProps> {
+	public readonly op = "Dither";
+
+	public declare mode: "bayer" | "noise" | "halftone";
+	public declare levels: number;
+	public declare scale: number;
+	public declare monochrome: boolean;
+	public declare dark: string;
+	public declare light: string;
+
+	constructor(config: DitherProps = {}) {
+		super(withDefaults("Dither", ditherDefaults, config, effectMeta.Dither));
 	}
 }
 
@@ -1432,6 +1697,160 @@ export class Flip extends Effect<FlipProps> {
 
 	constructor(config: FlipProps = {}) {
 		super(withDefaults("Flip", flipDefaults, config, effectMeta.Flip));
+	}
+}
+
+export interface GooeyProps {
+	/**
+	 * Melt distance, px.
+	 * Range 1 to 60. Accepts a signal.
+	 * @default 12
+	 */
+	radius?: EffectProp<number>;
+	/**
+	 * Alpha cut, 0–1 (higher = thinner blobs).
+	 * Range 0 to 1. Accepts a signal.
+	 * @default 0.5
+	 */
+	threshold?: EffectProp<number>;
+	/**
+	 * Edge softness.
+	 * Range 0.001 to 0.5. Accepts a signal.
+	 * @default 0.04
+	 */
+	softness?: EffectProp<number>;
+}
+
+const gooeyDefaults: GooeyProps = {
+	radius: 12,
+	threshold: 0.5,
+	softness: 0.04,
+};
+
+export class Gooey extends Effect<GooeyProps> {
+	public readonly op = "Gooey";
+
+	public declare radius: number;
+	public declare threshold: number;
+	public declare softness: number;
+
+	constructor(config: GooeyProps = {}) {
+		super(withDefaults("Gooey", gooeyDefaults, config, effectMeta.Gooey));
+	}
+}
+
+export interface IridescenceProps {
+	/**
+	 * How much rainbow, 0–1.
+	 * Range 0 to 1. Accepts a signal.
+	 * @default 0.6
+	 */
+	strength?: EffectProp<number>;
+	/**
+	 * Rainbow bands over the range.
+	 * Range 0.1 to 10. Accepts a signal.
+	 * @default 2
+	 */
+	scale?: EffectProp<number>;
+	/**
+	 * Hue shift, degrees (animate it).
+	 * Range -3600 to 3600. Accepts a signal.
+	 * @default 0
+	 */
+	shift?: EffectProp<number>;
+	/**
+	 * Bands from brightness, or from the slope of the image (foil).
+	 * @default "relief"
+	 */
+	mode?: "luminance" | "relief";
+}
+
+const iridescenceDefaults: IridescenceProps = {
+	strength: 0.6,
+	scale: 2,
+	shift: 0,
+	mode: "relief",
+};
+
+export class Iridescence extends Effect<IridescenceProps> {
+	public readonly op = "Iridescence";
+
+	public declare strength: number;
+	public declare scale: number;
+	public declare shift: number;
+	public declare mode: "luminance" | "relief";
+
+	constructor(config: IridescenceProps = {}) {
+		super(
+			withDefaults(
+				"Iridescence",
+				iridescenceDefaults,
+				config,
+				effectMeta.Iridescence,
+			),
+		);
+	}
+}
+
+export interface KaleidoscopeProps {
+	/**
+	 * Mirror segments.
+	 * Range 2 to 32. Accepts a signal.
+	 * @default 6
+	 */
+	segments?: EffectProp<number>;
+	/**
+	 * Pattern rotation, degrees.
+	 * Range -3600 to 3600. Accepts a signal.
+	 * @default 0
+	 */
+	rotation?: EffectProp<number>;
+	/**
+	 * Center, 0–1 across.
+	 * Range 0 to 1. Accepts a signal.
+	 * @default 0.5
+	 */
+	centerX?: EffectProp<number>;
+	/**
+	 * Center, 0–1 down.
+	 * Range 0 to 1. Accepts a signal.
+	 * @default 0.5
+	 */
+	centerY?: EffectProp<number>;
+	/**
+	 * Scale of the folded image.
+	 * Range 0.2 to 4. Accepts a signal.
+	 * @default 1
+	 */
+	zoom?: EffectProp<number>;
+}
+
+const kaleidoscopeDefaults: KaleidoscopeProps = {
+	segments: 6,
+	rotation: 0,
+	centerX: 0.5,
+	centerY: 0.5,
+	zoom: 1,
+};
+
+export class Kaleidoscope extends Effect<KaleidoscopeProps> {
+	public readonly op = "Kaleidoscope";
+
+	public declare segments: number;
+	public declare rotation: number;
+	public declare centerX: number;
+	public declare centerY: number;
+	public declare zoom: number;
+
+	constructor(config: KaleidoscopeProps = {}) {
+		super(
+			withDefaults(
+				"Kaleidoscope",
+				kaleidoscopeDefaults,
+				config,
+				effectMeta.Kaleidoscope,
+			),
+		);
 	}
 }
 
@@ -1967,6 +2386,74 @@ export class NoiseGenerator extends Effect<NoiseGeneratorProps> {
 	}
 }
 
+export interface OpArtProps {
+	/**
+	 * Line pattern.
+	 * @default "stripes"
+	 */
+	pattern?: "stripes" | "rings" | "checker" | "waves";
+	/**
+	 * Lines across the height.
+	 * Range 2 to 300. Accepts a signal.
+	 * @default 48
+	 */
+	frequency?: EffectProp<number>;
+	/**
+	 * Pattern angle, degrees.
+	 * Range -360 to 360. Accepts a signal.
+	 * @default 0
+	 */
+	angle?: EffectProp<number>;
+	/**
+	 * How far brightness bends the lines.
+	 * Range 0 to 3. Accepts a signal.
+	 * @default 0.6
+	 */
+	warp?: EffectProp<number>;
+	/**
+	 * How much darks thicken the lines (0 = even lines).
+	 * Range 0 to 1. Accepts a signal.
+	 * @default 1
+	 */
+	source?: EffectProp<number>;
+	/**
+	 * Line color.
+	 * @default "#0a0a0a"
+	 */
+	colorA?: string;
+	/**
+	 * Gap color.
+	 * @default "#f5f5f5"
+	 */
+	colorB?: string;
+}
+
+const opArtDefaults: OpArtProps = {
+	pattern: "stripes",
+	frequency: 48,
+	angle: 0,
+	warp: 0.6,
+	source: 1,
+	colorA: "#0a0a0a",
+	colorB: "#f5f5f5",
+};
+
+export class OpArt extends Effect<OpArtProps> {
+	public readonly op = "OpArt";
+
+	public declare pattern: "stripes" | "rings" | "checker" | "waves";
+	public declare frequency: number;
+	public declare angle: number;
+	public declare warp: number;
+	public declare source: number;
+	public declare colorA: string;
+	public declare colorB: string;
+
+	constructor(config: OpArtProps = {}) {
+		super(withDefaults("OpArt", opArtDefaults, config, effectMeta.OpArt));
+	}
+}
+
 export interface PaintProps {
 	/**
 	 * Range 1 to 16384.
@@ -2019,6 +2506,67 @@ export class Paint extends Effect<PaintProps> {
 
 	constructor(config: PaintProps = {}) {
 		super(withDefaults("Paint", paintDefaults, config, effectMeta.Paint));
+	}
+}
+
+export interface PainterlyProps {
+	/**
+	 * Oil (dense strokes) or watercolor (wet edges, paper).
+	 * @default "oil"
+	 */
+	style?: "oil" | "watercolor";
+	/**
+	 * Brush size, px.
+	 * Range 2 to 12. Accepts a signal.
+	 * @default 5
+	 */
+	radius?: EffectProp<number>;
+	/**
+	 * Watercolor: pigment pooling at patch edges.
+	 * Range 0 to 1. Accepts a signal.
+	 * @default 0.5
+	 */
+	edgeDarkening?: EffectProp<number>;
+	/**
+	 * Paper / canvas grain.
+	 * Range 0 to 1. Accepts a signal.
+	 * @default 0.3
+	 */
+	paper?: EffectProp<number>;
+	/**
+	 * Color saturation.
+	 * Range 0 to 2. Accepts a signal.
+	 * @default 1.05
+	 */
+	saturation?: EffectProp<number>;
+}
+
+const painterlyDefaults: PainterlyProps = {
+	style: "oil",
+	radius: 5,
+	edgeDarkening: 0.5,
+	paper: 0.3,
+	saturation: 1.05,
+};
+
+export class Painterly extends Effect<PainterlyProps> {
+	public readonly op = "Painterly";
+
+	public declare style: "oil" | "watercolor";
+	public declare radius: number;
+	public declare edgeDarkening: number;
+	public declare paper: number;
+	public declare saturation: number;
+
+	constructor(config: PainterlyProps = {}) {
+		super(
+			withDefaults(
+				"Painterly",
+				painterlyDefaults,
+				config,
+				effectMeta.Painterly,
+			),
+		);
 	}
 }
 
@@ -2118,6 +2666,124 @@ export class PatchHeal extends Effect<PatchHealProps> {
 	}
 }
 
+export interface PixelateProps {
+	/**
+	 * Cell size, px.
+	 * Range 1 to 256. Accepts a signal.
+	 * @default 12
+	 */
+	size?: EffectProp<number>;
+	/**
+	 * Cell shape: square pixels, round LEDs or diamonds.
+	 * @default "square"
+	 */
+	shape?: "square" | "circle" | "diamond";
+	/**
+	 * Space between cells, as a fraction of a cell (0 = touching).
+	 * Range 0 to 0.9. Accepts a signal.
+	 * @default 0
+	 */
+	gap?: EffectProp<number>;
+}
+
+const pixelateDefaults: PixelateProps = {
+	size: 12,
+	shape: "square",
+	gap: 0,
+};
+
+export class Pixelate extends Effect<PixelateProps> {
+	public readonly op = "Pixelate";
+
+	public declare size: number;
+	public declare shape: "square" | "circle" | "diamond";
+	public declare gap: number;
+
+	constructor(config: PixelateProps = {}) {
+		super(
+			withDefaults("Pixelate", pixelateDefaults, config, effectMeta.Pixelate),
+		);
+	}
+}
+
+export interface PosterizeProps {
+	/**
+	 * Steps per channel when no palette is set.
+	 * Range 2 to 64. Accepts a signal.
+	 * @default 6
+	 */
+	levels?: EffectProp<number>;
+	/**
+	 * Snap to a retro palette, or `custom` to use `colors`.
+	 * @default "none"
+	 */
+	palette?:
+		| "none"
+		| "gameboy"
+		| "teletext"
+		| "cga"
+		| "pico8"
+		| "c64"
+		| "grayscale"
+		| "sepia"
+		| "custom";
+	/**
+	 * Your palette (up to 16 hex colors), used when `palette` is `custom`.
+	 * @default []
+	 */
+	colors?: string[];
+	/**
+	 * Ordered (Bayer) dithering between steps, 0–1.
+	 * Range 0 to 1. Accepts a signal.
+	 * @default 0
+	 */
+	dither?: EffectProp<number>;
+	/**
+	 * Pixel size, px: above 1 for pixel art.
+	 * Range 1 to 64. Accepts a signal.
+	 * @default 1
+	 */
+	pixelSize?: EffectProp<number>;
+}
+
+const posterizeDefaults: PosterizeProps = {
+	levels: 6,
+	palette: "none",
+	colors: [],
+	dither: 0,
+	pixelSize: 1,
+};
+
+export class Posterize extends Effect<PosterizeProps> {
+	public readonly op = "Posterize";
+
+	public declare levels: number;
+	public declare palette:
+		| "none"
+		| "gameboy"
+		| "teletext"
+		| "cga"
+		| "pico8"
+		| "c64"
+		| "grayscale"
+		| "sepia"
+		| "custom";
+	public declare colors: string[];
+	public declare dither: number;
+	public declare pixelSize: number;
+
+	constructor(config: PosterizeProps = {}) {
+		super(
+			withDefaults(
+				"Posterize",
+				posterizeDefaults,
+				config,
+				effectMeta.Posterize,
+			),
+		);
+	}
+}
+
 export interface ProceduralVFXProps {
 	/**
 	 * Which procedural particle / light effect to synthesize.
@@ -2134,7 +2800,8 @@ export interface ProceduralVFXProps {
 		| "Magic"
 		| "LensFlare"
 		| "Embers"
-		| "EnergyBeam";
+		| "EnergyBeam"
+		| "Aurora";
 	/**
 	 * Image renders a static frame; Video animates over time.
 	 * @default "Video"
@@ -2236,7 +2903,8 @@ export class ProceduralVFX extends Effect<ProceduralVFXProps> {
 		| "Magic"
 		| "LensFlare"
 		| "Embers"
-		| "EnergyBeam";
+		| "EnergyBeam"
+		| "Aurora";
 	public declare outputType: "Image" | "Video";
 	public declare width: number;
 	public declare height: number;
@@ -2607,6 +3275,46 @@ export class ResizerScaler extends Effect<ResizerScalerProps> {
 	}
 }
 
+export interface RGBSplitProps {
+	/**
+	 * Split distance, px.
+	 * Range 0 to 200. Accepts a signal.
+	 * @default 8
+	 */
+	amount?: EffectProp<number>;
+	/**
+	 * Split direction, degrees (linear mode).
+	 * Range -360 to 360. Accepts a signal.
+	 * @default 0
+	 */
+	angle?: EffectProp<number>;
+	/**
+	 * Split outward from the center instead of along `angle`.
+	 * @default false
+	 */
+	radial?: boolean;
+}
+
+const rGBSplitDefaults: RGBSplitProps = {
+	amount: 8,
+	angle: 0,
+	radial: false,
+};
+
+export class RGBSplit extends Effect<RGBSplitProps> {
+	public readonly op = "RGBSplit";
+
+	public declare amount: number;
+	public declare angle: number;
+	public declare radial: boolean;
+
+	constructor(config: RGBSplitProps = {}) {
+		super(
+			withDefaults("RGBSplit", rGBSplitDefaults, config, effectMeta.RGBSplit),
+		);
+	}
+}
+
 export interface RotateProps {
 	/**
 	 * Rotation in degrees about the frame center, clockwise. Any value; 90 / 180 / 270 fix footage shot sideways or upside down.
@@ -2672,6 +3380,60 @@ export class StereoPanning extends Effect<StereoPanningProps> {
 				effectMeta.StereoPanning,
 			),
 		);
+	}
+}
+
+export interface ToonProps {
+	/**
+	 * Brightness bands.
+	 * Range 2 to 12. Accepts a signal.
+	 * @default 4
+	 */
+	levels?: EffectProp<number>;
+	/**
+	 * How strong an edge must be to get ink, 0–1.
+	 * Range 0 to 1. Accepts a signal.
+	 * @default 0.2
+	 */
+	edgeThreshold?: EffectProp<number>;
+	/**
+	 * Ink line width, px.
+	 * Range 0.5 to 4. Accepts a signal.
+	 * @default 1
+	 */
+	edgeWidth?: EffectProp<number>;
+	/**
+	 * Ink color.
+	 * @default "#111111"
+	 */
+	edgeColor?: string;
+	/**
+	 * Color saturation after banding.
+	 * Range 0 to 2. Accepts a signal.
+	 * @default 1.15
+	 */
+	saturation?: EffectProp<number>;
+}
+
+const toonDefaults: ToonProps = {
+	levels: 4,
+	edgeThreshold: 0.2,
+	edgeWidth: 1,
+	edgeColor: "#111111",
+	saturation: 1.15,
+};
+
+export class Toon extends Effect<ToonProps> {
+	public readonly op = "Toon";
+
+	public declare levels: number;
+	public declare edgeThreshold: number;
+	public declare edgeWidth: number;
+	public declare edgeColor: string;
+	public declare saturation: number;
+
+	constructor(config: ToonProps = {}) {
+		super(withDefaults("Toon", toonDefaults, config, effectMeta.Toon));
 	}
 }
 

@@ -17,6 +17,7 @@ export const VFX_EFFECT_TYPES = [
 	"LensFlare",
 	"Embers",
 	"EnergyBeam",
+	"Aurora",
 ] as const;
 
 export const proceduralVFXConfig = configBuilder()

@@ -1,6 +1,6 @@
 ---
 name: framefields-effects
-description: Apply, configure, and modulate WebGPU post-processing shaders, cinematic color grading, tone mapping, procedural VFX, and on-device vision (object tracking, instance segmentation, pose, person mattes) in framefields. Use when adding blur, grain, LUTs, relighting, curves, greenscreen color keying, subject cutouts, or tracking-driven effects in framefields compositions.
+description: Apply, configure, and modulate WebGPU post-processing shaders, stylized looks (pixel art, ASCII, VHS, comic, watercolor, risograph, holographic — and which look fits which request), cinematic color grading, tone mapping, procedural VFX, and on-device vision (object tracking, instance segmentation, pose, person mattes) in framefields. Use when adding blur, grain, LUTs, relighting, curves, greenscreen color keying, subject cutouts, or tracking-driven effects in framefields compositions.
 ---
 
 # framefields-effects
@@ -125,6 +125,27 @@ const pngBuffer = await clip.renderFrame({ atMs: 1500 });
 ### 4. Matte, Keying & Edge Operations
 - **`ColorKey`**: Studio greenscreen/bluescreen keyer with spill suppression and smoothness controls.
 - **`Crop`**: Rectangular, circular, or arbitrary polygon path cropping with corner rounding.
+
+### 5. Stylize Looks (`Styles.*`)
+
+**Which look for which request:** see [references/style-guide.md](references/style-guide.md). It maps phrases like "VHS", "8-bit", "comic" or "liquid logo" to presets, effects and techniques. Read it whenever someone names a style.
+
+`Styles.<name>(options?)` returns an effect stack: `layer.withEffects(Styles.vhs())`. Presets: `pixelArt`, `gameBoy`, `teletext`, `ledWall`, `ascii`, `oneBit`, `risograph`, `comic`, `cartoon`, `thermal`, `vhs`, `crt`, `glitch`, `oilPainting`, `watercolor`, `topographic`, `kaleidoscope`, `opArt`, `holographic`, `noir`, `film`.
+
+The effects behind them, for finer control:
+- **`Pixelate`**: big pixels; `shape: "square" | "circle" | "diamond"` (LED wall), `gap`.
+- **`Posterize`**: fewer colors, or snap to a `palette` (`gameboy`, `teletext`, `cga`, `pico8`, `c64`, `grayscale`, `sepia`, `custom` + `colors`) with Bayer `dither` and `pixelSize`.
+- **`Dither`**: `bayer` / `noise` / `halftone`; 1-bit duotone (`dark` / `light`) or per-channel `levels`.
+- **`Ascii`**: glyphs by brightness; `colorMode: "mono" | "source" | "green"`, `cellSize`, `fg` / `bg`, `invert`.
+- **`Toon`**: brightness bands plus Sobel ink lines (`edgeColor`, `edgeWidth`, `edgeThreshold`).
+- **`RGBSplit`**: chromatic aberration along `angle` or `radial`.
+- **`CRT`**: curvature, scanlines, aperture mask, noise, flicker, vignette; `tracking` and `chroma` give VHS wobble and colour bleed.
+- **`Painterly`**: Kuwahara `oil` / `watercolor` (pigment edges, paper grain).
+- **`Contour`**: topographic isolines over the `source`, a `flat` paper colour, or nothing.
+- **`Kaleidoscope`**: mirror `segments` around a center; animate `rotation` / `zoom`.
+- **`OpArt`**: stripes / rings / checker / waves bent and thickened by the image.
+- **`Iridescence`**: thin-film rainbow from brightness or relief; animate `shift`.
+- **`Gooey`**: blur + alpha threshold (metaballs). Use it on layers with transparency (SVG, particles), not on opaque footage.
 
 ---
 

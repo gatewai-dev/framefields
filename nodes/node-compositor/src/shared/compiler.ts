@@ -3,6 +3,7 @@ import {
 	type AnimationTrack,
 	collectNodeOps,
 	type EaseRef,
+	evaluateKeyframes,
 	evaluateTrackAtFrame,
 	type LayerAnimationSpec,
 } from "@framefields/compositions/program";
@@ -125,6 +126,40 @@ interface LiveTrack {
 	track: AnimationTrack;
 	startFrame: number;
 	endFrame: number;
+	/** Stepped timing: the track is read only every `step` frames. */
+	step?: number;
+}
+
+/** GSAP's shaping for a keyframe segment, so draw-time tracks ease like baked ones. */
+function gsapEase(
+	fps: number,
+): (ease: EaseRef | undefined, deltaFrames: number, t: number) => number {
+	return (ease, deltaFrames, t) => {
+		const e = mappedEase(ease, deltaFrames, fps);
+		const fn = typeof e === "function" ? e : gsap.parseEase(e);
+		return fn ? fn(t) : t;
+	};
+}
+
+function evaluateLive(
+	live: LiveTrack,
+	frame: number,
+	fps: number,
+	signals: Record<string, any> | undefined,
+) {
+	const source = live.track.source ?? { type: "keyframe" };
+	if (source.type === "keyframe") {
+		return evaluateKeyframes(
+			live.track,
+			frame - live.startFrame,
+			gsapEase(fps),
+		);
+	}
+	return evaluateTrackAtFrame(live.track, frame, fps, {
+		startFrame: live.startFrame,
+		baseValues: live.stub,
+		signals,
+	});
 }
 
 /** Seeks the compiled timeline to a frame and applies its live signal tracks. */
@@ -135,12 +170,13 @@ export function seekTimeline(
 ): void {
 	result.tl.seek(frame / fps);
 	for (const live of result.live) {
-		const f = Math.max(live.startFrame, Math.min(live.endFrame, frame));
-		live.stub[live.track.prop] = evaluateTrackAtFrame(live.track, f, fps, {
-			startFrame: live.startFrame,
-			baseValues: live.stub,
-			signals: result.signals,
-		});
+		let f = Math.max(live.startFrame, Math.min(live.endFrame, frame));
+		if (live.step && live.step > 1) {
+			f =
+				live.startFrame +
+				Math.floor((f - live.startFrame) / live.step) * live.step;
+		}
+		live.stub[live.track.prop] = evaluateLive(live, f, fps, result.signals);
 	}
 }
 
@@ -373,20 +409,32 @@ function compileTrackToTimeline(
 	durationFrames: number,
 	signals?: Record<string, any>,
 	live?: LiveTrack[],
+	step?: number,
 ): { dropped: number; maxAuthoredFrame: number } {
 	const prop = track.prop;
 	const source = track.source ?? { type: "keyframe" };
+	const stepped = step !== undefined && step > 1;
 
-	if (source.type === "signal" && live && !track.repeat) {
+	// Signal tracks, path morphs (GSAP cannot tween an SVG path) and every
+	// track of a stepped layer are evaluated at draw time rather than baked
+	// into the GSAP timeline.
+	if (
+		(source.type === "signal" || stepped || prop === "d") &&
+		live &&
+		!track.repeat
+	) {
 		const endF = Number.isFinite(durationFrames)
 			? durationFrames
 			: Math.round(fps * 5);
-		stub[prop] = evaluateTrackAtFrame(track, startFrame, fps, {
+		const entry: LiveTrack = {
+			stub,
+			track,
 			startFrame,
-			baseValues: stub,
-			signals,
-		});
-		live.push({ stub, track, startFrame, endFrame: startFrame + endF });
+			endFrame: startFrame + endF,
+			...(stepped && { step }),
+		};
+		stub[prop] = evaluateLive(entry, startFrame, fps, signals);
+		live.push(entry);
 		return { dropped: 0, maxAuthoredFrame: 0 };
 	}
 
@@ -941,6 +989,7 @@ export function compileTimeline(
 				durationFrames,
 				signals,
 				live,
+				lop.animation?.frameStep,
 			);
 			if (dropped > 0) {
 				truncations.push({

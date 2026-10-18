@@ -178,7 +178,7 @@ Inference runs on the GPU through `onnxruntime-web`'s WebGPU backend (an optiona
 
 ### How it behaves at render time
 
-- **One-frame delay.** Vision reads the layer's *previous* rendered frame, so the very first frame has no results (a cutout renders transparent) and masks trail the plate by one frame. This is invisible at normal playback speed.
+- **One-frame delay.** Vision reads the layer's *previous* rendered frame, so the very first frame has no results (a cutout renders transparent) and masks trail the plate by one frame. This is invisible at normal playback speed. A matte of a clip the composition also reads with `comp.vision` has neither (see Clip Vision below).
 - **Render vision frames in order.** `renderVideo` does this for you. For stills, render at least two consecutive frames with the same renderer and keep the last one. Jumping straight to a later frame (or using a frame grid) cuts out pixels from whatever frame was rendered before it, which shows up as a ghosted double of the subject.
 - **Subject choice.** `mask` / `matte` / `crop` use the largest person; with no person, the most confident instance. Instances overlapping the subject and no more than twice its size are merged in (a dress, a held instrument) — large containers around it (a tunnel, a window frame) are not. `classes` limits what the subject can be, not what merges into it: COCO has no clothing class, so a flowing dress often comes back as a "kite" or "umbrella" and still joins a `classes: ["person"]` cutout.
 - Each vision layer tracks objects independently; track ids from two layers are unrelated.
@@ -256,6 +256,7 @@ await dancer.ready(0);             // analyse a frame (or a range: ready(0, 120)
 - The composition analyses each frame's clips just before drawing it, in every render path and the preview, and a live physics world (`world.live(comp)`) before stepping. Nothing runs up front; a preview starts at once.
 - Results persist in Node (`~/.cache/framefields/vision`, or `$FRAMEFIELDS_VISION_CACHE_DIR`; `cacheDir: false` to opt out), keyed by the file and settings, so later runs and renders after a preview are instant.
 - Options: `startFrame` / `trimStartSec` (where the clip plays), `pose`, `mask`, `maskCell` (silhouette grid, default 8 px), `smoothing` (frames, default 2), `variant`. When the person is lost the last pose is held for up to a second.
+- A `withVision({ mode: "matte" })` cutout (or `mask` / `crop`) of the same clip reuses these results: the composition hands it the clip's subject for the frame being drawn, so it is segmented once, not again at render, and the cutout lines up with the plate on the same frame. Layers with `classes`, `keyBackground`, `matteSource: "selfie"` or other model settings than the clip keep their own pass.
 - Analysis costs about 200 ms per frame on CPU (segmentation dominates); on WebGPU it is faster. In a live preview the playhead waits for frames not analysed yet.
 
 ### 6. Analyze Before Authoring

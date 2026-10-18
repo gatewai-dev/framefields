@@ -67,6 +67,25 @@ describe("ClipVision", () => {
 		expect(edge.gx).toBeLessThan(0);
 	});
 
+	it("gives render-time mattes the full-resolution subject per source frame", () => {
+		const subject = new Uint8Array(160 * 80);
+		subject.fill(200, 0, 160 * 10);
+		const c = clipVisionFromResults(24, { width: 160, height: 80, cell: 4 }, [
+			{ kp: null, mask: null, subject },
+			{ kp: null, mask: null, subject: null },
+			{ kp: null, mask: null },
+		]);
+		const s = c.subject(0, 24);
+		expect(s).toMatchObject({ width: 160, height: 80, category: "person" });
+		expect(s?.mask).toEqual(subject);
+		expect(s?.area).toBe(Math.round((200 * 160 * 10) / 255));
+		// Source frame 2 at 48 fps is clip frame 1: analysed, nobody there.
+		expect(c.subject(2, 48)).toBeNull();
+		// Not analysed with subjects, or between clip frames: the caller segments.
+		expect(c.subject(2, 24)).toBeUndefined();
+		expect(c.subject(1, 48)).toBeUndefined();
+	});
+
 	it("explains a read of a frame that was never analysed", () => {
 		expect(() => clip(2).person.point("leftWrist", 30)).toThrow(
 			/not analysed yet/,

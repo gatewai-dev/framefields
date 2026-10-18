@@ -1,5 +1,11 @@
 import { type FrameSignal, Signal } from "@framefields/core";
-import { COCO17_KEYPOINT_NAMES, VisionRunner } from "@framefields/vision";
+import {
+	type ClipSubjectSource,
+	COCO17_KEYPOINT_NAMES,
+	type InstanceMask,
+	mergeSubjectMask,
+	VisionRunner,
+} from "@framefields/vision";
 import { mediaDecoderCache } from "@framefields/webgpu-renderers";
 import type { VisionProps } from "./effects/index.js";
 
@@ -48,6 +54,15 @@ interface FrameResult {
 	mask: Uint8Array | null;
 }
 
+/** A frame's merged subject at source resolution, run-length encoded. */
+interface SubjectResult {
+	category: string;
+	area: number;
+	/** (value, run length) pairs over the source-sized 0–255 mask. */
+	values: Uint8Array;
+	lengths: Uint32Array;
+}
+
 interface Transform {
 	sx: number;
 	sy: number;
@@ -70,15 +85,17 @@ const CACHE_VERSION = 1;
  * export fill the cache as they play; nothing has to be analysed up front.
  *
  * Results depend only on the clip and settings, so they persist on disk in
- * Node: a second run, or a render after a preview, reuses them.
+ * Node: a second run, or a render after a preview, reuses them. A matte-mode
+ * `withVision` layer of the same clip reuses them too (`keepSubjects`).
  */
-export class ClipVision {
+export class ClipVision implements ClipSubjectSource {
 	readonly source: string;
 	readonly fps: number;
 	readonly startFrame: number;
 	readonly trimStartSec: number;
 	readonly smoothing: number;
-	private readonly options: ClipVisionOptions;
+	/** @internal */
+	readonly options: ClipVisionOptions;
 	private readonly results = new Map<number, FrameResult>();
 	private sourceWidth = 0;
 	private sourceHeight = 0;
@@ -89,9 +106,14 @@ export class ClipVision {
 	private runner?: VisionRunner;
 	private cacheLoaded?: Promise<void>;
 	private unsaved = 0;
+	private unsavedSubjects = 0;
 	private readonly blurred = new Map<number, Float32Array | null>();
 	private readonly smoothed = new Map<string, [number, number, number]>();
 	private personView?: PersonTrack;
+	/** Full-resolution subject masks for render-time mattes (see `keepSubjects`). */
+	private readonly subjects = new Map<number, SubjectResult | null>();
+	private wantSubjects = false;
+	private subjectsLoaded?: Promise<void>;
 
 	/** @internal Use `comp.vision(source, options)`. */
 	constructor(source: string, fps: number, options: ClipVisionOptions = {}) {
@@ -128,6 +150,39 @@ export class ClipVision {
 		return true;
 	}
 
+	/**
+	 * @internal Also keep each frame's full-resolution subject mask, merged
+	 * like the Vision effect's matte, so a matte layer of this clip reuses it
+	 * instead of segmenting the frame again (framefields links them).
+	 */
+	keepSubjects(): void {
+		this.wantSubjects = true;
+	}
+
+	/**
+	 * @internal The subject at a source frame of the clip (`frame` at `fps`),
+	 * for a render-time matte: undefined until that frame is analysed with
+	 * subjects kept, null when it holds no subject.
+	 */
+	subject(frame: number, fps: number): InstanceMask | null | undefined {
+		const c = (frame * this.fps) / fps;
+		if (Math.abs(c - Math.round(c)) > 1e-6) return undefined;
+		const s = this.subjects.get(Math.round(c));
+		if (s === undefined) return s;
+		if (s === null || !this.sourceWidth) return null;
+		const width = this.sourceWidth;
+		const height = this.sourceHeight;
+		return {
+			category: s.category,
+			mask: decodeRuns(s, width * height),
+			width,
+			height,
+			area: s.area,
+			coverage: s.area / (width * height),
+			detectionIndex: -1,
+		};
+	}
+
 	/** Composition frame → clip frame (fractional). */
 	clipFrame(frame: number): number {
 		return frame - this.startFrame + this.trimStartSec * this.fps;
@@ -142,11 +197,19 @@ export class ClipVision {
 		];
 	}
 
+	private analysed(c: number): boolean {
+		return this.results.has(c) && (!this.wantSubjects || this.subjects.has(c));
+	}
+
 	private async compute(from: number, to: number): Promise<void> {
 		this.cacheLoaded ??= this.loadCache();
 		await this.cacheLoaded;
+		if (this.wantSubjects) {
+			this.subjectsLoaded ??= this.loadSubjects();
+			await this.subjectsLoaded;
+		}
 		let missing = false;
-		for (let c = from; c <= to; c++) if (!this.results.has(c)) missing = true;
+		for (let c = from; c <= to; c++) if (!this.analysed(c)) missing = true;
 		if (!missing) return;
 
 		const wantPose = this.options.pose ?? true;
@@ -167,16 +230,19 @@ export class ClipVision {
 			"clip-vision",
 		);
 		for (let c = from; c <= to; c++) {
-			if (this.results.has(c)) continue;
+			if (this.analysed(c)) continue;
 			const image = await decodedPixels(await decoder.getFrame(c / this.fps));
 			if (!image) {
 				this.results.set(c, { kp: null, mask: null });
+				if (this.wantSubjects) this.subjects.set(c, null);
 				continue;
 			}
 			if (!this.sourceWidth) this.setSize(image.width, image.height);
-			let kp: Float32Array | null = null;
-			let mask: Uint8Array | null = null;
-			if (wantPose) {
+			// Analysed before without subjects: only segment it again.
+			const known = this.results.get(c);
+			let kp: Float32Array | null = known?.kp ?? null;
+			let mask: Uint8Array | null = known?.mask ?? null;
+			if (wantPose && !known) {
 				const person = (await this.runner.pose(image)).people[0];
 				if (person) {
 					kp = new Float32Array(51);
@@ -185,8 +251,26 @@ export class ClipVision {
 					}
 				}
 			}
-			if (wantMask) {
-				const silhouette = personSilhouette(await this.runner.segment(image));
+			const seg =
+				(wantMask && !known) || this.wantSubjects
+					? await this.runner.segment(image)
+					: undefined;
+			if (seg && this.wantSubjects) {
+				const subject = mergeSubjectMask(seg.masks);
+				this.subjects.set(
+					c,
+					subject
+						? {
+								category: subject.category,
+								area: subject.area,
+								...encodeRuns(subject.mask),
+							}
+						: null,
+				);
+				this.unsavedSubjects++;
+			}
+			if (seg && wantMask && !known) {
+				const silhouette = personSilhouette(seg);
 				if (silhouette) {
 					mask = new Uint8Array(this.cellW * this.cellH);
 					downsampleMean(
@@ -201,9 +285,12 @@ export class ClipVision {
 				}
 			}
 			this.results.set(c, { kp, mask });
-			if (++this.unsaved >= 24) await this.saveCache();
+			if (!known) this.unsaved++;
+			if (this.unsaved >= 24) await this.saveCache();
+			if (this.unsavedSubjects >= 24) await this.saveSubjects();
 		}
 		if (this.unsaved > 0) await this.saveCache();
+		if (this.unsavedSubjects > 0) await this.saveSubjects();
 	}
 
 	private setSize(width: number, height: number): void {
@@ -379,6 +466,88 @@ export class ClipVision {
 				width: this.sourceWidth,
 				height: this.sourceHeight,
 				cell: this.cell,
+				frames,
+			}),
+		);
+		fs.renameSync(tmp, file);
+	}
+
+	/** Subjects live beside the results: large, and only matte layers read them. */
+	private async subjectsPath(): Promise<string | null> {
+		const file = await this.cachePath();
+		return file ? file.replace(/\.json$/, ".subjects.json") : null;
+	}
+
+	private async loadSubjects(): Promise<void> {
+		const file = await this.subjectsPath();
+		if (!file) return;
+		try {
+			const fs = await import("node:fs");
+			if (!fs.existsSync(file)) return;
+			const json = JSON.parse(fs.readFileSync(file, "utf8")) as {
+				width: number;
+				height: number;
+				frames: Record<
+					string,
+					{
+						category: string;
+						area: number;
+						values: string;
+						lengths: string;
+					} | null
+				>;
+			};
+			if (this.sourceWidth && json.width !== this.sourceWidth) return;
+			if (!this.sourceWidth) this.setSize(json.width, json.height);
+			for (const [c, s] of Object.entries(json.frames)) {
+				const lengths = Buffer.from(s?.lengths ?? "", "base64");
+				this.subjects.set(
+					Number(c),
+					s && {
+						category: s.category,
+						area: s.area,
+						values: new Uint8Array(Buffer.from(s.values, "base64")),
+						lengths: new Uint32Array(
+							lengths.buffer.slice(
+								lengths.byteOffset,
+								lengths.byteOffset + lengths.byteLength,
+							),
+						),
+					},
+				);
+			}
+		} catch {
+			// A damaged cache is recomputed.
+		}
+	}
+
+	private async saveSubjects(): Promise<void> {
+		this.unsavedSubjects = 0;
+		const file = await this.subjectsPath();
+		if (!file || !this.sourceWidth) return;
+		const frames: Record<
+			string,
+			{ category: string; area: number; values: string; lengths: string } | null
+		> = {};
+		for (const [c, s] of this.subjects) {
+			frames[c] = s && {
+				category: s.category,
+				area: s.area,
+				values: Buffer.from(s.values).toString("base64"),
+				lengths: Buffer.from(
+					s.lengths.buffer,
+					s.lengths.byteOffset,
+					s.lengths.byteLength,
+				).toString("base64"),
+			};
+		}
+		const fs = await import("node:fs");
+		const tmp = `${file}.${process.pid}.tmp`;
+		fs.writeFileSync(
+			tmp,
+			JSON.stringify({
+				width: this.sourceWidth,
+				height: this.sourceHeight,
 				frames,
 			}),
 		);
@@ -628,6 +797,42 @@ function downsampleMean(
 	}
 }
 
+/** A mask as (value, run length) pairs: long flat runs with soft edges. */
+function encodeRuns(mask: Uint8Array): {
+	values: Uint8Array;
+	lengths: Uint32Array;
+} {
+	let runs = 0;
+	for (let i = 1; i <= mask.length; i++)
+		if (i === mask.length || mask[i] !== mask[i - 1]) runs++;
+	const values = new Uint8Array(runs);
+	const lengths = new Uint32Array(runs);
+	let r = 0;
+	let start = 0;
+	for (let i = 1; i <= mask.length; i++) {
+		if (i === mask.length || mask[i] !== mask[start]) {
+			values[r] = mask[start];
+			lengths[r++] = i - start;
+			start = i;
+		}
+	}
+	return { values, lengths };
+}
+
+function decodeRuns(
+	runs: { values: Uint8Array; lengths: Uint32Array },
+	size: number,
+): Uint8Array {
+	const out = new Uint8Array(size);
+	let at = 0;
+	for (let r = 0; r < runs.values.length; r++) {
+		const end = Math.min(size, at + runs.lengths[r]);
+		if (runs.values[r] !== 0) out.fill(runs.values[r], at, end);
+		at = end;
+	}
+	return out;
+}
+
 /** Separable box blur to 0–1, so gradients reach a little past the edge. */
 function boxBlur(
 	src: Uint8Array,
@@ -668,11 +873,18 @@ function boxBlur(
 	return dst;
 }
 
+type SeedFrame = {
+	kp: number[] | null;
+	mask: Uint8Array | null;
+	/** Source-sized subject mask for render-time mattes; null = no subject. */
+	subject?: Uint8Array | null;
+};
+
 /** @internal Test hook: a clip whose results are given instead of computed. */
 export function clipVisionFromResults(
 	fps: number,
 	size: { width: number; height: number; cell: number },
-	frames: Array<{ kp: number[] | null; mask: Uint8Array | null }>,
+	frames: SeedFrame[],
 	options: ClipVisionOptions = {},
 ): ClipVision {
 	const clip = new ClipVision("memory", fps, {
@@ -680,9 +892,19 @@ export function clipVisionFromResults(
 		maskCell: size.cell,
 		cacheDir: false,
 	});
+	return seedClipVision(clip, size, frames);
+}
+
+/** @internal Test hook: gives a clip's per-frame results instead of computing them. */
+export function seedClipVision(
+	clip: ClipVision,
+	size: { width: number; height: number },
+	frames: SeedFrame[],
+): ClipVision {
 	const c = clip as unknown as {
 		setSize(w: number, h: number): void;
 		results: Map<number, FrameResult>;
+		subjects: Map<number, SubjectResult | null>;
 	};
 	c.setSize(size.width, size.height);
 	frames.forEach((f, i) => {
@@ -690,6 +912,17 @@ export function clipVisionFromResults(
 			kp: f.kp ? Float32Array.from(f.kp) : null,
 			mask: f.mask,
 		});
+		if (f.subject === undefined) return;
+		let area = 0;
+		for (const v of f.subject ?? []) area += v;
+		c.subjects.set(
+			i,
+			f.subject && {
+				category: "person",
+				area: Math.round(area / 255),
+				...encodeRuns(f.subject),
+			},
+		);
 	});
 	return clip;
 }

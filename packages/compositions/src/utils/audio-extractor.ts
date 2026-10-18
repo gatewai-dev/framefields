@@ -687,9 +687,16 @@ export async function mixAudioTracks(
 								segmentStartSample + clipSamplesCount,
 							),
 						);
-						// The layer's own clock: its in-point moves the source, not its animation.
+						// The layer's own clock: its in-point moves the source, not its
+						// animation, and a CompositorLayer's keyframes count from its
+						// own first frame (as its picture's do), not the composition's.
+						const layerClockFrames =
+							op.op === "CompositorLayer" ? localClockFrames : 0;
 						const elapsedMs =
-							(totalClockFrames / fps + totalSeekSec - layerTrimSec) * 1000;
+							((totalClockFrames - layerClockFrames) / fps +
+								totalSeekSec -
+								layerTrimSec) *
+							1000;
 						const durationMs =
 							getActiveMediaMetadata(node)?.durationMs ?? undefined;
 						await pluginProcessor(slicedChannels, targetSampleRate, node, {

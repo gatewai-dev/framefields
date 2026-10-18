@@ -2,6 +2,7 @@
  * An audio layer's in-point and volume keyframes reach the mix: `trimStartSec`
  * picks where the source starts (as it does for a video layer's picture), and
  * a volume ramp is followed across the whole layer, not frozen at its start.
+ * Its keyframes count from the layer's own first frame, as a picture layer's do.
  */
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -19,7 +20,10 @@ beforeAll(async () => {
 	const n = 2 * SR;
 	const ch = new Float32Array(n);
 	for (let i = SR; i < n; i++) ch[i] = Math.sin((2 * Math.PI * 440 * i) / SR);
-	source = path.join(await fs.mkdtemp(path.join(os.tmpdir(), "audio-layer-")), "step.wav");
+	source = path.join(
+		await fs.mkdtemp(path.join(os.tmpdir(), "audio-layer-")),
+		"step.wav",
+	);
 	await fs.writeFile(source, encodeStereoWav([ch, ch], { sampleRate: SR }));
 });
 
@@ -31,8 +35,8 @@ function rms(ch: Float32Array, fromSec: number, toSec: number): number {
 	return Math.sqrt(s / (b - a));
 }
 
-async function mix(layer: ReturnType<typeof Layer.audio>) {
-	const comp = new Composition({ width: 64, height: 64, fps: 30, durationMs: 1000 });
+async function mix(layer: ReturnType<typeof Layer.audio>, durationMs = 1000) {
+	const comp = new Composition({ width: 64, height: 64, fps: 30, durationMs });
 	comp.add(layer);
 	// renderAudio is the mix renderVideo muxes (layer processors included).
 	const { channels } = await new HeadlessMediaRenderer().renderAudio(
@@ -44,7 +48,9 @@ async function mix(layer: ReturnType<typeof Layer.audio>) {
 
 describe("audio layer timing", () => {
 	it("starts the source at the layer's trimStartSec", async () => {
-		const trimmed = await mix(Layer.audio(source, { trimStartSec: 1, durationFrames: 30 }));
+		const trimmed = await mix(
+			Layer.audio(source, { trimStartSec: 1, durationFrames: 30 }),
+		);
 		const untrimmed = await mix(Layer.audio(source, { durationFrames: 30 }));
 		// The tone begins at source 1.0 s: trimmed, it fills the layer from its
 		// first frame; untrimmed, the layer only hears the silence before it.
@@ -55,7 +61,10 @@ describe("audio layer timing", () => {
 	it("follows a volume ramp across the layer", async () => {
 		const ch = await mix(
 			Layer.audio(source, { trimStartSec: 1, durationFrames: 30 }).animate(
-				LayerAnimation.keys("volume", [[0, 0], [15, 1]]),
+				LayerAnimation.keys("volume", [
+					[0, 0],
+					[15, 1],
+				]),
 			),
 		);
 		const full = rms(ch, 0.6, 0.9);
@@ -65,5 +74,28 @@ describe("audio layer timing", () => {
 		expect(rms(ch, 0, 0.03)).toBeLessThan(full * 0.1);
 		expect(rms(ch, 0.24, 0.26)).toBeGreaterThan(full * 0.35);
 		expect(rms(ch, 0.24, 0.26)).toBeLessThan(full * 0.65);
+	});
+
+	it("counts volume keyframes from the layer's own start", async () => {
+		// The layer enters at frame 30 (1.0 s); its fade-in runs over its own
+		// first 15 frames, i.e. 1.0–1.5 s of the composition.
+		const ch = await mix(
+			Layer.audio(source, {
+				trimStartSec: 1,
+				startFrame: 30,
+				durationFrames: 30,
+			}).animate(
+				LayerAnimation.keys("volume", [
+					[0, 0],
+					[15, 1],
+				]),
+			),
+			2000,
+		);
+		const full = rms(ch, 1.6, 1.9);
+		expect(full).toBeGreaterThan(0.4);
+		expect(rms(ch, 1.0, 1.03)).toBeLessThan(full * 0.1);
+		expect(rms(ch, 1.24, 1.26)).toBeGreaterThan(full * 0.35);
+		expect(rms(ch, 1.24, 1.26)).toBeLessThan(full * 0.65);
 	});
 });

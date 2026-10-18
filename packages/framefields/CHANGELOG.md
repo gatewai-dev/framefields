@@ -1,5 +1,28 @@
 # framefields
 
+## 2.3.0
+
+### Minor Changes
+
+- 303c410: `withVision({ mode: "matte" })` (and `mask` / `crop`) on a video layer now reuses `comp.vision(clip)`'s per-frame results when the composition already analyses that clip, instead of segmenting every frame a second time during render. The clip keeps each frame's full-resolution subject mask (merged the same way as the matte), persisted beside its other results in the vision cache, and the cutout uses the mask for the frame being drawn, so it no longer runs one frame behind the plate. Layers whose settings would give a different subject (`classes`, `keyBackground`, `matteSource: "selfie"`, a different `variant` / `confidence` / `maskThreshold` / `featherRadius`, or an attached vision bundle) keep their own segmentation, and so do frames the clip has not analysed.
+- 4625cc7: Add rigid-body physics: `Physics.world2d` / `Physics.world3d` (Rapier, deterministic) simulate once while the composition is built and replay as per-frame signals. Bodies come from layers (boxes, circles, convex hulls of shapes, measured text, Layer3D primitives and models); `simulate()` binds each layer, and every body exposes `impact`, `speed`, velocity and pose signals for driving any prop or effect. Includes ground/walls, pins, hinges, welds, springs, ropes, signal-driven forces and kinematic bodies, collision lists, and `bakeKeyframes()` for plain keyframes.
+
+  `world.field()` adds position-dependent forces (wind, vortices, flow fields). `world.live(comp)` steps a world as the composition renders instead of all at once: before each frame draws it advances to it, after that frame's inputs are ready, giving the same result as `simulate()`.
+
+  `comp.vision(clip)` analyses a clip's own frames on demand (pose keypoints and a soft silhouette) and shares the results with everything that reads them; every render path and the preview await it before drawing a frame, and results persist on disk in Node. `comp.onPrepareFrame()` registers async per-frame work, and the renderer awaits an `onRequestFrame` that returns a promise. `colorSignal` takes `multiplier` and `offset`.
+
+  `Layer.particles` adds GPU particle systems: a compute-shader simulation (emitters, curl-noise flow, attractors, gravity, drag, floors and bounds, a performer's silhouette push) drawn in one instanced call, with snapshots so scrubbing back restores state. New temporal effects: `Trails` (echoes, light painting, feedback tunnels) and `Datamosh` (pixels dragged along optical flow between keyframes).
+
+  3D `glass`, `acrylic` and `frosted` materials now refract what is behind them on screen (with dispersion, thickness, tint and studio reflections) instead of drawing as translucent plastic. Particle emitters can move: `emitter.x` / `emitter.y` take drivers, and births spread along the path between frames (light painting from a tracked hand).
+
+- 6685719: Add a stylize effect pack: `Pixelate` (square, circle/LED and diamond cells), `Posterize` (levels or retro palettes: GameBoy, teletext, CGA, PICO-8, C64, grayscale, sepia, custom; with Bayer dithering and big pixels), `Dither` (Bayer, noise and halftone; 1-bit duotone or per channel), `Ascii`, `Toon` (cel bands and ink outlines), `RGBSplit`, `CRT` (curvature, scanlines, aperture mask, plus VHS tracking and colour bleed), `Painterly` (Kuwahara oil and watercolour), `Contour` (topographic lines), `Kaleidoscope`, `OpArt`, `Iridescence` (holographic foil) and `Gooey` (metaballs).
+
+  `Styles.*` presets return ready-made effect stacks for common looks (`pixelArt`, `gameBoy`, `teletext`, `ledWall`, `ascii`, `oneBit`, `risograph`, `comic`, `cartoon`, `thermal`, `vhs`, `crt`, `glitch`, `oilPainting`, `watercolor`, `topographic`, `kaleidoscope`, `opArt`, `holographic`, `noir`, `film`): `layer.withEffects(Styles.vhs())`.
+
+  `LayerAnimation.stepped(n)` gives a layer stepped timing ("on twos"): every animated value is held for `n` frames, eases kept. A shape's `d` is now animatable: keyframed SVG paths morph into each other, resampled and aligned so paths with different point counts, curves and subpaths morph cleanly.
+
+  `Layer.vfx()` draws `ProceduralVFX` looks as their own layer (the node was not registered before), and adds an `Aurora` effect type.
+
 ## 2.2.0
 
 ### Minor Changes

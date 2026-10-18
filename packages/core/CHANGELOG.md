@@ -1,5 +1,7 @@
 # @framefields/core
 
+## 2.3.0
+
 ## 2.2.0
 
 ## 2.2.0-beta.4

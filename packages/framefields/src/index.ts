@@ -241,6 +241,7 @@ import {
 	Vision,
 	type VisionProps,
 } from "./effects/index.js";
+import { Particles, type ParticlesOptions } from "./particles.js";
 import {
 	type FrameGridOptions,
 	HeadlessMediaRenderer,
@@ -709,6 +710,8 @@ export {
 	type CurvesChannelPoint,
 	type CurvesProps,
 	CustomEffect,
+	Datamosh,
+	type DatamoshProps,
 	type DeflickerProps,
 	DepthOfField,
 	type DepthOfFieldProps,
@@ -781,6 +784,8 @@ export {
 	TileOffset,
 	type TileOffsetEdgeMode,
 	type TileOffsetProps,
+	Trails,
+	type TrailsProps,
 	UnsharpMask,
 	type UnsharpMaskProps,
 	Vignette,
@@ -793,6 +798,14 @@ export {
 	type LightingRig,
 	type LightingRigOptions,
 } from "./lighting.js";
+export {
+	type EmitterShape,
+	type ParticleBlend,
+	type ParticleBounds,
+	type ParticleShape,
+	Particles,
+	type ParticlesOptions,
+} from "./particles.js";
 export {
 	type Body2DOptions,
 	type Body3DOptions,
@@ -1160,10 +1173,14 @@ export class Composition {
 		return clip;
 	}
 
-	/** @internal Analyses every `comp.vision` clip for a composition frame. */
+	/**
+	 * @internal Analyses every `comp.vision` clip up to a composition frame
+	 * (frames already analysed are skipped), so consumers that step frame by
+	 * frame — physics, particles — always find every frame before it.
+	 */
 	public async prepareVision(frame: number): Promise<void> {
 		await Promise.all(
-			[...this._clipVision.values()].map((clip) => clip.ready(frame)),
+			[...this._clipVision.values()].map((clip) => clip.ready(0, frame)),
 		);
 	}
 
@@ -2505,6 +2522,41 @@ export const Layer = {
 			children: options.children ?? [],
 			...options,
 		}),
+	/**
+	 * A GPU particle system as a layer: tens of thousands of particles
+	 * simulated in a compute shader and drawn in one call (see
+	 * {@link ParticlesOptions}). Positions are in the layer's own px; drivers
+	 * (rate, gravity, noise, attractors) are read every frame, and a
+	 * performer can push particles with `push: { person }`.
+	 */
+	particles: (options: ParticlesOptions): AnimatableNode<MediaNode> => {
+		const system = new Particles(options);
+		// A media layer whose source is the particle op itself: it draws into
+		// the layer's own texture, composited like any clip.
+		const source = {
+			metadata: { width: options.width, height: options.height },
+			operation: { ...system.toOperation(), effect: system, dataType: "Video" },
+			children: [],
+		};
+		return withAnimation({
+			id: options.id ?? autoId("particles"),
+			kind: "media",
+			dataType: "Video",
+			src: source,
+			position: "absolute",
+			x: options.x ?? 0,
+			y: options.y ?? 0,
+			width: options.width,
+			height: options.height,
+			...(options.startFrame !== undefined && {
+				startFrame: options.startFrame,
+			}),
+			...(options.durationFrames !== undefined && {
+				durationFrames: options.durationFrames,
+			}),
+			...(options.zIndex !== undefined && { zIndex: options.zIndex }),
+		} as unknown as MediaNode);
+	},
 	section: (
 		source: string | MediaNode | Composition,
 		targetOrOptions: ObjectTrackSignals | SectionOptions = {},

@@ -55,6 +55,8 @@ export interface BodySpec2D extends BodySpecBase {
 }
 
 export interface BodySpec3D extends BodySpecBase {
+	/** Per-axis rotation, when only some axes are locked: [x, y, z] allowed. */
+	enabledRotations?: [boolean, boolean, boolean];
 	position: Vec3;
 	rotation: Quat;
 	velocity: Vec3;
@@ -306,13 +308,24 @@ class RapierWorld3D implements SimWorld3D {
 			.setTranslation(spec.position[0], spec.position[1], spec.position[2])
 			.setRotation({ x: qx, y: qy, z: qz, w: qw })
 			.setLinvel(spec.velocity[0], spec.velocity[1], spec.velocity[2])
-			.setAngvel(vec3(spec.angularVelocity))
+			// Locked axes start still too (Rapier keeps an initial spin otherwise).
+			.setAngvel(
+				vec3(
+					spec.lockRotation
+						? [0, 0, 0]
+						: (spec.angularVelocity.map((w, i) =>
+								spec.enabledRotations && !spec.enabledRotations[i] ? 0 : w,
+							) as Vec3),
+				),
+			)
 			.setLinearDamping(spec.linearDamping)
 			.setAngularDamping(spec.angularDamping)
 			.setGravityScale(spec.gravityScale)
 			.setCcdEnabled(spec.ccd)
 			.setEnabled(spec.enabled);
 		if (spec.lockRotation) desc.lockRotations();
+		else if (spec.enabledRotations)
+			desc.enabledRotations(...spec.enabledRotations);
 		const body = this.world.createRigidBody(desc);
 		const shape = shapeDesc3D(R, spec.shape);
 		const collider = this.world.createCollider(
@@ -439,7 +452,8 @@ function shapeDesc2D(R: Rapier2D, shape: Shape2D): RAPIER2D.ColliderDesc {
 		case "ball":
 			return R.ColliderDesc.ball(shape.radius);
 		case "box": {
-			const r = Math.min(shape.radius ?? 0, shape.hx, shape.hy);
+			// The rounded border wraps a core box; keep the core solid (a flat core has no mass).
+			const r = Math.min(shape.radius ?? 0, shape.hx / 2, shape.hy / 2);
 			return r > 0
 				? R.ColliderDesc.roundCuboid(shape.hx - r, shape.hy - r, r)
 				: R.ColliderDesc.cuboid(shape.hx, shape.hy);
@@ -460,7 +474,13 @@ function shapeDesc3D(R: Rapier3D, shape: Shape3D): RAPIER3D.ColliderDesc {
 		case "ball":
 			return R.ColliderDesc.ball(shape.radius);
 		case "box": {
-			const r = Math.min(shape.radius ?? 0, shape.hx, shape.hy, shape.hz);
+			// The rounded border wraps a core box; keep the core solid (a flat core has no mass).
+			const r = Math.min(
+				shape.radius ?? 0,
+				shape.hx / 2,
+				shape.hy / 2,
+				shape.hz / 2,
+			);
 			return r > 0
 				? R.ColliderDesc.roundCuboid(
 						shape.hx - r,

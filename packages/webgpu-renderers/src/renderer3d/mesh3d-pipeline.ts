@@ -29,6 +29,17 @@ export interface MeshMaterialMaps {
 	emissive?: GPUTexture;
 }
 
+export interface MeshGlass {
+	/** Index of refraction (1.5 glass, 1.33 water). */
+	ior: number;
+	/** Red/blue split of the refraction, 0–0.2 (rainbow fringes). */
+	dispersion: number;
+	/** How far the backdrop bends at the edges, px. */
+	thickness: number;
+	/** Frosted blur, 0–1. */
+	frost: number;
+}
+
 export interface MeshUniformData extends SurfaceParams {
 	modelMatrix: Float32Array | number[];
 	normalMatrix?: Float32Array | number[];
@@ -41,6 +52,13 @@ export interface MeshUniformData extends SurfaceParams {
 	material?: "lit" | "unlit" | "toon";
 	/** Screen-space track matte: the mesh shows where this texture's alpha does. */
 	matte?: GPUTexture;
+	/**
+	 * Glass: the surface shows `backdrop` (what is behind it on screen) bent by
+	 * refraction, tinted by the color, under Fresnel reflections.
+	 */
+	glass?: MeshGlass;
+	/** Screen-sized picture behind the 3D batch, read by glass. */
+	backdrop?: GPUTexture;
 	/** Toon shading: the shadowed side's color multiplier. */
 	shadeColor?: [number, number, number];
 	/** Normal / metallic-roughness / occlusion / emissive maps. */
@@ -134,6 +152,7 @@ export class Mesh3DPipeline {
 					buffer: { type: "uniform" },
 				},
 				matteLayoutEntry(2),
+				matteLayoutEntry(3),
 			],
 		});
 
@@ -304,6 +323,15 @@ export class Mesh3DPipeline {
 		this.modelData[57] = maps?.occlusion ? (maps.occlusionStrength ?? 1) : 0;
 		this.modelData[58] = maps?.metallicRoughness ? 1 : 0;
 		this.modelData[59] = maps?.emissive ? 1 : 0;
+		const glass = data.glass;
+		if (glass) {
+			// shade.rgb and pbr.zw are unused outside toon: glass parameters.
+			this.modelData[44] = glass.dispersion;
+			this.modelData[45] = glass.thickness;
+			this.modelData[46] = glass.frost;
+			this.modelData[50] = 1;
+			this.modelData[51] = glass.ior;
+		}
 
 		const modelBuffer = this.modelPool.getBuffer(this.device, this.modelData);
 
@@ -320,6 +348,12 @@ export class Mesh3DPipeline {
 				{
 					binding: 2,
 					resource: data.matte?.createView() ?? fullCoverageView(this.device),
+				},
+				{
+					binding: 3,
+					resource:
+						(data.glass && data.backdrop?.createView()) ||
+						fullCoverageView(this.device),
 				},
 			],
 		});

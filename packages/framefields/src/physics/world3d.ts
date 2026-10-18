@@ -42,7 +42,12 @@ export interface PhysicsBox3D {
 	rotateZ?: number;
 }
 
-export interface Body3DOptions extends BodyCommonOptions {
+export interface Body3DOptions extends Omit<BodyCommonOptions, "lockRotation"> {
+	/**
+	 * Never rotates (`true`), or only around some axes: `{ x: true, y: true }`
+	 * keeps a card facing the camera while it still spins in the picture plane.
+	 */
+	lockRotation?: boolean | { x?: boolean; y?: boolean; z?: boolean };
 	/**
 	 * Collider: `"auto"` (default) reads the Layer3D primitive (box, sphere,
 	 * cylinder) and falls back to the mesh's convex hull for models and
@@ -267,7 +272,7 @@ export class PhysicsBody3D implements CoreBody<Vec3, Quat> {
 			["y", "y"],
 			["z", "z"],
 		];
-		if (!this.options.lockRotation) {
+		if (this.options.lockRotation !== true) {
 			out.push(
 				["rotateX", "rotateX"],
 				["rotateY", "rotateY"],
@@ -381,7 +386,14 @@ export class PhysicsWorld3D extends WorldCore<Vec3, Quat, PhysicsBody3D> {
 			linearDamping: options.linearDamping ?? 0,
 			angularDamping: options.angularDamping ?? 0,
 			gravityScale: options.gravityScale ?? 1,
-			lockRotation: options.lockRotation ?? false,
+			lockRotation: options.lockRotation === true,
+			...(typeof options.lockRotation === "object" && {
+				enabledRotations: [
+					!options.lockRotation.x,
+					!options.lockRotation.y,
+					!options.lockRotation.z,
+				] as [boolean, boolean, boolean],
+			}),
 			ccd: options.ccd ?? false,
 			enabled: true,
 			sensor: options.sensor ?? false,

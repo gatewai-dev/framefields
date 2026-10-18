@@ -262,8 +262,11 @@ describe("Physics.world2d", () => {
 			/x.*y/,
 		);
 		const b = world.body(card("a", 0, 0));
-		void b.y;
-		expect(() => world.body(card("b", 0, 0))).toThrow(/already started/);
+		// Holding a signal is fine; reading a value runs the simulation and locks.
+		const y = b.y;
+		world.body(card("b", 0, 0));
+		at(y, 0);
+		expect(() => world.body(card("c", 0, 0))).toThrow(/already started/);
 	});
 });
 
@@ -380,6 +383,51 @@ describe("Physics.world3d", () => {
 			"rotateY",
 			"rotateZ",
 		]);
+	});
+
+	it("drops thin rounded slabs (rounding never empties the core)", async () => {
+		const world = await Physics.world3d({ fps: FPS, frames: 40 });
+		world.ground({ y: 800 });
+		const slab = world.body(
+			Layer3D.roundedBox({
+				width: 300,
+				height: 120,
+				depth: 34,
+				radius: 18,
+				x: 400,
+				y: 100,
+				z: 0,
+			}),
+			{ lockRotation: true },
+		);
+		const pill = await Physics.world2d({ fps: FPS, frames: 40 });
+		pill.ground({ y: 800 });
+		const p = pill.body(card("pill", 0, 100, { borderRadius: 50 }));
+		world.simulate();
+		pill.simulate();
+		expect(at(slab.y, 39)).toBeGreaterThan(400);
+		expect(at(p.y, 39)).toBeGreaterThan(400);
+	});
+
+	it("locks rotation per axis", async () => {
+		const world = await Physics.world3d({ fps: FPS, frames: 60 });
+		world.ground({ y: 600 });
+		const card3 = world.body(
+			Layer3D.roundedBox({
+				width: 200,
+				height: 60,
+				depth: 30,
+				x: 0,
+				y: 0,
+				z: 0,
+				rotateZ: 30,
+				rotateX: 0,
+			}),
+			{ lockRotation: { x: true, y: true }, angularVelocity: [200, 200, 0] },
+		);
+		world.simulate();
+		expect(Math.abs(at(card3.rotateX, 59))).toBeLessThan(0.01);
+		expect(Math.abs(at(card3.rotateY, 59))).toBeLessThan(0.01);
 	});
 
 	it("converts rotations with the renderer's Euler order", () => {

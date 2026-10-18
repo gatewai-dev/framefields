@@ -22,7 +22,7 @@ if (mode === "preview") {
 	process.exit(0);
 }
 
-const { comp, world, cards } = await buildScene();
+const { comp, world, letters } = await buildScene();
 
 if (mode === "sim") {
 	const started = Date.now();
@@ -30,7 +30,7 @@ if (mode === "sim") {
 	console.log(
 		`Analysed and simulated in ${((Date.now() - started) / 1000).toFixed(1)} s`,
 	);
-	for (const { id, body } of cards) {
+	for (const { id, body } of letters) {
 		const hit = body.collisions[0];
 		console.log(
 			`${id}: first contact at frame ${hit?.frame ?? "-"} (${hit?.with.type ?? "none"})`,

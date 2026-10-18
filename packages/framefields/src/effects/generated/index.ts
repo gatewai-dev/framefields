@@ -29,6 +29,8 @@ export {
 	CornerPin,
 	type CornerPinPointsItem,
 	type CornerPinProps,
+	Datamosh,
+	type DatamoshProps,
 	DisplacementMap,
 	type DisplacementMapProps,
 	ExtractLUT,
@@ -78,6 +80,8 @@ export {
 	StereoPanning,
 	type StereoPanningProps,
 	type TonalShift,
+	Trails,
+	type TrailsProps,
 	Vignette,
 	type VignetteProps,
 } from "./classes.js";

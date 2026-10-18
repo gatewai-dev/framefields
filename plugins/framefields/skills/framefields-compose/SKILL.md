@@ -366,6 +366,7 @@ Layer3D.cylinder({ ..., color: "#111", emissive: "#4da3ff", emissiveIntensity: 3
 - **Fog** fades to `fog.color` exactly, so set it to the composition background for a seamless horizon.
 - **Models:** glTF materials bring base color, normal, metallic-roughness, occlusion and emissive maps.
 - `emissive` / `emissiveIntensity` / `exposure` animate like any prop (`.keys("emissiveIntensity", …)`).
+- **Glass:** `material: "glass" | "acrylic" | "frosted"` on any Layer3D primitive, extruded text (`Layer3D.extrudedText`) or model refracts whatever is behind it on screen — the video, 2D layers, particles — with a rainbow fringe (`dispersion`, default 0.04), bend strength `thickness` (px, default 80) and `ior` (1.5). `color` tints the glass (deeper toward the edges); `frosted` blurs by `roughness`. Glass needs no environment: it draws its own studio reflections, and against a dark grade it reads best — skip `Lighting.*` rigs for glass-only scenes (their environment washes glass out). Glass shows only 2D content and opaque 3D drawn before it, not other glass.
 
 ---
 
@@ -406,12 +407,40 @@ stage.animate(LayerAnimation.create().signal("y", world.impact, { multiplier: 14
   - Reads are synchronous and need the frame analysed: inside a live world, while rendering, or after `await dancer.ready(frame)` (e.g. `ready(0)` to lay things out around the first pose). A live world can't look ahead, so place things from early frames.
   - Layer a vision cutout of the same clip (`Layer.video(src).withVision({ mode: "matte" })`) above the particles so they pass behind the performer.
   - Live worlds bind signals only (no `bakeKeyframes()`); `await world.advanceTo(frame)` steps one without rendering (e.g. to read `collisions`).
-- **Particles today:** up to ~600 small `Layer.shape("circle")` bodies with `linearDamping` ≈ 1–1.5, low `friction`, `gravityScale` < 1 read as a fluid; tint them by speed with `.colorSignal("fillColor", body.speed, { colorA, colorB, multiplier: 1 / 900 })` (`multiplier`/`offset` scale the signal into 0–1).
+- **Particles:** for clouds, dust, sparks, fluids and flow fields use `Layer.particles` (GPU, below), not hundreds of physics bodies. Keep physics bodies for a few dozen things that must collide and stack (cards, letters, products).
 - **Keyframes instead of signals:** `world.bakeKeyframes({ tolerance: 0.25 })` in place of `simulate()` writes plain, simplified linear keyframes (editable, plain JSON).
 - **3D:** `Physics.world3d` takes `Layer3D.roundedBox / sphere / cylinder` and models (convex hull of the mesh); same options with 3-vectors, `world.hinge(a, b, at, axis)`, `world.walls({ width, height, depth })`.
 - **Timing:** signals are on the composition clock. In a scene that starts at frame `S`, pass `startFrame: S` to the world. Before it and after `frames` the signals hold their first/last value. Add every body, joint and force before `simulate()` (or before reading any signal): the world then locks.
 - **Feel:** gravity 2400 px/s² reads snappy on a 1080p canvas; `pixelsPerMeter` (100) scales how heavy things feel. Raise `substeps` (4) for tall stacks or thin, fast bodies.
 - Install note: physics uses the optional dependency `@dimforge/rapier2d-deterministic-compat` / `rapier3d-deterministic-compat` (installed by default with framefields).
+
+---
+
+## GPU Particles (`Layer.particles`)
+
+Tens of thousands of particles simulated in a compute shader and drawn in one call — sparks, embers, dust, snow, smoke, ink, flow fields, light painting, a fluid a performer moves through. A particle layer is a box in composition px; positions inside it are layer px.
+
+```typescript
+comp.add(Layer.particles({
+  width: W, height: H, max: 20000, seed: 7,
+  emitter: { shape: "rect", x: 0, y: H * 0.6, width: W, height: 200, rate: 3000 },  // point | line | rect | circle | ring; radial
+  lifetime: [4, 6], speed: [0, 40], direction: -90, spread: 360,
+  gravity: 20, drag: 1.5,                                      // px/s², per second
+  noise: { strength: 260, scale: 170, speed: 0.25 },          // curl-noise flow: smoke, ink, flow fields
+  attractors: [{ x: W / 2, y: H / 2, strength: 900, radius: 200 }],   // negative strength repels
+  push: { person, strength: 9000, sweep: 120000 },             // a performer's silhouette pushes them (comp.vision)
+  floor: H - 60, bounce: 0.2, bounds: "none",                  // none | kill | bounce | wrap
+  size: [10, 4], sizeJitter: 0.5, fade: [0.1, 0.3],
+  shape: "circle",                                             // circle | soft (glow) | square | spark (streaks along motion)
+  color: ["#ffd23f", "#ff5a1f", "#7a2e14"],                    // over life, or by speed with colorBySpeed: 600
+  blend: "normal",                                             // add for glows and light painting
+  prewarm: 3,                                                  // seconds simulated before frame 0: starts full
+}));
+```
+
+- `emitter.x` / `emitter.y`, `rate`, `gravity`, `drag`, `noise.strength`, attractor positions/strengths and `push` strengths take a number, a signal (audio, physics `impact`) or `(frame) => value`, read every frame: bursts on the beat, wind gusts, an attractor following a tracked hand (`person.point("rightWrist", f)`). `emitter.bursts: [{ frame, count }]` adds one-off explosions.
+- Recipes: **light painting** an additive `"soft"` point emitter whose `x`/`y` follow a tracked wrist (`(f) => person.point("rightWrist", f).x`), lifetime ~1 s, small speed, births spread along the hand's path so fast moves stay continuous; **sparks/fountain** `shape: "spark"`, `blend: "add"`, gravity, `floor`; **smoke/ink** `shape: "soft"`, low opacity, `noise`, sizes growing; **snow/dust** `rect` emitter above the frame, small gravity, `noise`, `bounds: "wrap"`; **swirl** `ring` emitter + attractor + `colorBySpeed`; **fluid around a dancer** `push: { person }` + `drag` 2 + gentle noise, and a vision cutout of the clip above the particle layer.
+- The system steps as frames render and snapshots itself every 24 frames, so scrubbing back restores instead of replaying from the start; the same GPU gives the same frames.
 
 ---
 

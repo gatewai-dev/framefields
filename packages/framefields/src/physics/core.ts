@@ -200,11 +200,28 @@ export class Recording {
 		return arr;
 	}
 
+	/**
+	 * A per-frame signal over a channel. Creating it does nothing; the first
+	 * value read runs the simulation (offline worlds), so signals can be bound
+	 * while bodies are still being added.
+	 */
 	signal(name: string): FrameSignal<number> {
-		this.ensure();
 		let sig = this.signals.get(name);
 		if (!sig) {
-			sig = Signal.fromArray(this.channel(name), this.fps);
+			const arr = this.channel(name);
+			const fps = this.fps;
+			sig = Signal.builder({
+				type: "custom",
+				fn: (ctx: { frame: number; fps?: number }) => {
+					this.ensure();
+					const f =
+						ctx.fps && ctx.fps !== fps
+							? (ctx.frame / ctx.fps) * fps
+							: ctx.frame;
+					const i = Math.max(0, Math.min(arr.length - 1, Math.round(f)));
+					return arr[i];
+				},
+			}) as unknown as FrameSignal<number>;
 			this.signals.set(name, sig);
 		}
 		return sig;

@@ -432,28 +432,6 @@ importers:
         specifier: ^5.8.3
         version: 5.9.3
 
-  examples/e_kofte:
-    dependencies:
-      framefields:
-        specifier: workspace:*
-        version: link:../../packages/framefields
-      mediabunny:
-        specifier: ^1.61.6
-        version: 1.61.6
-    devDependencies:
-      '@framefields/tsconfig':
-        specifier: workspace:*
-        version: link:../../packages/tsconfig
-      '@types/node':
-        specifier: ^24.1.0
-        version: 24.10.14
-      tsx:
-        specifier: ^4.20.3
-        version: 4.21.0
-      typescript:
-        specifier: ^5.8.3
-        version: 5.9.3
-
   nodes/node-apply-lut:
     dependencies:
       '@framefields/core':
@@ -1090,6 +1068,34 @@ importers:
         specifier: ^5.8.3
         version: 5.8.3
 
+  nodes/node-datamosh:
+    dependencies:
+      '@framefields/node-sdk':
+        specifier: workspace:*
+        version: link:../../packages/node-sdk
+      '@framefields/tensor-webgpu':
+        specifier: workspace:*
+        version: link:../../packages/tensor-webgpu
+      zod:
+        specifier: ^4.3.6
+        version: 4.3.6
+    devDependencies:
+      '@framefields/tsconfig':
+        specifier: workspace:*
+        version: link:../../packages/tsconfig
+      '@types/node':
+        specifier: ^24.1.0
+        version: 24.10.14
+      tsdown:
+        specifier: ^0.19.0
+        version: 0.19.0(oxc-resolver@11.19.1)(typescript@5.9.3)
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      webgpu:
+        specifier: ^0.4.0
+        version: 0.4.0
+
   nodes/node-deflicker:
     dependencies:
       '@framefields/core':
@@ -1624,6 +1630,28 @@ importers:
         specifier: ^5.8.3
         version: 5.8.3
 
+  nodes/node-particles:
+    dependencies:
+      '@framefields/node-sdk':
+        specifier: workspace:*
+        version: link:../../packages/node-sdk
+    devDependencies:
+      '@framefields/tsconfig':
+        specifier: workspace:*
+        version: link:../../packages/tsconfig
+      '@types/node':
+        specifier: ^24.1.0
+        version: 24.10.14
+      tsdown:
+        specifier: ^0.19.0
+        version: 0.19.0(oxc-resolver@11.19.1)(typescript@5.9.3)
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      webgpu:
+        specifier: ^0.4.0
+        version: 0.4.0
+
   nodes/node-patch-heal:
     dependencies:
       '@framefields/core':
@@ -2108,6 +2136,31 @@ importers:
         specifier: ^0.4.0
         version: 0.4.0
 
+  nodes/node-trails:
+    dependencies:
+      '@framefields/node-sdk':
+        specifier: workspace:*
+        version: link:../../packages/node-sdk
+      zod:
+        specifier: ^4.3.6
+        version: 4.3.6
+    devDependencies:
+      '@framefields/tsconfig':
+        specifier: workspace:*
+        version: link:../../packages/tsconfig
+      '@types/node':
+        specifier: ^24.1.0
+        version: 24.10.14
+      tsdown:
+        specifier: ^0.19.0
+        version: 0.19.0(oxc-resolver@11.19.1)(typescript@5.9.3)
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      webgpu:
+        specifier: ^0.4.0
+        version: 0.4.0
+
   nodes/node-unsharp-mask:
     dependencies:
       '@framefields/core':
@@ -2465,6 +2518,9 @@ importers:
       '@framefields/node-paint':
         specifier: workspace:*
         version: link:../../nodes/node-paint
+      '@framefields/node-particles':
+        specifier: workspace:*
+        version: link:../../nodes/node-particles
       '@framefields/node-patch-heal':
         specifier: workspace:*
         version: link:../../nodes/node-patch-heal
@@ -2662,6 +2718,9 @@ importers:
       '@framefields/node-curves':
         specifier: workspace:*
         version: link:../../nodes/node-curves
+      '@framefields/node-datamosh':
+        specifier: workspace:*
+        version: link:../../nodes/node-datamosh
       '@framefields/node-deflicker':
         specifier: workspace:*
         version: link:../../nodes/node-deflicker
@@ -2719,6 +2778,9 @@ importers:
       '@framefields/node-paint':
         specifier: workspace:*
         version: link:../../nodes/node-paint
+      '@framefields/node-particles':
+        specifier: workspace:*
+        version: link:../../nodes/node-particles
       '@framefields/node-patch-heal':
         specifier: workspace:*
         version: link:../../nodes/node-patch-heal
@@ -2758,6 +2820,9 @@ importers:
       '@framefields/node-tile-offset':
         specifier: workspace:*
         version: link:../../nodes/node-tile-offset
+      '@framefields/node-trails':
+        specifier: workspace:*
+        version: link:../../nodes/node-trails
       '@framefields/node-unsharp-mask':
         specifier: workspace:*
         version: link:../../nodes/node-unsharp-mask

@@ -1148,7 +1148,18 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				Boolean(sceneBloom),
 			);
 
-			for (const item of pending3DItems) {
+			// Glass reads what is behind the batch (the canvas so far), and goes
+			// last so opaque meshes are already in the depth buffer.
+			const isGlass = (item: Pending3DItem) =>
+				item.kind === "mesh" &&
+				(item.opts.material === "glass" ||
+					item.opts.material === "acrylic" ||
+					item.opts.material === "frosted");
+			const ordered = [
+				...pending3DItems.filter((i) => !isGlass(i)),
+				...pending3DItems.filter(isGlass),
+			];
+			for (const item of ordered) {
 				if (item.kind === "quad") {
 					r3d.drawTextureQuad(
 						pass3d,
@@ -1175,7 +1186,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 						lightsBindGroup,
 						item.meshBuffers ?? item.mesh,
 						item.texture,
-						item.opts,
+						isGlass(item) ? { ...item.opts, backdrop: curTex } : item.opts,
 						dofEnabled,
 					);
 				}
@@ -1954,6 +1965,9 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 							target?.ambientIntensity ?? lop.ambientIntensity ?? 1.0,
 						metallic: target?.metallic ?? lop.metallic ?? mat?.metallic,
 						...surfaceProps(target, lop, mat),
+						ior: target?.ior ?? lop.ior,
+						dispersion: target?.dispersion ?? lop.dispersion,
+						thickness: target?.thickness ?? lop.thickness,
 						audioDeform: meshAudioDeform,
 					};
 

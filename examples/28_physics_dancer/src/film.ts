@@ -1,30 +1,31 @@
 /**
- * A dancer in a field of physics: word cards drop onto her raised hands and
- * head, and a cloud of particles flows around her as the dress sweeps through.
+ * Glass word cards are thrown in from both sides onto a dancer's raised hands while she sweeps a cloud
+ * of embers aside.
  *
- * Nothing is analysed up front: `comp.vision` analyses each frame of the clip
- * just before it renders, and the live physics world steps to that frame
+ * Nothing is analysed up front: `comp.vision` reads each frame of the clip
+ * just before it renders, and the live 3D physics world steps to that frame
  * right after, so the preview starts at once and fills in as it plays.
  *
- * - Her arms and head are kinematic colliders that follow the tracked pose.
- * - Her silhouette (dress included) is a force field that pushes everything out,
- *   hardest where it is sweeping in.
- * - A vision cutout of the same clip sits above the particles, so they pass behind her.
+ * - Each card is a 3D glass slab (Rapier rigid body) that refracts
+ *   everything behind it, with its word in solid blue welded in front.
+ * - Her arms and head are kinematic colliders that follow the tracked pose;
+ *   her silhouette (dress included) pushes the embers out of the way.
+ * - A vision cutout of the clip sits above the embers, so they pass behind her.
  */
 import fs from "node:fs";
 import {
 	Composition,
 	FontManager,
 	Layer,
+	Layer3D,
 	LayerAnimation,
 	type PersonTrack,
 	Physics,
-	type PhysicsBody2D,
-	type PhysicsWorld2D,
+	type PhysicsBody3D,
+	type PhysicsWorld3D,
 	type PoseKeypointName,
 } from "framefields";
 import {
-	CREAM,
 	DANCER,
 	DURATION,
 	EMBER,
@@ -34,27 +35,16 @@ import {
 	GOLD,
 	H,
 	HOT,
-	INK,
 	RUST,
 	registerFonts,
-	VIOLET,
 	W,
 } from "./theme.js";
 
-const WORDS = [
-	// `dx`: where it drops, from her head at the first frame (live worlds can't look ahead).
-	{ text: "PHYSICS", bg: EMBER, fg: INK, at: 30, dx: -40 },
-	{ text: "MEETS", bg: INK, fg: CREAM, at: 46, dx: 120 },
-	{ text: "VISION", bg: CREAM, fg: INK, at: 62, dx: -120 },
-	{ text: "IN", bg: GOLD, fg: INK, at: 78, dx: 60 },
-	{ text: "FRAMEFIELDS", bg: VIOLET, fg: CREAM, at: 94, dx: 0 },
-];
-const CARD_FONT_SIZE = 64;
-const PARTICLE_COLORS = [INK, RUST, EMBER, GOLD];
+export { DURATION as DURATION_FRAMES } from "./theme.js";
 
-/** Balls along a limb (u = 0 at `a`, 1 at `b`, beyond 1 past `b`) that follow the pose. */
+/** Spheres along a limb (u = 0 at `a`, 1 at `b`, beyond 1 past it) that follow the pose, in the z = 0 plane. */
 function limb(
-	world: PhysicsWorld2D,
+	world: PhysicsWorld3D,
 	person: PersonTrack,
 	a: PoseKeypointName,
 	b: PoseKeypointName,
@@ -69,126 +59,161 @@ function limb(
 		};
 		const [x, y] = at(0);
 		world.body(
-			{ x: x - r, y: y - r, width: 2 * r, height: 2 * r },
+			{ x, y, z: 0, width: 2 * r, height: 2 * r, depth: 2 * r },
 			{
 				type: "kinematic",
-				shape: "circle",
-				friction: 0.9,
-				follow: { x: (f) => at(f)[0] - r, y: (f) => at(f)[1] - r },
+				shape: "sphere",
+				friction: 0.8,
+				follow: { x: (f) => at(f)[0], y: (f) => at(f)[1], z: 0 },
 			},
 		);
 	}
 }
 
-/** Word cards sized to their text, dropped around where her head starts. */
-function cards(world: PhysicsWorld2D, person: PersonTrack) {
-	return WORDS.map((w, i) => {
-		const m = FontManager.measure(w.text, {
+/** The framefields blues. */
+const BLUE = "#3B82F6";
+const BLUE_DEEP = "#1D4ED8";
+const NAVY = "#0B1E4D";
+
+const CARDS = [
+	// `from`: the side it is thrown in from; `dx`: where on her it is aimed, from her head.
+	{ text: "PHYSICS", color: BLUE, at: 24, from: "left", dx: -30 },
+	{ text: "MEETS", color: NAVY, at: 38, from: "right", dx: 50 },
+	{ text: "VISION", color: BLUE, at: 52, from: "left", dx: 10 },
+	{ text: "IN", color: BLUE_DEEP, at: 66, from: "right", dx: -20 },
+	// The finale drops straight down onto her, slower to read.
+	{ text: "FRAMEFIELDS", color: BLUE_DEEP, at: 82, from: "top", dx: 0 },
+];
+const CARD_FONT = 76;
+const CARD_DEPTH = 34;
+const GRAVITY = 2600;
+/** Seconds from the edge of the frame to her. */
+const FLIGHT = 0.7;
+
+/**
+ * Word cards: a 3D glass slab (the rigid body) with its word in solid blue
+ * riding just in front of it. Cards keep their slight tilt and never turn,
+ * so the words stay upright and readable while the cards bounce off her.
+ */
+function glassCards(world: PhysicsWorld3D, person: PersonTrack) {
+	const head = person.point("nose", 0);
+	return CARDS.map((card, i) => {
+		const m = FontManager.measure(card.text, {
 			fontFamily: "Syne",
-			fontSize: CARD_FONT_SIZE,
+			fontSize: CARD_FONT,
 		});
-		const width = Math.ceil(m.width + 72);
-		const height = Math.ceil(m.height + 40);
-		const head = person.point("nose", 0);
-		const layer = Layer.box({
+		const width = Math.ceil(m.width + 84);
+		const height = Math.ceil(m.height + 52);
+		// Thrown in from the side on an arc that crosses her head and raised
+		// arms: launch velocity solved from gravity and the flight time.
+		const target = { x: head.x + card.dx, y: head.y + 40 };
+		const fromTop = card.from === "top";
+		const x = fromTop
+			? target.x
+			: card.from === "left"
+				? -width / 2 - 40
+				: W + width / 2 + 40;
+		const y = fromTop ? -height - 60 : 430 - (i % 2) * 50;
+		const velocity: [number, number, number] = fromTop
+			? [0, 0, 0]
+			: [
+					(target.x - x) / FLIGHT,
+					(target.y - y - 0.5 * GRAVITY * FLIGHT * FLIGHT) / FLIGHT,
+					0,
+				];
+		const tilt = (i % 2 ? 1 : -1) * (4 + i * 2);
+		const slab = Layer3D.roundedBox({
 			id: `card-${i}`,
-			position: "absolute",
-			x: head.x + w.dx - width / 2,
-			y: -height - 200,
 			width,
 			height,
-			rotation: (i % 2 ? 1 : -1) * (6 + i * 2),
-			borderRadius: 18,
-			background: w.bg,
-			children: [
-				Layer.text(w.text, {
-					fontFamily: "Syne",
-					fontSize: CARD_FONT_SIZE,
-					fill: w.fg,
-					width,
-					height,
-					align: "center",
-					verticalAlign: "middle",
-				}),
-			],
+			depth: CARD_DEPTH,
+			radius: 18,
+			x,
+			y,
+			z: 0,
+			rotateZ: tilt,
+			color: "#eef5ff",
+			material: "glass",
+			roughness: 0.03,
 		});
-		const body = world.body(layer, {
-			restitution: 0.25,
-			friction: 0.7,
-			density: 1.5,
-			angularDamping: 1.2,
-			startFrame: w.at,
+		const body = world.body(slab, {
+			restitution: fromTop ? 0.1 : 0.3,
+			friction: fromTop ? 0.9 : 0.5,
+			// The finale falls slower, so it reads on the way down.
+			gravityScale: fromTop ? 0.45 : 1,
+			density: 1.2,
+			startFrame: card.at,
+			velocity,
+			lockRotation: true,
 		});
-		return { layer, body };
+		const words = Layer3D.extrudedText({
+			id: `card-${i}-text`,
+			text: card.text,
+			fontFamily: "Syne",
+			fontSize: CARD_FONT,
+			depth: 3,
+			align: "center",
+			verticalAlign: "middle",
+			fill: card.color,
+			material: "unlit",
+			x,
+			y,
+			z: -CARD_DEPTH / 2 - 2,
+			rotateZ: tilt,
+		}).animate(
+			LayerAnimation.create()
+				.signal("x", body.x)
+				.signal("y", body.y)
+				.signal("z", body.z, { offset: -CARD_DEPTH / 2 - 2 }),
+		);
+		return { layer: slab, words, body };
 	});
 }
 
-/** A loose cloud of small particles around her, avoiding where she stands. */
-function particles(world: PhysicsWorld2D, person: PersonTrack) {
-	let seed = 7;
-	const rand = () => {
-		seed = (seed * 16807) % 2147483647;
-		return seed / 2147483647;
-	};
-	const out: Array<{
-		layer: ReturnType<typeof Layer.shape>;
-		body: PhysicsBody2D;
-		color: string;
-		home: [number, number];
-	}> = [];
-	for (let y = 430; y < FLOOR - 10; y += 24) {
-		for (let x = 20; x < W - 20; x += 24) {
-			const px = x + (rand() - 0.5) * 12;
-			const py = y + (rand() - 0.5) * 12;
-			if (person.sample(0, px, py).alpha > 0.15 || rand() > 0.5) continue;
-			const r = 6 + rand() * 6;
-			const color =
-				PARTICLE_COLORS[Math.floor(rand() * PARTICLE_COLORS.length)];
-			const layer = Layer.shape("circle", {
-				position: "absolute",
-				x: px - r,
-				y: py - r,
-				width: 2 * r,
-				height: 2 * r,
-				fill: color,
-			});
-			const body = world.body(layer, {
-				restitution: 0.05,
-				friction: 0.02,
-				density: 0.25,
-				linearDamping: 2.2,
-				gravityScale: 0.06,
-				lockRotation: true,
-			});
-			out.push({ layer, body, color, home: [px, py] });
-		}
-	}
-	return out;
+/** Embers in the lower half: her silhouette pushes them, a slow current keeps them drifting. */
+function embers(person: PersonTrack) {
+	return Layer.particles({
+		id: "embers",
+		width: W,
+		height: H,
+		max: 24000,
+		seed: 7,
+		emitter: {
+			shape: "rect",
+			x: 0,
+			y: 380,
+			width: W,
+			height: FLOOR - 390,
+			rate: 3600,
+		},
+		lifetime: [4, 6.5],
+		speed: [0, 25],
+		drag: 2.2,
+		gravity: -6,
+		noise: { strength: 240, scale: 170, speed: 0.25 },
+		push: { person, strength: 9000, sweep: 120000 },
+		floor: FLOOR,
+		bounce: 0.1,
+		size: [11, 8],
+		sizeJitter: 0.6,
+		fade: [0.15, 0.3],
+		color: [RUST, EMBER, GOLD, HOT],
+		colorBySpeed: 500,
+		prewarm: 4,
+	});
 }
 
-/** Out of the silhouette: `strength` where she is, plus `sweep` where she is arriving. */
-function silhouettePush(person: PersonTrack, strength: number, sweep: number) {
-	return (s: {
-		x: number;
-		y: number;
-		frame: number;
-	}): [number, number] | null => {
-		const now = person.sample(s.frame, s.x, s.y);
-		if (now.alpha < 0.02) return null;
-		const before = person.sample(s.frame - 1, s.x, s.y);
-		const g = Math.hypot(now.gx, now.gy) || 1;
-		const k =
-			now.alpha * strength + Math.max(0, now.alpha - before.alpha) * sweep;
-		return [(-now.gx / g) * k, (-now.gy / g) * k];
-	};
-}
-
-export { DURATION as DURATION_FRAMES } from "./theme.js";
+/** Keeps letters near the picture plane, so they stay where her arms are. */
+const keepInPlane = (s: { z: number }): [number, number, number] => [
+	0,
+	0,
+	-s.z * 6,
+];
 
 export interface Film {
 	comp: Composition;
-	world: PhysicsWorld2D;
-	cards: Array<{ id: string; body: PhysicsBody2D }>;
+	world: PhysicsWorld3D;
+	letters: Array<{ id: string; body: PhysicsBody3D }>;
 }
 
 export async function buildFilm(): Promise<Composition> {
@@ -211,107 +236,61 @@ export async function buildScene(): Promise<Film> {
 		);
 	}
 	const dancer = comp.vision(DANCER);
-	// The particles are laid out around her first pose: analyse just that now.
+	// Letters drop around her first pose: analyse just that now.
 	await dancer.ready(0);
 	const person = dancer.person.place({ width: W, height: H, fit: "cover" });
 
-	const world = await Physics.world2d({
+	// Without a camera layer the 3D world's z = 0 plane lines up 1:1 with the
+	// video, so pose points are 3D positions too.
+	const world = await Physics.world3d({
 		fps: FPS,
 		frames: DURATION,
-		gravity: 2600,
+		gravity: GRAVITY,
 		substeps: 6,
-		impactDecay: 5,
 	});
-	world.walls({ width: W, height: FLOOR });
-
+	// Only a floor: cards come in from beyond the frame edges.
+	world.ground({ y: FLOOR });
 	for (const side of ["left", "right"] as const) {
-		limb(world, person, `${side}Shoulder`, `${side}Elbow`, [0, 0.5, 1], 26);
+		limb(world, person, `${side}Shoulder`, `${side}Elbow`, [0, 0.5, 1], 30);
 		limb(
 			world,
 			person,
 			`${side}Elbow`,
 			`${side}Wrist`,
 			[0.33, 0.66, 1, 1.25],
-			24,
+			28,
 		);
 	}
-	limb(world, person, "leftShoulder", "rightShoulder", [0.5], 40);
-	limb(world, person, "nose", "nose", [0], 52);
-
-	const words = cards(world, person);
-	const cloud = particles(world, person);
-	const cloudBodies = cloud.map((p) => p.body);
-	const home = new Map(cloud.map((p) => [p.body, p.home]));
-
-	world.field(silhouettePush(person, 11000, 140000), { bodies: cloudBodies });
-	world.field(silhouettePush(person, 16000, 60000), {
-		bodies: words.map((w) => w.body),
+	limb(world, person, "leftShoulder", "rightShoulder", [0.5], 46);
+	limb(world, person, "nose", "nose", [0], 58);
+	const letters = glassCards(world, person);
+	world.field(keepInPlane, {
+		bodies: letters.map((l) => l.body),
 	});
-	// A slow swirling current keeps the cloud alive; a soft pull home keeps it on stage.
-	world.field(
-		(s) => {
-			const t = s.frame / FPS;
-			const [hx, hy] = home.get(s.body) ?? [s.x, s.y];
-			return [
-				140 * Math.sin(s.y * 0.009 + t * 1.7) + (hx - s.x) * 0.35,
-				110 * Math.cos(s.x * 0.007 - t * 1.3) + (hy - s.y) * 0.6,
-			];
-		},
-		{ bodies: cloudBodies },
-	);
-	// Steps as the composition renders, after each frame's vision is ready.
 	world.live(comp);
 
-	// Particles glow as they speed up (900 px/s is fully hot).
-	for (const p of cloud) {
-		p.layer.animate(
-			LayerAnimation.create().colorSignal("fillColor", p.body.speed, {
-				colorA: p.color,
-				colorB: HOT,
-				multiplier: 1 / 900,
-			}),
-		);
-	}
-
-	comp.add(
-		Layer.box({
-			id: "stage",
+	const video = (id: string, muted: boolean) =>
+		Layer.video(DANCER, {
+			id,
 			position: "absolute",
 			x: 0,
 			y: 0,
 			width: W,
 			height: H,
-			children: [
-				Layer.video(DANCER, {
-					id: "plate",
-					position: "absolute",
-					x: 0,
-					y: 0,
-					width: W,
-					height: H,
-					fit: "cover",
-				}),
-				...cloud.map((p) => p.layer),
-				Layer.video(DANCER, {
-					id: "cutout",
-					position: "absolute",
-					x: 0,
-					y: 0,
-					width: W,
-					height: H,
-					fit: "cover",
-					muted: true,
-				}).withVision({ mode: "matte" }),
-				...words.map((w) => w.layer),
-			],
-		}).animate(
-			LayerAnimation.create().signal("y", world.impact, { multiplier: 10 }),
-		),
-	);
+			fit: "cover",
+			muted,
+		});
+
+	comp.add([
+		video("plate", false),
+		embers(person),
+		video("cutout", true).withVision({ mode: "matte" }),
+		...letters.flatMap((l) => [l.layer, l.words]),
+	]);
 
 	return {
 		comp,
 		world,
-		cards: words.map((w) => ({ id: String(w.layer.id), body: w.body })),
+		letters: letters.map((l) => ({ id: String(l.layer.id), body: l.body })),
 	};
 }

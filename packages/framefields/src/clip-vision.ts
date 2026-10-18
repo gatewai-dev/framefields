@@ -458,6 +458,35 @@ export class PersonTrack {
 	}
 
 	/**
+	 * @internal The softened silhouette grid at a composition frame and how
+	 * placed px map onto it (`cell = (px − origin) / scale − 0.5`), for GPU
+	 * consumers such as particles. Null when no person was found.
+	 */
+	silhouetteGrid(frame: number): {
+		data: Float32Array;
+		width: number;
+		height: number;
+		originX: number;
+		originY: number;
+		scaleX: number;
+		scaleY: number;
+	} | null {
+		const grid = this.clip.blurredMask(Math.round(this.clip.clipFrame(frame)));
+		if (!grid) return null;
+		const { cell, width, height } = this.clip.grid();
+		const t = this.transform();
+		return {
+			data: grid,
+			width,
+			height,
+			originX: t.ox,
+			originY: t.oy,
+			scaleX: cell * t.sx,
+			scaleY: cell * t.sy,
+		};
+	}
+
+	/**
 	 * The silhouette near a point at a composition frame: `alpha` 0–1 (softened
 	 * over a few cells; inside > 0.5) and its gradient `gx`, `gy` per px,
 	 * pointing into the body. Push things out with `-gradient`.

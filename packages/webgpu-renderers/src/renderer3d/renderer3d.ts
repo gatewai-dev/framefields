@@ -123,6 +123,14 @@ export interface DrawQuad3DOpts extends SurfaceParams {
 const TEXT_STACK_PULL = 5e-4;
 
 export interface DrawMesh3DOpts extends SurfaceParams {
+	/** Refractive index for glass materials (default 1.5). */
+	ior?: number;
+	/** Rainbow split for glass materials, 0–0.2 (default 0.04). */
+	dispersion?: number;
+	/** Edge bend for glass materials, px (default 80). */
+	thickness?: number;
+	/** Screen-sized picture behind this 3D batch; glass materials refract it. */
+	backdrop?: GPUTexture;
 	/**
 	 * Screen-space track matte, the size of the pass: the layer shows where
 	 * this texture's alpha does and keeps its place in the depth buffer.
@@ -151,7 +159,14 @@ export interface DrawMesh3DOpts extends SurfaceParams {
 	/** Pre-computed normal matrix */
 	normalMatrix?: Mat4;
 	/** Material shading mode */
-	material?: "lit" | "unlit" | "toon";
+	material?:
+		| "lit"
+		| "unlit"
+		| "toon"
+		| "glass"
+		| "acrylic"
+		| "frosted"
+		| "metallic";
 	/** Toon shading: the shadowed side's color multiplier */
 	shadeColor?: [number, number, number];
 	/** Normal / metallic-roughness / occlusion / emissive maps (see `materialMaps`). */
@@ -975,7 +990,7 @@ export class Renderer3D {
 					metallic: opts.metallic,
 					emissive: opts.emissive,
 					emissiveIntensity: opts.emissiveIntensity,
-				matte: opts.matte,
+					matte: opts.matte,
 				},
 				useMrt,
 				this.passWritesHdr,
@@ -1236,6 +1251,17 @@ export class Renderer3D {
 			addressModeV: address,
 		});
 
+		const glassy =
+			material === "glass" || material === "acrylic" || material === "frosted";
+		const glass = glassy
+			? {
+					ior: opts.ior ?? (material === "acrylic" ? 1.49 : 1.5),
+					dispersion: opts.dispersion ?? (material === "glass" ? 0.04 : 0.015),
+					thickness: opts.thickness ?? 80,
+					frost: material === "frosted" ? (roughness ?? 0.5) : 0,
+				}
+			: undefined;
+
 		this.mesh3dPipeline.draw(
 			pass,
 			cameraBindGroup,
@@ -1244,6 +1270,8 @@ export class Renderer3D {
 			texture,
 			sampler,
 			{
+				glass,
+				backdrop: opts.backdrop,
 				modelMatrix: m,
 				normalMatrix,
 				colorTint,
@@ -1252,11 +1280,12 @@ export class Renderer3D {
 				wireframe,
 				isSkinned,
 				skinningMatrices,
-				material,
+				material:
+					material === "unlit" || material === "toon" ? material : "lit",
 				shadeColor,
 				alphaCutoff,
 				shininess,
-				roughness,
+				roughness: glassy ? Math.min(roughness ?? 0.05, 0.3) : roughness,
 				specularIntensity,
 				ambientIntensity,
 				metallic,

@@ -1217,6 +1217,54 @@ export class CornerPin extends Effect<CornerPinProps> {
 	}
 }
 
+export interface DatamoshProps {
+	/**
+	 * Layer frames that show the clean picture again (I-frames). The first frame always does.
+	 * @default []
+	 */
+	keyframes?: number[];
+	/**
+	 * How far pixels are dragged along the motion.
+	 * Range 0 to 10. Accepts a signal.
+	 * @default 1
+	 */
+	strength?: EffectProp<number>;
+	/**
+	 * Clean picture mixed back in per frame, 0–1.
+	 * Range 0 to 1. Accepts a signal.
+	 * @default 0
+	 */
+	bleed?: EffectProp<number>;
+	/**
+	 * Most frames replayed to rebuild the smear after a jump.
+	 * Range 1 to 240.
+	 * @default 48
+	 */
+	warmup?: number;
+}
+
+const datamoshDefaults: DatamoshProps = {
+	keyframes: [],
+	strength: 1,
+	bleed: 0,
+	warmup: 48,
+};
+
+export class Datamosh extends Effect<DatamoshProps> {
+	public readonly op = "Datamosh";
+
+	public declare keyframes: number[];
+	public declare strength: number;
+	public declare bleed: number;
+	public declare warmup: number;
+
+	constructor(config: DatamoshProps = {}) {
+		super(
+			withDefaults("Datamosh", datamoshDefaults, config, effectMeta.Datamosh),
+		);
+	}
+}
+
 export interface DisplacementMapProps {
 	/**
 	 * Horizontal displacement strength in pixels. Can be modulated by a static number or a dynamic signal.
@@ -2624,6 +2672,84 @@ export class StereoPanning extends Effect<StereoPanningProps> {
 				effectMeta.StereoPanning,
 			),
 		);
+	}
+}
+
+export interface TrailsProps {
+	/**
+	 * History kept per frame, 0–1: 0.8 short echoes, 0.97 long light trails.
+	 * Range 0 to 1. Accepts a signal.
+	 * @default 0.9
+	 */
+	decay?: EffectProp<number>;
+	/**
+	 * blend: running average (echoes on full-frame footage); over: the layer over its fading past (cutouts, text); add: glows build up (light painting); max: keeps the brightest.
+	 * @default "blend"
+	 */
+	mode?: "blend" | "over" | "add" | "max";
+	/**
+	 * History scale per frame; 1.02 pulls the past into a tunnel.
+	 * Range 0.5 to 2. Accepts a signal.
+	 * @default 1
+	 */
+	zoom?: EffectProp<number>;
+	/**
+	 * History rotation per frame, degrees.
+	 * Range -45 to 45. Accepts a signal.
+	 * @default 0
+	 */
+	rotation?: EffectProp<number>;
+	/**
+	 * History drift per frame, px.
+	 * Range -500 to 500. Accepts a signal.
+	 * @default 0
+	 */
+	offsetX?: EffectProp<number>;
+	/**
+	 * History drift per frame, px.
+	 * Range -500 to 500. Accepts a signal.
+	 * @default 0
+	 */
+	offsetY?: EffectProp<number>;
+	/**
+	 * History hue rotation per frame, degrees (psychedelic cycling).
+	 * Range -180 to 180. Accepts a signal.
+	 * @default 0
+	 */
+	hueShift?: EffectProp<number>;
+	/**
+	 * Most frames replayed to rebuild the history after a jump (scrubbing, a single frame render).
+	 * Range 0 to 240.
+	 * @default 60
+	 */
+	warmup?: number;
+}
+
+const trailsDefaults: TrailsProps = {
+	decay: 0.9,
+	mode: "blend",
+	zoom: 1,
+	rotation: 0,
+	offsetX: 0,
+	offsetY: 0,
+	hueShift: 0,
+	warmup: 60,
+};
+
+export class Trails extends Effect<TrailsProps> {
+	public readonly op = "Trails";
+
+	public declare decay: number;
+	public declare mode: "blend" | "over" | "add" | "max";
+	public declare zoom: number;
+	public declare rotation: number;
+	public declare offsetX: number;
+	public declare offsetY: number;
+	public declare hueShift: number;
+	public declare warmup: number;
+
+	constructor(config: TrailsProps = {}) {
+		super(withDefaults("Trails", trailsDefaults, config, effectMeta.Trails));
 	}
 }
 

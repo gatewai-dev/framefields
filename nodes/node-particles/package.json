@@ -1,0 +1,44 @@
+{
+	"name": "@framefields/node-particles",
+	"version": "2.2.0",
+	"private": false,
+	"framefields": {
+		"type": "Particles",
+		"kind": "source"
+	},
+	"type": "module",
+	"license": "Apache-2.0",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.mts",
+			"development": "./src/index.ts",
+			"import": "./dist/index.mjs",
+			"default": "./dist/index.mjs"
+		},
+		"./renderer": {
+			"types": "./dist/renderer.d.mts",
+			"development": "./src/renderers/index.ts",
+			"import": "./dist/renderer.mjs",
+			"default": "./dist/renderer.mjs"
+		}
+	},
+	"scripts": {
+		"build": "tsdown",
+		"dev": "tsdown --watch",
+		"clean": "rm -rf dist .turbo",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@framefields/node-sdk": "workspace:*"
+	},
+	"devDependencies": {
+		"@framefields/tsconfig": "workspace:*",
+		"@types/node": "^24.1.0",
+		"tsdown": "^0.19.0",
+		"typescript": "^5.8.3",
+		"webgpu": "^0.4.0"
+	},
+	"publishConfig": {
+		"access": "public"
+	}
+}

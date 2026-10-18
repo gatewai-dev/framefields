@@ -1,8 +1,8 @@
 # 28 — Physics dancer
 
-A 6.6-second shot where rigid-body physics meets on-device vision. Word cards fall onto a
-dancer's raised hands and head and tumble to the floor; a cloud of ~800 particles flows around
-her as the silk dress sweeps through it.
+A 6.6-second shot that puts most of the engine in one frame: glass word cards are thrown in from
+both sides and bounce off a dancer's raised arms and head, the last one landing on her hands; a
+cloud of embers parts around her silk dress. Renders in about 20 seconds.
 
 ```bash
 pnpm fonts            # Syne from google/fonts → assets/fonts/
@@ -19,13 +19,9 @@ The clip is example 19's `assets/dancer.mp4`; generate it there with `pnpm asset
 | Piece | API |
 |---|---|
 | Pose and silhouette, frame by frame as it renders | `comp.vision(clip).person`, placed with `.place({ width, height, fit })`; results persist in `~/.cache/framefields/vision` |
-| Physics that steps with the render | `world.live(comp)`: before each frame draws, its vision is ready and the world advances to it |
-| Arms and head that catch the cards | kinematic circle bodies along shoulder → elbow → wrist (and past the wrist for the hand), `follow`ing `person.point(name, frame)` |
-| The dress pushing particles and cards | `world.field()` with `person.sample(frame, x, y)`: out along the silhouette's gradient, much harder where the silhouette just arrived (the sweep) |
-| Fluid feel | small circles with `linearDamping` 2.2, near-zero gravity, a slow swirling current and a soft pull home |
-| Particles behind her | a second copy of the clip, cut out with `.withVision({ mode: "matte" })`, above the particles |
-| Hot particles | `.colorSignal("fillColor", body.speed, { multiplier: 1 / 900, … })` |
-| Screen shake | the whole stage's `y` driven by `world.impact` |
-
-Cards are sized with `FontManager.measure`, so the text always fits. A live world can't look
-ahead, so they drop at fixed offsets from where her head starts and find her hands on the way down.
+| 3D physics that steps with the render | `Physics.world3d(…)` + `world.live(comp)`: before each frame draws, its vision is ready and the world advances to it |
+| Glass cards | `Layer3D.roundedBox({ material: "glass" })` as the rigid body, the word as unlit blue `Layer3D.extrudedText` following the body's `x`/`y`/`z` signals just in front of it; `lockRotation: true` keeps every word upright |
+| Thrown in from the sides | each card's launch `velocity` solved from gravity and a 0.7 s flight so the arc crosses her head and arms; the finale drops from above with a lower `gravityScale` |
+| Arms and head that catch them | kinematic spheres along shoulder → elbow → wrist (and past it for the hand), `follow`ing `person.point(name, frame)`; without a camera layer the 3D z = 0 plane matches the video 1:1 |
+| Embers | `Layer.particles` with `push: { person }` (her silhouette, hardest where it sweeps in), curl `noise`, `colorBySpeed` |
+| Embers behind her | a second copy of the clip, cut out with `.withVision({ mode: "matte" })`, above the embers |

@@ -32,7 +32,8 @@ struct SkinningUniforms {
 @group(0) @binding(0) var<uniform> cam      : CameraUniforms;
 @group(1) @binding(0) var<uniform> model    : ModelUniforms;
 @group(1) @binding(1) var<uniform> skinning : SkinningUniforms;
-${matte3dWgsl(1, 2)}@group(2) @binding(0) var texSampler        : sampler;
+${matte3dWgsl(1, 2)}@group(1) @binding(3) var backdropTex : texture_2d<f32>;
+@group(2) @binding(0) var texSampler        : sampler;
 @group(2) @binding(1) var mainTex           : texture_2d<f32>;
 @group(2) @binding(2) var normalTex         : texture_2d<f32>;
 @group(2) @binding(3) var metalRoughTex     : texture_2d<f32>;
@@ -154,6 +155,75 @@ fn perturbNormal(N: vec3<f32>, p: vec3<f32>, uv: vec2<f32>, tn: vec3<f32>, dp1: 
     return normalize(T * (tn.x * invmax) - B * (tn.y * invmax) + N * tn.z);
 }
 
+// Glass: what is behind the 3D batch on screen (backdrop), bent by
+// refraction along the surface normal with a red/blue split, frosted by a
+// disc blur, tinted by the color, under Fresnel-weighted reflections.
+// shade.rgb = (dispersion, thickness px, frost), pbr.w = ior.
+fn backdropAt(uv: vec2<f32>) -> vec3<f32> {
+    return textureSampleLevel(backdropTex, texSampler, clamp(uv, vec2<f32>(0.001), vec2<f32>(0.999)), 0.0).rgb;
+}
+
+// rimWidth: how much 1 - N·V changes across this pixel (fwidth, taken in
+// uniform control flow by the caller). Rim effects narrower than a pixel are
+// faded out, or per-pixel shading turns them into stair-stepped lines that
+// MSAA (coverage only) cannot smooth.
+fn shadeGlass(in: VertexOutput, Nin: vec3<f32>, tint: vec3<f32>, alpha: f32, rimWidth: f32) -> MeshFragment {
+    let V = normalize(cam.cameraPos.xyz - in.worldPos);
+    var N = Nin;
+    if (dot(N, V) < 0.0) { N = -N; }
+    let NdotV = clamp(dot(N, V), 0.0, 1.0);
+    // Also fade toward edge-on: a face seen at a grazing angle is a sliver
+    // under a pixel tall (a slab's bottom), which would alias the same way.
+    let rimAA = clamp(1.0 - rimWidth * 2.5, 0.0, 1.0) * smoothstep(0.03, 0.22, NdotV);
+    let rim = (1.0 - NdotV) * rimAA;
+    let ior = max(model.pbr.w, 1.0001);
+    let screen = max(cam.screenParams.xy, vec2<f32>(1.0));
+    let uv = in.clipPos.xy / screen;
+    // Screen-space bend: the normal's in-plane part, stronger toward the rim.
+    let bend = N.xy * model.shade.g * (1.0 - 1.0 / ior) * (0.6 + rim) * rimAA / screen;
+    let disp = model.shade.r;
+    let frost = model.shade.b * 22.0 / screen;
+    var col = vec3<f32>(0.0);
+    let taps = select(1, 8, model.shade.b > 0.001);
+    for (var i = 0; i < taps; i++) {
+        let a = f32(i) * 2.399963;
+        let r = sqrt((f32(i) + 0.5) / f32(taps));
+        let o = select(vec2<f32>(0.0), vec2<f32>(cos(a), sin(a)) * r * frost, taps > 1);
+        col += vec3<f32>(
+            backdropAt(uv - bend * (1.0 + disp * 6.0) + o).r,
+            backdropAt(uv - bend + o).g,
+            backdropAt(uv - bend * (1.0 - disp * 6.0) + o).b,
+        );
+    }
+    col /= f32(taps);
+    // Light travels further through the glass toward the rim: the tint
+    // deepens and the body darkens there, which is what outlines glass.
+    let depthTint = mix(vec3<f32>(1.0), tint, 0.55 + 0.45 * rim);
+    let transmitted = col * depthTint * (1.0 - 0.45 * rim * rim);
+    let f0 = pow((ior - 1.0) / (ior + 1.0), 2.0);
+    let F = f0 + (1.0 - f0) * pow(rim, 5.0);
+    let lit = shadeSurfaceFull(in.worldPos, N, vec3<f32>(0.0), model.materialParams, vec4<f32>(model.pbr.x, 0.0, 0.0, 0.0), vec4<f32>(0.0));
+    // Grazing faces mirror the room; keep that faint so dark scenes stay dark
+    // and the studio highlights below carry the shape.
+    let sheen = vec3<f32>(0.9, 0.94, 1.0) * F * 0.22 + tint * 0.05 * (0.4 + rim);
+    // A studio in the reflection: a sharp key and two strip softboxes, which
+    // is most of what makes glass read as glass.
+    let R = reflect(-V, N);
+    // Tight: a flat face only flashes as it turns through the light.
+    let key = pow(max(dot(R, normalize(vec3<f32>(-0.45, -0.75, -0.5))), 0.0), 600.0) * 1.8;
+    // Two tall softboxes: narrow bands in the reflection, brightest above.
+    let strips = (1.0 - smoothstep(0.03, 0.07, abs(R.x + 0.45))) * smoothstep(0.3, -0.5, R.y) * 1.1
+        + (1.0 - smoothstep(0.02, 0.05, abs(R.x - 0.6))) * smoothstep(0.4, -0.3, R.y) * 0.7;
+    let studio = vec3<f32>(1.0, 0.98, 0.95) * (key + strips * (0.25 + F));
+    // A thin bright line where the surface turns away: glass silhouettes.
+    let edge = vec3<f32>(1.0, 0.99, 0.97) * smoothstep(0.8, 0.97, rim) * 0.55;
+    let rgb = transmitted * (1.0 - F) + lit.display + sheen + studio + edge;
+    var out: MeshFragment;
+    out.color = vec4<f32>(rgb * alpha, alpha);
+    out.hdr = vec4<f32>(srgbToLinear(transmitted * (1.0 - F)) * alpha + lit.hdr * alpha + srgbToLinear(sheen + studio + edge) * alpha, alpha);
+    return out;
+}
+
 fn shadeMesh(in: VertexOutput, isFront: bool) -> MeshFragment {
     // Every sample and derivative up front, in uniform control flow.
     var texColor = textureSample(mainTex, texSampler, in.uv);
@@ -165,6 +235,7 @@ fn shadeMesh(in: VertexOutput, isFront: bool) -> MeshFragment {
     let dp2 = dpdy(in.worldPos);
     let duv1 = dpdx(in.uv);
     let duv2 = dpdy(in.uv);
+    let rimWidth = fwidth(1.0 - abs(dot(normalize(in.worldNormal), normalize(cam.cameraPos.xyz - in.worldPos))));
 
     if (!isFront && model.params.y < 0.5) {
         discard;
@@ -204,6 +275,9 @@ fn shadeMesh(in: VertexOutput, isFront: bool) -> MeshFragment {
     if (model.maps.z > 0.5) {
         pbr.x = select(pbr.x, 1.0, pbr.x < 0.0) * mrSample.g;
         pbr.y = pbr.y * mrSample.b;
+    }
+    if (model.pbr.z > 0.5) {
+        return shadeGlass(in, N, baseRgb, alpha, rimWidth);
     }
     var material = model.materialParams;
     material.z = material.z * mix(1.0, aoSample, clamp(model.maps.y, 0.0, 1.0));

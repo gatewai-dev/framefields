@@ -1,6 +1,10 @@
 import gsapModule from "gsap";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { compileLayerTimeline, compileTimeline } from "./compiler.js";
+import {
+	compileLayerTimeline,
+	compileTimeline,
+	seekTimeline,
+} from "./compiler.js";
 
 const gsap: any = (gsapModule as any).timeline
 	? gsapModule
@@ -1114,6 +1118,46 @@ describe("keyframe tail truncation (review M8)", () => {
 		expect(stub.y).toBe(50);
 	});
 
+	it("reads signal tracks when their frame is drawn, not when compiled", () => {
+		// A live physics world fills its signals while rendering: values
+		// written after compiling must still reach the frame.
+		const live = [0, 0, 0, 0];
+		const virtualMedia: any = {
+			metadata: { width: 1920, height: 1080, durationMs: 2000 },
+			operation: { op: "Compositor", signals: { live } },
+			children: [
+				{
+					operation: {
+						op: "CompositorLayer",
+						id: "live-node",
+						x: 0,
+						durationFrames: 48,
+						animation: {
+							tracks: [
+								{
+									id: "t_live",
+									prop: "x" as const,
+									source: { type: "signal" as const, inputHandleId: "live" },
+								},
+							],
+						},
+					},
+				},
+			],
+		};
+		const compiled = compileTimeline("render-live-signal-test", virtualMedia, {
+			fps: 24,
+			durationSec: 2,
+		});
+		const stub = compiled.targetsById["live-node"];
+		live[2] = 120;
+		seekTimeline(compiled, 2, 24);
+		expect(stub.x).toBe(120);
+		live[3] = 160;
+		seekTimeline(compiled, 3, 24);
+		expect(stub.x).toBe(160);
+	});
+
 	it("compiles and evaluates procedural wiggle and signal tracks", () => {
 		const virtualMedia: any = {
 			metadata: { width: 1920, height: 1080, durationMs: 2000 },
@@ -1160,21 +1204,21 @@ describe("keyframe tail truncation (review M8)", () => {
 			],
 		};
 
-		const { tl, targetsById } = compileTimeline(
-			"render-procedural-test",
-			virtualMedia,
-			{ fps: 24, durationSec: 2 },
-		);
+		const compiled = compileTimeline("render-procedural-test", virtualMedia, {
+			fps: 24,
+			durationSec: 2,
+		});
+		const { targetsById } = compiled;
 
 		const stub = targetsById["proc-node"];
 		expect(stub).toBeDefined();
 
 		// Frame 0
-		tl.seek(0);
+		seekTimeline(compiled, 0, 24);
 		expect(stub.scale).toBe(1.0); // 0 * 0.5 + 1.0 = 1.0
 
 		// Frame 2 (at 24fps = 2/24 sec) -> audio_pulse[2] is 1.0 -> 1.0 * 0.5 + 1.0 = 1.5
-		tl.seek(2 / 24);
+		seekTimeline(compiled, 2, 24);
 		expect(stub.scale).toBeCloseTo(1.5, 4);
 
 		// Wiggle moves smoothly around baseline 50 +- 40

@@ -366,6 +366,81 @@ Layer3D.cylinder({ ..., color: "#111", emissive: "#4da3ff", emissiveIntensity: 3
 - **Fog** fades to `fog.color` exactly, so set it to the composition background for a seamless horizon.
 - **Models:** glTF materials bring base color, normal, metallic-roughness, occlusion and emissive maps.
 - `emissive` / `emissiveIntensity` / `exposure` animate like any prop (`.keys("emissiveIntensity", …)`).
+- **Glass:** `material: "glass" | "acrylic" | "frosted"` on any Layer3D primitive, extruded text (`Layer3D.extrudedText`) or model refracts whatever is behind it on screen — the video, 2D layers, particles — with a rainbow fringe (`dispersion`, default 0.04), bend strength `thickness` (px, default 80) and `ior` (1.5). `color` tints the glass (deeper toward the edges); `frosted` blurs by `roughness`. Glass needs no environment: it draws its own studio reflections, and against a dark grade it reads best — skip `Lighting.*` rigs for glass-only scenes (their environment washes glass out). Glass shows only 2D content and opaque 3D drawn before it, not other glass.
+
+---
+
+## Physics (`Physics.world2d` / `Physics.world3d`)
+
+Use for anything that should *fall, bounce, stack, swing or collide*: gravity drops of words or cards, UI pieces tumbling into a pile, a "jiggle" on a spring, balls rattling in a box, dominoes, physics-driven 3D products. Use keyframes instead for motion that should hit an exact designed pose at an exact frame.
+
+A world runs **once** while the composition is built (Rapier, deterministic build: identical on every machine) and replays as per-frame signals, so frames render in any order. `simulate()` binds each body's layer (`x`, `y`, `rotation`; in 3D `x/y/z`, `rotateX/Y/Z`):
+
+```typescript
+import { Layer, LayerAnimation, Physics } from "framefields";
+
+const world = await Physics.world2d({ fps: FPS, frames: 150 }); // gravity 2400 px/s², y down
+world.walls({ width: W, height: H - 160 });                       // floor + sides (ceiling: true to close)
+
+const cards = words.map((word, i) => {
+  const card = Layer.box({ position: "absolute", x: 140, y: -300 - i * 260, width: 560, height: 170, rotation: -8, borderRadius: 28, background: EMBER /* … */ });
+  world.body(card, { restitution: 0.35, startFrame: i * 6 });   // staggered drop
+  return card;
+});
+world.simulate();
+
+// Every body exposes signals; bind them to anything (props, effect uniforms):
+glow.animate(LayerAnimation.create().signal("opacity", world.impact, { multiplier: 1.5 })); // loudest hit
+stage.animate(LayerAnimation.create().signal("y", world.impact, { multiplier: 14 }));       // camera shake
+```
+
+- **Bodies come from layers** with numeric `x`, `y` and a size; the layer's pose (incl. `rotation`, `scale`, `anchorX/Y`) is the start pose. Colliders follow the layer: circles are balls, `borderRadius` rounds the box, polygons / stars / paths use their convex hull, text without a size is measured. Override with `shape: "box" | "circle" | "hull"` and `size: [w, h]`. Plain `{ x, y, width, height }` makes an invisible obstacle.
+- **Body options:** `type: "dynamic" | "fixed" | "kinematic"`, `restitution` (0.3), `friction` (0.6), `density` (1), `velocity: [vx, vy]` px/s, `angularVelocity` °/s, `linearDamping`, `angularDamping`, `gravityScale` (0 floats), `lockRotation`, `ccd` (very fast bodies), `sensor`, `startFrame` (holds its pose until then), `output: "signals" | "keyframes" | "none"`.
+- **Signals per body:** `x`, `y`, `rotation`, `centerX`, `centerY`, `vx`, `vy`, `speed`, `angularVelocity`, `sleeping`, `impact` (jumps on each new contact, 1 ≈ a 1500 px/s hit, decays over `impactDecay` frames). `world.impact` is the loudest body each frame. `body.collisions` / `world.collisions` list first contacts `{ frame, with, speed }`: place hit sounds or flashes at those frames.
+- **Scene:** `world.ground({ y })`, `world.walls({ x, y, width, height, ceiling })`.
+- **Joints:** `world.pin(body, [x, y])` (swing around a point), `world.hinge(a, b, [x, y])`, `world.weld(a, b)`, `world.spring(a, bOrPoint, { frequency: 2, dampingRatio: 0.2, length })`, `world.rope(a, bOrPoint, { length })`. Points are world px.
+- **Driving the simulation:** `world.force(body, { x, y })` (px/s², mass-independent), `world.impulse(body, frame, [vx, vy])` (a kick), kinematic `follow: { x, y, rotation }`. Each of these takes a number, a signal (audio, `Signal.fromArray`) or `(frame) => value`: e.g. a floor that bounces on the kick.
+- **Force fields:** `world.field((s) => [ax, ay], { bodies })` is called every solver step with a body's center `s.x`, `s.y` (px), velocity `s.vx`, `s.vy` and `s.frame`; return px/s² or nothing. Wind, vortices, attractors, flow fields — and performers (below).
+- **Performers in the simulation:** `const dancer = comp.vision("dancer.mp4")` gives the clip's pose and silhouette per frame, analysed on demand (see `framefields-effects`). Make the world **live** so it steps as frames render instead of all at once: `world.live(comp)` in place of `simulate()`. Before each frame draws, the clip's vision for that frame is computed (or read from the cache) and the world advances to it — nothing is analysed up front, the preview plays at once and fills in, and export gives the identical result (same simulation, same order). Then, with `const person = dancer.person.place({ width: W, height: H, fit: "cover" })`:
+  - limbs as kinematic colliders that catch and bat things: `world.body({ x, y, width: 2 * r, height: 2 * r }, { type: "kinematic", shape: "circle", follow: { x: (f) => person.point("leftWrist", f).x - r, y: (f) => person.point("leftWrist", f).y - r } })`, a few balls along each shoulder → elbow → wrist;
+  - the silhouette (dress included) as a force field: `person.sample(frame, x, y)` returns `alpha` (inside > 0.5) and a gradient `gx`, `gy` pointing inward, so `world.field((s) => { const m = person.sample(s.frame, s.x, s.y); … return [-m.gx * k, -m.gy * k]; })` makes particles and props flow around a moving body.
+  - Reads are synchronous and need the frame analysed: inside a live world, while rendering, or after `await dancer.ready(frame)` (e.g. `ready(0)` to lay things out around the first pose). A live world can't look ahead, so place things from early frames.
+  - Layer a vision cutout of the same clip (`Layer.video(src).withVision({ mode: "matte" })`) above the particles so they pass behind the performer.
+  - Live worlds bind signals only (no `bakeKeyframes()`); `await world.advanceTo(frame)` steps one without rendering (e.g. to read `collisions`).
+- **Particles:** for clouds, dust, sparks, fluids and flow fields use `Layer.particles` (GPU, below), not hundreds of physics bodies. Keep physics bodies for a few dozen things that must collide and stack (cards, letters, products).
+- **Keyframes instead of signals:** `world.bakeKeyframes({ tolerance: 0.25 })` in place of `simulate()` writes plain, simplified linear keyframes (editable, plain JSON).
+- **3D:** `Physics.world3d` takes `Layer3D.roundedBox / sphere / cylinder` and models (convex hull of the mesh); same options with 3-vectors, `world.hinge(a, b, at, axis)`, `world.walls({ width, height, depth })`.
+- **Timing:** signals are on the composition clock. In a scene that starts at frame `S`, pass `startFrame: S` to the world. Before it and after `frames` the signals hold their first/last value. Add every body, joint and force before `simulate()` (or before reading any signal): the world then locks.
+- **Feel:** gravity 2400 px/s² reads snappy on a 1080p canvas; `pixelsPerMeter` (100) scales how heavy things feel. Raise `substeps` (4) for tall stacks or thin, fast bodies.
+- Install note: physics uses the optional dependency `@dimforge/rapier2d-deterministic-compat` / `rapier3d-deterministic-compat` (installed by default with framefields).
+
+---
+
+## GPU Particles (`Layer.particles`)
+
+Tens of thousands of particles simulated in a compute shader and drawn in one call — sparks, embers, dust, snow, smoke, ink, flow fields, light painting, a fluid a performer moves through. A particle layer is a box in composition px; positions inside it are layer px.
+
+```typescript
+comp.add(Layer.particles({
+  width: W, height: H, max: 20000, seed: 7,
+  emitter: { shape: "rect", x: 0, y: H * 0.6, width: W, height: 200, rate: 3000 },  // point | line | rect | circle | ring; radial
+  lifetime: [4, 6], speed: [0, 40], direction: -90, spread: 360,
+  gravity: 20, drag: 1.5,                                      // px/s², per second
+  noise: { strength: 260, scale: 170, speed: 0.25 },          // curl-noise flow: smoke, ink, flow fields
+  attractors: [{ x: W / 2, y: H / 2, strength: 900, radius: 200 }],   // negative strength repels
+  push: { person, strength: 9000, sweep: 120000 },             // a performer's silhouette pushes them (comp.vision)
+  floor: H - 60, bounce: 0.2, bounds: "none",                  // none | kill | bounce | wrap
+  size: [10, 4], sizeJitter: 0.5, fade: [0.1, 0.3],
+  shape: "circle",                                             // circle | soft (glow) | square | spark (streaks along motion)
+  color: ["#ffd23f", "#ff5a1f", "#7a2e14"],                    // over life, or by speed with colorBySpeed: 600
+  blend: "normal",                                             // add for glows and light painting
+  prewarm: 3,                                                  // seconds simulated before frame 0: starts full
+}));
+```
+
+- `emitter.x` / `emitter.y`, `rate`, `gravity`, `drag`, `noise.strength`, attractor positions/strengths and `push` strengths take a number, a signal (audio, physics `impact`) or `(frame) => value`, read every frame: bursts on the beat, wind gusts, an attractor following a tracked hand (`person.point("rightWrist", f)`). `emitter.bursts: [{ frame, count }]` adds one-off explosions.
+- Recipes: **light painting** an additive `"soft"` point emitter whose `x`/`y` follow a tracked wrist (`(f) => person.point("rightWrist", f).x`), lifetime ~1 s, small speed, births spread along the hand's path so fast moves stay continuous; **sparks/fountain** `shape: "spark"`, `blend: "add"`, gravity, `floor`; **smoke/ink** `shape: "soft"`, low opacity, `noise`, sizes growing; **snow/dust** `rect` emitter above the frame, small gravity, `noise`, `bounds: "wrap"`; **swirl** `ring` emitter + attractor + `colorBySpeed`; **fluid around a dancer** `push: { person }` + `drag` 2 + gentle noise, and a vision cutout of the clip above the particle layer.
+- The system steps as frames render and snapshots itself every 24 frames, so scrubbing back restores instead of replaying from the start; the same GPU gives the same frames.
 
 ---
 

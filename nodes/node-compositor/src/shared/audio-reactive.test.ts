@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { compileTimeline } from "./compiler.js";
+import { compileTimeline, seekTimeline } from "./compiler.js";
 import type { CompositorNodeConfig } from "./config.js";
 import { processCompositor } from "./processor.js";
 
@@ -166,17 +166,18 @@ describe("Audio-Reactive Motion Graphics Engine Pipeline", () => {
 		expect(signals.audio_beat_handle).toBe(beatSamples);
 
 		// 2. Compile into timeline
-		const { tl, targetsById } = compileTimeline("audio-reactive-session", vm, {
+		const compiled = compileTimeline("audio-reactive-session", vm, {
 			fps: 24,
 			durationSec: 2,
 		});
+		const { targetsById } = compiled;
 
 		const logoStub = targetsById["bouncing-logo-star"];
 		expect(logoStub).toBeDefined();
 
 		// Check baseline at frame 0 (t = 0 sec):
 		// Beat signal = 0.0 -> scale = 0.0 * 0.6 + 1.0 = 1.0
-		tl.seek(0);
+		seekTimeline(compiled, 0, 24);
 		expect(logoStub.scale).toBeCloseTo(1.0, 3);
 		// Bass signal = 0.0 -> trimEnd = 0.0 * 0.8 + 0.2 = 0.2
 		expect(logoStub.trimEnd).toBeCloseTo(0.2, 3);
@@ -185,16 +186,16 @@ describe("Audio-Reactive Motion Graphics Engine Pipeline", () => {
 
 		// Check beat hit at frame 12 (t = 12/24 = 0.5 sec):
 		// Beat signal = 1.0 -> scale = 1.0 * 0.6 + 1.0 = 1.6!
-		tl.seek(12 / 24);
+		seekTimeline(compiled, 12, 24);
 		expect(logoStub.scale).toBeCloseTo(1.6, 3);
 
 		// Check post-beat settling at frame 14:
 		// Beat signal = 0.0 -> scale back to 1.0
-		tl.seek(14 / 24);
+		seekTimeline(compiled, 14, 24);
 		expect(logoStub.scale).toBeCloseTo(1.0, 3);
 
 		// Check second beat hit at frame 24 (t = 1.0 sec):
-		tl.seek(24 / 24);
+		seekTimeline(compiled, 24, 24);
 		expect(logoStub.scale).toBeCloseTo(1.6, 3);
 
 		// Check container staggering:
@@ -206,17 +207,17 @@ describe("Audio-Reactive Motion Graphics Engine Pipeline", () => {
 		const bar3 = targetsById["bar-3"];
 
 		// At frame 0:
-		tl.seek(0);
+		seekTimeline(compiled, 0, 24);
 		expect(bar1.opacity).toBe(0);
 
 		// At frame 4 (bar-1 is halfway faded 0.33, bar-2 is just starting):
-		tl.seek(4 / 24);
+		seekTimeline(compiled, 4, 24);
 		expect(bar1.opacity).toBeGreaterThan(0);
 		expect(bar2.opacity).toBe(0);
 		expect(bar3.opacity).toBe(0);
 
 		// At frame 8 (bar-3 is just starting):
-		tl.seek(8 / 24);
+		seekTimeline(compiled, 8, 24);
 		expect(bar2.opacity).toBeGreaterThan(0);
 		expect(bar3.opacity).toBe(0);
 	});

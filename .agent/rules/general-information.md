@@ -31,7 +31,7 @@ Framefields is a code-first video engine on native WebGPU (Dawn) in Node, with n
 - `packages/core`: shared types, `Effect` base, signals. Other packages: `renderers`, `media`, `node-sdk` (node authoring: `shared/` + `renderer/`), `server-utils`, `client-utils`, `tensor-webgpu`, `vision`, `tsconfig`.
 - `nodes/node-*` (59): one VFX/audio/layout node each. Layout: `src/shared/` (config and schema), `src/renderers/` (WebGPU), `src/index.ts`. Only `node-compositor` has a `SKILL.md`; update it when Compositor behavior changes (`packages/compositions/src/program/skillmd-check.test.ts` guards it).
 - `apps/renderer-service`: HTTP render service (Docker, RunPod worker).
-- `examples/NN_*`: reference films/ads that import `framefields` via workspace. Study `19_framefields_film` (best structure), `22_framefields_launch` before writing a new film.
+- `examples/NN_*`: reference films/ads that import `framefields` via workspace. Study `19_framefields_film` (best structure), `22_framefields_launch` (lyric sync), and `28_physics_dancer` (physics, live vision, GPU particles) before writing a new film.
 - `plugins/framefields/skills/framefields{,-compose,-effects,-render}`: agent skills, symlinked from `.agents/skills` and `.claude/skills`.
 - `examples/22_framefields_launch`: reference for a lyric-driven launch film.
 - Package `exports` have a `development` condition pointing at `src/`. Otherwise consumers resolve `dist/`, so run `pnpm build` after changing a dependency.

@@ -109,6 +109,8 @@
 		"zod": "^4.3.6"
 	},
 	"optionalDependencies": {
+		"@dimforge/rapier2d-deterministic-compat": "0.21.0",
+		"@dimforge/rapier3d-deterministic-compat": "0.21.0",
 		"onnxruntime-web": "^1.24.0"
 	},
 	"devDependencies": {
@@ -144,6 +146,7 @@
 		"@framefields/node-mesh-warp": "workspace:*",
 		"@framefields/node-modulate": "workspace:*",
 		"@framefields/node-paint": "workspace:*",
+		"@framefields/node-particles": "workspace:*",
 		"@framefields/node-patch-heal": "workspace:*",
 		"@framefields/node-refine-edge": "workspace:*",
 		"@framefields/node-refraction-caustics": "workspace:*",

@@ -107,6 +107,11 @@ export const BUILTIN_NODE_RENDERERS: readonly BuiltinNodeRenderer[] = [
 		load: () => import("@framefields/node-curves/renderer"),
 	},
 	{
+		packageName: "@framefields/node-datamosh",
+		ops: ["Datamosh"],
+		load: () => import("@framefields/node-datamosh/renderer"),
+	},
+	{
 		packageName: "@framefields/node-deflicker",
 		ops: ["TemporalDeflicker", "Deflicker"],
 		load: () => import("@framefields/node-deflicker/renderer"),
@@ -197,6 +202,11 @@ export const BUILTIN_NODE_RENDERERS: readonly BuiltinNodeRenderer[] = [
 		load: () => import("@framefields/node-paint/renderer"),
 	},
 	{
+		packageName: "@framefields/node-particles",
+		ops: ["Particles"],
+		load: () => import("@framefields/node-particles/renderer"),
+	},
+	{
 		packageName: "@framefields/node-patch-heal",
 		ops: ["PatchHeal"],
 		load: () => import("@framefields/node-patch-heal/renderer"),
@@ -255,6 +265,11 @@ export const BUILTIN_NODE_RENDERERS: readonly BuiltinNodeRenderer[] = [
 		packageName: "@framefields/node-tile-offset",
 		ops: ["TileOffset"],
 		load: () => import("@framefields/node-tile-offset/renderer"),
+	},
+	{
+		packageName: "@framefields/node-trails",
+		ops: ["Trails"],
+		load: () => import("@framefields/node-trails/renderer"),
 	},
 	{
 		packageName: "@framefields/node-unsharp-mask",

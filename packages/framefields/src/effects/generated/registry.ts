@@ -28,6 +28,8 @@ import {
 	type ColorKeyProps,
 	CornerPin,
 	type CornerPinProps,
+	Datamosh,
+	type DatamoshProps,
 	DisplacementMap,
 	type DisplacementMapProps,
 	ExtractLUT,
@@ -62,6 +64,8 @@ import {
 	type RotateProps,
 	StereoPanning,
 	type StereoPanningProps,
+	Trails,
+	type TrailsProps,
 	Vignette,
 	type VignetteProps,
 } from "./classes.js";
@@ -85,6 +89,7 @@ export const effectFactories = {
 	colorBalance: (config?: ColorBalanceProps) => new ColorBalance(config),
 	colorKey: (config?: ColorKeyProps) => new ColorKey(config),
 	cornerPin: (config?: CornerPinProps) => new CornerPin(config),
+	datamosh: (config?: DatamoshProps) => new Datamosh(config),
 	displacementMap: (config?: DisplacementMapProps) =>
 		new DisplacementMap(config),
 	extractLUT: (config?: ExtractLUTProps) => new ExtractLUT(config),
@@ -104,5 +109,6 @@ export const effectFactories = {
 	resizerScaler: (config?: ResizerScalerProps) => new ResizerScaler(config),
 	rotate: (config?: RotateProps) => new Rotate(config),
 	stereoPanning: (config?: StereoPanningProps) => new StereoPanning(config),
+	trails: (config?: TrailsProps) => new Trails(config),
 	vignette: (config?: VignetteProps) => new Vignette(config),
 } as const;

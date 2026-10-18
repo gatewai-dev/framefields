@@ -22,7 +22,9 @@ See [references/effects-catalog.md](references/effects-catalog.md) for the gener
 There are 4 main attachment modes in the engine:
 
 ### 1. Layer-Level Effect Pipeline
-Attach one or more effects to an individual media, box, or text layer:
+Attach one or more effects to a media layer (video, image, SVG, Lottie). Box and text layers take only `TemporalDeflicker` and `Relight3D` directly; to treat a group or text as an image, render it into a media layer first.
+
+
 ```typescript
 import { Layer, Curves, Vignette, Blur } from "framefields";
 
@@ -108,6 +110,11 @@ const pngBuffer = await clip.renderFrame({ atMs: 1500 });
 - **`TileOffset`**: Seamless UV wrapping with `"wrap"`, `"clamp"`, `"mirror"`, or `"transparent"` boundaries.
 - **`MotionBlur`**: Directional shutter simulation with custom shutter angles and velocity clamps.
 - **`TemporalDeflicker`**: Multi-frame optical flow blending to eliminate flickering in generative AI clips or high-speed footage.
+
+### Temporal (effects with memory)
+- **`Trails`**: the layer over a decaying copy of its own past. `mode: "blend"` (default; echoes on full-frame footage), `"over"` (cutouts and text), `"add"` (light painting on dark scenes), `"max"` (light trails). `decay` 0.8 short echo → 0.97 long trails; per-frame `zoom` (1.02 = tunnel), `rotation`, `offsetX/Y`, `hueShift` (psychedelic cycling).
+- **`Datamosh`**: the previous picture dragged along the new frame's optical flow instead of being refreshed, until a `keyframes` frame (I-frame) shows the clean picture. Put keyframes where you want it clean; leave a cut out to smear one shot with the next one's motion. `strength`, `bleed` (clean picture mixed back per frame).
+- Both step as frames render; after a jump (scrubbing, a single `renderFrame`) they replay the last frames (`warmup`) to rebuild the history.
 
 ### 3. 3D Spatial Lighting & Materials
 - **`Relight3D`**: Screen-space normal map relighting with point, spot, and directional lights, specular highlights, roughness, and metallic uniforms.
@@ -236,7 +243,22 @@ const vision = comp.withVision({ classes: ["person"] });
 layer.blurRegion(vision.objects.byCategory("person"), { strength: 30 });
 ```
 
-### 5. Analyze Before Authoring
+### 5. Clip Vision: Results Before the Frame Renders
+`withVision` analyses a layer's *previous* rendered frame, so its results trail by a frame and exist only while rendering. When something must know the motion *at* the frame — physics, layout, keyframes — use `comp.vision`, which analyses the clip's own frames on demand:
+```typescript
+const dancer = comp.vision("assets/dancer.mp4", { startFrame: 0 });   // pose + silhouette (person)
+const person = dancer.person.place({ width: W, height: H, fit: "cover" });
+person.point("rightWrist", 48);   // { x, y, visibility } in composition px, smoothed over ±2 frames
+person.signals("nose").x;          // a signal for .signal("x", …)
+person.sample(48, x, y);           // silhouette alpha + inward gradient (dress and held things included)
+await dancer.ready(0);             // analyse a frame (or a range: ready(0, 120)) to read it at build time
+```
+- The composition analyses each frame's clips just before drawing it, in every render path and the preview, and a live physics world (`world.live(comp)`) before stepping. Nothing runs up front; a preview starts at once.
+- Results persist in Node (`~/.cache/framefields/vision`, or `$FRAMEFIELDS_VISION_CACHE_DIR`; `cacheDir: false` to opt out), keyed by the file and settings, so later runs and renders after a preview are instant.
+- Options: `startFrame` / `trimStartSec` (where the clip plays), `pose`, `mask`, `maskCell` (silhouette grid, default 8 px), `smoothing` (frames, default 2), `variant`. When the person is lost the last pose is held for up to a second.
+- Analysis costs about 200 ms per frame on CPU (segmentation dominates); on WebGPU it is faster. In a live preview the playhead waits for frames not analysed yet.
+
+### 6. Analyze Before Authoring
 One-shot, ffmpeg-free report of what is in a clip (tracks, classes, mask coverage):
 ```typescript
 const report = await comp.analyzeVisionSequence("assets/street.mp4", {

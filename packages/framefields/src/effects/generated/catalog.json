@@ -713,6 +713,51 @@
 			]
 		},
 		{
+			"name": "Datamosh",
+			"op": "Datamosh",
+			"kind": "effect",
+			"factory": "datamosh",
+			"node": "node-datamosh",
+			"aliases": [],
+			"custom": null,
+			"props": [
+				{
+					"name": "keyframes",
+					"type": "number[]",
+					"signal": false,
+					"default": [],
+					"description": "Layer frames that show the clean picture again (I-frames). The first frame always does."
+				},
+				{
+					"name": "strength",
+					"type": "EffectProp<number>",
+					"signal": true,
+					"default": 1,
+					"min": 0,
+					"max": 10,
+					"description": "How far pixels are dragged along the motion."
+				},
+				{
+					"name": "bleed",
+					"type": "EffectProp<number>",
+					"signal": true,
+					"default": 0,
+					"min": 0,
+					"max": 1,
+					"description": "Clean picture mixed back in per frame, 0–1."
+				},
+				{
+					"name": "warmup",
+					"type": "number",
+					"signal": false,
+					"default": 48,
+					"min": 1,
+					"max": 240,
+					"description": "Most frames replayed to rebuild the smear after a jump."
+				}
+			]
+		},
+		{
 			"name": "DisplacementMap",
 			"op": "DisplacementMap",
 			"kind": "effect",
@@ -2094,6 +2139,88 @@
 					"min": -1,
 					"max": 1,
 					"description": "Stereo panning value: -1 (full left) to 1 (full right), 0 is center. Can be modulated by a static number or dynamic signal."
+				}
+			]
+		},
+		{
+			"name": "Trails",
+			"op": "Trails",
+			"kind": "effect",
+			"factory": "trails",
+			"node": "node-trails",
+			"aliases": [],
+			"custom": null,
+			"props": [
+				{
+					"name": "decay",
+					"type": "EffectProp<number>",
+					"signal": true,
+					"default": 0.9,
+					"min": 0,
+					"max": 1,
+					"description": "History kept per frame, 0–1: 0.8 short echoes, 0.97 long light trails."
+				},
+				{
+					"name": "mode",
+					"type": "\"blend\" | \"over\" | \"add\" | \"max\"",
+					"signal": false,
+					"default": "blend",
+					"enum": ["blend", "over", "add", "max"],
+					"description": "blend: running average (echoes on full-frame footage); over: the layer over its fading past (cutouts, text); add: glows build up (light painting); max: keeps the brightest."
+				},
+				{
+					"name": "zoom",
+					"type": "EffectProp<number>",
+					"signal": true,
+					"default": 1,
+					"min": 0.5,
+					"max": 2,
+					"description": "History scale per frame; 1.02 pulls the past into a tunnel."
+				},
+				{
+					"name": "rotation",
+					"type": "EffectProp<number>",
+					"signal": true,
+					"default": 0,
+					"min": -45,
+					"max": 45,
+					"description": "History rotation per frame, degrees."
+				},
+				{
+					"name": "offsetX",
+					"type": "EffectProp<number>",
+					"signal": true,
+					"default": 0,
+					"min": -500,
+					"max": 500,
+					"description": "History drift per frame, px."
+				},
+				{
+					"name": "offsetY",
+					"type": "EffectProp<number>",
+					"signal": true,
+					"default": 0,
+					"min": -500,
+					"max": 500,
+					"description": "History drift per frame, px."
+				},
+				{
+					"name": "hueShift",
+					"type": "EffectProp<number>",
+					"signal": true,
+					"default": 0,
+					"min": -180,
+					"max": 180,
+					"description": "History hue rotation per frame, degrees (psychedelic cycling)."
+				},
+				{
+					"name": "warmup",
+					"type": "number",
+					"signal": false,
+					"default": 60,
+					"min": 0,
+					"max": 240,
+					"description": "Most frames replayed to rebuild the history after a jump (scrubbing, a single frame render)."
 				}
 			]
 		},

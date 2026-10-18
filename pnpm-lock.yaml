@@ -413,6 +413,25 @@ importers:
         specifier: ^5.8.3
         version: 5.9.3
 
+  examples/28_physics_dancer:
+    dependencies:
+      framefields:
+        specifier: workspace:*
+        version: link:../../packages/framefields
+    devDependencies:
+      '@framefields/tsconfig':
+        specifier: workspace:*
+        version: link:../../packages/tsconfig
+      '@types/node':
+        specifier: ^24.1.0
+        version: 24.10.14
+      tsx:
+        specifier: ^4.20.3
+        version: 4.21.0
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+
   nodes/node-apply-lut:
     dependencies:
       '@framefields/core':
@@ -1049,6 +1068,34 @@ importers:
         specifier: ^5.8.3
         version: 5.8.3
 
+  nodes/node-datamosh:
+    dependencies:
+      '@framefields/node-sdk':
+        specifier: workspace:*
+        version: link:../../packages/node-sdk
+      '@framefields/tensor-webgpu':
+        specifier: workspace:*
+        version: link:../../packages/tensor-webgpu
+      zod:
+        specifier: ^4.3.6
+        version: 4.3.6
+    devDependencies:
+      '@framefields/tsconfig':
+        specifier: workspace:*
+        version: link:../../packages/tsconfig
+      '@types/node':
+        specifier: ^24.1.0
+        version: 24.10.14
+      tsdown:
+        specifier: ^0.19.0
+        version: 0.19.0(oxc-resolver@11.19.1)(typescript@5.9.3)
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      webgpu:
+        specifier: ^0.4.0
+        version: 0.4.0
+
   nodes/node-deflicker:
     dependencies:
       '@framefields/core':
@@ -1583,6 +1630,28 @@ importers:
         specifier: ^5.8.3
         version: 5.8.3
 
+  nodes/node-particles:
+    dependencies:
+      '@framefields/node-sdk':
+        specifier: workspace:*
+        version: link:../../packages/node-sdk
+    devDependencies:
+      '@framefields/tsconfig':
+        specifier: workspace:*
+        version: link:../../packages/tsconfig
+      '@types/node':
+        specifier: ^24.1.0
+        version: 24.10.14
+      tsdown:
+        specifier: ^0.19.0
+        version: 0.19.0(oxc-resolver@11.19.1)(typescript@5.9.3)
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      webgpu:
+        specifier: ^0.4.0
+        version: 0.4.0
+
   nodes/node-patch-heal:
     dependencies:
       '@framefields/core':
@@ -2067,6 +2136,31 @@ importers:
         specifier: ^0.4.0
         version: 0.4.0
 
+  nodes/node-trails:
+    dependencies:
+      '@framefields/node-sdk':
+        specifier: workspace:*
+        version: link:../../packages/node-sdk
+      zod:
+        specifier: ^4.3.6
+        version: 4.3.6
+    devDependencies:
+      '@framefields/tsconfig':
+        specifier: workspace:*
+        version: link:../../packages/tsconfig
+      '@types/node':
+        specifier: ^24.1.0
+        version: 24.10.14
+      tsdown:
+        specifier: ^0.19.0
+        version: 0.19.0(oxc-resolver@11.19.1)(typescript@5.9.3)
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      webgpu:
+        specifier: ^0.4.0
+        version: 0.4.0
+
   nodes/node-unsharp-mask:
     dependencies:
       '@framefields/core':
@@ -2424,6 +2518,9 @@ importers:
       '@framefields/node-paint':
         specifier: workspace:*
         version: link:../../nodes/node-paint
+      '@framefields/node-particles':
+        specifier: workspace:*
+        version: link:../../nodes/node-particles
       '@framefields/node-patch-heal':
         specifier: workspace:*
         version: link:../../nodes/node-patch-heal
@@ -2515,6 +2612,12 @@ importers:
         specifier: ^4.1.11
         version: 4.1.11(@opentelemetry/api@1.9.0)(@types/node@24.10.14)(@vitest/coverage-v8@4.1.11)(jsdom@29.1.0(@noble/hashes@2.0.1)(canvas@3.2.3))(vite@8.2.1(@types/node@24.10.14)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.3))
     optionalDependencies:
+      '@dimforge/rapier2d-deterministic-compat':
+        specifier: 0.21.0
+        version: 0.21.0
+      '@dimforge/rapier3d-deterministic-compat':
+        specifier: 0.21.0
+        version: 0.21.0
       onnxruntime-web:
         specifier: ^1.24.0
         version: 1.30.0
@@ -2615,6 +2718,9 @@ importers:
       '@framefields/node-curves':
         specifier: workspace:*
         version: link:../../nodes/node-curves
+      '@framefields/node-datamosh':
+        specifier: workspace:*
+        version: link:../../nodes/node-datamosh
       '@framefields/node-deflicker':
         specifier: workspace:*
         version: link:../../nodes/node-deflicker
@@ -2672,6 +2778,9 @@ importers:
       '@framefields/node-paint':
         specifier: workspace:*
         version: link:../../nodes/node-paint
+      '@framefields/node-particles':
+        specifier: workspace:*
+        version: link:../../nodes/node-particles
       '@framefields/node-patch-heal':
         specifier: workspace:*
         version: link:../../nodes/node-patch-heal
@@ -2711,6 +2820,9 @@ importers:
       '@framefields/node-tile-offset':
         specifier: workspace:*
         version: link:../../nodes/node-tile-offset
+      '@framefields/node-trails':
+        specifier: workspace:*
+        version: link:../../nodes/node-trails
       '@framefields/node-unsharp-mask':
         specifier: workspace:*
         version: link:../../nodes/node-unsharp-mask
@@ -3200,6 +3312,12 @@ packages:
   '@csstools/css-tokenizer@4.0.0':
     resolution: {integrity: sha512-QxULHAm7cNu72w97JUNCBFODFaXpbDg+dP8b/oWFAZ2MTRppA3U00Y2L1HqaS4J6yBqxwa/Y3nMBaxVKbB/NsA==}
     engines: {node: '>=20.19.0'}
+
+  '@dimforge/rapier2d-deterministic-compat@0.21.0':
+    resolution: {integrity: sha512-qVwHqqpRX73ktQRqiAa/0JdBfWdzsGHg8r8d+snaZB0WRXaTs3m7GU6jN+Qf3gEjMEUqk3Rc9q87yGXHkktTbA==}
+
+  '@dimforge/rapier3d-deterministic-compat@0.21.0':
+    resolution: {integrity: sha512-n7JuU62Obljlgq+OeH2DHhTmRSjRzwuJPl54tS9pFIzVQyvXsO5CH+a5KkIRBtnFWDbg1Zicv9BulG0jfBAopA==}
 
   '@emnapi/core@1.8.1':
     resolution: {integrity: sha512-AvT9QFpxK0Zd8J0jopedNm+w/2fIzvtPKPjqyw9jwvBaReTTqPBk9Hixaz7KbjimP+QNz605/XnjFcDAL2pqBg==}
@@ -6646,6 +6764,12 @@ snapshots:
     optional: true
 
   '@csstools/css-tokenizer@4.0.0':
+    optional: true
+
+  '@dimforge/rapier2d-deterministic-compat@0.21.0':
+    optional: true
+
+  '@dimforge/rapier3d-deterministic-compat@0.21.0':
     optional: true
 
   '@emnapi/core@1.8.1':

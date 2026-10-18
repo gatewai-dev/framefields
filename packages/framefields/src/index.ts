@@ -188,6 +188,7 @@ import {
 } from "@framefields/tensor-webgpu";
 import { inputStore, mediaDecoderCache } from "@framefields/webgpu-renderers";
 import { buildChart, type ChartOptions } from "./chart.js";
+import { ClipVision, type ClipVisionOptions } from "./clip-vision.js";
 import {
 	ApplyLUT,
 	type ApplyLUTProps,
@@ -240,6 +241,7 @@ import {
 	Vision,
 	type VisionProps,
 } from "./effects/index.js";
+import { Particles, type ParticlesOptions } from "./particles.js";
 import {
 	type FrameGridOptions,
 	HeadlessMediaRenderer,
@@ -665,6 +667,13 @@ export {
 	DEFAULT_CHART_COLORS,
 } from "./chart.js";
 export {
+	ClipVision,
+	type ClipVisionOptions,
+	type PersonPlacement,
+	PersonTrack,
+	type PoseKeypointName,
+} from "./clip-vision.js";
+export {
 	ApplyLUT,
 	type ApplyLUTProps,
 	AudioCompressor,
@@ -701,6 +710,8 @@ export {
 	type CurvesChannelPoint,
 	type CurvesProps,
 	CustomEffect,
+	Datamosh,
+	type DatamoshProps,
 	type DeflickerProps,
 	DepthOfField,
 	type DepthOfFieldProps,
@@ -773,6 +784,8 @@ export {
 	TileOffset,
 	type TileOffsetEdgeMode,
 	type TileOffsetProps,
+	Trails,
+	type TrailsProps,
 	UnsharpMask,
 	type UnsharpMaskProps,
 	Vignette,
@@ -785,6 +798,40 @@ export {
 	type LightingRig,
 	type LightingRigOptions,
 } from "./lighting.js";
+export {
+	type EmitterShape,
+	type ParticleBlend,
+	type ParticleBounds,
+	type ParticleShape,
+	Particles,
+	type ParticlesOptions,
+} from "./particles.js";
+export {
+	type Body2DOptions,
+	type Body3DOptions,
+	type BodyCommonOptions,
+	type FieldSample2D,
+	type FieldSample3D,
+	Physics,
+	type PhysicsBakeOptions,
+	PhysicsBody2D,
+	PhysicsBody3D,
+	type PhysicsBox3D,
+	type PhysicsCollision,
+	type PhysicsDriver,
+	type PhysicsGroundOptions,
+	type PhysicsRect,
+	type PhysicsRope3DOptions,
+	type PhysicsRopeOptions,
+	type PhysicsSpring3DOptions,
+	type PhysicsSpringOptions,
+	type PhysicsWallsOptions,
+	PhysicsWorld2D,
+	PhysicsWorld3D,
+	type PhysicsWorldOptions,
+	type World2DOptions,
+	type World3DOptions,
+} from "./physics/index.js";
 export {
 	type Carousel3DOptions,
 	type Cube3DOptions,
@@ -1069,6 +1116,9 @@ export class Composition {
 	public audioTracks: MediaNode[] = [];
 	public signals: Record<string, unknown> = {};
 	private _frameHooks: Array<(ctx: FrameContext) => void> = [];
+	private _prepareHooks: Array<(ctx: FrameContext) => Promise<void> | void> =
+		[];
+	private readonly _clipVision = new Map<string, ClipVision>();
 	private _visionConfig?: VisionProps;
 	private _visionBundle?: VisionBundle;
 	private _effects: unknown[] = [];
@@ -1104,6 +1154,34 @@ export class Composition {
 			visionBundle: this._visionBundle,
 		};
 		return this._visionBundle;
+	}
+
+	/**
+	 * Vision for a clip, analysed per frame on demand and shared by everything
+	 * that reads it (see {@link ClipVision}): `comp.vision("dancer.mp4").person`
+	 * gives pose keypoints and a silhouette at any frame. Each frame is
+	 * analysed just before it renders, so nothing runs up front. Results
+	 * persist on disk in Node. The same clip and options return one instance.
+	 */
+	public vision(source: string, options: ClipVisionOptions = {}): ClipVision {
+		const key = `${source}\u0000${JSON.stringify(options)}`;
+		let clip = this._clipVision.get(key);
+		if (!clip) {
+			clip = new ClipVision(source, this.fps, options);
+			this._clipVision.set(key, clip);
+		}
+		return clip;
+	}
+
+	/**
+	 * @internal Analyses every `comp.vision` clip up to a composition frame
+	 * (frames already analysed are skipped), so consumers that step frame by
+	 * frame — physics, particles — always find every frame before it.
+	 */
+	public async prepareVision(frame: number): Promise<void> {
+		await Promise.all(
+			[...this._clipVision.values()].map((clip) => clip.ready(0, frame)),
+		);
 	}
 
 	/**
@@ -1196,10 +1274,37 @@ export class Composition {
 		return this;
 	}
 
-	public notifyFrame(ctx: FrameContext): void {
+	/**
+	 * Async work a frame needs before it is evaluated (vision, a live physics
+	 * world). Every render path awaits these, in order, before drawing the
+	 * frame; they may run more than once per frame, so keep them idempotent.
+	 */
+	public onPrepareFrame(
+		callback: (ctx: FrameContext) => Promise<void> | void,
+	): this {
+		this._prepareHooks.push(callback);
+		return this;
+	}
+
+	public notifyFrame(ctx: FrameContext): Promise<void> | undefined {
 		for (const hook of this._frameHooks) {
 			hook(ctx);
 		}
+		if (this._clipVision.size === 0 && this._prepareHooks.length === 0) {
+			return undefined;
+		}
+		return (async () => {
+			await this.prepareVision(ctx.frame);
+			for (const hook of this._prepareHooks) await hook(ctx);
+		})();
+	}
+
+	private hasFrameHooks(): boolean {
+		return (
+			this._frameHooks.length > 0 ||
+			this._prepareHooks.length > 0 ||
+			this._clipVision.size > 0
+		);
 	}
 
 	constructor(options: CompositionOptions) {
@@ -1732,7 +1837,7 @@ export class Composition {
 			signals: this.signals,
 			...(this._effects.length > 0 && { effects: this._effects }),
 			...(this._visionConfig && { vision: this._visionConfig }),
-			...(this._frameHooks.length > 0 && {
+			...(this.hasFrameHooks() && {
 				onRequestFrame: (ctx: FrameContext) => this.notifyFrame(ctx),
 			}),
 		} as unknown as CompositorProgramConfig;
@@ -1786,13 +1891,13 @@ export class Composition {
 			renderer?: HeadlessMediaRenderer;
 		} = {},
 	): Promise<Buffer> {
-		if (this._frameHooks.length > 0) {
+		if (this.hasFrameHooks()) {
 			const targetFrame =
 				options.frame ??
 				(options.atMs !== undefined
 					? Math.round((options.atMs / 1000) * this.fps)
 					: 0);
-			this.notifyFrame({
+			await this.notifyFrame({
 				frame: targetFrame,
 				fps: this.fps,
 				time: this.fps > 0 ? targetFrame / this.fps : 0,
@@ -2417,6 +2522,41 @@ export const Layer = {
 			children: options.children ?? [],
 			...options,
 		}),
+	/**
+	 * A GPU particle system as a layer: tens of thousands of particles
+	 * simulated in a compute shader and drawn in one call (see
+	 * {@link ParticlesOptions}). Positions are in the layer's own px; drivers
+	 * (rate, gravity, noise, attractors) are read every frame, and a
+	 * performer can push particles with `push: { person }`.
+	 */
+	particles: (options: ParticlesOptions): AnimatableNode<MediaNode> => {
+		const system = new Particles(options);
+		// A media layer whose source is the particle op itself: it draws into
+		// the layer's own texture, composited like any clip.
+		const source = {
+			metadata: { width: options.width, height: options.height },
+			operation: { ...system.toOperation(), effect: system, dataType: "Video" },
+			children: [],
+		};
+		return withAnimation({
+			id: options.id ?? autoId("particles"),
+			kind: "media",
+			dataType: "Video",
+			src: source,
+			position: "absolute",
+			x: options.x ?? 0,
+			y: options.y ?? 0,
+			width: options.width,
+			height: options.height,
+			...(options.startFrame !== undefined && {
+				startFrame: options.startFrame,
+			}),
+			...(options.durationFrames !== undefined && {
+				durationFrames: options.durationFrames,
+			}),
+			...(options.zIndex !== undefined && { zIndex: options.zIndex }),
+		} as unknown as MediaNode);
+	},
 	section: (
 		source: string | MediaNode | Composition,
 		targetOrOptions: ObjectTrackSignals | SectionOptions = {},

@@ -308,6 +308,21 @@ export const effectMeta = {
 	CornerPin: {
 		points: {},
 	},
+	Datamosh: {
+		keyframes: {},
+		strength: {
+			min: 0,
+			max: 10,
+		},
+		bleed: {
+			min: 0,
+			max: 1,
+		},
+		warmup: {
+			min: 1,
+			max: 240,
+		},
+	},
 	DisplacementMap: {
 		strengthX: {
 			min: 0,
@@ -939,6 +954,39 @@ export const effectMeta = {
 		pan: {
 			min: -1,
 			max: 1,
+		},
+	},
+	Trails: {
+		decay: {
+			min: 0,
+			max: 1,
+		},
+		mode: {
+			enum: ["blend", "over", "add", "max"],
+		},
+		zoom: {
+			min: 0.5,
+			max: 2,
+		},
+		rotation: {
+			min: -45,
+			max: 45,
+		},
+		offsetX: {
+			min: -500,
+			max: 500,
+		},
+		offsetY: {
+			min: -500,
+			max: 500,
+		},
+		hueShift: {
+			min: -180,
+			max: 180,
+		},
+		warmup: {
+			min: 0,
+			max: 240,
 		},
 	},
 	Vignette: {

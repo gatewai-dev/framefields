@@ -31,26 +31,35 @@ Every frame is rendered by framefields directly from TypeScript in [`examples/`]
 <table>
   <tr>
     <td width="50%" align="center">
+      <a href="https://youtu.be/POC7rKnuoE4"><img src="assets/showcase/physics-dancer.jpg" alt="Physics dancer showcase film" width="100%"></a>
+      <br><a href="https://youtu.be/POC7rKnuoE4"><b>Physics dancer</b></a>
+      <br><sub><a href="examples/28_physics_dancer"><code>28_physics_dancer</code></a></sub>
+    </td>
+    <td width="50%" align="center">
       <a href="https://youtu.be/k2lgbdL6_TA"><img src="assets/showcase/mac-keyboard.jpg" alt="Mac keyboard from 3D primitives" width="100%"></a>
       <br><a href="https://youtu.be/k2lgbdL6_TA"><b>Mac Keyboard</b></a>
       <br><sub><a href="examples/26_mac_keyboard_from_3d_primitives"><code>26_mac_keyboard_from_3d_primitives</code></a></sub>
     </td>
+  </tr>
+  <tr>
     <td width="50%" align="center">
       <a href="https://youtu.be/FVXTqAozAv8"><img src="assets/showcase/framefields-launch.jpg" alt="Framefields launch film" width="100%"></a>
       <br><a href="https://youtu.be/FVXTqAozAv8"><b>Framefields launch</b></a>
       <br><sub><a href="examples/22_framefields_launch"><code>22_framefields_launch</code></a></sub>
     </td>
-  </tr>
-  <tr>
     <td width="50%" align="center">
       <a href="https://youtu.be/9BF1snfmg3o"><img src="assets/showcase/full-circle.jpg" alt="Full Circle film" width="100%"></a>
       <br><a href="https://youtu.be/9BF1snfmg3o"><b>Full Circle</b></a>
       <br><sub><a href="examples/21_full_circle"><code>21_full_circle</code></a></sub>
     </td>
+  </tr>
+  <tr>
     <td width="50%" align="center">
       <a href="https://youtu.be/RQ3yi_lzPqI"><img src="assets/showcase/dancer.jpg" alt="Dancer showcase film" width="100%"></a>
       <br><a href="https://youtu.be/RQ3yi_lzPqI"><b>Dancer showcase</b></a>
       <br><sub><a href="examples/19_framefields_film"><code>19_framefields_film</code></a></sub>
+    </td>
+    <td width="50%" align="center">
     </td>
   </tr>
 </table>

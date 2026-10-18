@@ -67,7 +67,7 @@ import {
 	srtLoader,
 	Vector3Math,
 } from "@framefields/webgpu-renderers";
-import { compileTimeline } from "../shared/compiler.js";
+import { compileTimeline, seekTimeline } from "../shared/compiler.js";
 import type { CompositorOperation } from "../shared/config.js";
 import { shouldPaintContainerBackground } from "./container-bg.js";
 import { buildLayerMatrix, toDOMMatrix } from "./transform.js";
@@ -614,12 +614,12 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 		const composeDuration =
 			virtualMedia?.metadata?.durationMs ?? DEFAULT_DURATION_MS;
 		const durationSec = composeDuration / 1000;
-		const { tl, targetsById } = compileTimeline(
-			props.renderId,
-			virtualMedia as any,
-			{ fps: fps ?? 24, durationSec },
-		);
-		tl.seek(shiftedFrame / (fps ?? 24));
+		const compiled = compileTimeline(props.renderId, virtualMedia as any, {
+			fps: fps ?? 24,
+			durationSec,
+		});
+		const { targetsById } = compiled;
+		seekTimeline(compiled, shiftedFrame, fps ?? 24);
 
 		const r3d = getRenderer3D(
 			ctx.device,
@@ -1148,7 +1148,18 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				Boolean(sceneBloom),
 			);
 
-			for (const item of pending3DItems) {
+			// Glass reads what is behind the batch (the canvas so far), and goes
+			// last so opaque meshes are already in the depth buffer.
+			const isGlass = (item: Pending3DItem) =>
+				item.kind === "mesh" &&
+				(item.opts.material === "glass" ||
+					item.opts.material === "acrylic" ||
+					item.opts.material === "frosted");
+			const ordered = [
+				...pending3DItems.filter((i) => !isGlass(i)),
+				...pending3DItems.filter(isGlass),
+			];
+			for (const item of ordered) {
 				if (item.kind === "quad") {
 					r3d.drawTextureQuad(
 						pass3d,
@@ -1175,7 +1186,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 						lightsBindGroup,
 						item.meshBuffers ?? item.mesh,
 						item.texture,
-						item.opts,
+						isGlass(item) ? { ...item.opts, backdrop: curTex } : item.opts,
 						dofEnabled,
 					);
 				}
@@ -1954,6 +1965,9 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 							target?.ambientIntensity ?? lop.ambientIntensity ?? 1.0,
 						metallic: target?.metallic ?? lop.metallic ?? mat?.metallic,
 						...surfaceProps(target, lop, mat),
+						ior: target?.ior ?? lop.ior,
+						dispersion: target?.dispersion ?? lop.dispersion,
+						thickness: target?.thickness ?? lop.thickness,
 						audioDeform: meshAudioDeform,
 					};
 
@@ -2555,13 +2569,11 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					const container3DShutter =
 						target?.motionBlurShutter ?? lop.motionBlurShutter ?? 0;
 					if (container3DShutter > 0 && fps && shiftedFrame !== undefined) {
-						const currentT = shiftedFrame / fps;
-						const prevT = (shiftedFrame - 1) / fps;
-						tl.seek(prevT);
+						seekTimeline(compiled, shiftedFrame - 1, fps);
 						const prevTarget = targetId ? targetsById[targetId] : undefined;
 						const prevX = prevTarget?.x ?? baseX;
 						const prevY = prevTarget?.y ?? baseY;
-						tl.seek(currentT);
+						seekTimeline(compiled, shiftedFrame, fps);
 
 						const vx = sampledX - prevX;
 						const vy = sampledY - prevY;
@@ -2842,13 +2854,11 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				const containerShutter =
 					target?.motionBlurShutter ?? lop.motionBlurShutter ?? 0;
 				if (containerShutter > 0 && fps && shiftedFrame !== undefined) {
-					const currentT = shiftedFrame / fps;
-					const prevT = (shiftedFrame - 1) / fps;
-					tl.seek(prevT);
+					seekTimeline(compiled, shiftedFrame - 1, fps);
 					const prevTarget = targetId ? targetsById[targetId] : undefined;
 					const prevX = prevTarget?.x ?? baseX;
 					const prevY = prevTarget?.y ?? baseY;
-					tl.seek(currentT);
+					seekTimeline(compiled, shiftedFrame, fps);
 
 					const vx = sampledX - prevX;
 					const vy = sampledY - prevY;
@@ -3683,13 +3693,11 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 			let blurPadX = 0;
 			let blurPadY = 0;
 			if (shutterAngle > 0 && fps && shiftedFrame !== undefined) {
-				const currentT = shiftedFrame / fps;
-				const prevT = (shiftedFrame - 1) / fps;
-				tl.seek(prevT);
+				seekTimeline(compiled, shiftedFrame - 1, fps);
 				const prevTarget = targetId ? targetsById[targetId] : undefined;
 				const prevX = prevTarget?.x ?? baseX;
 				const prevY = prevTarget?.y ?? baseY;
-				tl.seek(currentT);
+				seekTimeline(compiled, shiftedFrame, fps);
 
 				const vx = sampledX - prevX;
 				const vy = sampledY - prevY;

@@ -162,6 +162,7 @@ import {
 } from "@framefields/core";
 import {
 	analyzeSequence as analyzeVisionFrames,
+	CLIP_SUBJECT,
 	type LandmarkCoordinateSignals,
 	type MaskTrackSignals,
 	type ObjectTrackSignals,
@@ -1208,9 +1209,78 @@ export class Composition {
 	 * frame — physics, particles — always find every frame before it.
 	 */
 	public async prepareVision(frame: number): Promise<void> {
+		this.linkClipMattes();
 		await Promise.all(
 			[...this._clipVision.values()].map((clip) => clip.ready(0, frame)),
 		);
+	}
+
+	/**
+	 * Points matte-family `withVision` layers at the `comp.vision` clip they
+	 * show, so the cutout reuses that clip's per-frame subject instead of
+	 * segmenting the frame again during render. Only layers whose settings
+	 * would give the same subject are linked; the rest keep their own pass.
+	 */
+	private linkClipMattes(): void {
+		if (this._clipVision.size === 0) return;
+		const walk = (node: unknown): void => {
+			if (!node || typeof node !== "object") return;
+			const n = node as {
+				kind?: string;
+				dataType?: string;
+				inputHandleId?: unknown;
+				vision?: unknown;
+				children?: unknown;
+			};
+			if (
+				n.kind === "media" &&
+				n.dataType === "Video" &&
+				typeof n.inputHandleId === "string" &&
+				n.vision instanceof Vision &&
+				!(CLIP_SUBJECT in n.vision)
+			) {
+				const clip = this.clipForMatte(n.inputHandleId, n.vision);
+				if (clip) {
+					clip.keepSubjects();
+					Object.defineProperty(n.vision, CLIP_SUBJECT, {
+						value: clip,
+						enumerable: false,
+						configurable: true,
+					});
+				}
+			}
+			if (Array.isArray(n.children)) for (const c of n.children) walk(c);
+		};
+		for (const child of this.children) walk(child);
+	}
+
+	private clipForMatte(source: string, v: Vision): ClipVision | undefined {
+		const mode = v.mode ?? "passthrough";
+		if (mode !== "matte" && mode !== "mask" && mode !== "crop") return;
+		// Anything that changes the subject, or needs results the clip lacks.
+		if (
+			v.matteSource === "selfie" ||
+			v.keyBackground === true ||
+			v.classes !== undefined ||
+			v.enablePose === true ||
+			v.enableMatte === true ||
+			v.visionBundle !== undefined ||
+			(v.maskThreshold ?? 0.5) !== 0.5 ||
+			v.featherRadius !== undefined
+		) {
+			return;
+		}
+		for (const clip of this._clipVision.values()) {
+			const o = clip.options;
+			if (
+				clip.source === source &&
+				(o.variant ?? "s") === (v.variant ?? "s") &&
+				(o.confidence ?? 0.3) === (v.confidence ?? 0.3)
+			) {
+				return clip;
+			}
+		}
+		return undefined;
 	}
 
 	/**

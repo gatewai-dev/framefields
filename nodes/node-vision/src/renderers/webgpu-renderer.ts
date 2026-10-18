@@ -1,6 +1,8 @@
 /// <reference types="webgpu" />
 import type { WebGPUNodeRenderer } from "@framefields/node-sdk";
 import {
+	CLIP_SUBJECT,
+	type ClipSubjectSource,
 	type InstanceMask,
 	maskBounds,
 	matchPoseToTracks,
@@ -623,12 +625,28 @@ export const VisionWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 		op.enableMatte === true || (isMatteMode && op.matteSource === "selfie");
 	const wantsPose = op.enablePose === true || mode === "skeleton";
 
-	// 2. Results are cached per source frame (selfie mattes and poses are not,
+	// 2. A `comp.vision` clip that already analysed this source frame gives the
+	//    subject for THIS frame's pixels: no readback, no inference. Undefined
+	//    means it has nothing for the frame, so the node segments it itself.
+	const clipSubject =
+		isMatteMode &&
+		!visionBundle &&
+		!wantsPose &&
+		!wantsSelfie &&
+		op.keyBackground !== true
+			? clipSubjectFor(effectKey, frameIdx, fps, targetWidth, targetHeight)
+			: undefined;
+	const fromClip = clipSubject !== undefined;
+
+	// 3. Results are cached per source frame (selfie mattes and poses are not,
 	//    so nodes that need them always run inference). A frame analysed before
 	//    is composited with its own pixels; otherwise inference runs on the
 	//    frame the child texture still holds, one frame behind.
 	const cacheable =
-		!wantsSelfie && !wantsPose && (wantsDetection || wantsSegmentation);
+		!fromClip &&
+		!wantsSelfie &&
+		!wantsPose &&
+		(wantsDetection || wantsSegmentation);
 	const source = cacheable
 		? cacheSource(nodeKeyStr, childMedia, op, targetWidth, targetHeight)
 		: "";
@@ -648,7 +666,7 @@ export const VisionWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 		? heldFrameByNode.get(nodeKeyStr)
 		: undefined;
 	let cached = lookup(frameIdx);
-	const exact = cached !== undefined;
+	const exact = fromClip || cached !== undefined;
 	if (!cached) cached = lookup(heldFrame);
 
 	// Keep the held frame's picture on the GPU: the matte of that frame is
@@ -663,12 +681,12 @@ export const VisionWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 		]);
 	}
 
-	// 3. The held frame, when it still needs inference: copied now (submitted
+	// 4. The held frame, when it still needs inference: copied now (submitted
 	//    before this frame redraws the child) and analysed on the GPU. Pixels
 	//    come back to the CPU only for the opt-in background key.
 	let frame: VisionGpuImage | undefined;
 	let framePixels: Uint8ClampedArray | Uint8Array | null = null;
-	if (hasPreviousFrame && !cached) {
+	if (hasPreviousFrame && !cached && !fromClip) {
 		const analysis = analysisTexture(ctx.device, nodeKeyStr, childTex);
 		const copy = ctx.device.createCommandEncoder({
 			label: "vision_analysis_copy",
@@ -690,7 +708,7 @@ export const VisionWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 		}
 	}
 
-	// 4. Draw THIS frame's child into the persistent texture (recorded into the
+	// 5. Draw THIS frame's child into the persistent texture (recorded into the
 	//    shared encoder, submitted at end of frame, read back next call).
 	const childView = childTex.createView();
 	const clearPass = ctx.renderer.beginFrame(
@@ -713,7 +731,7 @@ export const VisionWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 	);
 	heldFrameByNode.set(nodeKeyStr, frameIdx);
 
-	// 5. Results: from the cache, or inference on the held frame's pixels
+	// 6. Results: from the clip, the cache, or inference on the held frame's pixels
 	//    (models download lazily on first use of each task).
 	let frameObjects: readonly TrackedObject[] = [];
 	let frameMasks: readonly InstanceMask[] = [];
@@ -721,7 +739,9 @@ export const VisionWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 	let currentPoseRes: PoseResult | undefined;
 	let subject: InstanceMask | undefined;
 
-	if (cached) {
+	if (fromClip) {
+		subject = selectSubject(clipSubject ?? undefined, nodeKeyStr, frameIdx);
+	} else if (cached) {
 		frameObjects = cached.objects;
 		if (wantsDetection) {
 			visionBundle?.setObjectResult(frameIdx, {
@@ -841,7 +861,7 @@ export const VisionWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 		}
 	}
 
-	// 6. Output to destination texture based on mode
+	// 7. Output to destination texture based on mode
 
 	// Mask-family modes: the picture the results belong to, cut out on the GPU.
 	if (isMatteMode) {
@@ -1030,6 +1050,27 @@ export const VisionWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 	});
 	outPass.end();
 };
+
+/**
+ * The subject a linked `comp.vision` clip holds for a source frame (see
+ * CLIP_SUBJECT). Its mask is in source pixels; the composite samples it by
+ * uv, so it fits any target of the same aspect. Other shapes fall back.
+ */
+function clipSubjectFor(
+	effect: object | undefined,
+	frame: number,
+	fps: number,
+	width: number,
+	height: number,
+): InstanceMask | null | undefined {
+	const source = (effect as Record<symbol, unknown> | undefined)?.[
+		CLIP_SUBJECT
+	] as ClipSubjectSource | undefined;
+	const subject = source?.subject(frame, fps);
+	if (!subject) return subject;
+	const aspect = subject.width / subject.height / (width / height);
+	return Math.abs(aspect - 1) < 0.01 ? subject : undefined;
+}
 
 /** Adapts a Selfie Segmenter matte to the instance-mask shape the composite path takes. */
 function personMatteAsMask(

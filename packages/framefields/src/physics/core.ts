@@ -67,6 +67,24 @@ export interface BodyCommonOptions {
 	output?: "signals" | "keyframes" | "none";
 }
 
+/** What `world.live()` needs from a composition. */
+export interface LiveHost {
+	onPrepareFrame(
+		callback: (ctx: { frame: number }) => Promise<void> | void,
+	): unknown;
+	prepareVision?(frame: number): Promise<void>;
+}
+
+interface Stepper<B, V, R> {
+	/** Last simulated frame, relative to the world's start. */
+	current: number;
+	freed: boolean;
+	bySim: Map<SimBody<V, R>, B>;
+	kinematicFrom: Map<B, { position: V; rotation: R }>;
+	/** Impact envelope level per body after `current`. */
+	level: Map<B, number>;
+}
+
 export interface PhysicsCollision<B> {
 	/** Composition frame of first contact. */
 	frame: number;
@@ -248,7 +266,11 @@ export abstract class WorldCore<
 	}> = [];
 	private readonly worldRecording: Recording;
 	private readonly allCollisions: Array<PhysicsCollision<B> & { body: B }> = [];
-	private simulated = false;
+	/** No more bodies, joints or forces: the world has started (or finished). */
+	private locked = false;
+	private liveMode = false;
+	private stepper?: Stepper<B, V, R>;
+	private chain: Promise<void> = Promise.resolve();
 
 	protected constructor(
 		protected readonly sim: SimWorld<V, SimBody<V, R>, unknown>,
@@ -269,7 +291,7 @@ export abstract class WorldCore<
 		this.worldRecording = this.newRecording();
 	}
 
-	/** Every first contact in the simulation, in frame order. */
+	/** First contacts so far (all of them once simulated), in frame order. */
 	get collisions(): ReadonlyArray<PhysicsCollision<B> & { body: B }> {
 		this.ensureSimulated();
 		return this.allCollisions;
@@ -280,17 +302,21 @@ export abstract class WorldCore<
 		return this.worldRecording.signal("impact");
 	}
 
-	/** Runs the simulation (once) and binds every body's layer per its `output`. */
+	/** Runs the whole simulation now (once) and binds every body's layer per its `output`. */
 	simulate(): this {
+		if (this.liveMode)
+			throw new Error(
+				"Physics: this world is live; it steps as frames render.",
+			);
 		this.ensureSimulated();
 		return this;
 	}
 
 	/** Like {@link simulate}, but writes keyframes for every body whose `output` was left at its default. */
 	bakeKeyframes(options: PhysicsBakeOptions = {}): this {
-		if (this.simulated) {
+		if (this.locked) {
 			throw new Error(
-				"Physics: bakeKeyframes() must come before simulate() or reading any body signal.",
+				"Physics: bakeKeyframes() must come before simulate(), live() or reading any body signal.",
 			);
 		}
 		this.bakeDefault = options;
@@ -298,6 +324,67 @@ export abstract class WorldCore<
 		return this;
 	}
 
+	/**
+	 * Steps the world as the composition renders instead of all at once: before
+	 * each frame draws, the world advances to it, after the composition's
+	 * vision clips (`comp.vision`) and any `inputs` have that frame ready. Use
+	 * it when bodies follow a performer, so nothing is analysed up front and a
+	 * preview starts at once. Frames already simulated are kept, so scrubbing
+	 * back costs nothing; jumping ahead simulates the frames in between.
+	 * Signals only; `bakeKeyframes()` needs the whole run up front.
+	 */
+	live(
+		comp: LiveHost,
+		options: {
+			inputs?: ReadonlyArray<{ ready(frame: number): Promise<void> }>;
+		} = {},
+	): this {
+		if (this.locked) {
+			throw new Error(
+				"Physics: live() must come before simulate() or reading any body signal.",
+			);
+		}
+		this.locked = true;
+		this.liveMode = true;
+		const prepare = async (frame: number) => {
+			await comp.prepareVision?.(frame);
+			for (const input of options.inputs ?? []) await input.ready(frame);
+		};
+		this.prepareInputs = prepare;
+		for (const body of this.bodies) this.bind(body);
+		comp.onPrepareFrame((ctx) => this.advanceTo(ctx.frame));
+		return this;
+	}
+
+	/**
+	 * Live worlds: simulates up to composition frame `frame` (no-op when it
+	 * already has). Calls queue, so frames are stepped once, in order.
+	 */
+	advanceTo(frame: number): Promise<void> {
+		this.chain = this.chain.then(async () => {
+			const target = Math.min(
+				this.frames - 1,
+				Math.round(frame) - this.startFrame,
+			);
+			if (!this.stepper) {
+				await this.prepareInputs?.(this.startFrame);
+				this.stepper = this.begin();
+			}
+			const st = this.stepper;
+			while (st.current < target) {
+				const next = st.current + 1;
+				await this.prepareInputs?.(this.startFrame + next);
+				this.stepFrame(st, next);
+			}
+			if (st.current === this.frames - 1 && !st.freed) {
+				st.freed = true;
+				this.sim.free();
+			}
+		});
+		return this.chain;
+	}
+
+	private prepareInputs?: (frame: number) => Promise<void>;
 	private bakeDefault?: PhysicsBakeOptions;
 
 	protected newRecording(): Recording {
@@ -307,9 +394,9 @@ export abstract class WorldCore<
 	}
 
 	protected assertOpen(): void {
-		if (this.simulated) {
+		if (this.locked) {
 			throw new Error(
-				"Physics: the world has already simulated; add every body, joint and force before simulate() or reading signals.",
+				"Physics: the world has already started; add every body, joint and force before simulate(), live() or reading signals.",
 			);
 		}
 	}
@@ -346,171 +433,176 @@ export abstract class WorldCore<
 	}
 
 	protected ensureSimulated(): void {
-		if (this.simulated) return;
-		this.simulated = true;
-		this.run();
+		if (this.locked) return;
+		this.locked = true;
+		const st = this.begin();
+		for (let f = 1; f < this.frames; f++) this.stepFrame(st, f);
+		st.freed = true;
 		this.sim.free();
 		for (const body of this.bodies) this.bind(body);
 	}
 
-	private run(): void {
-		const { fps, frames, startFrame, substeps } = this;
-		const dt = 1 / (fps * substeps);
+	/** Records frame 0 and sets every channel to it, so frames not simulated yet hold the start pose. */
+	private begin(): Stepper<B, V, R> {
+		const { startFrame } = this;
 		const bodies = this.bodies;
-		const n = startFrame + frames;
-		const rawImpact = new Map<B, Float32Array>();
-		for (const b of bodies) rawImpact.set(b, new Float32Array(n));
 		const bySim = new Map<SimBody<V, R>, B>();
 		for (const b of bodies) bySim.set(b.sim, b);
-
 		for (const b of bodies) if (b.startFrame > 0) b.sim.setEnabled(false);
-		for (const b of bodies) b.record(startFrame, -1);
-
-		const dims = this.gravity.length;
-		const prevVel = new Map<B, number[]>();
-		let kinematicFrom = new Map<B, { position: V; rotation: R }>();
+		const kinematicFrom = new Map<B, { position: V; rotation: R }>();
 		for (const b of bodies) {
+			b.record(startFrame, -1);
+			b.recording.channel("impact");
 			const t = b.kinematicTarget?.(startFrame);
 			if (t) kinematicFrom.set(b, t);
 		}
+		this.worldRecording.channel("impact");
+		for (const rec of [
+			...bodies.map((b) => b.recording),
+			this.worldRecording,
+		]) {
+			for (const arr of rec.channels.values()) arr.fill(arr[startFrame]);
+		}
+		return {
+			current: 0,
+			freed: false,
+			bySim,
+			kinematicFrom,
+			level: new Map(bodies.map((b) => [b, 0])),
+		};
+	}
 
-		for (let f = 1; f < frames; f++) {
-			const frame = startFrame + f;
-			for (const b of bodies) {
-				// A body sits at its start pose on its start frame and moves after.
-				if (b.startFrame > 0 && f === b.startFrame + 1) b.sim.setEnabled(true);
-				prevVel.set(b, b.sim.velocity() as number[]);
+	private stepFrame(st: Stepper<B, V, R>, f: number): void {
+		const { fps, startFrame, substeps } = this;
+		const dt = 1 / (fps * substeps);
+		const bodies = this.bodies;
+		const frame = startFrame + f;
+		const dims = this.gravity.length;
+		const prevVel = new Map<B, number[]>();
+		for (const b of bodies) {
+			// A body sits at its start pose on its start frame and moves after.
+			if (b.startFrame > 0 && f === b.startFrame + 1) b.sim.setEnabled(true);
+			prevVel.set(b, b.sim.velocity() as number[]);
+		}
+		const isActive = (b: B) => b.type === "dynamic" && f > b.startFrame;
+		// Velocity each body is expected to gain this frame from gravity,
+		// forces, fields and impulses: anything beyond it came from a contact.
+		const expected = new Map<B, number[]>();
+		for (const b of bodies) {
+			expected.set(
+				b,
+				this.gravity.map((g) => (isActive(b) ? (g * b.gravityScale) / fps : 0)),
+			);
+		}
+		for (const imp of this.impulses) {
+			if (imp.frame !== f) continue;
+			const body = imp.body as unknown as B;
+			if (!isActive(body)) continue;
+			const m = body.sim.mass();
+			body.sim.applyImpulse(imp.dv.map((v) => v * m) as V);
+			const e = expected.get(body) as number[];
+			for (let i = 0; i < dims; i++) e[i] += imp.dv[i];
+		}
+		const frameForces = this.forces
+			.filter((fe) => isActive(fe.body as unknown as B))
+			.map((fe) => {
+				const body = fe.body as unknown as B;
+				const a = fe.accel(frame);
+				const e = expected.get(body) as number[];
+				for (let i = 0; i < dims; i++) e[i] += a[i] / fps;
+				return { body, a };
+			});
+		const kinematicTo = new Map<B, { position: V; rotation: R }>();
+		for (const b of bodies) {
+			const t = b.kinematicTarget?.(frame);
+			if (t) kinematicTo.set(b, t);
+		}
+
+		const started = new Set<string>();
+		const pairs: Array<[B, B]> = [];
+		for (let s = 1; s <= substeps; s++) {
+			for (const { body, a } of frameForces) {
+				const m = body.sim.mass();
+				body.sim.applyImpulse(a.map((v) => v * m * dt) as V);
 			}
-			// Velocity each body is expected to gain this frame from gravity,
-			// forces and impulses: anything beyond it came from a contact.
-			const expected = new Map<B, number[]>();
-			for (const b of bodies) {
-				const active = b.type === "dynamic" && f > b.startFrame;
-				expected.set(
-					b,
-					this.gravity.map((g) => (active ? (g * b.gravityScale) / fps : 0)),
+			for (const field of this.fields) {
+				for (const b of bodies) {
+					if (!isActive(b) || (field.targets && !field.targets.has(b)))
+						continue;
+					const a = field.accel(b, frame);
+					if (!a) continue;
+					const m = b.sim.mass();
+					b.sim.applyImpulse(a.map((v) => v * m * dt) as V);
+					const e = expected.get(b) as number[];
+					for (let i = 0; i < dims; i++) e[i] += a[i] * dt;
+				}
+			}
+			for (const [b, to] of kinematicTo) {
+				const from = st.kinematicFrom.get(b) ?? to;
+				const k = s / substeps;
+				b.sim.setKinematicTarget(
+					lerpVec(from.position, to.position, k),
+					this.lerpRotation(from.rotation, to.rotation, k),
 				);
 			}
-			const isActive = (b: B) => b.type === "dynamic" && f > b.startFrame;
-			for (const imp of this.impulses) {
-				if (imp.frame !== f) continue;
-				const body = imp.body as unknown as B;
-				if (!isActive(body)) continue;
-				const m = body.sim.mass();
-				body.sim.applyImpulse(imp.dv.map((v) => v * m) as V);
-				const e = expected.get(body) as number[];
-				for (let i = 0; i < dims; i++) e[i] += imp.dv[i];
+			this.sim.step(dt);
+			for (const [sa, sb] of this.sim.drainCollisionStarts()) {
+				const a = st.bySim.get(sa);
+				const b = st.bySim.get(sb);
+				if (!a || !b) continue;
+				const key = `${bodies.indexOf(a)}:${bodies.indexOf(b)}`;
+				if (started.has(key)) continue;
+				started.add(key);
+				pairs.push([a, b]);
 			}
-			const frameForces = this.forces
-				.filter((fe) => isActive(fe.body as unknown as B))
-				.map((fe) => {
-					const body = fe.body as unknown as B;
-					const a = fe.accel(frame);
-					const e = expected.get(body) as number[];
-					for (let i = 0; i < dims; i++) e[i] += a[i] / fps;
-					return { body, a };
-				});
-			const kinematicTo = new Map<B, { position: V; rotation: R }>();
-			for (const b of bodies) {
-				const t = b.kinematicTarget?.(frame);
-				if (t) kinematicTo.set(b, t);
-			}
+		}
+		st.kinematicFrom = kinematicTo;
 
-			const started = new Set<string>();
-			const pairs: Array<[B, B]> = [];
-			for (let s = 1; s <= substeps; s++) {
-				for (const { body, a } of frameForces) {
-					const m = body.sim.mass();
-					body.sim.applyImpulse(a.map((v) => v * m * dt) as V);
-				}
-				for (const field of this.fields) {
-					for (const b of bodies) {
-						if (!isActive(b) || (field.targets && !field.targets.has(b)))
-							continue;
-						const a = field.accel(b, frame);
-						if (!a) continue;
-						const m = b.sim.mass();
-						b.sim.applyImpulse(a.map((v) => v * m * dt) as V);
-						const e = expected.get(b) as number[];
-						for (let i = 0; i < dims; i++) e[i] += a[i] * dt;
-					}
-				}
-				for (const [b, to] of kinematicTo) {
-					const from = kinematicFrom.get(b) ?? to;
-					const k = s / substeps;
-					b.sim.setKinematicTarget(
-						lerpVec(from.position, to.position, k),
-						this.lerpRotation(from.rotation, to.rotation, k),
-					);
-				}
-				this.sim.step(dt);
-				for (const [sa, sb] of this.sim.drainCollisionStarts()) {
-					const a = bySim.get(sa);
-					const b = bySim.get(sb);
-					if (!a || !b) continue;
-					const key = `${bodies.indexOf(a)}:${bodies.indexOf(b)}`;
-					if (started.has(key)) continue;
-					started.add(key);
-					pairs.push([a, b]);
-				}
-			}
-			kinematicFrom = kinematicTo;
+		for (const b of bodies) b.record(frame, frame - 1);
 
-			for (const b of bodies) b.record(frame, frame - 1);
-
-			if (pairs.length > 0) {
-				const ppm = this.pixelsPerMeter;
-				const hit = (b: B): number => {
-					if (b.type !== "dynamic") return 0;
-					const v = b.sim.velocity() as number[];
-					const v0 = prevVel.get(b) as number[];
-					const e = expected.get(b) as number[];
-					let sq = 0;
-					for (let i = 0; i < dims; i++) {
-						const d = v[i] - (v0[i] + e[i]);
-						sq += d * d;
-					}
-					return Math.sqrt(sq) * ppm;
-				};
-				for (const [a, b] of pairs) {
-					const speed = Math.max(hit(a), hit(b));
-					for (const [self, other] of [
-						[a, b],
-						[b, a],
-					] as const) {
-						const raw = rawImpact.get(self) as Float32Array;
-						raw[frame] = Math.max(raw[frame], speed);
-						const c = { frame, with: other, speed };
-						self.collisions.push(c as never);
-						if (self === a) this.allCollisions.push({ ...c, body: a });
-					}
+		const raw = new Map<B, number>();
+		if (pairs.length > 0) {
+			const ppm = this.pixelsPerMeter;
+			const hit = (b: B): number => {
+				if (b.type !== "dynamic") return 0;
+				const v = b.sim.velocity() as number[];
+				const v0 = prevVel.get(b) as number[];
+				const e = expected.get(b) as number[];
+				let sq = 0;
+				for (let i = 0; i < dims; i++) {
+					const d = v[i] - (v0[i] + e[i]);
+					sq += d * d;
+				}
+				return Math.sqrt(sq) * ppm;
+			};
+			for (const [a, b] of pairs) {
+				const speed = Math.max(hit(a), hit(b));
+				for (const [self, other] of [
+					[a, b],
+					[b, a],
+				] as const) {
+					raw.set(self, Math.max(raw.get(self) ?? 0, speed));
+					const c = { frame, with: other, speed };
+					self.collisions.push(c as never);
+					if (self === a) this.allCollisions.push({ ...c, body: a });
 				}
 			}
 		}
 
 		// Impact envelopes: instant attack, exponential release.
 		const decay = Math.exp(-1 / this.impactDecay);
-		const worldImpact = this.worldRecording.channel("impact");
+		let loudest = 0;
 		for (const b of bodies) {
-			const raw = rawImpact.get(b) as Float32Array;
-			const env = b.recording.channel("impact");
-			let level = 0;
-			for (let i = startFrame; i < n; i++) {
-				level = Math.max(raw[i] / this.impactReference, level * decay);
-				env[i] = level;
-				if (level > worldImpact[i]) worldImpact[i] = level;
-			}
+			const level = Math.max(
+				(raw.get(b) ?? 0) / this.impactReference,
+				(st.level.get(b) ?? 0) * decay,
+			);
+			st.level.set(b, level);
+			b.recording.channel("impact")[frame] = level;
+			if (level > loudest) loudest = level;
 		}
-
-		// Before the world starts every channel holds its frame-0 value.
-		for (const rec of [
-			...bodies.map((b) => b.recording),
-			this.worldRecording,
-		]) {
-			for (const arr of rec.channels.values()) {
-				arr.fill(arr[startFrame], 0, startFrame);
-			}
-		}
+		this.worldRecording.channel("impact")[frame] = loudest;
+		st.current = f;
 	}
 
 	protected abstract lerpRotation(a: R, b: R, t: number): R;
@@ -523,6 +615,11 @@ export abstract class WorldCore<
 		if (typeof layer?.animate !== "function" || output === "none") return;
 		if (body.type === "fixed") return;
 		const channels = body.boundChannels();
+		if (output === "keyframes" && this.liveMode) {
+			throw new Error(
+				'Physics: live worlds bind signals; drop `output: "keyframes"` or use simulate().',
+			);
+		}
 		if (output === "signals") {
 			const anim = LayerAnimation.create();
 			for (const [prop, channel] of channels) {

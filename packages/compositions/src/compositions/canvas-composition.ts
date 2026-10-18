@@ -247,7 +247,12 @@ export async function drawCompositionTree(
 	const accumulatedClockOffsetSec =
 		inheritedClockOffset + windowStartFrame / fps;
 	if (typeof op.onRequestFrame === "function") {
-		op.onRequestFrame(frameCtx);
+		// May return a promise: per-frame preparation (vision, live physics)
+		// finishes before anything in this frame is evaluated.
+		const pending = op.onRequestFrame(frameCtx);
+		if (pending && typeof (pending as Promise<void>).then === "function") {
+			await pending;
+		}
 	} else if (op.effect && typeof op.effect.notifyFrame === "function") {
 		op.effect.notifyFrame(frameCtx);
 	}

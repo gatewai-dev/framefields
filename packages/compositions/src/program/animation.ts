@@ -63,6 +63,10 @@ export interface SignalTrackOptions {
 export interface ColorSignalOptions {
 	colorA: string;
 	colorB: string;
+	/** Scales the signal before it picks a color (e.g. `1 / 900` for a speed in px/s). Default 1. */
+	multiplier?: number;
+	/** Added after `multiplier`. Default 0. */
+	offset?: number;
 	colorMode?: "interpolate" | "hueRotate" | "threshold";
 	threshold?: number;
 	smoothing?: number;
@@ -834,8 +838,8 @@ export class LayerAnimation implements LayerAnimationSpec {
 		const source: TrackSource = {
 			type: "signal",
 			inputHandleId: handleId,
-			multiplier: 1.0,
-			offset: 0.0,
+			multiplier: options.multiplier ?? 1.0,
+			offset: options.offset ?? 0.0,
 			smoothingWindowFrames: options.smoothing ?? 0,
 			colorMode: options.colorMode ?? "interpolate",
 			colorA: options.colorA,

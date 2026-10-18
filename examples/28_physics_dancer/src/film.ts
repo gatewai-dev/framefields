@@ -2,11 +2,16 @@
  * A dancer in a field of physics: word cards drop onto her raised hands and
  * head, and a cloud of particles flows around her as the dress sweeps through.
  *
+ * Nothing is analysed up front: `comp.vision` analyses each frame of the clip
+ * just before it renders, and the live physics world steps to that frame
+ * right after, so the preview starts at once and fills in as it plays.
+ *
  * - Her arms and head are kinematic colliders that follow the tracked pose.
  * - Her silhouette (dress included) is a force field that pushes everything out,
  *   hardest where it is sweeping in.
  * - A vision cutout of the same clip sits above the particles, so they pass behind her.
  */
+import fs from "node:fs";
 import {
 	Composition,
 	FontManager,
@@ -17,9 +22,7 @@ import {
 	type PhysicsBody2D,
 	type PhysicsWorld2D,
 	type PoseKeypointName,
-	Signal,
 } from "framefields";
-import { performer } from "./performer.js";
 import {
 	CREAM,
 	DANCER,
@@ -39,11 +42,12 @@ import {
 } from "./theme.js";
 
 const WORDS = [
-	{ text: "PHYSICS", bg: EMBER, fg: INK, at: 30 },
-	{ text: "MEETS", bg: INK, fg: CREAM, at: 46 },
-	{ text: "VISION", bg: CREAM, fg: INK, at: 62 },
-	{ text: "IN", bg: GOLD, fg: INK, at: 78 },
-	{ text: "FRAMEFIELDS", bg: VIOLET, fg: CREAM, at: 94 },
+	// `dx`: where it drops, from her head at the first frame (live worlds can't look ahead).
+	{ text: "PHYSICS", bg: EMBER, fg: INK, at: 30, dx: -40 },
+	{ text: "MEETS", bg: INK, fg: CREAM, at: 46, dx: 120 },
+	{ text: "VISION", bg: CREAM, fg: INK, at: 62, dx: -120 },
+	{ text: "IN", bg: GOLD, fg: INK, at: 78, dx: 60 },
+	{ text: "FRAMEFIELDS", bg: VIOLET, fg: CREAM, at: 94, dx: 0 },
 ];
 const CARD_FONT_SIZE = 64;
 const PARTICLE_COLORS = [INK, RUST, EMBER, GOLD];
@@ -76,7 +80,7 @@ function limb(
 	}
 }
 
-/** Word cards sized to their text, dropped over whichever hand is highest. */
+/** Word cards sized to their text, dropped around where her head starts. */
 function cards(world: PhysicsWorld2D, person: PersonTrack) {
 	return WORDS.map((w, i) => {
 		const m = FontManager.measure(w.text, {
@@ -85,13 +89,11 @@ function cards(world: PhysicsWorld2D, person: PersonTrack) {
 		});
 		const width = Math.ceil(m.width + 72);
 		const height = Math.ceil(m.height + 40);
-		const hand = (["leftWrist", "rightWrist"] as const)
-			.map((k) => person.point(k, w.at + 12))
-			.reduce((p, q) => (p.y < q.y ? p : q));
+		const head = person.point("nose", 0);
 		const layer = Layer.box({
 			id: `card-${i}`,
 			position: "absolute",
-			x: hand.x - width / 2 + (i % 2 ? 30 : -30),
+			x: head.x + w.dx - width / 2,
 			y: -height - 200,
 			width,
 			height,
@@ -181,7 +183,19 @@ function silhouettePush(person: PersonTrack, strength: number, sweep: number) {
 	};
 }
 
+export { DURATION as DURATION_FRAMES } from "./theme.js";
+
+export interface Film {
+	comp: Composition;
+	world: PhysicsWorld2D;
+	cards: Array<{ id: string; body: PhysicsBody2D }>;
+}
+
 export async function buildFilm(): Promise<Composition> {
+	return (await buildScene()).comp;
+}
+
+export async function buildScene(): Promise<Film> {
 	await registerFonts();
 	const comp = new Composition({
 		width: W,
@@ -191,7 +205,15 @@ export async function buildFilm(): Promise<Composition> {
 		backgroundColor: "#E9D3B4",
 		fonts: [FONT_FILE],
 	});
-	const person = await performer(comp);
+	if (!fs.existsSync(DANCER)) {
+		throw new Error(
+			`Missing ${DANCER}. Generate it with \`pnpm assets\` in examples/19_framefields_film.`,
+		);
+	}
+	const dancer = comp.vision(DANCER);
+	// The particles are laid out around her first pose: analyse just that now.
+	await dancer.ready(0);
+	const person = dancer.person.place({ width: W, height: H, fit: "cover" });
 
 	const world = await Physics.world2d({
 		fps: FPS,
@@ -237,22 +259,17 @@ export async function buildFilm(): Promise<Composition> {
 		},
 		{ bodies: cloudBodies },
 	);
-	world.simulate();
+	// Steps as the composition renders, after each frame's vision is ready.
+	world.live(comp);
 
-	// Particles glow as they speed up.
+	// Particles glow as they speed up (900 px/s is fully hot).
 	for (const p of cloud) {
-		const heat = Array.from({ length: DURATION }, (_, f) =>
-			Math.min(1, p.body.speed.get({ frame: f, fps: FPS } as never) / 900),
-		);
 		p.layer.animate(
-			LayerAnimation.create().colorSignal(
-				"fillColor",
-				Signal.fromArray(heat, FPS),
-				{
-					colorA: p.color,
-					colorB: HOT,
-				},
-			),
+			LayerAnimation.create().colorSignal("fillColor", p.body.speed, {
+				colorA: p.color,
+				colorB: HOT,
+				multiplier: 1 / 900,
+			}),
 		);
 	}
 
@@ -292,11 +309,9 @@ export async function buildFilm(): Promise<Composition> {
 		),
 	);
 
-	for (const w of words) {
-		const hit = w.body.collisions[0];
-		console.log(
-			`${w.layer.id}: first contact at frame ${hit?.frame ?? "-"} (${hit?.with.type ?? "none"})`,
-		);
-	}
-	return comp;
+	return {
+		comp,
+		world,
+		cards: words.map((w) => ({ id: String(w.layer.id), body: w.body })),
+	};
 }

@@ -188,6 +188,7 @@ import {
 } from "@framefields/tensor-webgpu";
 import { inputStore, mediaDecoderCache } from "@framefields/webgpu-renderers";
 import { buildChart, type ChartOptions } from "./chart.js";
+import { ClipVision, type ClipVisionOptions } from "./clip-vision.js";
 import {
 	ApplyLUT,
 	type ApplyLUTProps,
@@ -240,11 +241,6 @@ import {
 	Vision,
 	type VisionProps,
 } from "./effects/index.js";
-import {
-	type PersonTrack,
-	type TrackPersonOptions,
-	trackPerson,
-} from "./person-track.js";
 import {
 	type FrameGridOptions,
 	HeadlessMediaRenderer,
@@ -670,6 +666,13 @@ export {
 	DEFAULT_CHART_COLORS,
 } from "./chart.js";
 export {
+	ClipVision,
+	type ClipVisionOptions,
+	type PersonPlacement,
+	PersonTrack,
+	type PoseKeypointName,
+} from "./clip-vision.js";
+export {
 	ApplyLUT,
 	type ApplyLUTProps,
 	AudioCompressor,
@@ -790,13 +793,6 @@ export {
 	type LightingRig,
 	type LightingRigOptions,
 } from "./lighting.js";
-export {
-	PersonTrack,
-	type PersonTrackJSON,
-	type PersonTrackPlacement,
-	type PoseKeypointName,
-	type TrackPersonOptions,
-} from "./person-track.js";
 export {
 	type Body2DOptions,
 	type Body3DOptions,
@@ -1107,6 +1103,9 @@ export class Composition {
 	public audioTracks: MediaNode[] = [];
 	public signals: Record<string, unknown> = {};
 	private _frameHooks: Array<(ctx: FrameContext) => void> = [];
+	private _prepareHooks: Array<(ctx: FrameContext) => Promise<void> | void> =
+		[];
+	private readonly _clipVision = new Map<string, ClipVision>();
 	private _visionConfig?: VisionProps;
 	private _visionBundle?: VisionBundle;
 	private _effects: unknown[] = [];
@@ -1145,22 +1144,27 @@ export class Composition {
 	}
 
 	/**
-	 * Tracks one person through a clip before rendering: smoothed pose
-	 * keypoints and a soft silhouette per frame (see {@link PersonTrack}).
-	 * Use it to drive physics with a performer (limbs as kinematic bodies,
-	 * the silhouette as a force field) or to keyframe things to a body.
-	 * Analysis takes a few hundred ms per frame; cache it with `toJSON()` /
-	 * `PersonTrack.fromJSON()`.
+	 * Vision for a clip, analysed per frame on demand and shared by everything
+	 * that reads it (see {@link ClipVision}): `comp.vision("dancer.mp4").person`
+	 * gives pose keypoints and a silhouette at any frame. Each frame is
+	 * analysed just before it renders, so nothing runs up front. Results
+	 * persist on disk in Node. The same clip and options return one instance.
 	 */
-	public async trackPerson(
-		source: string,
-		options: TrackPersonOptions = {},
-	): Promise<PersonTrack> {
-		const fps = options.fps ?? this.fps;
-		const durationMs = this.durationMs ?? (await this.computeDuration());
-		const totalFrames =
-			options.totalFrames ?? Math.max(1, Math.round((durationMs / 1000) * fps));
-		return trackPerson(source, { ...options, fps, totalFrames });
+	public vision(source: string, options: ClipVisionOptions = {}): ClipVision {
+		const key = `${source}\u0000${JSON.stringify(options)}`;
+		let clip = this._clipVision.get(key);
+		if (!clip) {
+			clip = new ClipVision(source, this.fps, options);
+			this._clipVision.set(key, clip);
+		}
+		return clip;
+	}
+
+	/** @internal Analyses every `comp.vision` clip for a composition frame. */
+	public async prepareVision(frame: number): Promise<void> {
+		await Promise.all(
+			[...this._clipVision.values()].map((clip) => clip.ready(frame)),
+		);
 	}
 
 	/**
@@ -1253,10 +1257,37 @@ export class Composition {
 		return this;
 	}
 
-	public notifyFrame(ctx: FrameContext): void {
+	/**
+	 * Async work a frame needs before it is evaluated (vision, a live physics
+	 * world). Every render path awaits these, in order, before drawing the
+	 * frame; they may run more than once per frame, so keep them idempotent.
+	 */
+	public onPrepareFrame(
+		callback: (ctx: FrameContext) => Promise<void> | void,
+	): this {
+		this._prepareHooks.push(callback);
+		return this;
+	}
+
+	public notifyFrame(ctx: FrameContext): Promise<void> | undefined {
 		for (const hook of this._frameHooks) {
 			hook(ctx);
 		}
+		if (this._clipVision.size === 0 && this._prepareHooks.length === 0) {
+			return undefined;
+		}
+		return (async () => {
+			await this.prepareVision(ctx.frame);
+			for (const hook of this._prepareHooks) await hook(ctx);
+		})();
+	}
+
+	private hasFrameHooks(): boolean {
+		return (
+			this._frameHooks.length > 0 ||
+			this._prepareHooks.length > 0 ||
+			this._clipVision.size > 0
+		);
 	}
 
 	constructor(options: CompositionOptions) {
@@ -1789,7 +1820,7 @@ export class Composition {
 			signals: this.signals,
 			...(this._effects.length > 0 && { effects: this._effects }),
 			...(this._visionConfig && { vision: this._visionConfig }),
-			...(this._frameHooks.length > 0 && {
+			...(this.hasFrameHooks() && {
 				onRequestFrame: (ctx: FrameContext) => this.notifyFrame(ctx),
 			}),
 		} as unknown as CompositorProgramConfig;
@@ -1843,13 +1874,13 @@ export class Composition {
 			renderer?: HeadlessMediaRenderer;
 		} = {},
 	): Promise<Buffer> {
-		if (this._frameHooks.length > 0) {
+		if (this.hasFrameHooks()) {
 			const targetFrame =
 				options.frame ??
 				(options.atMs !== undefined
 					? Math.round((options.atMs / 1000) * this.fps)
 					: 0);
-			this.notifyFrame({
+			await this.notifyFrame({
 				frame: targetFrame,
 				fps: this.fps,
 				time: this.fps > 0 ? targetFrame / this.fps : 0,

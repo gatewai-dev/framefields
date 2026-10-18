@@ -236,16 +236,20 @@ const vision = comp.withVision({ classes: ["person"] });
 layer.blurRegion(vision.objects.byCategory("person"), { strength: 30 });
 ```
 
-### 5. Track a Performer Before Rendering
-Render-time vision signals lag a frame and only exist while rendering. For anything that must know the motion up front (physics, keyframes, layout), track the person first:
+### 5. Clip Vision: Results Before the Frame Renders
+`withVision` analyses a layer's *previous* rendered frame, so its results trail by a frame and exist only while rendering. When something must know the motion *at* the frame — physics, layout, keyframes — use `comp.vision`, which analyses the clip's own frames on demand:
 ```typescript
-const person = (await comp.trackPerson("assets/dancer.mp4")).place({ width: W, height: H, fit: "cover" });
-person.point("rightWrist", 48);          // { x, y, visibility } in composition px, smoothed, gaps filled
-person.signals("nose").x;                // per-frame signal for .signal("x", …)
-person.sample(48, x, y);                 // silhouette alpha + inward gradient (dress and held things included)
-writeFileSync("dancer-track.json", JSON.stringify(person.toJSON()));   // reuse with PersonTrack.fromJSON
+const dancer = comp.vision("assets/dancer.mp4", { startFrame: 0 });   // pose + silhouette (person)
+const person = dancer.person.place({ width: W, height: H, fit: "cover" });
+person.point("rightWrist", 48);   // { x, y, visibility } in composition px, smoothed over ±2 frames
+person.signals("nose").x;          // a signal for .signal("x", …)
+person.sample(48, x, y);           // silhouette alpha + inward gradient (dress and held things included)
+await dancer.ready(0);             // analyse a frame (or a range: ready(0, 120)) to read it at build time
 ```
-Options: `pose`, `mask` (both default true), `maskCell` (silhouette grid, default 8 px), `smoothing` (frames, default 2), `variant`. See *Physics* in `framefields-compose` for limbs as colliders and the silhouette as a force field.
+- The composition analyses each frame's clips just before drawing it, in every render path and the preview, and a live physics world (`world.live(comp)`) before stepping. Nothing runs up front; a preview starts at once.
+- Results persist in Node (`~/.cache/framefields/vision`, or `$FRAMEFIELDS_VISION_CACHE_DIR`; `cacheDir: false` to opt out), keyed by the file and settings, so later runs and renders after a preview are instant.
+- Options: `startFrame` / `trimStartSec` (where the clip plays), `pose`, `mask`, `maskCell` (silhouette grid, default 8 px), `smoothing` (frames, default 2), `variant`. When the person is lost the last pose is held for up to a second.
+- Analysis costs about 200 ms per frame on CPU (segmentation dominates); on WebGPU it is faster. In a live preview the playhead waits for frames not analysed yet.
 
 ### 6. Analyze Before Authoring
 One-shot, ffmpeg-free report of what is in a clip (tracks, classes, mask coverage):

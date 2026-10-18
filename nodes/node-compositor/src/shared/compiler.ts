@@ -111,6 +111,37 @@ export interface CompileResult {
 	targetsById: Record<string, LayerStub>;
 	/** Node ops the timeline was compiled from (tree order). */
 	nodes: CompilerNodeVM[];
+	/**
+	 * Signal-driven tracks, evaluated at draw time instead of baked into the
+	 * timeline: a signal may be filled while rendering (a live physics world,
+	 * on-demand vision), so its value is read when its frame is drawn.
+	 */
+	live: LiveTrack[];
+	signals?: Record<string, any>;
+}
+
+interface LiveTrack {
+	stub: Record<string, any>;
+	track: AnimationTrack;
+	startFrame: number;
+	endFrame: number;
+}
+
+/** Seeks the compiled timeline to a frame and applies its live signal tracks. */
+export function seekTimeline(
+	result: CompileResult,
+	frame: number,
+	fps: number,
+): void {
+	result.tl.seek(frame / fps);
+	for (const live of result.live) {
+		const f = Math.max(live.startFrame, Math.min(live.endFrame, frame));
+		live.stub[live.track.prop] = evaluateTrackAtFrame(live.track, f, fps, {
+			startFrame: live.startFrame,
+			baseValues: live.stub,
+			signals: result.signals,
+		});
+	}
 }
 
 // L2: compiled timelines and their LayerStubs are cached per cacheKey and
@@ -341,9 +372,23 @@ function compileTrackToTimeline(
 	fps: number,
 	durationFrames: number,
 	signals?: Record<string, any>,
+	live?: LiveTrack[],
 ): { dropped: number; maxAuthoredFrame: number } {
 	const prop = track.prop;
 	const source = track.source ?? { type: "keyframe" };
+
+	if (source.type === "signal" && live && !track.repeat) {
+		const endF = Number.isFinite(durationFrames)
+			? durationFrames
+			: Math.round(fps * 5);
+		stub[prop] = evaluateTrackAtFrame(track, startFrame, fps, {
+			startFrame,
+			baseValues: stub,
+			signals,
+		});
+		live.push({ stub, track, startFrame, endFrame: startFrame + endF });
+		return { dropped: 0, maxAuthoredFrame: 0 };
+	}
 
 	if (source.type !== "keyframe") {
 		const endF = Number.isFinite(durationFrames)
@@ -853,6 +898,7 @@ export function compileTimeline(
 	// them here and warn ONCE per compiled cache key (per-frame seeks hit the
 	// cache, so this is naturally once per render/preview session).
 	const truncations: TruncationInfo[] = [];
+	const live: LiveTrack[] = [];
 
 	nodeOps.forEach((vm) => {
 		const lop = (vm?.operation || {}) as any;
@@ -894,6 +940,7 @@ export function compileTimeline(
 				fps,
 				durationFrames,
 				signals,
+				live,
 			);
 			if (dropped > 0) {
 				truncations.push({
@@ -929,6 +976,8 @@ export function compileTimeline(
 		tl,
 		targetsById,
 		nodes: nodeOps,
+		live,
+		signals,
 	};
 
 	setCachedTimeline(cacheKey, compileResult);

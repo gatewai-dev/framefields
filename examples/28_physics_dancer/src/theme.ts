@@ -11,8 +11,6 @@ export const DANCER = path.resolve(
 	HERE,
 	"../../19_framefields_film/assets/dancer.mp4",
 );
-/** Pose + silhouette analysis of the clip, cached after the first run. */
-export const TRACK_CACHE = path.join(OUTPUT, "dancer-track.json");
 
 export const W = 1920;
 export const H = 1080;

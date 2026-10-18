@@ -116,14 +116,18 @@ export interface PhysicsBackend {
 type Rapier2D = typeof RAPIER2D;
 type Rapier3D = typeof RAPIER3D;
 
-// Variable specifiers keep bundlers from inlining the optional WASM packages.
+// Literal specifiers: the preview's browser bundle splits each engine into a
+// chunk loaded on first use; Node keeps them as external optional packages.
 const RAPIER_2D = "@dimforge/rapier2d-deterministic-compat";
 const RAPIER_3D = "@dimforge/rapier3d-deterministic-compat";
 
-async function loadRapier<T>(specifier: string): Promise<T> {
+async function loadRapier<T>(
+	specifier: string,
+	load: () => Promise<unknown>,
+): Promise<T> {
 	let mod: { default?: T } & T;
 	try {
-		mod = (await import(/* @vite-ignore */ specifier)) as { default?: T } & T;
+		mod = (await load()) as { default?: T } & T;
 	} catch (error) {
 		throw new Error(
 			`Physics needs the optional dependency "${specifier}". Install it with \`npm i ${specifier}\`.`,
@@ -141,7 +145,10 @@ let rapier3d: Promise<Rapier3D> | undefined;
 /** Loads and initializes Rapier once per process; 2D and 3D are separate modules. */
 export async function rapierBackend(dims: 2 | 3): Promise<PhysicsBackend> {
 	if (dims === 2) {
-		rapier2d ??= loadRapier<Rapier2D>(RAPIER_2D);
+		rapier2d ??= loadRapier<Rapier2D>(
+			RAPIER_2D,
+			() => import("@dimforge/rapier2d-deterministic-compat"),
+		);
 		const R = await rapier2d;
 		return {
 			createWorld2D: (gravity) => new RapierWorld2D(R, gravity),
@@ -150,7 +157,10 @@ export async function rapierBackend(dims: 2 | 3): Promise<PhysicsBackend> {
 			},
 		};
 	}
-	rapier3d ??= loadRapier<Rapier3D>(RAPIER_3D);
+	rapier3d ??= loadRapier<Rapier3D>(
+		RAPIER_3D,
+		() => import("@dimforge/rapier3d-deterministic-compat"),
+	);
 	const R = await rapier3d;
 	return {
 		createWorld2D: () => {

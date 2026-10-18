@@ -263,7 +263,90 @@ describe("Physics.world2d", () => {
 		);
 		const b = world.body(card("a", 0, 0));
 		void b.y;
-		expect(() => world.body(card("b", 0, 0))).toThrow(/already simulated/);
+		expect(() => world.body(card("b", 0, 0))).toThrow(/already started/);
+	});
+});
+
+describe("live worlds", () => {
+	/** A stand-in composition: collects prepare hooks, records which frames were prepared. */
+	function host() {
+		const hooks: Array<(ctx: { frame: number }) => Promise<void> | void> = [];
+		const prepared: number[] = [];
+		return {
+			prepared,
+			onPrepareFrame(cb: (ctx: { frame: number }) => Promise<void> | void) {
+				hooks.push(cb);
+			},
+			async prepareVision(frame: number) {
+				prepared.push(frame);
+			},
+			async render(frame: number) {
+				for (const h of hooks) await h({ frame });
+			},
+		};
+	}
+
+	async function scene() {
+		const world = await Physics.world2d({ fps: FPS, frames: 60 });
+		world.walls({ width: 1920, height: 1080 });
+		const layers = Array.from({ length: 6 }, (_, i) =>
+			card(`c${i}`, 300 + i * 200, -100 - i * 150, { rotation: i * 11 }),
+		);
+		const bodies = layers.map((l, i) => world.body(l, { startFrame: i * 3 }));
+		world.force(bodies[0], { x: (f) => (f > 20 ? 900 : 0) });
+		return { world, layers, bodies };
+	}
+
+	it("steps on demand and matches simulate() exactly, in any request order", async () => {
+		const batch = await scene();
+		batch.world.simulate();
+
+		const live = await scene();
+		const comp = host();
+		live.world.live(comp);
+		// Layers are bound before anything is simulated.
+		expect(tracksOf(live.layers[0]).map((t) => t.source?.type)).toEqual([
+			"signal",
+			"signal",
+			"signal",
+		]);
+		await comp.render(40);
+		await comp.render(10); // scrubbing back: already simulated
+		await comp.render(59);
+		expect(comp.prepared).toEqual(Array.from({ length: 60 }, (_, f) => f));
+
+		for (let i = 0; i < batch.bodies.length; i++) {
+			for (const f of [0, 10, 33, 59]) {
+				expect(at(live.bodies[i].x, f)).toBe(at(batch.bodies[i].x, f));
+				expect(at(live.bodies[i].rotation, f)).toBe(
+					at(batch.bodies[i].rotation, f),
+				);
+				expect(at(live.bodies[i].impact, f)).toBe(
+					at(batch.bodies[i].impact, f),
+				);
+			}
+		}
+		expect(live.world.collisions.length).toBe(batch.world.collisions.length);
+	});
+
+	it("holds the start pose for frames not simulated yet", async () => {
+		const { world, bodies } = await scene();
+		const comp = host();
+		world.live(comp);
+		await comp.render(5);
+		expect(at(bodies[0].y, 30)).toBe(-100);
+		expect(at(bodies[0].y, 5)).toBeGreaterThan(-100);
+	});
+
+	it("waits for extra inputs before each frame and locks the world", async () => {
+		const { world } = await scene();
+		const comp = host();
+		const seen: number[] = [];
+		world.live(comp, { inputs: [{ ready: async (f) => void seen.push(f) }] });
+		await comp.render(3);
+		expect(seen).toEqual([0, 1, 2, 3]);
+		expect(() => world.simulate()).toThrow(/live/);
+		expect(() => world.body(card("late", 0, 0))).toThrow(/already started/);
 	});
 });
 

@@ -432,6 +432,25 @@ importers:
         specifier: ^5.8.3
         version: 5.9.3
 
+  examples/29_capabilities_reel:
+    dependencies:
+      framefields:
+        specifier: workspace:*
+        version: link:../../packages/framefields
+    devDependencies:
+      '@framefields/tsconfig':
+        specifier: workspace:*
+        version: link:../../packages/tsconfig
+      '@types/node':
+        specifier: ^24.1.0
+        version: 24.10.14
+      tsx:
+        specifier: ^4.20.3
+        version: 4.21.0
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+
   nodes/node-apply-lut:
     dependencies:
       '@framefields/core':

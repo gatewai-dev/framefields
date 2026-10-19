@@ -1,0 +1,25 @@
+{
+	"name": "@framefields/example-29-capabilities-reel",
+	"version": "2.3.1",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"assets": "tsx src/fetch-assets.ts",
+		"score": "tsx src/score.ts",
+		"probe": "tsx src/probe.ts",
+		"probe:nodes": "tsx src/nodes-probe.ts",
+		"render": "tsx src/render.ts",
+		"render:src": "tsx --tsconfig tsconfig.dev.json --conditions=development src/render.ts",
+		"typecheck": "tsc --noEmit -p .",
+		"render:segments": "tsx src/render-segments.ts"
+	},
+	"dependencies": {
+		"framefields": "workspace:*"
+	},
+	"devDependencies": {
+		"@framefields/tsconfig": "workspace:*",
+		"@types/node": "^24.1.0",
+		"tsx": "^4.20.3",
+		"typescript": "^5.8.3"
+	}
+}

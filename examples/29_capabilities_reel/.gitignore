@@ -1,0 +1,8 @@
+# Downloaded third-party assets: `pnpm assets` fetches them (src/fetch-assets.ts lists sources and licences).
+assets/emoji/
+assets/lottie/
+assets/svg/
+# Synthesized by `pnpm score`.
+assets/stems/
+# Freesound CC0 effects, fetched by `pnpm assets`.
+assets/sfx/

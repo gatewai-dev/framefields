@@ -1,5 +1,7 @@
 # @framefields/node-audio-parametric-eq
 
+## 2.3.1
+
 ## 2.3.0
 
 ## 2.2.0

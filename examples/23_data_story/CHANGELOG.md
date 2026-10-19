@@ -1,5 +1,7 @@
 # @framefields/example-23-data-story
 
+## 2.3.1
+
 ## 2.3.0
 
 ## 2.2.0

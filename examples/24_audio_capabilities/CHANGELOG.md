@@ -1,5 +1,7 @@
 # @framefields/example-24-audio-capabilities
 
+## 2.3.1
+
 ## 2.3.0
 
 ## 2.2.0

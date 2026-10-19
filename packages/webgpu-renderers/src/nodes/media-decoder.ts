@@ -490,9 +490,45 @@ class MediaDecoderCache {
 	private videoDecoders = new Map<string, VideoDecoder>();
 	private audioDecoders = new Map<string, AudioDecoder>();
 	private lastAccessed = new Map<string, number>();
+	/** Rendered frames so far (see `tick`), and the frame each decoder was last used on. */
+	private ticks = 0;
+	private lastTick = new Map<string, number>();
 
 	private touchKey(key: string) {
 		this.lastAccessed.set(key, Date.now());
+		this.lastTick.set(key, this.ticks);
+	}
+
+	private dropKey(key: string): void {
+		const videoDecoder = this.videoDecoders.get(key);
+		if (videoDecoder) {
+			try {
+				videoDecoder.destroy();
+			} catch (_) {}
+			this.videoDecoders.delete(key);
+		}
+		const audioDecoder = this.audioDecoders.get(key);
+		if (audioDecoder) {
+			try {
+				audioDecoder.destroy();
+			} catch (_) {}
+			this.audioDecoders.delete(key);
+		}
+		this.lastAccessed.delete(key);
+		this.lastTick.delete(key);
+	}
+
+	/**
+	 * Called once per rendered frame by headless renders. A decoder holds a
+	 * full-frame RGBA buffer and native decoder state, so one that no layer has
+	 * drawn for `idleFrames` frames (its clip ended, or a still render used a
+	 * one-off id) is released instead of waiting for the wall-clock prune.
+	 */
+	tick(idleFrames = 120): void {
+		this.ticks++;
+		for (const [key, last] of this.lastTick) {
+			if (this.ticks - last > idleFrames) this.dropKey(key);
+		}
 	}
 
 	destroy(): void {
@@ -510,24 +546,18 @@ class MediaDecoderCache {
 		}
 		this.audioDecoders.clear();
 		this.lastAccessed.clear();
+		this.lastTick.clear();
+	}
+
+	/** Decoders currently open (for tests and diagnostics). */
+	get size(): number {
+		return this.videoDecoders.size + this.audioDecoders.size;
 	}
 
 	private prune(maxAgeMs = 300000) {
 		const now = Date.now();
 		for (const [key, lastTime] of this.lastAccessed.entries()) {
-			if (now - lastTime > maxAgeMs) {
-				const videoDecoder = this.videoDecoders.get(key);
-				if (videoDecoder) {
-					videoDecoder.destroy();
-					this.videoDecoders.delete(key);
-				}
-				const audioDecoder = this.audioDecoders.get(key);
-				if (audioDecoder) {
-					audioDecoder.destroy();
-					this.audioDecoders.delete(key);
-				}
-				this.lastAccessed.delete(key);
-			}
+			if (now - lastTime > maxAgeMs) this.dropKey(key);
 		}
 	}
 
@@ -556,19 +586,9 @@ class MediaDecoderCache {
 	}
 
 	clearNode(nodeId: string) {
-		for (const [key, decoder] of this.videoDecoders) {
-			if (key.includes(nodeId)) {
-				decoder.destroy();
-				this.videoDecoders.delete(key);
-				this.lastAccessed.delete(key);
-			}
-		}
-		for (const [key, decoder] of this.audioDecoders) {
-			if (key.includes(nodeId)) {
-				decoder.destroy();
-				this.audioDecoders.delete(key);
-				this.lastAccessed.delete(key);
-			}
+		const keys = [...this.videoDecoders.keys(), ...this.audioDecoders.keys()];
+		for (const key of keys) {
+			if (key.includes(nodeId)) this.dropKey(key);
 		}
 	}
 }

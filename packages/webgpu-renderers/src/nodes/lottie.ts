@@ -24,11 +24,17 @@ function decodeBase64(base64: string): string {
 	return atob(base64);
 }
 
-function extractFontFamiliesFromLottie(lottieJson: any): string[] {
+function extractFontFamiliesFromLottie(
+	lottieJson: Record<string, unknown> | null | undefined,
+): string[] {
 	const fonts = new Set<string>();
 
 	// 1. Extract from fonts.list (both fName and fFamily)
-	const fontsList = lottieJson?.fonts?.list;
+	const fontsList = (
+		lottieJson?.fonts as
+			| { list?: Array<{ fName?: string; fFamily?: string }> }
+			| undefined
+	)?.list;
 	if (Array.isArray(fontsList)) {
 		for (const entry of fontsList) {
 			if (entry?.fName && typeof entry.fName === "string") {
@@ -45,22 +51,28 @@ function extractFontFamiliesFromLottie(lottieJson: any): string[] {
 	if (!Array.isArray(layers)) return [...fonts];
 
 	for (const layer of layers) {
-		if (layer?.ty !== 5) continue; // ty: 5 is Text Layer
+		const l = layer as {
+			ty?: number;
+			t?: { d?: { k?: unknown }; k?: unknown };
+		};
+		if (l?.ty !== 5) continue; // ty: 5 is Text Layer
 
-		const k = layer?.t?.d?.k ?? layer?.t?.k;
+		const k = l?.t?.d?.k ?? l?.t?.k;
 		if (!k) continue;
 
 		const kArr = Array.isArray(k) ? k : [k];
 		for (const kf of kArr) {
 			// Handle keyframe wrappers (s, e) AND direct document objects (kf)
-			const possibleDocs = [kf?.s, kf?.e, kf].filter(Boolean);
+			const kfObj = kf as { s?: unknown; e?: unknown } | undefined;
+			const possibleDocs = [kfObj?.s, kfObj?.e, kf].filter(Boolean);
 
 			for (const doc of possibleDocs) {
 				// Handle both single document objects and arrays of documents
 				const docArr = Array.isArray(doc) ? doc : [doc];
 				for (const d of docArr) {
-					if (d?.f && typeof d.f === "string") {
-						fonts.add(d.f);
+					const docItem = d as { f?: string } | undefined;
+					if (docItem?.f && typeof docItem.f === "string") {
+						fonts.add(docItem.f);
 					}
 				}
 			}
@@ -110,7 +122,7 @@ async function registerLottieFont(family: string): Promise<void> {
 	if (isBrowser) {
 		try {
 			await localFontManager.loadFont(family, fontUrl);
-		} catch (err) {
+		} catch (_err) {
 			// Fallback to original family name
 			fontUrl = GetFontAssetUrl(family);
 			try {
@@ -193,12 +205,59 @@ async function registerLottieFont(family: string): Promise<void> {
 	}
 }
 
-class LottieInstance {
+class HeadlessLottieCanvas {
+	public width: number;
+	public height: number;
+	public style: Record<string, unknown> = {};
+
+	constructor(width: number, height: number) {
+		this.width = width;
+		this.height = height;
+	}
+
+	addEventListener(): void {}
+	removeEventListener(): void {}
+	getContext(contextId: string): unknown {
+		if (contextId === "2d") {
+			return {
+				fillRect(): void {},
+				clearRect(): void {},
+				putImageData(): void {},
+				createImageData(width: number, height: number) {
+					return {
+						width,
+						height,
+						data: new Uint8ClampedArray(width * height * 4),
+					};
+				},
+				getImageData(_sx: number, _sy: number, sw: number, sh: number) {
+					return {
+						width: sw,
+						height: sh,
+						data: new Uint8ClampedArray(sw * sh * 4),
+					};
+				},
+			};
+		}
+		return null;
+	}
+	getBoundingClientRect(): {
+		left: number;
+		top: number;
+		width: number;
+		height: number;
+	} {
+		return { left: 0, top: 0, width: this.width, height: this.height };
+	}
+}
+
+export class LottieInstance {
 	private dotLottie: DotLottie;
 	private canvas: OffscreenCanvas;
 	private loadPromise: Promise<void>;
 	private _width: number;
 	private _height: number;
+	private uploadBuffer: Uint8Array | null = null;
 
 	constructor(
 		src: string,
@@ -208,7 +267,16 @@ class LottieInstance {
 	) {
 		this._width = width;
 		this._height = height;
-		this.canvas = new OffscreenCanvas(width, height);
+		const isBrowser =
+			typeof window !== "undefined" &&
+			typeof document !== "undefined" &&
+			typeof document.createElement === "function" &&
+			typeof document.getElementById === "function";
+
+		this.canvas = isBrowser
+			? new OffscreenCanvas(width, height)
+			: (new HeadlessLottieCanvas(width, height) as unknown as OffscreenCanvas);
+
 		this.dotLottie = new DotLottie({
 			canvas: this.canvas,
 			...(data ? { data } : { src }),
@@ -264,6 +332,45 @@ class LottieInstance {
 		await this.loadPromise;
 	}
 
+	renderPixels(
+		frame: number,
+		fit?: "contain" | "cover" | "fill",
+	): Uint8Array | null {
+		const loopedFrame = Math.floor(frame) % Math.max(1, this.totalFrames);
+		this.dotLottie.setLayout({
+			align: [0.5, 0.5],
+			fit: (fit || "contain") as Fit,
+		});
+		this.dotLottie.resize();
+		this.dotLottie.setFrame(loopedFrame);
+		try {
+			(this.dotLottie as { render?: () => void }).render?.();
+		} catch (_) {}
+
+		const core = (
+			this.dotLottie as unknown as {
+				_dotLottieCore?: { get_pixel_buffer: () => Uint8Array };
+			}
+		)._dotLottieCore;
+
+		if (core && typeof core.get_pixel_buffer === "function") {
+			const buf = core.get_pixel_buffer();
+			const expectedLength = this._width * this._height * 4;
+			if (buf && buf.byteLength === expectedLength) {
+				if (
+					!this.uploadBuffer ||
+					this.uploadBuffer.byteLength !== expectedLength
+				) {
+					this.uploadBuffer = new Uint8Array(expectedLength);
+				}
+				this.uploadBuffer.set(buf);
+				return premultiplyPixels(this.uploadBuffer);
+			}
+		}
+
+		return null;
+	}
+
 	renderFrame(
 		frame: number,
 		fit?: "contain" | "cover" | "fill",
@@ -285,6 +392,7 @@ class LottieInstance {
 		try {
 			this.dotLottie.destroy();
 		} catch (_) {}
+		this.uploadBuffer = null;
 	}
 }
 
@@ -343,13 +451,8 @@ async function ensureWasmConfigured(): Promise<void> {
 
 	if (!isBrowser) {
 		if (typeof globalThis.OffscreenCanvas === "undefined") {
-			try {
-				const { Canvas } = await import(
-					/* webpackIgnore: true */ "skia-canvas"
-				);
-				(globalThis as unknown as Record<string, unknown>).OffscreenCanvas =
-					Canvas;
-			} catch {}
+			(globalThis as unknown as Record<string, unknown>).OffscreenCanvas =
+				HeadlessLottieCanvas;
 		}
 		polyfillHeadlessDOM();
 		// Add Response instanceof patch to handle cross-realm ESM loader issues in worker threads
@@ -432,7 +535,7 @@ class LottieLoader {
 				const resolvedSrc = src;
 				let lottieData: string | ArrayBuffer | undefined;
 				try {
-					let lottieJson: any = null;
+					let lottieJson: Record<string, unknown> | null = null;
 					const isNode =
 						typeof process !== "undefined" && Boolean(process.versions?.node);
 					const isRemote =
@@ -465,7 +568,9 @@ class LottieLoader {
 							filePath = pathModule.resolve(process.cwd(), filePath);
 						}
 						try {
-							const fs = await import(/* webpackIgnore: true */ "fs/promises");
+							const fs = await import(
+								/* webpackIgnore: true */ "node:fs/promises"
+							);
 							if (filePath.endsWith(".json")) {
 								const jsonContent = await fs.readFile(filePath, "utf-8");
 								lottieJson = JSON.parse(jsonContent);
@@ -556,8 +661,6 @@ export async function drawLottieNode(
 	let tex = textureCache.acquire(cacheKey);
 
 	if (!tex) {
-		const canvas = instance.renderFrame(loopedFrame, fitMode);
-
 		tex = ctx.device.createTexture({
 			size: [instance.width, instance.height],
 			format: "rgba8unorm",
@@ -567,71 +670,41 @@ export async function drawLottieNode(
 				GPUTextureUsage.RENDER_ATTACHMENT,
 		});
 
-		try {
-			ctx.device.queue.copyExternalImageToTexture(
-				{ source: canvas as unknown as GPUImageCopyExternalImageSource },
-				{ texture: tex, premultipliedAlpha: true },
+		const pixelBuffer = instance.renderPixels(loopedFrame, fitMode);
+		if (pixelBuffer) {
+			ctx.device.queue.writeTexture(
+				{ texture: tex },
+				pixelBuffer,
+				{ bytesPerRow: instance.width * 4 },
 				[instance.width, instance.height],
 			);
-		} catch {
-			const c2d = canvas.getContext("2d");
-			if (c2d) {
-				const imgData = (
-					c2d as unknown as OffscreenCanvasRenderingContext2D
-				).getImageData(0, 0, instance.width, instance.height);
-				// getImageData returns straight alpha.
-				const pixelBuffer = premultiplyPixels(
-					new Uint8Array(
-						imgData.data.buffer,
-						imgData.data.byteOffset,
-						imgData.data.byteLength,
-					),
-				);
-				ctx.device.queue.writeTexture(
-					{ texture: tex },
-					pixelBuffer,
-					{ bytesPerRow: instance.width * 4 },
+		} else {
+			const canvas = instance.renderFrame(loopedFrame, fitMode);
+			try {
+				ctx.device.queue.copyExternalImageToTexture(
+					{ source: canvas as unknown as GPUImageCopyExternalImageSource },
+					{ texture: tex, premultipliedAlpha: true },
 					[instance.width, instance.height],
 				);
-			} else {
-				const gl =
-					canvas.getContext("webgl") ||
-					canvas.getContext(
-						"experimental-webgl" as unknown as OffscreenRenderingContextId,
+			} catch {
+				const c2d = canvas.getContext("2d");
+				if (c2d) {
+					const imgData = (
+						c2d as unknown as OffscreenCanvasRenderingContext2D
+					).getImageData(0, 0, instance.width, instance.height);
+					// getImageData returns straight alpha.
+					const fallbackBuffer = premultiplyPixels(
+						new Uint8Array(
+							imgData.data.buffer,
+							imgData.data.byteOffset,
+							imgData.data.byteLength,
+						),
 					);
-				if (gl) {
-					const pixels = new Uint8Array(instance.width * instance.height * 4);
-					(gl as any).readPixels(
-						0,
-						0,
-						instance.width,
-						instance.height,
-						(gl as any).RGBA,
-						(gl as any).UNSIGNED_BYTE,
-						pixels,
-					);
-
-					// WebGL pixels are flipped vertically, so flip them back for WebGPU/2D compatibility
-					const flipped = new Uint8Array(pixels.length);
-					const bytesPerRow = instance.width * 4;
-					for (let y = 0; y < instance.height; y++) {
-						const srcOffset = y * bytesPerRow;
-						const dstOffset = (instance.height - 1 - y) * bytesPerRow;
-						flipped.set(
-							pixels.subarray(srcOffset, srcOffset + bytesPerRow),
-							dstOffset,
-						);
-					}
-
 					ctx.device.queue.writeTexture(
 						{ texture: tex },
-						flipped,
-						{ bytesPerRow: bytesPerRow },
+						fallbackBuffer,
+						{ bytesPerRow: instance.width * 4 },
 						[instance.width, instance.height],
-					);
-				} else {
-					console.error(
-						"[LottieRenderer] Could not acquire 2D or WebGL context to read pixels.",
 					);
 				}
 			}

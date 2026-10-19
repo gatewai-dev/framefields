@@ -327,6 +327,7 @@ if (parentPort) {
 							);
 						}
 						compositionStateStore.setState(renderId, i, fps, true);
+						mediaDecoderCache.tick();
 
 						const encoder = device.createCommandEncoder();
 						const targetView = surface.getCurrentTextureView();

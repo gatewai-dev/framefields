@@ -361,6 +361,19 @@ class RenderSemaphore {
 
 export const renderSemaphore = new RenderSemaphore(MAX_CONCURRENT_RENDERS);
 
+/**
+ * Ids for still renders without a caller id. Media caches (video decoders,
+ * last-good frames) are keyed by render id, so a fresh id per still would
+ * open a new decoder for every frame of a frame-by-frame export. Stills
+ * borrow an idle id instead: consecutive stills reuse it (and its decoders);
+ * concurrent stills get distinct ones.
+ */
+const idleStillIds: string[] = [];
+const takeStillId = (): string => idleStillIds.pop() ?? `img-${randomUUID()}`;
+const returnStillId = (id: string): void => {
+	idleStillIds.push(id);
+};
+
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
 function toEvenDimension(n: number): number {
@@ -614,7 +627,8 @@ export class HeadlessWebGPURenderer {
 		// A caller rendering consecutive frames (e.g. a scrubbing preview) passes a
 		// stable id so compiled timelines are reused across frames, as renderVideo
 		// does. Never render two frames with the same id concurrently.
-		const renderId = options.renderId ?? `img-${randomUUID()}`;
+		const pooledId = options.renderId ? undefined : takeStillId();
+		const renderId = options.renderId ?? (pooledId as string);
 
 		rendererLogger.debug(
 			{ renderId, frame, ...renderSemaphore.stats },
@@ -743,12 +757,14 @@ export class HeadlessWebGPURenderer {
 			try {
 				shaderStore.clear(renderId);
 			} catch {}
-			// NOTE: do NOT mediaDecoderCache.destroy() or device.destroy()/reset here.
-			// The mediabunny Input (native demuxer over file://) can only be created
-			// ONCE per URL in a process — a 2nd Input fails format detection with
-			// "UnsupportedInputFormatError". renderImage is called repeatedly for
-			// multi-frame exports, so keep the decoder (and the singleton WebGPU
-			// device) alive to reuse + seek across frames — mirroring renderVideo.
+			// Keep this render's decoders (and the singleton WebGPU device) alive:
+			// renderImage is called repeatedly for multi-frame exports, and the next
+			// still borrows the same id, so it reuses them and seeks. Decoders no
+			// still has used for a while are released by the per-frame tick.
+			try {
+				mediaDecoderCache.tick();
+			} catch {}
+			if (pooledId) returnStillId(pooledId);
 			// The render surface (target texture + readback buffer) returns to the
 			// pool instead of being destroyed, so repeated stills skip the native
 			// allocation. Cached media textures are still released to bound VRAM.
@@ -955,7 +971,8 @@ export class HeadlessWebGPURenderer {
 				lutSub();
 			} catch {}
 			try {
-				mediaDecoderCache.destroy();
+				// Only this render's decoders: another render may be running.
+				mediaDecoderCache.clearNode(renderId);
 				clearAllVideoCache();
 			} catch {}
 			try {
@@ -1307,6 +1324,8 @@ export class HeadlessWebGPURenderer {
 						}
 						compositionStateStore.setState(renderId, i, fps, true);
 						updateClockSignals(i, fps, durationMs);
+						// Release decoders of clips that ended a while ago.
+						mediaDecoderCache.tick();
 
 						const encoder = device.createCommandEncoder();
 						const targetView = surface.getCurrentTextureView();
@@ -1483,7 +1502,8 @@ export class HeadlessWebGPURenderer {
 				surface?.destroy();
 			} catch {}
 			try {
-				mediaDecoderCache.destroy();
+				// Only this render's decoders: another render may be running.
+				mediaDecoderCache.clearNode(renderId);
 			} catch {}
 			try {
 				clearAllVideoCache();

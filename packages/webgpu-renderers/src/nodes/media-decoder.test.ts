@@ -178,3 +178,36 @@ describe("Media Decoder", () => {
 		});
 	});
 });
+
+describe("mediaDecoderCache frame-based release", () => {
+	beforeEach(() => {
+		mediaDecoderCache.destroy();
+	});
+
+	it("releases a decoder no layer has drawn for the idle window", () => {
+		mediaDecoderCache.getVideo("file:///a.mp4", true, "render-1-l0");
+		mediaDecoderCache.getVideo("file:///b.mp4", true, "render-1-l1");
+		expect(mediaDecoderCache.size).toBe(2);
+		// l1 keeps being drawn; l0's clip has ended.
+		for (let i = 0; i < 130; i++) {
+			mediaDecoderCache.getVideo("file:///b.mp4", true, "render-1-l1");
+			mediaDecoderCache.tick();
+		}
+		expect(mediaDecoderCache.size).toBe(1);
+	});
+
+	it("keeps decoders that are used every frame", () => {
+		for (let i = 0; i < 500; i++) {
+			mediaDecoderCache.getVideo("file:///a.mp4", true, "still-pool-0");
+			mediaDecoderCache.tick();
+		}
+		expect(mediaDecoderCache.size).toBe(1);
+	});
+
+	it("clearNode drops only the given render's decoders", () => {
+		mediaDecoderCache.getVideo("file:///a.mp4", true, "vid-1-l0");
+		mediaDecoderCache.getVideo("file:///a.mp4", true, "vid-2-l0");
+		mediaDecoderCache.clearNode("vid-1");
+		expect(mediaDecoderCache.size).toBe(1);
+	});
+});

@@ -198,5 +198,30 @@ describe("Lottie Node", () => {
 				}),
 			);
 		});
+
+		it("should upload directly via writeTexture when _dotLottieCore returns pixel buffer", async () => {
+			const rawBuffer = new Uint8Array(200 * 200 * 4);
+			rawBuffer.fill(200);
+			(mockDotLottieInstance as Record<string, unknown>)._dotLottieCore = {
+				get_pixel_buffer: vi.fn().mockReturnValue(rawBuffer),
+			};
+
+			const props = {
+				src: "wasm-test.json",
+				frame: 0,
+				fps: 30,
+				dstRect: { x: 0, y: 0, width: 100, height: 100 },
+			};
+
+			await drawLottieNode(mockCtx, mockPass, props);
+
+			expect(mockDevice.queue.writeTexture).toHaveBeenCalledWith(
+				expect.objectContaining({ texture: expect.any(Object) }),
+				expect.any(Uint8Array),
+				expect.objectContaining({ bytesPerRow: 200 * 4 }),
+				[200, 200],
+			);
+			delete (mockDotLottieInstance as Record<string, unknown>)._dotLottieCore;
+		});
 	});
 });

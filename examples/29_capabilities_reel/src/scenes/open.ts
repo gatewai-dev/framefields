@@ -22,19 +22,22 @@ import { still } from "../precomp.js";
 import {
 	BAR,
 	BEAT,
+	BG,
 	CYAN,
 	DISPLAY,
 	EMBER,
+	FG,
+	FROST,
 	GOLD,
 	H,
-	INK,
 	MUTED,
-	PAPER,
 	PINK,
-	PLUM,
-	SERIF,
-	VIOLET,
+	ROYAL,
+	SANS,
+	SIGNAL,
+	SKY,
 	W,
+	WHITE,
 } from "../theme.js";
 import { chapter } from "../timeline.js";
 
@@ -42,7 +45,7 @@ const TITLE = {
 	fontFamily: DISPLAY,
 	fontWeight: 800,
 	fontSize: 210,
-	letterSpacing: -6,
+	letterSpacing: -9,
 };
 const POPS: Array<[NotoName, number, number, number]> = [
 	["sparkles", 250, 300, 150],
@@ -77,7 +80,7 @@ export async function openScene(): Promise<Node> {
 			width: tw,
 			height: th,
 			...TITLE,
-			fill: PAPER,
+			fill: FG,
 			align: "center",
 		}),
 	]);
@@ -85,7 +88,7 @@ export async function openScene(): Promise<Node> {
 	const ty = 470;
 	const split = Signal.programmatic((ctx) => {
 		const t = (ctx.frame - c.start - (c.frames - BEAT * 2)) / (BEAT * 2);
-		return t <= 0 ? 0 : 3 + 22 * t * t;
+		return t <= 0 ? 0 : 2 + 10 * t * t;
 	});
 
 	// A shockwave out of the flame on every kick of the drop bar.
@@ -123,8 +126,8 @@ export async function openScene(): Promise<Node> {
 		);
 	});
 
-	return scene("open", INK, [
-		full({ background: Gradient.radial([PLUM, INK]) }).animate(
+	return scene("open", BG, [
+		full({ background: Gradient.radial([WHITE, FROST]) }).animate(
 			keys("opacity", [
 				[0, 0],
 				[BAR, 1, "sine.inOut"],
@@ -137,18 +140,18 @@ export async function openScene(): Promise<Node> {
 				effectType: "Aurora",
 				width: W,
 				height: H,
-				colorStart: VIOLET,
-				colorEnd: CYAN,
+				colorStart: SKY,
+				colorEnd: SIGNAL,
 				density: 0.7,
 				speed: 1.2,
 				intensity: 0.8,
 			}),
-			"screen",
+			"multiply",
 		).animate(
 			keys("opacity", [
 				[0, 0],
 				[drop - 6, 0],
-				[drop + 10, 0.7, "power2.out"],
+				[drop + 10, 0.35, "power2.out"],
 			]),
 		),
 		blend(
@@ -160,11 +163,11 @@ export async function openScene(): Promise<Node> {
 				density: 0.9,
 				speed: 0.9,
 				intensity: 1,
-				colorStart: GOLD,
-				colorEnd: EMBER,
+				colorStart: SKY,
+				colorEnd: SIGNAL,
 				seed: 11,
 			}),
-			"screen",
+			"normal",
 		).animate(
 			keys("opacity", [
 				[0, 0],
@@ -197,8 +200,8 @@ export async function openScene(): Promise<Node> {
 			sizeJitter: 0.6,
 			fade: [0.05, 0.4],
 			shape: "spark",
-			blend: "add",
-			color: ["#FFF3C4", GOLD, EMBER, "#7A2E14"],
+			blend: "normal",
+			color: [SKY, SIGNAL, EMBER, ROYAL],
 		} as never),
 		...rings,
 		Layer.box({
@@ -221,8 +224,8 @@ export async function openScene(): Promise<Node> {
 						new LayerStyle({
 							outerGlow: {
 								enabled: true,
-								color: EMBER,
-								opacity: 0.85,
+								color: SKY,
+								opacity: 0.7,
 								size: 70,
 								spread: 0,
 							},
@@ -274,9 +277,9 @@ export async function openScene(): Promise<Node> {
 						new LayerStyle({
 							outerGlow: {
 								enabled: true,
-								color: EMBER,
-								opacity: 0.7,
-								size: 46,
+								color: SKY,
+								opacity: 1,
+								size: 50,
 								spread: 0,
 							},
 						}),
@@ -296,7 +299,7 @@ export async function openScene(): Promise<Node> {
 					width: tw,
 					height: th,
 					...TITLE,
-					fill: PAPER,
+					fill: FG,
 					align: "center",
 					animators: [
 						TextAnimator.waveRise({
@@ -334,9 +337,9 @@ export async function openScene(): Promise<Node> {
 			x: 0,
 			y: 728,
 			width: W,
-			fontFamily: SERIF,
-			fontStyle: "italic",
-			fontSize: 50,
+			fontFamily: SANS,
+			fontWeight: 500,
+			fontSize: 44,
 			fill: MUTED,
 			align: "center",
 			animators: [TextAnimator.blurIn({ unit: "word", blur: 18, y: 18 })],

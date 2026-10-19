@@ -7,7 +7,18 @@
 import { Color, Layer, Signal, Styles } from "framefields";
 import { full, hud, keys, type Node, popIn, scene } from "../kit.js";
 import { DANCER, lottie, REPO } from "../paths.js";
-import { BAR, BEAT, DISPLAY, H, INK, MONO, PAPER, W } from "../theme.js";
+import {
+	BAR,
+	BEAT,
+	BG,
+	DISPLAY,
+	FG,
+	H,
+	INK,
+	MONO,
+	PAPER,
+	W,
+} from "../theme.js";
 import { chapter } from "../timeline.js";
 
 const PORTRAIT = `${REPO}/examples/19_framefields_film/assets/portrait.png`;
@@ -211,7 +222,7 @@ export function stylizeScene(): Node {
 		});
 	});
 
-	return scene("stylize", INK, [
+	return scene("stylize", BG, [
 		Layer.text("One source. Every look.", {
 			id: "stylize-title",
 			position: "absolute",
@@ -221,7 +232,7 @@ export function stylizeScene(): Node {
 			fontWeight: 800,
 			fontSize: 70,
 			letterSpacing: -2,
-			fill: PAPER,
+			fill: FG,
 		}).animate(
 			keys("opacity", [
 				[0, 0],

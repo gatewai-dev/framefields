@@ -1,36 +1,42 @@
 /**
  * 11 — Finale. A GPU particle vortex that surges on every kick, Lottie fireworks going off round
- * the frame, every emoji SVG orbiting the framefields mark, the name and the install line — then
- * the last hit and an old-TV power-off to black. The asset credits sit along the bottom.
+ * the frame, every emoji SVG orbiting the brand lockup and the install line — then the last hit
+ * and an old-TV power-off to the brand's night blue. The asset credits sit along the bottom.
  */
 import {
 	Color,
-	FontManager,
 	Gradient,
 	Layer,
 	LayerAnimation,
 	LayerStyle,
 	Signal,
 } from "framefields";
-import { blend, full, keys, type Node, popIn, scene } from "../kit.js";
+import {
+	blend,
+	brandTint,
+	full,
+	keys,
+	type Node,
+	popIn,
+	scene,
+} from "../kit.js";
 import { FLUENT, TWEMOJI } from "../manifest.js";
 import { kick, kickAt } from "../music.js";
-import { fluent, LOGO, lottie, twemoji } from "../paths.js";
-import { still } from "../precomp.js";
+import { fluent, lottie, twemoji, WORDMARK } from "../paths.js";
 import {
 	BAR,
 	BEAT,
-	CYAN,
-	DISPLAY,
-	GOLD,
+	COBALT,
+	FROST,
 	H,
-	INK,
+	LINE,
 	MONO,
 	MUTED,
-	PAPER,
-	PINK,
-	VIOLET,
+	NIGHT,
+	SIGNAL,
+	SKY,
 	W,
+	WHITE,
 } from "../theme.js";
 import { chapter } from "../timeline.js";
 
@@ -41,26 +47,6 @@ export async function finaleScene(): Promise<Node> {
 	const c = chapter("finale");
 	const hit = BAR * 3; // the last downbeat
 	const off = hit + BEAT * 2; // power-off
-
-	const NAME = {
-		fontFamily: DISPLAY,
-		fontWeight: 800,
-		fontSize: 128,
-		letterSpacing: -3,
-	};
-	const nw = Math.ceil(FontManager.measure("framefields", NAME).width + 60);
-	const nameGlow = await still("finale-name", nw, 190, [
-		Layer.text("framefields", {
-			position: "absolute",
-			x: 0,
-			y: 0,
-			width: nw,
-			height: 190,
-			...NAME,
-			fill: PAPER,
-			align: "center",
-		}),
-	]);
 
 	const vortex = Layer.particles({
 		id: "finale-vortex",
@@ -86,8 +72,8 @@ export async function finaleScene(): Promise<Node> {
 		sizeJitter: 0.5,
 		fade: [0.1, 0.4],
 		shape: "spark",
-		blend: "add",
-		color: [CYAN, VIOLET, PINK],
+		blend: "normal",
+		color: [SKY, SIGNAL, COBALT],
 		colorBySpeed: 900,
 		prewarm: 2,
 	} as never);
@@ -110,8 +96,8 @@ export async function finaleScene(): Promise<Node> {
 				height: size * 1.4,
 				fit: "cover",
 				startFrame: at,
-			}),
-			"screen",
+			}).withEffect(brandTint()),
+			"normal",
 		),
 	);
 
@@ -167,130 +153,92 @@ export async function finaleScene(): Promise<Node> {
 		);
 	});
 
-	const logo = 230;
 	const stage = full({
 		id: "finale-stage",
 		children: [
-			full({ background: Gradient.radial([Color.alpha(VIOLET, 0.4), INK]) }),
+			full({ background: Gradient.radial([WHITE, FROST]) }),
 			blend(
 				Layer.vfx({
 					id: "finale-aurora",
 					effectType: "Aurora",
 					width: W,
 					height: H,
-					colorStart: VIOLET,
-					colorEnd: CYAN,
+					colorStart: SKY,
+					colorEnd: SIGNAL,
 					density: 0.65,
 					speed: 1.4,
 					intensity: 0.7,
 				}),
-				"screen",
-			),
+				"multiply",
+			).animate(keys("opacity", [[0, 0.3]])),
 			vortex,
-			// A dark halo keeps the mark and the name readable over the vortex.
+			// A white halo keeps the lockup clean over the vortex.
 			Layer.shape("ellipse", {
 				id: "finale-halo",
 				position: "absolute",
-				x: CX - 700,
-				y: CY - 380,
-				width: 1400,
-				height: 860,
+				x: CX - 760,
+				y: CY - 360,
+				width: 1520,
+				height: 820,
 				fillColor: Gradient.radial([
-					Color.alpha(INK, 0.85),
-					Color.alpha(INK, 0),
+					Color.alpha(WHITE, 0.95),
+					Color.alpha(WHITE, 0),
 				]),
 			}),
 			...fireworks,
 			...orbit,
+			// The brand lockup (assets/brand/logo-wordmark-light.svg): mark and name.
 			Layer.box({
-				id: "finale-mark",
+				id: "finale-lockup",
 				position: "absolute",
-				x: CX - logo / 2,
-				y: CY - logo / 2 - 120,
-				width: logo,
-				height: logo,
+				x: CX - 1060 / 2,
+				y: CY - 210 / 2 - 40,
+				width: 1060,
+				height: 210,
 				children: [
-					Layer.image(LOGO, {
-						id: "finale-logo",
+					Layer.svg(WORDMARK, {
+						id: "finale-wordmark",
 						position: "absolute",
 						x: 0,
 						y: 0,
-						width: logo,
-						height: logo,
+						width: 1060,
+						height: 210,
 						fit: "contain",
 					})
 						.withEffect(
 							new LayerStyle({
 								outerGlow: {
 									enabled: true,
-									color: CYAN,
-									opacity: 0.8,
-									size: 50,
+									color: SKY,
+									opacity: 0.6,
+									size: 40,
 									spread: 0,
 								},
 							}),
 						)
-						.animate(popIn(4, 22, 0)),
+						.animate(popIn(4, 22, 0.3)),
 				],
 			}).animate(
 				LayerAnimation.create().signal("scale", kick, {
-					multiplier: 0.06,
+					multiplier: 0.03,
 					offset: 1,
 				}),
 				keys("rotation", [
 					[hit - 1, 0],
-					[hit, -6],
+					[hit, -3],
 					[hit + 20, 0, "elastic.out(1, 0.4)"],
-				]),
-			),
-			Layer.box({
-				id: "finale-name",
-				position: "absolute",
-				x: CX - nw / 2,
-				y: CY + 30,
-				width: nw,
-				height: 190,
-				children: [
-					Layer.image(nameGlow, {
-						id: "finale-name-img",
-						position: "absolute",
-						x: 0,
-						y: 0,
-						width: nw,
-						height: 190,
-					}).withEffect(
-						new LayerStyle({
-							outerGlow: {
-								enabled: true,
-								color: PINK,
-								opacity: 0.55,
-								size: 40,
-								spread: 0,
-							},
-						}),
-					),
-				],
-			}).animate(
-				keys("opacity", [
-					[0, 0],
-					[16, 0],
-					[24, 1],
-				]),
-				keys("y", [
-					[16, CY + 90],
-					[36, CY + 30, "expo.out"],
 				]),
 			),
 			Layer.box({
 				id: "finale-install",
 				position: "absolute",
 				x: CX - 250,
-				y: CY + 240,
+				y: CY + 150,
 				width: 500,
 				height: 74,
 				borderRadius: 37,
-				background: Color.alpha("#ffffff", 0.08),
-				borderColor: Color.alpha("#ffffff", 0.25),
+				background: WHITE,
+				borderColor: LINE,
 				borderWidth: 1.5,
 				children: [
 					Layer.text("$ npm i framefields", {
@@ -302,7 +250,7 @@ export async function finaleScene(): Promise<Node> {
 						align: "center",
 						fontFamily: MONO,
 						fontSize: 30,
-						fill: GOLD,
+						fill: COBALT,
 					}).animate(LayerAnimation.create().typewriter(40, 64, "linear")),
 				],
 			}).animate(popIn(34, 16, 0.6)),
@@ -326,10 +274,15 @@ export async function finaleScene(): Promise<Node> {
 					[BAR + 20, 1],
 				]),
 			),
-			full({ id: "finale-hit", background: PAPER, opacity: 0 }).animate(
+			full({
+				id: "finale-hit",
+				background: SKY,
+				opacity: 0,
+				blendMode: "multiply",
+			}).animate(
 				keys("opacity", [
 					[hit - 1, 0],
-					[hit, 0.9],
+					[hit, 0.5],
 					[hit + 12, 0, "power2.out"],
 				]),
 			),
@@ -346,7 +299,7 @@ export async function finaleScene(): Promise<Node> {
 		]),
 	);
 
-	return scene("finale", "#000000", [
+	return scene("finale", NIGHT, [
 		stage,
 		Layer.shape("ellipse", {
 			id: "finale-dot",
@@ -368,7 +321,7 @@ export async function finaleScene(): Promise<Node> {
 				[off + 16, 0.05, "power2.in"],
 			]),
 		),
-		full({ id: "finale-end", background: "#000000", opacity: 0 }).animate(
+		full({ id: "finale-end", background: NIGHT, opacity: 0 }).animate(
 			keys("opacity", [
 				[off + 14, 0],
 				[off + 15, 1],

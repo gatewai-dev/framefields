@@ -13,7 +13,17 @@ import {
 } from "framefields";
 import { full, hud, keys, type Node, scene } from "../kit.js";
 import { DANCER, emoji } from "../paths.js";
-import { DISPLAY, EMBER, GOLD, H, MONO, PAPER, VIOLET, W } from "../theme.js";
+import {
+	COBALT,
+	DISPLAY,
+	EMBER,
+	GOLD,
+	H,
+	MONO,
+	NAVY,
+	PAPER,
+	W,
+} from "../theme.js";
 import { chapter } from "../timeline.js";
 
 export async function visionScene(comp: Composition): Promise<Node> {
@@ -56,7 +66,7 @@ export async function visionScene(comp: Composition): Promise<Node> {
 		size: [10, 6],
 		sizeJitter: 0.6,
 		fade: [0.15, 0.3],
-		color: ["#7A2E14", EMBER, GOLD, "#FFE7B0"],
+		color: [NAVY, EMBER, GOLD, "#DBEAFE"],
 		colorBySpeed: 500,
 		prewarm: 3,
 	} as never);
@@ -104,7 +114,7 @@ export async function visionScene(comp: Composition): Promise<Node> {
 			fontWeight: 800,
 			fontSize: 360,
 			letterSpacing: -14,
-			fill: Color.alpha(VIOLET, 0.92),
+			fill: Color.alpha(COBALT, 0.94),
 		}).animate(
 			keys("scale", [
 				[0, 1.3],
@@ -128,7 +138,7 @@ export async function visionScene(comp: Composition): Promise<Node> {
 				y: 70,
 				fontFamily: MONO,
 				fontSize: 20,
-				fill: Color.alpha("#1E1512", 0.75),
+				fill: Color.alpha(NAVY, 0.8),
 			},
 		).animate(
 			keys("opacity", [

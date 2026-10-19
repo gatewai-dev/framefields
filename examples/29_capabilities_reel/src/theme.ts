@@ -13,32 +13,49 @@ export const BAR = BEAT * 4;
 export const beats = (n: number) => Math.round(n * BEAT);
 export const bars = (n: number) => Math.round(n * BAR);
 
-// Palette: a near-black ink stage with an electric spectrum of accents.
-export const INK = "#07060B";
-export const NIGHT = "#0E0C18";
-export const PLUM = "#1A1230";
-export const PAPER = "#F4EFE6";
-export const MUTED = "#9C96B0";
-export const EMBER = "#FF5A1F";
-export const GOLD = "#FFC93C";
-export const LIME = "#B8FF3C";
-export const CYAN = "#2EE6FF";
-export const VIOLET = "#7A4DFF";
-export const PINK = "#FF3D9A";
-export const SPECTRUM = [EMBER, GOLD, LIME, CYAN, VIOLET, PINK];
+// The framefields brand (framefields-social/packages/brand), light theme: ice and white
+// grounds, navy type, the mark's signal blue and cobalt for emphasis, sky for glow. Night is
+// kept for "screens": panels that need a dark ground for their effect.
+export const NIGHT = "#081638";
+export const NAVY = "#0B1E4D";
+export const ROYAL = "#123A9C";
+export const COBALT = "#1D4ED8";
+export const SIGNAL = "#3B82F6";
+export const SKY = "#7DD3FC";
+export const ICE = "#F5F8FF";
+export const FROST = "#E6EEFC";
+export const LINE = "#D3DEF5";
+export const WHITE = "#FFFFFF";
+export const SLATE = "#5B6B91";
 
-export const DISPLAY = "Syne";
+/** Page ground, body type, secondary type. */
+export const BG = ICE;
+export const FG = NAVY;
+export const MUTED = SLATE;
+
+// Accent names the scenes use, mapped onto the brand's blues.
+export const EMBER = COBALT;
+export const GOLD = "#60A5FA";
+export const LIME = "#38BDF8";
+export const CYAN = SKY;
+export const VIOLET = ROYAL;
+export const PINK = SIGNAL;
+export const SPECTRUM = [COBALT, SIGNAL, GOLD, LIME, SKY, ROYAL];
+
+/** Ink on light grounds, and white for type on night panels and footage. */
+export const INK = NAVY;
+export const PAPER = WHITE;
+
+// Inter speaks, JetBrains Mono writes code.
+export const DISPLAY = "Inter";
 export const SANS = "Inter";
 export const MONO = "JetBrainsMono";
-export const SERIF = "InstrumentSerif";
 export const ARABIC = "NotoSansArabic";
 export const HEBREW = "NotoSansHebrew";
 
 const FACES: Array<[string, string]> = [
-	[DISPLAY, "Syne.ttf"],
 	[SANS, "Inter.ttf"],
 	[MONO, "JetBrainsMono.ttf"],
-	[SERIF, "InstrumentSerif-Italic.ttf"],
 	[ARABIC, "NotoSansArabic.ttf"],
 	[HEBREW, "NotoSansHebrew.ttf"],
 ];

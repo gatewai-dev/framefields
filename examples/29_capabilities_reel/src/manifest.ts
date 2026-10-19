@@ -156,3 +156,57 @@ export const LUCIDE = [
 	"sparkles",
 	"film",
 ] as const;
+
+/**
+ * Sound effects from Freesound, all CC0 (public domain): the HQ preview of each sound.
+ * `peakSec` is where the sound hits (measured from its envelope), so it can be placed on the
+ * frame it belongs to rather than where the file starts.
+ */
+export const SFX = {
+	/** Air builds for a second and stops dead: into a hard cut. */
+	riser: {
+		id: 648837,
+		user: "AudioPapkin",
+		title: "Cinematic Woosh SFX-013",
+		peakSec: 2.9,
+		durSec: 4.44,
+		url: "https://cdn.freesound.org/previews/648/648837_8698658-hq.mp3",
+	},
+	/** A light, airy stereo pass-by: under a whip, push or slide. */
+	whoosh: {
+		id: 701104,
+		user: "xkeril",
+		title: "Whoosh stereo light (transition)",
+		peakSec: 0.45,
+		durSec: 2.32,
+		url: "https://cdn.freesound.org/previews/701/701104_13504080-hq.mp3",
+	},
+	/** A warm, soft low hit with a two-second tail: the downbeat of a drop. */
+	impact: {
+		id: 560156,
+		user: "Rizzard",
+		title: "Soft Cinematic Impact",
+		peakSec: 0.15,
+		durSec: 6,
+		url: "https://cdn.freesound.org/previews/560/560156_10825267-hq.mp3",
+	},
+	/** A deep title hit: the last downbeat, on the lockup. */
+	titleHit: {
+		id: 671306,
+		user: "xkeril",
+		title: "Cinematic Hit Bass (title)",
+		peakSec: 0.05,
+		durSec: 7.5,
+		url: "https://cdn.freesound.org/previews/671/671306_13504080-hq.mp3",
+	},
+	/** A short bright pop: emoji popping in. */
+	pop: {
+		id: 824189,
+		user: "Sadiquecat",
+		title: "Pop in sfx",
+		peakSec: 0.15,
+		durSec: 0.56,
+		url: "https://cdn.freesound.org/previews/824/824189_5287430-hq.mp3",
+	},
+} as const;
+export type SfxName = keyof typeof SFX;

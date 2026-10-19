@@ -18,6 +18,7 @@ export const twemoji = (name: string) =>
 	path.join(ASSETS, "svg/twemoji", `${name}.svg`);
 export const lucide = (name: string) =>
 	path.join(ASSETS, "svg/lucide", `${name}.svg`);
+export const sfx = (name: string) => path.join(ASSETS, "sfx", `${name}.mp3`);
 export const SCORE = path.join(ASSETS, "score.wav");
 /** Example 19's generated clip (run `pnpm assets` there). */
 export const DANCER = path.resolve(
@@ -25,3 +26,9 @@ export const DANCER = path.resolve(
 	"examples/19_framefields_film/assets/dancer.mp4",
 );
 export const LOGO = path.resolve(REPO, "assets/brand/logo.png");
+/** The brand lockup for light grounds: signal-blue mark, navy name. */
+export const WORDMARK = path.resolve(
+	REPO,
+	"assets/brand/logo-wordmark-light.svg",
+);
+export const MARK = path.resolve(REPO, "assets/brand/logo.svg");

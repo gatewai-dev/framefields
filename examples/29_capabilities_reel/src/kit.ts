@@ -3,8 +3,20 @@
  * screen, keyframe shorthands, and small vector helpers.
  */
 import fs from "node:fs";
-import { Color, Layer, LayerAnimation } from "framefields";
-import { DISPLAY, H, INK, MONO, MUTED, PAPER, W } from "./theme.js";
+import { Color, GradientMap, Layer, LayerAnimation } from "framefields";
+import {
+	COBALT,
+	DISPLAY,
+	FG,
+	H,
+	MONO,
+	MUTED,
+	NAVY,
+	PAPER,
+	SIGNAL,
+	SKY,
+	W,
+} from "./theme.js";
 import { CHAPTERS, chapter as chapterOf } from "./timeline.js";
 
 // biome-ignore lint/suspicious/noExplicitAny: layout nodes are plain specs here.
@@ -52,12 +64,13 @@ export const at = (id: string) => chapterOf(id);
 export function hud(
 	id: string,
 	apis: string[],
-	options: { dark?: boolean; until?: number } = {},
+	options: { dark?: boolean; light?: boolean; until?: number } = {},
 ): Node {
 	const c = at(id);
 	const index = CHAPTERS.findIndex((x) => x.id === id) + 1;
-	const fg = options.dark ? INK : PAPER;
-	const dim = options.dark ? Color.alpha(INK, 0.6) : MUTED;
+	// Navy on the light ground; white only over night panels (`light`).
+	const fg = options.light ? PAPER : FG;
+	const dim = options.light ? Color.alpha(PAPER, 0.7) : MUTED;
 	const until = options.until ?? c.frames;
 	return Layer.flex({
 		id: `hud-${id}`,
@@ -104,6 +117,18 @@ export function hud(
 		]),
 	);
 }
+
+/** Recolors third-party art into the brand blues (GradientMap, by luminance). */
+export const brandTint = (opacity = 1) =>
+	new GradientMap({
+		stops: [
+			{ position: 0, color: NAVY },
+			{ position: 0.4, color: COBALT },
+			{ position: 0.7, color: SIGNAL },
+			{ position: 1, color: SKY },
+		],
+		opacity,
+	});
 
 /** Sets a layer's blend mode (for builders such as Layer.vfx that take no layout props). */
 export function blend<T>(

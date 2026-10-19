@@ -18,21 +18,28 @@ import { full, hud, keys, type Node, popIn, scene } from "../kit.js";
 import { lowpassAt } from "../music.js";
 import { still } from "../precomp.js";
 import {
+	BG,
+	COBALT,
 	CYAN,
 	DISPLAY,
 	EMBER,
+	FG,
 	GOLD,
 	INK,
-	LIME,
+	LINE,
 	MONO,
 	MUTED,
+	NIGHT,
 	PAPER,
 	PINK,
+	SIGNAL,
+	SKY,
 	VIOLET,
+	WHITE,
 } from "../theme.js";
 import { chapter } from "../timeline.js";
 
-const PANEL = { r: 28, bg: "#0B0A16", border: Color.alpha("#ffffff", 0.1) };
+const PANEL = { r: 28, bg: NIGHT, border: Color.alpha("#ffffff", 0.12) };
 
 function panel(
 	id: string,
@@ -136,7 +143,7 @@ export async function fluidScene(): Promise<Node> {
 		fade: [0, 0.5],
 		shape: "soft",
 		blend: "add",
-		color: [GOLD, EMBER, PINK],
+		color: [WHITE, SKY, SIGNAL],
 	} as never).withEffect(
 		new Trails({
 			decay: 0.96,
@@ -240,9 +247,9 @@ export async function fluidScene(): Promise<Node> {
 		markerKeys.push([f, Math.round(u * ew) - 9, "none"]);
 	}
 
-	return scene("fluid", "#06060D", [
+	return scene("fluid", BG, [
 		full({
-			background: Gradient.radial([Color.alpha(VIOLET, 0.22), "transparent"]),
+			background: Gradient.radial([Color.alpha(SKY, 0.3), "transparent"]),
 		}),
 		Layer.text("Warp, melt, echo", {
 			id: "fluid-title",
@@ -253,7 +260,7 @@ export async function fluidScene(): Promise<Node> {
 			fontWeight: 800,
 			fontSize: 76,
 			letterSpacing: -2,
-			fill: PAPER,
+			fill: FG,
 		}).animate(
 			keys("opacity", [
 				[0, 0],
@@ -291,7 +298,7 @@ export async function fluidScene(): Promise<Node> {
 					y: eh * 0.25,
 					width: ew,
 					height: 1,
-					background: Color.alpha("#ffffff", 0.15),
+					background: LINE,
 				}),
 				Layer.shape("path", {
 					id: "fluid-eq-curve",
@@ -303,7 +310,7 @@ export async function fluidScene(): Promise<Node> {
 					d: eqKeys[0][1],
 					fillType: "none",
 					fillColor: "transparent",
-					strokeColor: LIME,
+					strokeColor: COBALT,
 					strokeWidth: 4,
 				}).animate(keys("d", eqKeys)),
 				// At the cutoff the response is -3 dB, so the marker rides at that height.
@@ -316,7 +323,7 @@ export async function fluidScene(): Promise<Node> {
 						9,
 					width: 18,
 					height: 18,
-					fillColor: LIME,
+					fillColor: COBALT,
 				}).animate(keys("x", markerKeys)),
 				Layer.text(
 					"the low-pass on the music right now: AudioParametricEq({ frequency: signal })",
@@ -340,7 +347,7 @@ export async function fluidScene(): Promise<Node> {
 				[40, 1],
 			]),
 		),
-		full({ id: "fluid-dim", background: INK, opacity: 0 }).animate(
+		full({ id: "fluid-dim", background: BG, opacity: 0 }).animate(
 			keys("opacity", [
 				[c.frames - 4, 0],
 				[c.frames, 0.6],

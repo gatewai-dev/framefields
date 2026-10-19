@@ -14,11 +14,12 @@
  * | svg/fluent/  | Fluent Emoji, color SVGs (Microsoft)                  | MIT |
  * | svg/twemoji/ | Twemoji 15.1 (jdecked/twemoji)                        | CC BY 4.0 |
  * | svg/lucide/  | Lucide icons, lucide-static                           | ISC |
+ * | sfx/     | Freesound (freesound.org), HQ previews; ids and authors in manifest.ts SFX | CC0 |
  * | fonts/   | copied from the repo's assets/fonts and the renderer's Noto Color Emoji | OFL |
  */
 import fs from "node:fs/promises";
 import path from "node:path";
-import { FLUENT, LOTTIES, LUCIDE, NOTO, TWEMOJI } from "./manifest.js";
+import { FLUENT, LOTTIES, LUCIDE, NOTO, SFX, TWEMOJI } from "./manifest.js";
 import { ASSETS, FONTS, REPO } from "./paths.js";
 
 const FONT_FILES = [
@@ -97,6 +98,9 @@ async function main(): Promise<void> {
 				path.join(ASSETS, "svg/lucide", `${name}.svg`),
 			),
 		);
+	}
+	for (const [name, sfx] of Object.entries(SFX)) {
+		jobs.push(download(sfx.url, path.join(ASSETS, "sfx", `${name}.mp3`)));
 	}
 	jobs.push(download(NOTO_SANS_ARABIC, path.join(FONTS, "NotoSansArabic.ttf")));
 	jobs.push(download(NOTO_SANS_HEBREW, path.join(FONTS, "NotoSansHebrew.ttf")));

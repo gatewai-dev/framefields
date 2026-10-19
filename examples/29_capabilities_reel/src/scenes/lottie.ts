@@ -2,20 +2,24 @@
  * 02 — Lottie. Eight animations, each on its own card, flip in on the beat; on the third bar the
  * whole wall tips back in perspective while an abstract Lottie plays full-frame behind it.
  */
-import { Blur, Color, Layer, LayerAnimation, LayerStyle } from "framefields";
-import { full, hud, keys, type Node, scene } from "../kit.js";
+import { Blur, Color, Layer, LayerAnimation } from "framefields";
+import { brandTint, full, hud, keys, type Node, scene } from "../kit.js";
 import { kick } from "../music.js";
 import { lottie } from "../paths.js";
 import {
 	BAR,
 	BEAT,
+	BG,
 	CYAN,
 	DISPLAY,
+	FG,
 	GOLD,
 	H,
 	LIME,
+	LINE,
 	MONO,
 	MUTED,
+	NAVY,
 	NIGHT,
 	PAPER,
 	PINK,
@@ -33,7 +37,7 @@ const CARDS: Array<{
 	{
 		name: "fireworks",
 		label: "fireworks",
-		bg: "#120E24",
+		bg: NIGHT,
 		fit: "cover",
 		pad: 0,
 	},
@@ -50,7 +54,7 @@ const CARDS: Array<{
 	{
 		name: "happy2016",
 		label: "happy2016",
-		bg: "#030B26",
+		bg: NIGHT,
 		fit: "cover",
 		pad: 0,
 	},
@@ -71,62 +75,73 @@ export function lottieScene(): Node {
 		const row = Math.floor(i / COLS);
 		const pad = card.pad ?? 26;
 		const at = 6 + i * 5;
+		const x = X0 + col * (CW + GAP);
+		const y = Y0 + row * (CH + GAP + 34);
+		// Box layers take no effects, so elevation is two soft navy plates under the card.
+		const plate = (dy: number, alpha: number, grow: number) =>
+			Layer.box({
+				position: "absolute",
+				x: -grow,
+				y: dy - grow,
+				width: CW + grow * 2,
+				height: CH + grow * 2,
+				borderRadius: 26 + grow,
+				background: Color.alpha(NAVY, alpha),
+			});
 		return Layer.box({
 			id: `lottie-card-${card.name}`,
 			position: "absolute",
-			x: X0 + col * (CW + GAP),
-			y: Y0 + row * (CH + GAP + 34),
+			x,
+			y,
 			width: CW,
 			height: CH,
-			borderRadius: 26,
-			background: card.bg,
-			borderColor: Color.alpha("#ffffff", 0.16),
-			borderWidth: 1.5,
-			overflow: "hidden",
 			transformStyle: "preserve-3d",
 			perspective: 1100,
 			children: [
-				Layer.lottie(lottie(card.name), {
-					id: `lottie-${card.name}`,
+				plate(18, 0.05, 10),
+				plate(8, 0.07, 3),
+				Layer.box({
+					id: `lottie-face-${card.name}`,
 					position: "absolute",
-					x: pad,
-					y: pad,
-					width: CW - pad * 2,
-					height: CH - pad * 2,
-					fit: card.fit ?? "contain",
+					x: 0,
+					y: 0,
+					width: CW,
+					height: CH,
+					borderRadius: 26,
+					background: card.bg,
+					borderColor: LINE,
+					borderWidth: 1.5,
+					overflow: "hidden",
+					children: [
+						Layer.lottie(lottie(card.name), {
+							id: `lottie-${card.name}`,
+							position: "absolute",
+							x: pad,
+							y: pad,
+							width: CW - pad * 2,
+							height: CH - pad * 2,
+							fit: card.fit ?? "contain",
+						}),
+					],
 				}),
 			],
-		})
-			.animate(
-				keys("rotateY", [
-					[0, -95],
-					[at, -95],
-					[at + 22, 0, "expo.out"],
-				]),
-				keys("opacity", [
-					[0, 0],
-					[at, 0],
-					[at + 4, 1],
-				]),
-				keys("scale", [
-					[0, 0.7],
-					[at, 0.7],
-					[at + 22, 1, "back.out(1.4)"],
-				]),
-			)
-			.withEffect(
-				new LayerStyle({
-					dropShadow: {
-						enabled: true,
-						color: "#000000",
-						opacity: 0.55,
-						angle: 90,
-						distance: 18,
-						spread: 0,
-						size: 34,
-					},
-				}),
-			);
+		}).animate(
+			keys("rotateY", [
+				[0, -95],
+				[at, -95],
+				[at + 22, 0, "expo.out"],
+			]),
+			keys("opacity", [
+				[0, 0],
+				[at, 0],
+				[at + 4, 1],
+			]),
+			keys("scale", [
+				[0, 0.7],
+				[at, 0.7],
+				[at + 22, 1, "back.out(1.4)"],
+			]),
+		);
 	});
 	const labels = CARDS.map((card, i) =>
 		Layer.text(`${String(i + 1).padStart(2, "0")}  ${card.label}.json`, {
@@ -147,7 +162,7 @@ export function lottieScene(): Node {
 		),
 	);
 
-	return scene("lottie", NIGHT, [
+	return scene("lottie", BG, [
 		// Full-frame abstract Lottie, blurred into a moving backdrop.
 		Layer.lottie(lottie("gradientShapes"), {
 			id: "lottie-backdrop",
@@ -158,15 +173,18 @@ export function lottieScene(): Node {
 			height: H,
 			fit: "cover",
 		})
-			.withEffect(new Blur({ blurType: "Gaussian", strength: 40 }))
+			.withEffects([
+				brandTint(),
+				new Blur({ blurType: "Gaussian", strength: 40 }),
+			])
 			.animate(
 				keys("opacity", [
 					[0, 0],
-					[BAR, 0.45, "sine.inOut"],
+					[BAR, 0.3, "sine.inOut"],
 				]),
 			),
 		full({
-			background: `linear-gradient(180deg, ${NIGHT}00 0%, ${NIGHT} 92%)`,
+			background: `linear-gradient(180deg, ${BG}00 0%, ${BG} 92%)`,
 		}),
 		Layer.text("Lottie", {
 			id: "lottie-title",
@@ -177,7 +195,7 @@ export function lottieScene(): Node {
 			fontWeight: 800,
 			fontSize: 96,
 			letterSpacing: -2,
-			fill: PAPER,
+			fill: FG,
 		}).animate(
 			keys("x", [
 				[0, X0 - 60],
@@ -250,7 +268,7 @@ export function lottieScene(): Node {
 			"Layer.lottie",
 			"fit: cover | contain",
 			"rotateY · perspective",
-			"LayerStyle.dropShadow",
+			"3D card flips",
 			"Blur",
 		]),
 	]);

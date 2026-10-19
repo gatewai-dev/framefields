@@ -23,15 +23,16 @@ import { kick } from "../music.js";
 import { fluent, lucide } from "../paths.js";
 import {
 	BEAT,
-	CYAN,
+	BG,
+	COBALT,
 	DISPLAY,
-	EMBER,
 	GOLD,
 	INK,
+	LIME,
 	MONO,
-	PAPER,
-	PINK,
-	VIOLET,
+	ROYAL,
+	SIGNAL,
+	SKY,
 } from "../theme.js";
 import { chapter } from "../timeline.js";
 
@@ -95,7 +96,7 @@ export function vectorScene(): Node {
 			]),
 			keys("strokeColor", [
 				[at + 34, INK],
-				[at + 44, [EMBER, VIOLET, CYAN, PINK, GOLD][i % 5], "power2.out"],
+				[at + 44, [COBALT, ROYAL, SIGNAL, GOLD, LIME][i % 5], "power2.out"],
 			]),
 		);
 	});
@@ -152,7 +153,7 @@ export function vectorScene(): Node {
 		);
 	});
 
-	return scene("vector", PAPER, [
+	return scene("vector", BG, [
 		Layer.text("SVG, shapes", {
 			id: "vector-title",
 			position: "absolute",
@@ -182,7 +183,7 @@ export function vectorScene(): Node {
 			fontWeight: 800,
 			fontSize: 104,
 			letterSpacing: -3,
-			fill: VIOLET,
+			fill: COBALT,
 		}).animate(
 			keys("opacity", [
 				[0, 0],
@@ -227,7 +228,7 @@ export function vectorScene(): Node {
 					width: MORPH,
 					height: MORPH,
 					d: shapes[0],
-					fillColor: Gradient.linear([EMBER, PINK, VIOLET, CYAN], 135),
+					fillColor: Gradient.linear([SKY, SIGNAL, COBALT, ROYAL], 135),
 					strokeWidth: 0,
 				}).animate(
 					LayerAnimation.keys("d", morphKeys as never),

@@ -11,24 +11,25 @@ import {
 	TextAnimator,
 	TextPathBuilder,
 } from "framefields";
-import { full, hud, keys, type Node, scene } from "../kit.js";
+import { brandTint, full, hud, keys, type Node, scene } from "../kit.js";
 import { kick } from "../music.js";
 import { lottie } from "../paths.js";
 import {
 	ARABIC,
 	BAR,
 	BEAT,
-	CYAN,
+	BG,
+	COBALT,
 	DISPLAY,
-	GOLD,
+	FG,
 	H,
 	HEBREW,
-	LIME,
 	MONO,
 	MUTED,
-	PAPER,
-	PINK,
-	SERIF,
+	ROYAL,
+	SANS,
+	SIGNAL,
+	SKY,
 	VIOLET,
 	W,
 } from "../theme.js";
@@ -70,7 +71,7 @@ export function typeScene(): Node {
 				fontWeight: 700,
 				fontSize: 26,
 				letterSpacing: 4,
-				fill: Color.alpha(PAPER, 0.55),
+				fill: Color.alpha(FG, 0.45),
 				pathOptions: TextPathBuilder.circularBadge(R + 40, R + 40, R).build(),
 			} as never),
 		],
@@ -97,7 +98,7 @@ export function typeScene(): Node {
 			fontWeight: 800,
 			fontSize: 200,
 			letterSpacing: -6,
-			fill: PAPER,
+			fill: FG,
 			animators: [TextAnimator.flip3D({ rotationX: 100 })],
 		}).animate(
 			LayerAnimation.create().kineticSweep(-1, 1, 4, 34, "power2.out"),
@@ -109,10 +110,10 @@ export function typeScene(): Node {
 			y: CY + 60,
 			width: W,
 			align: "center",
-			fontFamily: SERIF,
-			fontStyle: "italic",
+			fontFamily: SANS,
+			fontWeight: 600,
 			fontSize: 72,
-			fill: GOLD,
+			fill: COBALT,
 			animators: [TextAnimator.waveRise({ y: 50, rotationX: 50, blur: 8 })],
 		}).animate(
 			LayerAnimation.create().kineticSweep(-1, 1, 18, 46, "power2.out"),
@@ -128,7 +129,7 @@ export function typeScene(): Node {
 			y: 0,
 			width: W,
 			height: H,
-			background: `linear-gradient(120deg, ${VIOLET}, ${PINK} 50%, ${GOLD})`,
+			background: `linear-gradient(120deg, ${ROYAL}, ${SIGNAL} 50%, ${SKY})`,
 			children: [
 				Layer.lottie(lottie("gradientShapes"), {
 					id: "type-inside-lottie",
@@ -138,7 +139,7 @@ export function typeScene(): Node {
 					width: W,
 					height: H,
 					fit: "cover",
-				}),
+				}).withEffect(brandTint()),
 			],
 		}).withMatte(
 			Layer.text("INSIDE", {
@@ -180,9 +181,9 @@ export function typeScene(): Node {
 	]);
 
 	const GREETINGS: Array<[string, string, string]> = [
-		["Hello", DISPLAY, CYAN],
-		["مرحبا", ARABIC, PINK],
-		["שלום", HEBREW, LIME],
+		["Hello", DISPLAY, COBALT],
+		["مرحبا", ARABIC, SIGNAL],
+		["שלום", HEBREW, ROYAL],
 	];
 	const hello = phase("hello", BAR * 2, BAR + 30, [
 		...GREETINGS.map(([word, family, color], i) =>
@@ -229,9 +230,9 @@ export function typeScene(): Node {
 		),
 	]);
 
-	return scene("type", "#0A0814", [
+	return scene("type", BG, [
 		full({
-			background: `radial-gradient(circle, ${Color.alpha(VIOLET, 0.3)}, transparent 70%)`,
+			background: `radial-gradient(circle, ${Color.alpha(SKY, 0.35)}, transparent 70%)`,
 		}).animate(
 			LayerAnimation.create().signal("opacity", kick, {
 				multiplier: 0.5,

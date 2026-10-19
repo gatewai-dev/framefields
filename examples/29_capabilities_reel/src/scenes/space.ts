@@ -16,15 +16,22 @@ import { full, hud, keys, type Node, scene } from "../kit.js";
 import { kick } from "../music.js";
 import { lottie } from "../paths.js";
 import {
+	BG,
+	COBALT,
 	CYAN,
 	DISPLAY,
 	EMBER,
+	FROST,
 	GOLD,
 	H,
 	LIME,
+	NIGHT,
 	PINK,
+	SIGNAL,
+	SKY,
 	VIOLET,
 	W,
+	WHITE,
 } from "../theme.js";
 import { chapter } from "../timeline.js";
 
@@ -78,8 +85,8 @@ export function spaceScene(): Node {
 			emissiveIntensity: 4,
 		}).animate(
 			LayerAnimation.create().signal("emissiveIntensity", kick, {
-				multiplier: 6,
-				offset: 3,
+				multiplier: 3,
+				offset: 2,
 			}),
 		);
 	});
@@ -98,8 +105,8 @@ export function spaceScene(): Node {
 				x: CX,
 				y: CY - 40,
 				z: 0,
-				fill: "#FFE3B8",
-				metallic: 0.35,
+				fill: COBALT,
+				metallic: 0.2,
 				roughness: 0.3,
 			}),
 			Layer3D.sphere({
@@ -132,9 +139,9 @@ export function spaceScene(): Node {
 					front: card("dogCar", "#4FC3C9", 230),
 					back: card("gatin", "#1D6EAF", 230),
 					left: card("growth", "#E9E4F7", 230),
-					right: card("fireworks", "#120E24", 230),
-					top: card("squares", "#2A2A2A", 230),
-					bottom: card("happy2016", "#030B26", 230),
+					right: card("fireworks", NIGHT, 230),
+					top: card("squares", NIGHT, 230),
+					bottom: card("happy2016", NIGHT, 230),
 				},
 			} as never).animate(
 				keys("rotateY", [
@@ -148,22 +155,23 @@ export function spaceScene(): Node {
 			),
 			Layer.carousel3d({
 				id: "space-carousel",
-				radius: 1050,
+				radius: 900,
+				rotateX: 14,
 				x: CX,
-				y: CY - 20,
+				y: CY + 30,
 				z: 0,
-				itemWidth: 300,
-				itemHeight: 216,
+				itemWidth: 260,
+				itemHeight: 188,
 				twoSided: true,
 				items: [
 					card("boat", "#ffffff"),
 					card("cactus", "#F4EFE6"),
 					card("navidad", "#FFC7D9"),
-					card("bodymovin", "#2A1458"),
-					card("gradientStrokes", "#120E24"),
+					card("bodymovin", NIGHT),
+					card("gradientStrokes", NIGHT),
 					card("pinJump", "#F4EFE6"),
-					card("iconTransitions", "#0E1A2A"),
-					card("adrock", "#3A1020"),
+					card("iconTransitions", NIGHT),
+					card("adrock", NIGHT),
 				],
 			} as never).animate(
 				keys("rotateY", [
@@ -175,9 +183,9 @@ export function spaceScene(): Node {
 		],
 	});
 
-	return scene("space", "#05040A", [
+	return scene("space", BG, [
 		full({
-			background: Gradient.radial([Color.alpha(VIOLET, 0.35), "#05040A"]),
+			background: Gradient.radial([WHITE, FROST]),
 		}),
 		Layer.particles({
 			id: "space-stars",
@@ -193,8 +201,8 @@ export function spaceScene(): Node {
 			sizeJitter: 0.8,
 			fade: [0.3, 0.3],
 			shape: "soft",
-			blend: "add",
-			color: ["#ffffff", "#b9c7ff"],
+			blend: "normal",
+			color: [Color.alpha(SIGNAL, 0.5), Color.alpha(SKY, 0.6)],
 			prewarm: 8,
 		} as never),
 		Layer.camera({
@@ -204,7 +212,7 @@ export function spaceScene(): Node {
 			targetZ: 0,
 			animation: cam,
 		} as never),
-		...(Lighting.dramatic({
+		...(Lighting.studio({
 			target: [CX, CY, 0],
 			bloom: true,
 			exposure: 0.2,
@@ -212,7 +220,7 @@ export function spaceScene(): Node {
 		world,
 		hud("space", [
 			"CameraAnimation.orbit",
-			"Lighting.dramatic + bloom",
+			"Lighting.studio + bloom",
 			"Layer3D.extrudedText",
 			"material: glass",
 			"Layer.cube(faces: Lottie)",

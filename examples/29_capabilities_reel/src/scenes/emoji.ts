@@ -16,17 +16,19 @@ import type { NotoName } from "../manifest.js";
 import { emoji } from "../paths.js";
 import {
 	BEAT,
-	CYAN,
+	BG,
+	COBALT,
 	DISPLAY,
+	FG,
 	FPS,
+	FROST,
 	H,
-	INK,
 	MONO,
 	MUTED,
-	PAPER,
-	PINK,
-	VIOLET,
+	SIGNAL,
+	SKY,
 	W,
+	WHITE,
 } from "../theme.js";
 import { chapter } from "../timeline.js";
 
@@ -97,21 +99,14 @@ export async function emojiScene(): Promise<Node> {
 			height: 34,
 			rotation: b.r,
 			borderRadius: 17,
-			background: Gradient.linear(
-				[
-					Color.alpha(CYAN, 0.55),
-					Color.alpha(VIOLET, 0.55),
-					Color.alpha(PINK, 0.55),
-				],
-				90,
-			),
-			borderColor: Color.alpha("#ffffff", 0.45),
+			background: Gradient.linear([SKY, SIGNAL, COBALT], 90),
+			borderColor: Color.alpha("#ffffff", 0.6),
 			borderWidth: 1.5,
 		}).withEffect(
 			new LayerStyle({
 				outerGlow: {
 					enabled: true,
-					color: CYAN,
+					color: SKY,
 					opacity: 0.5,
 					size: 22,
 					spread: 0,
@@ -152,10 +147,10 @@ export async function emojiScene(): Promise<Node> {
 	});
 	world.simulate();
 
-	return scene("emoji", INK, [
-		full({ background: Gradient.linear(["#1B0F3A", "#0A0716"], 180) }),
+	return scene("emoji", BG, [
+		full({ background: Gradient.linear([WHITE, FROST], 180) }),
 		full({
-			background: Gradient.radial([Color.alpha(VIOLET, 0.35), "transparent"]),
+			background: Gradient.radial([Color.alpha(SKY, 0.35), "transparent"]),
 		}),
 		// The stage shakes with the loudest impact.
 		full({
@@ -170,18 +165,18 @@ export async function emojiScene(): Promise<Node> {
 		),
 		full({
 			id: "emoji-flash",
-			background: "#ffffff",
+			background: SKY,
 			opacity: 0,
-			blendMode: "overlay",
+			blendMode: "multiply",
 		}).animate(
 			LayerAnimation.create().signal("opacity", world.impact, {
-				multiplier: 0.18,
+				multiplier: 0.12,
 			}),
 		),
 		Layer.text(
 			[
 				{ text: "Animated emoji\n" },
-				{ text: "with real physics", fill: Color.lighten(CYAN, 0.1) },
+				{ text: "with real physics", fill: COBALT },
 			] as never,
 			{
 				id: "emoji-title",
@@ -194,8 +189,8 @@ export async function emojiScene(): Promise<Node> {
 				fontWeight: 800,
 				fontSize: 84,
 				lineHeight: 92,
-				letterSpacing: -1.5,
-				fill: PAPER,
+				letterSpacing: -2.5,
+				fill: FG,
 			},
 		).animate(
 			keys("opacity", [

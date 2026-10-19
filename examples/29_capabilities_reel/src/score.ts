@@ -1,5 +1,5 @@
 /**
- * pnpm score → assets/stems/{drums,bass,music,fx}.wav
+ * pnpm score → assets/stems/{drums,bass,music}.wav (transition effects are Freesound files, see SFX)
  *
  * A small deterministic synthesizer renders music.ts's arrangement (120 BPM, A minor) into four
  * stems. The film mixes them with framefields' audio nodes (compressor, EQ sweep, delay, reverb,
@@ -11,10 +11,8 @@ import {
 	beatToFrame,
 	CLAPS,
 	HATS,
-	IMPACTS,
 	KICKS,
 	PROGRESSION,
-	RISERS,
 	SAMPLE_RATE,
 	SECONDS_PER_BEAT,
 	sectionAt,
@@ -180,48 +178,11 @@ function padChord(tones: number[], dur: number, bright: number): Stereo {
 	return out;
 }
 
-function riser(dur: number): Float32Array {
-	const n = Math.round(dur * SR);
-	const out = new Float32Array(n);
-	let bp1 = 0;
-	let bp2 = 0;
-	let ph = 0;
-	for (let i = 0; i < n; i++) {
-		const t = i / SR;
-		const k = t / dur;
-		const fc = 300 * 30 ** k;
-		const f = 2 * Math.sin((Math.PI * Math.min(fc, 12000)) / SR);
-		const x = noise();
-		bp1 += f * (x - bp1 - 0.35 * bp2);
-		bp2 += f * bp1;
-		ph += (TAU * (220 * 4 ** k)) / SR;
-		out[i] = (bp1 * 0.5 + Math.sin(ph) * 0.12) * k ** 2;
-	}
-	return out;
-}
-
-function boom(): Float32Array {
-	const n = Math.round(2.4 * SR);
-	const out = new Float32Array(n);
-	let ph = 0;
-	let lp = 0;
-	for (let i = 0; i < n; i++) {
-		const t = i / SR;
-		ph += (TAU * (38 + 60 * Math.exp(-t * 6))) / SR;
-		const low = Math.sin(ph) * Math.exp(-t * 2.2);
-		lp += 0.08 * (noise() - lp);
-		const crash = (noise() - lp) * Math.exp(-t * 2.8) * 0.4;
-		out[i] = Math.tanh((low + crash) * 1.3) * 0.9;
-	}
-	return out;
-}
-
 // ── Arrangement ─────────────────────────────────────────────────────────────
 
 const drums = stem();
 const bass = stem();
 const music = stem();
-const fx = stem();
 
 const K = kickVoice();
 const C = clapVoice();
@@ -315,11 +276,6 @@ for (let i = 0; i < LENGTH; i++) {
 	music[1][i] *= 0.55 + 0.45 * g;
 }
 
-const R = riser(SECONDS_PER_BEAT * 4);
-for (const bar of RISERS) add(fx, beatSec(bar * 4), R, 0.6);
-const B = boom();
-for (const b of IMPACTS) add(fx, beatSec(b), B, 0.8);
-
 // ── Write ───────────────────────────────────────────────────────────────────
 
 function wav(data: Stereo, peak: number): Buffer {
@@ -361,7 +317,6 @@ const stems: Record<string, [Stereo, number]> = {
 	drums: [drums, 0.7],
 	bass: [bass, 0.5],
 	music: [music, 0.42],
-	fx: [fx, 0.5],
 };
 for (const [name, [data, peak]] of Object.entries(stems)) {
 	const file = path.join(dir, `${name}.wav`);

@@ -4,3 +4,5 @@ assets/lottie/
 assets/svg/
 # Synthesized by `pnpm score`.
 assets/stems/
+# Freesound CC0 effects, fetched by `pnpm assets`.
+assets/sfx/

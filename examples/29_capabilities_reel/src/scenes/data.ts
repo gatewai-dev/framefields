@@ -4,7 +4,6 @@
  * reveals Curves → SelectiveColor → ColorBalance → ShadowsHighlights → Vignette on the right.
  */
 import {
-	Color,
 	ColorBalance,
 	Curves,
 	FilmGrain,
@@ -18,19 +17,20 @@ import { REPO } from "../paths.js";
 import {
 	BAR,
 	BEAT,
-	CYAN,
+	BG,
+	COBALT,
 	DISPLAY,
-	EMBER,
-	GOLD,
+	FG,
 	H,
-	INK,
-	LIME,
+	LINE,
 	MONO,
 	MUTED,
+	NAVY,
 	PAPER,
-	PINK,
+	ROYAL,
 	SANS,
-	VIOLET,
+	SIGNAL,
+	SKY,
 	W,
 } from "../theme.js";
 
@@ -38,15 +38,15 @@ const PORTRAIT = `${REPO}/examples/19_framefields_film/assets/portrait.mp4`;
 
 /** framefields' 74 nodes (nodes/*), by what they do. */
 const NODES: Array<[string, number, string]> = [
-	["Stylize", 16, PINK],
-	["Color", 11, EMBER],
-	["Warp", 10, GOLD],
-	["Generate", 10, LIME],
-	["Audio", 8, CYAN],
-	["Optics", 6, VIOLET],
-	["Matte", 6, "#FF8AD8"],
-	["Signal", 4, "#9AE6B4"],
-	["3D light", 3, "#B9C7FF"],
+	["Stylize", 16, NAVY],
+	["Color", 11, ROYAL],
+	["Warp", 10, COBALT],
+	["Generate", 10, SIGNAL],
+	["Audio", 8, "#60A5FA"],
+	["Optics", 6, "#38BDF8"],
+	["Matte", 6, SKY],
+	["Signal", 4, "#93C5FD"],
+	["3D light", 3, "#BFDBFE"],
 ];
 
 export function dataScene(): Node {
@@ -66,7 +66,7 @@ export function dataScene(): Node {
 				fontWeight: 800,
 				fontSize: 76,
 				letterSpacing: -2,
-				fill: PAPER,
+				fill: FG,
 			}).animate(
 				keys("opacity", [
 					[0, 0],
@@ -80,7 +80,7 @@ export function dataScene(): Node {
 					height: 620,
 					categories: NODES.map(([name]) => name),
 					series: [
-						{ name: "nodes", data: NODES.map(([, v]) => v), color: VIOLET },
+						{ name: "nodes", data: NODES.map(([, v]) => v), color: SIGNAL },
 					],
 					colors: NODES.map(([, , c]) => c),
 					yAxis: { min: 0, max: 18, ticks: 6, grid: true },
@@ -88,7 +88,7 @@ export function dataScene(): Node {
 					fontFamily: SANS,
 					fontSize: 18,
 					textColor: MUTED,
-					gridColor: Color.alpha("#ffffff", 0.08),
+					gridColor: LINE,
 					cornerRadius: 8,
 					animate: {
 						start: 6,
@@ -110,7 +110,7 @@ export function dataScene(): Node {
 					legend: false,
 					fontFamily: SANS,
 					fontSize: 16,
-					textColor: PAPER,
+					textColor: FG,
 					animate: { start: 14, duration: 30, stagger: 2, ease: "expo.out" },
 				} as never,
 				{ id: "data-donut", position: "absolute", x: 1240, y: 250 },
@@ -125,7 +125,7 @@ export function dataScene(): Node {
 				fontFamily: DISPLAY,
 				fontWeight: 800,
 				fontSize: 130,
-				fill: PAPER,
+				fill: FG,
 			}).animate(
 				keys("scale", [
 					[0, 0],
@@ -261,7 +261,7 @@ export function dataScene(): Node {
 		]),
 	);
 
-	return scene("data", INK, [
+	return scene("data", BG, [
 		charts,
 		grade,
 		hud("data", ["Layer.chart", "withEffects([...grade])", "withMatte(wipe)"]),

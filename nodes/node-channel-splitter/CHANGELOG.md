@@ -1,5 +1,7 @@
 # @framefields/node-channel-splitter
 
+## 2.3.2
+
 ## 2.3.1
 
 ## 2.3.0

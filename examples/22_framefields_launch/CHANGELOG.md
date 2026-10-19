@@ -1,5 +1,7 @@
 # @framefields/example-22-framefields-launch
 
+## 2.3.2
+
 ## 2.3.1
 
 ## 2.3.0

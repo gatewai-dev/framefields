@@ -325,7 +325,7 @@ interface PolygonHierarchy {
  * of "O", or the "R" sitting in the counter of "®"), one inside an odd number
  * is a hole of the smallest outline around it.
  */
-function organizeGlyphPolygons({
+export function organizeGlyphPolygons({
 	contours: glyphContours,
 	simplified,
 }: GlyphContours): PolygonHierarchy[] {
@@ -373,44 +373,134 @@ function organizeGlyphPolygons({
 	return polygons;
 }
 
+/** Where segments ab and cd cross strictly inside both, or null. */
+function segmentCrossing(
+	a: Point2D,
+	b: Point2D,
+	c: Point2D,
+	d: Point2D,
+): Point2D | null {
+	const rx = b.x - a.x;
+	const ry = b.y - a.y;
+	const sx = d.x - c.x;
+	const sy = d.y - c.y;
+	const den = rx * sy - ry * sx;
+	if (Math.abs(den) < 1e-12) return null;
+	const t = ((c.x - a.x) * sy - (c.y - a.y) * sx) / den;
+	const u = ((c.x - a.x) * ry - (c.y - a.y) * rx) / den;
+	const eps = 1e-9;
+	if (t <= eps || t >= 1 - eps || u <= eps || u >= 1 - eps) return null;
+	return { x: a.x + rx * t, y: a.y + ry * t };
+}
+
 /**
- * For outlines that may overlap: fonts wind filled contours one way and holes
- * the other, so the winding of the largest contour marks the outlines; each
- * hole goes to the smallest outline around it. Overlapping outlines become
- * separate solids, which look the same once extruded.
+ * Splits a contour that crosses itself into simple loops: at each crossing
+ * the contour is cut into the part between the two crossing edges and the
+ * rest. Font outlines meant to be filled with the nonzero rule (variable
+ * fonts, overlapping strokes) often cross themselves, and a triangulator
+ * given such a contour fills the wrong areas (a "V" with its notch filled).
+ */
+export function untangleContour(contour: Contour, depth = 0): Contour[] {
+	const n = contour.length;
+	if (n < 3) return [];
+	if (depth > 64) return [contour];
+	for (let i = 0; i < n; i++) {
+		const a = contour[i]!;
+		const b = contour[(i + 1) % n]!;
+		for (let j = i + 2; j < n; j++) {
+			if (i === 0 && j === n - 1) continue;
+			const x = segmentCrossing(a, b, contour[j]!, contour[(j + 1) % n]!);
+			if (!x) continue;
+			const inner = [x, ...contour.slice(i + 1, j + 1)];
+			const outer = [x, ...contour.slice(j + 1), ...contour.slice(0, i + 1)];
+			return [
+				...untangleContour(inner, depth + 1),
+				...untangleContour(outer, depth + 1),
+			];
+		}
+	}
+	return Math.abs(computeContourSignedArea(contour)) > 1e-9 ? [contour] : [];
+}
+
+/** Nonzero winding number of a set of contours around a point. */
+function windingNumber(p: Point2D, contours: Contour[]): number {
+	let w = 0;
+	for (const c of contours) {
+		for (let i = 0; i < c.length; i++) {
+			const a = c[i]!;
+			const b = c[(i + 1) % c.length]!;
+			const side = (b.x - a.x) * (p.y - a.y) - (p.x - a.x) * (b.y - a.y);
+			if (a.y <= p.y) {
+				if (b.y > p.y && side > 0) w++;
+			} else if (b.y <= p.y && side < 0) {
+				w--;
+			}
+		}
+	}
+	return w;
+}
+
+/** A point just inside a simple loop, next to its longest edge. */
+function pointJustInside(loop: Contour): Point2D {
+	let best = 0;
+	let bestLen = -1;
+	for (let i = 0; i < loop.length; i++) {
+		const a = loop[i]!;
+		const b = loop[(i + 1) % loop.length]!;
+		const len = Math.hypot(b.x - a.x, b.y - a.y);
+		if (len > bestLen) {
+			bestLen = len;
+			best = i;
+		}
+	}
+	const a = loop[best]!;
+	const b = loop[(best + 1) % loop.length]!;
+	const mx = (a.x + b.x) / 2;
+	const my = (a.y + b.y) / 2;
+	const eps = Math.max(1e-4, Math.min(0.01, bestLen * 1e-3));
+	const nx = (-(b.y - a.y) / bestLen) * eps;
+	const ny = ((b.x - a.x) / bestLen) * eps;
+	const p = { x: mx + nx, y: my + ny };
+	return isPointInsidePolygon(p, loop) ? p : { x: mx - nx, y: my - ny };
+}
+
+/**
+ * For outlines that were not simplified (no skia, as in the browser):
+ * contours may cross themselves and each other, and are meant to be filled
+ * with the nonzero rule. Self-crossings are split into simple loops; a loop
+ * whose inside is filled under the nonzero rule becomes an outline, and one
+ * that is empty (a counter) becomes a hole of the smallest outline around it.
+ * Overlapping outlines become separate solids, which look the same once
+ * extruded.
  */
 function organizeByWinding(glyphContours: Contour[]): PolygonHierarchy[] {
-	const contours = glyphContours.map((contour) => {
-		const signed = computeContourSignedArea(contour);
-		return { contour, signed, area: Math.abs(signed) };
-	});
-	if (contours.length === 0) return [];
-	contours.sort((a, b) => b.area - a.area);
-	const filled = Math.sign(contours[0]!.signed);
+	const loops = glyphContours.flatMap((c) => untangleContour(c));
 	const polygons: PolygonHierarchy[] = [];
-	for (const c of contours) {
-		if (Math.sign(c.signed) === filled)
-			polygons.push({ outer: c.contour, holes: [] });
+	const holes: Contour[] = [];
+	for (const loop of loops) {
+		if (windingNumber(pointJustInside(loop), glyphContours) !== 0) {
+			polygons.push({ outer: loop, holes: [] });
+		} else {
+			holes.push(loop);
+		}
 	}
-	for (const c of contours) {
-		if (Math.sign(c.signed) === filled) continue;
-		const probe = c.contour[0]!;
-		const mid = c.contour[Math.floor(c.contour.length / 2)]!;
+	for (const hole of holes) {
+		const area = Math.abs(computeContourSignedArea(hole));
+		const probe = pointJustInside(hole);
 		let home: PolygonHierarchy | undefined;
 		let homeArea = Number.POSITIVE_INFINITY;
 		for (const poly of polygons) {
-			const area = Math.abs(computeContourSignedArea(poly.outer));
+			const outerArea = Math.abs(computeContourSignedArea(poly.outer));
 			if (
-				area > c.area &&
-				area < homeArea &&
-				(isPointInsidePolygon(probe, poly.outer) ||
-					isPointInsidePolygon(mid, poly.outer))
+				outerArea > area &&
+				outerArea < homeArea &&
+				isPointInsidePolygon(probe, poly.outer)
 			) {
 				home = poly;
-				homeArea = area;
+				homeArea = outerArea;
 			}
 		}
-		home?.holes.push(c.contour);
+		home?.holes.push(hole);
 	}
 	return polygons;
 }

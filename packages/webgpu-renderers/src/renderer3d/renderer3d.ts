@@ -175,6 +175,8 @@ export interface DrawMesh3DOpts extends SurfaceParams {
 	alphaCutoff?: number;
 	/** Texture addressing outside [0, 1] */
 	textureWrap?: "repeat" | "clamp" | "mirror";
+	/** Magnification filter: "nearest" keeps texels sharp (pixel art). */
+	textureFilter?: "linear" | "nearest";
 	/** Blinn-Phong specular shininess exponent */
 	shininess?: number;
 	/** Roughness factor [0, 1] */
@@ -1169,11 +1171,26 @@ export class Renderer3D {
 		}
 		indexBuffer.unmap();
 
+		let colorBuffer: GPUBuffer | undefined;
+		if (mesh.colors && mesh.colors.length >= numVerts * 4) {
+			colorBuffer = this.device.createBuffer({
+				label: "Mesh3DVertexColors",
+				size: Math.max(16, numVerts * 16),
+				usage: GPUBufferUsage.VERTEX,
+				mappedAtCreation: true,
+			});
+			new Float32Array(colorBuffer.getMappedRange()).set(
+				mesh.colors.subarray(0, numVerts * 4),
+			);
+			colorBuffer.unmap();
+		}
+
 		cached = {
 			vertexBuffer,
 			indexBuffer,
 			indexCount: mesh.indices.length,
 			indexFormat: is32Bit ? "uint32" : "uint16",
+			colorBuffer,
 		};
 		this.meshBuffersCache.set(mesh, cached);
 		return cached;
@@ -1207,6 +1224,7 @@ export class Renderer3D {
 			indexBuffer: meshBuffers.indexBuffer,
 			indexCount: meshBuffers.indexCount,
 			indexFormat: meshBuffers.indexFormat,
+			colorBuffer: meshBuffers.colorBuffer,
 		};
 	}
 
@@ -1235,6 +1253,7 @@ export class Renderer3D {
 			shadeColor,
 			alphaCutoff,
 			textureWrap = "clamp",
+			textureFilter = "linear",
 			shininess = 32.0,
 			roughness,
 			specularIntensity = 0.5,
@@ -1249,6 +1268,9 @@ export class Renderer3D {
 		const sampler = this.samplerCache.getSampler(this.device, {
 			addressModeU: address,
 			addressModeV: address,
+			magFilter: textureFilter,
+			// Anisotropy requires linear filtering.
+			...(textureFilter === "nearest" && { maxAnisotropy: 1 }),
 		});
 
 		const glassy =
@@ -1397,7 +1419,18 @@ export class Renderer3D {
 		const source = Buffer.from(
 			encoded instanceof Uint8Array ? encoded : new Uint8Array(encoded),
 		);
-		const { width, height } = await sharp(source).metadata();
+		let width: number | undefined;
+		let height: number | undefined;
+		try {
+			({ width, height } = await sharp(source).metadata());
+		} catch (err) {
+			// TGA, PSD and other formats sharp cannot decode: draw untextured.
+			console.warn(
+				`[Renderer3D] Could not decode texture "${label}"; drawing without it:`,
+				err instanceof Error ? err.message : err,
+			);
+			return undefined;
+		}
 		if (!width || !height) return undefined;
 		const mipLevelCount = Math.floor(Math.log2(Math.max(width, height))) + 1;
 		const texture = this.device.createTexture({

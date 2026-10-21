@@ -1,13 +1,27 @@
 import fs from "node:fs";
+import path from "node:path";
 import { inflateSync } from "node:zlib";
-import { type Vec3, Vector3Math } from "../math3d/index.js";
+import { type Mat4, Matrix4Math, type Vec3 } from "../math3d/index.js";
+import {
+	accumulateVertexNormals,
+	resolveModelTransform,
+} from "./mesh-utils.js";
+import { MAX_JOINTS, poseNodes, type Quat } from "./pose.js";
+import {
+	isSupportedTexture,
+	readTextureFile,
+	textureMime,
+	warnMissingTexture,
+} from "./texture-files.js";
 import type {
 	AnimationClip3D,
 	LoadModelOptions,
 	Material3D,
 	Mesh3DData,
 	Model3DData,
+	ModelNode3D,
 	NodeAnimationTrack3D,
+	Skin3D,
 } from "./types.js";
 
 interface FBXNode {
@@ -37,8 +51,7 @@ export class FbxLoader {
 	}
 
 	public static isBinary(buffer: ArrayBuffer | Uint8Array): boolean {
-		const view =
-			buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+		const view = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
 		if (view.length < 27) return false;
 		const header = "Kaydara FBX Binary  \0\x1a\0";
 		for (let i = 0; i < header.length; i++) {
@@ -302,6 +315,95 @@ export class FbxLoader {
 		return root;
 	}
 
+	/** Material properties a texture can feed, by the FBX (or Maya / 3ds Max) property name. */
+	private static textureSlot(prop: string): "diffuse" | "normal" | undefined {
+		const p = prop.toLowerCase();
+		if (
+			p === "diffusecolor" ||
+			p === "diffuse" ||
+			p.endsWith("|basecolor") ||
+			p.endsWith("|base_color") ||
+			p === "basecolor"
+		)
+			return "diffuse";
+		if (
+			p === "normalmap" ||
+			p.endsWith("|normalcamera") ||
+			p.endsWith("|bump_map")
+		)
+			return "normal";
+		return undefined;
+	}
+
+	/**
+	 * Fills a material's diffuse / normal map from its connected Texture
+	 * objects: the bytes embedded in the Video's `Content`, else the file
+	 * named by `RelativeFilename` / `FileName`, looked up next to the model.
+	 */
+	private static attachTextures(
+		material: Material3D,
+		materialId: number | string,
+		objects: Map<number | string, { name: string; node: FBXNode }>,
+		connections: Array<{
+			childId: number | string;
+			parentId: number | string;
+			propName?: string;
+		}>,
+		basePath: string | undefined,
+	): void {
+		const stringChild = (node: FBXNode | undefined, name: string) => {
+			const value = node?.children.find((c) => c.name === name)?.props[0];
+			return typeof value === "string" && value ? value : undefined;
+		};
+		for (const c of connections) {
+			if (c.parentId !== materialId || !c.propName) continue;
+			const slot = FbxLoader.textureSlot(c.propName);
+			const texture = objects.get(c.childId);
+			if (!slot || texture?.node.name !== "Texture") continue;
+			if (
+				slot === "diffuse"
+					? material.diffuseTextureBuffer
+					: material.normalTextureBuffer
+			)
+				continue;
+
+			const video = connections
+				.filter((v) => v.parentId === c.childId && !v.propName)
+				.map((v) => objects.get(v.childId)?.node)
+				.find((n) => n?.name === "Video");
+			const ref =
+				stringChild(texture.node, "RelativeFilename") ??
+				stringChild(texture.node, "FileName") ??
+				stringChild(video, "RelativeFilename") ??
+				stringChild(video, "Filename");
+
+			if (ref && !isSupportedTexture(ref)) {
+				warnMissingTexture("FbxLoader", material.name, ref);
+				continue;
+			}
+			let bytes: Uint8Array | undefined;
+			const content = video?.children.find((n) => n.name === "Content")
+				?.props[0];
+			if (content instanceof Uint8Array && content.length > 0) bytes = content;
+			else if (ref) bytes = readTextureFile(ref, basePath)?.bytes;
+
+			if (!bytes) {
+				if (ref) warnMissingTexture("FbxLoader", material.name, ref);
+				continue;
+			}
+			if (slot === "diffuse") {
+				material.diffuseTextureBuffer = bytes;
+				material.diffuseTextureMime = textureMime(ref ?? "");
+				if (ref) material.diffuseTexture = ref;
+				// FBX UVs commonly tile; textures repeat by default in FBX tools.
+				material.textureWrap = "repeat";
+			} else {
+				material.normalTextureBuffer = bytes;
+				if (ref) material.normalTexture = ref;
+			}
+		}
+	}
+
 	/**
 	 * Builds ready-to-render Model3DData from parsed FBX node tree.
 	 */
@@ -351,11 +453,32 @@ export class FbxLoader {
 			}
 		}
 
+		// Geometry -> Model -> Material: a mesh uses its model's first material.
+		const materialNameForGeometry = (geometryId: number | string) => {
+			for (const c of connections) {
+				// Some exporters connect the material to the geometry itself.
+				const mat =
+					c.parentId === geometryId ? objects.get(c.childId) : undefined;
+				if (mat?.node.name === "Material" && !c.propName) return mat.name;
+			}
+			for (const g of connections) {
+				if (g.childId !== geometryId || g.propName) continue;
+				for (const m of connections) {
+					if (m.parentId !== g.parentId || m.propName) continue;
+					const mat = objects.get(m.childId);
+					if (mat?.node.name === "Material") return mat.name;
+				}
+			}
+			return undefined;
+		};
+
 		// 1. Parse Geometry Meshes
 		const meshes: Mesh3DData[] = [];
 		const materials: Record<string, Material3D> = {};
 
-		function extractArrayProp(node: FBXNode | undefined): number[] | Float32Array | Float64Array | Int32Array {
+		function extractArrayProp(
+			node: FBXNode | undefined,
+		): number[] | Float32Array | Float64Array | Int32Array {
 			if (!node) return [];
 			if (
 				node.props[0] instanceof Float32Array ||
@@ -369,14 +492,58 @@ export class FbxLoader {
 			if (aChild && aChild.props.length > 0) {
 				return aChild.props as number[];
 			}
-			if (Array.isArray(node.props) && node.props.length > 0 && typeof node.props[0] === "number") {
+			if (
+				Array.isArray(node.props) &&
+				node.props.length > 0 &&
+				typeof node.props[0] === "number"
+			) {
 				return node.props as number[];
 			}
 			return [];
 		}
 
+		// Scene graph: every Model is a node (glTF semantics), parented by its
+		// OO connection to another Model. Pre-/post-rotations fold into the
+		// rotation; pivots and offsets are not supported.
+		const modelIds = [...objects.values()]
+			.filter((o) => o.node.name === "Model")
+			.map((o) => o.id);
+		const nodeIndexById = new Map(modelIds.map((id, i) => [id, i]));
+		const nodes: ModelNode3D[] = modelIds.map((id) => {
+			const model = objects.get(id)!;
+			const parentConn = connections.find(
+				(c) => c.childId === id && !c.propName && nodeIndexById.has(c.parentId),
+			);
+			return {
+				name: model.name,
+				parent: parentConn ? nodeIndexById.get(parentConn.parentId)! : -1,
+				translation: readVec3(model.node, "Lcl Translation", 0),
+				rotation: modelRotation(
+					model.node,
+					fbxEulerToQuat(
+						readVec3(model.node, "Lcl Rotation", 0),
+						rotationOrder(model.node),
+					),
+				),
+				scale: readVec3(model.node, "Lcl Scaling", 1),
+			};
+		});
+		const modelOfGeometry = (geometryId: number | string) =>
+			connections.find(
+				(c) =>
+					c.childId === geometryId &&
+					!c.propName &&
+					nodeIndexById.has(c.parentId),
+			)?.parentId;
+
+		const skins: Skin3D[] = [];
 		for (const [id, entry] of objects) {
-			if (entry.node.name === "Geometry" && (entry.type === "Mesh" || entry.node.props[2] === "Mesh" || entry.type === "")) {
+			if (
+				entry.node.name === "Geometry" &&
+				(entry.type === "Mesh" ||
+					entry.node.props[2] === "Mesh" ||
+					entry.type === "")
+			) {
 				const geomNode = entry.node;
 
 				const verticesNode = geomNode.children.find(
@@ -385,218 +552,171 @@ export class FbxLoader {
 				const indicesNode = geomNode.children.find(
 					(c) => c.name === "PolygonVertexIndex",
 				);
-				const normalLayer = geomNode.children.find(
-					(c) => c.name === "LayerElementNormal",
-				);
-				const uvLayer = geomNode.children.find(
-					(c) => c.name === "LayerElementUV",
-				);
-
 				if (!verticesNode || !indicesNode) continue;
 
 				const rawVerts = extractArrayProp(verticesNode);
 				const rawPolyIndices = extractArrayProp(indicesNode);
-
-				const normalsNode = normalLayer?.children.find(
-					(c) => c.name === "Normals",
+				const layer = (
+					name: string,
+					data: string,
+					index: string,
+					size: number,
+				) => {
+					const node = geomNode.children.find((c) => c.name === name);
+					if (!node) return undefined;
+					return layerElement(
+						node,
+						extractArrayProp(node.children.find((c) => c.name === data)),
+						extractArrayProp(node.children.find((c) => c.name === index)),
+						size,
+					);
+				};
+				const normalAt = layer(
+					"LayerElementNormal",
+					"Normals",
+					"NormalsIndex",
+					3,
 				);
-				const rawNormals = extractArrayProp(normalsNode);
+				const uvAt = layer("LayerElementUV", "UV", "UVIndex", 2);
 
-				const uvsNode = uvLayer?.children.find((c) => c.name === "UV");
-				const uvIndexNode = uvLayer?.children.find(
-					(c) => c.name === "UVIndex",
-				);
-				const rawUvs = extractArrayProp(uvsNode);
-				const rawUvIndices = extractArrayProp(uvIndexNode);
-
-
-				// Triangulate polygons (indices with negative termination)
-				const triangles: Array<[number, number, number]> = [];
-				const triVertexIndexSequence: number[] = [];
-
-				let polygon: number[] = [];
+				// Triangulate polygons (the last index of each is stored as -(i + 1)).
+				// Each corner keeps its control point and its polygon-vertex index,
+				// which ByPolygonVertex layers (normals, UVs) are indexed by.
+				const corners: Array<{ cp: number; pv: number; poly: number }> = [];
+				let polygon: Array<{ cp: number; pv: number }> = [];
+				let polyIndex = 0;
 				for (let i = 0; i < rawPolyIndices.length; i++) {
 					const idx = rawPolyIndices[i]!;
-					if (idx < 0) {
-						// End of polygon: real index is -(idx + 1)
-						polygon.push(-(idx + 1));
-						triVertexIndexSequence.push(i);
-
-						if (polygon.length >= 3) {
-							for (let k = 1; k < polygon.length - 1; k++) {
-								triangles.push([polygon[0]!, polygon[k]!, polygon[k + 1]!]);
-							}
-						}
-						polygon = [];
-					} else {
-						polygon.push(idx);
-						triVertexIndexSequence.push(i);
+					polygon.push({ cp: idx < 0 ? -(idx + 1) : idx, pv: i });
+					if (idx >= 0) continue;
+					for (let k = 1; k < polygon.length - 1; k++) {
+						for (const c of [polygon[0]!, polygon[k]!, polygon[k + 1]!])
+							corners.push({ ...c, poly: polyIndex });
 					}
+					polygon = [];
+					polyIndex++;
 				}
 
-				const outPositions: number[] = [];
-				const outNormals: number[] = [];
-				const outUvs: number[] = [];
-				const outIndices: number[] = [];
+				const numVerts = corners.length;
+				const outPositions = new Float32Array(numVerts * 3);
+				const outNormals = new Float32Array(numVerts * 3);
+				const outUvs = new Float32Array(numVerts * 2);
+				const outIndices = new Array<number>(numVerts);
+				corners.forEach(({ cp, pv, poly }, v) => {
+					outPositions[v * 3] = rawVerts[cp * 3] ?? 0;
+					outPositions[v * 3 + 1] = rawVerts[cp * 3 + 1] ?? 0;
+					outPositions[v * 3 + 2] = rawVerts[cp * 3 + 2] ?? 0;
+					const n = normalAt?.(cp, pv, poly);
+					outNormals.set(n ?? [0, 0, 1], v * 3);
+					const uv = uvAt?.(cp, pv, poly);
+					outUvs[v * 2] = uv?.[0] ?? 0;
+					outUvs[v * 2 + 1] = 1.0 - (uv?.[1] ?? 0);
+					outIndices[v] = v;
+				});
 
-				for (let t = 0; t < triangles.length; t++) {
-					const tri = triangles[t]!;
-					for (let v = 0; v < 3; v++) {
-						const vertIdx = tri[v]!;
-						const outIdx = outPositions.length / 3;
-
-						const px = rawVerts[vertIdx * 3] ?? 0;
-						const py = rawVerts[vertIdx * 3 + 1] ?? 0;
-						const pz = rawVerts[vertIdx * 3 + 2] ?? 0;
-						outPositions.push(px, py, pz);
-
-						// Normals
-						if (rawNormals.length > 0) {
-							const nx = rawNormals[vertIdx * 3] ?? 0;
-							const ny = rawNormals[vertIdx * 3 + 1] ?? 0;
-							const nz = rawNormals[vertIdx * 3 + 2] ?? 0;
-							outNormals.push(nx, ny, nz);
-						} else {
-							outNormals.push(0, 0, 1);
-						}
-
-						// UVs
-						if (rawUvs.length > 0) {
-							let uvIdx = vertIdx;
-							if (rawUvIndices.length > 0) {
-								uvIdx = rawUvIndices[vertIdx] ?? vertIdx;
-							}
-							const u = rawUvs[uvIdx * 2] ?? 0;
-							const v = rawUvs[uvIdx * 2 + 1] ?? 0;
-							outUvs.push(u, 1.0 - v);
-						} else {
-							outUvs.push(0, 0);
-						}
-
-						outIndices.push(outIdx);
-					}
+				if (!normalAt || options.smoothNormals) {
+					outNormals.fill(0);
+					accumulateVertexNormals(outPositions, outIndices, outNormals);
 				}
 
-				// Generate normals if missing
-				if (rawNormals.length === 0 || options.smoothNormals) {
-					const computedNormals = new Float32Array(outPositions.length);
-					for (let i = 0; i < outIndices.length; i += 3) {
-						const i0 = outIndices[i]!;
-						const i1 = outIndices[i + 1]!;
-						const i2 = outIndices[i + 2]!;
-
-						const p0: Vec3 = [
-							outPositions[i0 * 3]!,
-							outPositions[i0 * 3 + 1]!,
-							outPositions[i0 * 3 + 2]!,
-						];
-						const p1: Vec3 = [
-							outPositions[i1 * 3]!,
-							outPositions[i1 * 3 + 1]!,
-							outPositions[i1 * 3 + 2]!,
-						];
-						const p2: Vec3 = [
-							outPositions[i2 * 3]!,
-							outPositions[i2 * 3 + 1]!,
-							outPositions[i2 * 3 + 2]!,
-						];
-
-						const edge1 = Vector3Math.subtract(p1, p0);
-						const edge2 = Vector3Math.subtract(p2, p0);
-						const faceNormal = Vector3Math.cross(edge1, edge2);
-
-						computedNormals[i0 * 3] += faceNormal[0];
-						computedNormals[i0 * 3 + 1] += faceNormal[1];
-						computedNormals[i0 * 3 + 2] += faceNormal[2];
-
-						computedNormals[i1 * 3] += faceNormal[0];
-						computedNormals[i1 * 3 + 1] += faceNormal[1];
-						computedNormals[i1 * 3 + 2] += faceNormal[2];
-
-						computedNormals[i2 * 3] += faceNormal[0];
-						computedNormals[i2 * 3 + 1] += faceNormal[1];
-						computedNormals[i2 * 3 + 2] += faceNormal[2];
-					}
-
-					for (let v = 0; v < outPositions.length / 3; v++) {
-						const nx = computedNormals[v * 3]!;
-						const ny = computedNormals[v * 3 + 1]!;
-						const nz = computedNormals[v * 3 + 2]!;
-						const len = Math.hypot(nx, ny, nz) || 1.0;
-						outNormals[v * 3] = nx / len;
-						outNormals[v * 3 + 1] = ny / len;
-						outNormals[v * 3 + 2] = nz / len;
-					}
-				}
-
-				// Find associated deformers/skins
+				// Skin: each cluster deforms the control points in its Indexes by its
+				// Weights, driven by the bone Model linked to it.
 				const skinConn = connections.find(
 					(c) =>
 						c.parentId === id &&
-						objects.get(c.childId)?.type === "Deformer" &&
+						objects.get(c.childId)?.node.name === "Deformer" &&
 						objects.get(c.childId)?.node.props[2] === "Skin",
 				);
 
 				let jointIndices: Float32Array | undefined;
 				let jointWeights: Float32Array | undefined;
-
+				let skinIndex: number | undefined;
 				if (skinConn) {
-					const numVerts = outPositions.length / 3;
-					jointIndices = new Float32Array(numVerts * 4);
-					jointWeights = new Float32Array(numVerts * 4);
-
-					const clusterConns = connections.filter(
-						(c) =>
-							c.parentId === skinConn.childId &&
-							objects.get(c.childId)?.type === "Deformer" &&
-							objects.get(c.childId)?.node.props[2] === "Cluster",
-					);
-
-					clusterConns.forEach((cc, boneIdx) => {
-						const clusterNode = objects.get(cc.childId)?.node;
-						const indexesNode = clusterNode?.children.find(
-							(c) => c.name === "Indexes",
+					const joints: number[] = [];
+					const inverseBinds: number[] = [];
+					// Per control point: up to 4 (joint, weight) influences.
+					const influences = new Map<number, Array<[number, number]>>();
+					for (const cc of connections) {
+						const cluster = objects.get(cc.childId);
+						if (
+							cc.parentId !== skinConn.childId ||
+							cluster?.node.name !== "Deformer" ||
+							cluster.node.props[2] !== "Cluster"
+						)
+							continue;
+						const boneId = connections.find(
+							(b) => b.parentId === cluster.id && nodeIndexById.has(b.childId),
+						)?.childId;
+						if (boneId === undefined) continue;
+						const joint = joints.length;
+						joints.push(nodeIndexById.get(boneId)!);
+						// Vertices sit in the mesh's bind space (Transform); the bone's
+						// bind-pose world matrix is TransformLink.
+						const transform = matrixChild(cluster.node, "Transform");
+						const link = matrixChild(cluster.node, "TransformLink");
+						inverseBinds.push(
+							...Matrix4Math.multiply(
+								Matrix4Math.invert(link) ?? Matrix4Math.identity(),
+								transform,
+							),
 						);
-						const weightsNode = clusterNode?.children.find(
-							(c) => c.name === "Weights",
+						const cpIndexes = extractArrayProp(
+							cluster.node.children.find((c) => c.name === "Indexes"),
 						);
-
-						if (indexesNode && weightsNode) {
-							const cIndexes = extractArrayProp(indexesNode);
-							const cWeights = extractArrayProp(weightsNode);
-
-							for (let k = 0; k < cIndexes.length; k++) {
-								const weight = cWeights[k] ?? 0;
-
-								// Apply weight to all duplicated vertices referencing originalVert
-								for (let v = 0; v < numVerts; v++) {
-									// Slot into lowest available slot in 4-component vector
-									for (let slot = 0; slot < 4; slot++) {
-										if (jointWeights![v * 4 + slot] === 0) {
-											jointIndices![v * 4 + slot] = boneIdx;
-											jointWeights![v * 4 + slot] = weight;
-											break;
-										}
-									}
-								}
-							}
+						const cpWeights = extractArrayProp(
+							cluster.node.children.find((c) => c.name === "Weights"),
+						);
+						for (let k = 0; k < cpIndexes.length; k++) {
+							const weight = Number(cpWeights[k] ?? 0);
+							if (!(weight > 0)) continue;
+							const cp = Number(cpIndexes[k]);
+							const list = influences.get(cp) ?? [];
+							list.push([joint, weight]);
+							influences.set(cp, list);
 						}
-					});
+					}
+					if (joints.length > MAX_JOINTS)
+						throw new Error(
+							`FBX skin has ${joints.length} bones; the mesh shader holds ${MAX_JOINTS}`,
+						);
+					if (joints.length > 0) {
+						skinIndex = skins.length;
+						skins.push({
+							joints,
+							inverseBindMatrices: new Float32Array(inverseBinds),
+						});
+						jointIndices = new Float32Array(numVerts * 4);
+						jointWeights = new Float32Array(numVerts * 4);
+						corners.forEach(({ cp }, v) => {
+							// The 4 strongest influences, renormalized to sum to 1.
+							const top = (influences.get(cp) ?? [])
+								.sort((a, b) => b[1] - a[1])
+								.slice(0, 4);
+							const total = top.reduce((sum, [, w]) => sum + w, 0);
+							top.forEach(([joint, weight], slot) => {
+								jointIndices![v * 4 + slot] = joint;
+								jointWeights![v * 4 + slot] = total > 0 ? weight / total : 0;
+							});
+						});
+					}
 				}
 
-				const isLarge = outPositions.length / 3 > 65535;
+				const modelId = modelOfGeometry(id);
+				const isLarge = numVerts > 65535;
 				meshes.push({
 					id: `fbx_mesh_${id}`,
 					name: entry.name,
-					positions: new Float32Array(outPositions),
-					normals: new Float32Array(outNormals),
-					uvs: new Float32Array(outUvs),
+					positions: outPositions,
+					normals: outNormals,
+					uvs: outUvs,
 					indices: isLarge
 						? new Uint32Array(outIndices)
 						: new Uint16Array(outIndices),
 					jointIndices,
 					jointWeights,
-					materialName: entry.name,
+					materialName: materialNameForGeometry(id) ?? entry.name,
+					node: modelId !== undefined ? nodeIndexById.get(modelId) : undefined,
+					skin: skinIndex,
 				});
 			}
 		}
@@ -620,7 +740,10 @@ export class FbxLoader {
 								const g = Number(p.props[5] ?? 1);
 								const b = Number(p.props[6] ?? 1);
 								diffuseColor = [r, g, b, 1.0];
-							} else if (pName === "Shininess" || pName === "ShininessExponent") {
+							} else if (
+								pName === "Shininess" ||
+								pName === "ShininessExponent"
+							) {
 								shininess = Number(p.props[4] ?? 32);
 							} else if (pName === "Opacity") {
 								opacity = Number(p.props[4] ?? 1);
@@ -630,12 +753,20 @@ export class FbxLoader {
 					}
 				}
 
-				materials[entry.name] = {
+				const material: Material3D = {
 					name: entry.name,
 					diffuseColor,
 					shininess,
 					opacity,
 				};
+				FbxLoader.attachTextures(
+					material,
+					entry.id,
+					objects,
+					connections,
+					options.basePath,
+				);
+				materials[entry.name] = material;
 			}
 		}
 
@@ -666,6 +797,7 @@ export class FbxLoader {
 						string,
 						{
 							nodeName: string;
+							modelId: number | string | undefined;
 							model: FBXNode | undefined;
 							kind: TransformKind;
 							defaults: Vec3;
@@ -697,6 +829,7 @@ export class FbxLoader {
 							const model = targetModel?.node;
 							group = {
 								nodeName: targetModel?.name ?? curveNodeObj.name,
+								modelId: targetModel?.id,
 								model,
 								kind,
 								defaults: staticTransform(model, curveNodeObj.node, kind),
@@ -732,7 +865,19 @@ export class FbxLoader {
 
 					for (const group of groups.values()) {
 						const track = buildTransformTrack(group);
-						if (track) tracks.push(track);
+						if (!track) continue;
+						if (group.modelId !== undefined)
+							track.node = nodeIndexById.get(group.modelId);
+						// Rotation keys are Lcl Rotation; the node also carries pre/post rotation.
+						if (track.rotations && group.model) {
+							for (let k = 0; k < track.rotations.length; k += 4) {
+								const q = Array.from(
+									track.rotations.subarray(k, k + 4),
+								) as Quat;
+								track.rotations.set(modelRotation(group.model, q), k);
+							}
+						}
+						tracks.push(track);
 					}
 				}
 
@@ -753,58 +898,161 @@ export class FbxLoader {
 			}
 		}
 
-		// Calculate bounds across all meshes
-		let minX = Infinity;
-		let minY = Infinity;
-		let minZ = Infinity;
-		let maxX = -Infinity;
-		let maxY = -Infinity;
-		let maxZ = -Infinity;
-
-		for (const mesh of meshes) {
-			for (let i = 0; i < mesh.positions.length; i += 3) {
-				const x = mesh.positions[i]!;
-				const y = mesh.positions[i + 1]!;
-				const z = mesh.positions[i + 2]!;
-				if (x < minX) minX = x;
-				if (y < minY) minY = y;
-				if (z < minZ) minZ = z;
-				if (x > maxX) maxX = x;
-				if (y > maxY) maxY = y;
-				if (z > maxZ) maxZ = z;
-			}
-		}
-
-		if (!Number.isFinite(minX)) {
-			minX = -1;
-			minY = -1;
-			minZ = -1;
-			maxX = 1;
-			maxY = 1;
-			maxZ = 1;
-		}
-
-		const sizeX = maxX - minX;
-		const sizeY = maxY - minY;
-		const sizeZ = maxZ - minZ;
-		const centerX = (minX + maxX) * 0.5;
-		const centerY = (minY + maxY) * 0.5;
-		const centerZ = (minZ + maxZ) * 0.5;
-		const sphereRadius = Math.hypot(sizeX, sizeY, sizeZ) * 0.5;
-
-		return {
+		// Bounds of the meshes where the rest pose places them; centering and
+		// size become a root transform, since skinned vertices move with bones.
+		const model: Model3DData = {
 			meshes,
 			materials,
 			animations,
+			nodes,
+			skins,
 			bounds: {
-				min: [minX, minY, minZ],
-				max: [maxX, maxY, maxZ],
-				center: [centerX, centerY, centerZ],
-				size: [sizeX, sizeY, sizeZ],
-				boundingSphereRadius: sphereRadius,
+				min: [0, 0, 0],
+				max: [0, 0, 0],
+				center: [0, 0, 0],
+				size: [0, 0, 0],
+				boundingSphereRadius: 0,
 			},
 		};
+		const rest = poseNodes(model, undefined, 0);
+		const lo: Vec3 = [Infinity, Infinity, Infinity];
+		const hi: Vec3 = [-Infinity, -Infinity, -Infinity];
+		for (const mesh of meshes) {
+			const place = mesh.node !== undefined ? rest[mesh.node] : undefined;
+			for (let i = 0; i < mesh.positions.length; i += 3) {
+				const p: Vec3 = [
+					mesh.positions[i]!,
+					mesh.positions[i + 1]!,
+					mesh.positions[i + 2]!,
+				];
+				const q = place ? Matrix4Math.projectPoint(place, p) : p;
+				for (let a = 0; a < 3; a++) {
+					if (q[a]! < lo[a]!) lo[a] = q[a]!;
+					if (q[a]! > hi[a]!) hi[a] = q[a]!;
+				}
+			}
+		}
+		if (!Number.isFinite(lo[0])) {
+			lo.fill(-1);
+			hi.fill(1);
+		}
+		const { offset, scale } = resolveModelTransform(
+			{
+				min: lo,
+				max: hi,
+				center: [
+					(lo[0] + hi[0]) * 0.5,
+					(lo[1] + hi[1]) * 0.5,
+					(lo[2] + hi[2]) * 0.5,
+				],
+				size: [hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]],
+			},
+			options,
+		);
+		model.rootTransform = Matrix4Math.multiply(
+			Matrix4Math.scale(scale[0], scale[1], scale[2]),
+			Matrix4Math.translate(-offset[0], -offset[1], -offset[2]),
+		);
+		const min: Vec3 = [0, 1, 2].map(
+			(a) => (lo[a]! - offset[a]!) * scale[a]!,
+		) as Vec3;
+		const max: Vec3 = [0, 1, 2].map(
+			(a) => (hi[a]! - offset[a]!) * scale[a]!,
+		) as Vec3;
+		model.bounds = {
+			min,
+			max,
+			center: [
+				(min[0] + max[0]) * 0.5,
+				(min[1] + max[1]) * 0.5,
+				(min[2] + max[2]) * 0.5,
+			],
+			size: [max[0] - min[0], max[1] - min[1], max[2] - min[2]],
+			boundingSphereRadius:
+				Math.hypot(max[0] - min[0], max[1] - min[1], max[2] - min[2]) * 0.5,
+		};
+		return model;
 	}
+}
+
+/** A Properties70 vector (Lcl Translation / Rotation / Scaling), `fallback` where absent. */
+function readVec3(node: FBXNode, name: string, fallback: number): Vec3 {
+	const v = readProperty70(node, name);
+	return [0, 1, 2].map((a) => {
+		const x = v?.[a];
+		return x !== undefined && Number.isFinite(x) ? x : fallback;
+	}) as Vec3;
+}
+
+function multiplyQuat(a: Quat, b: Quat): Quat {
+	return [
+		a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1],
+		a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0],
+		a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3],
+		a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2],
+	];
+}
+
+/**
+ * A Model's full local rotation for an Lcl Rotation `q`:
+ * PreRotation · q · PostRotation⁻¹ (FBX always applies pre/post in XYZ order).
+ */
+function modelRotation(model: FBXNode, q: Quat): Quat {
+	const pre = readProperty70(model, "PreRotation");
+	const post = readProperty70(model, "PostRotation");
+	let out = q;
+	if (pre)
+		out = multiplyQuat(fbxEulerToQuat(readVec3(model, "PreRotation", 0)), out);
+	if (post) {
+		const p = fbxEulerToQuat(readVec3(model, "PostRotation", 0));
+		out = multiplyQuat(out, [-p[0], -p[1], -p[2], p[3]]);
+	}
+	return out;
+}
+
+/** A 4×4 matrix child (`Transform: *16 { a: … }`), identity when absent. */
+function matrixChild(node: FBXNode, name: string): Mat4 {
+	const child = node.children.find((c) => c.name === name);
+	const raw =
+		child?.children.find((c) => c.name === "a")?.props ?? child?.props;
+	const values =
+		raw?.[0] instanceof Float64Array || raw?.[0] instanceof Float32Array
+			? Array.from(raw[0] as ArrayLike<number>)
+			: (raw ?? []).map(Number);
+	return values.length === 16 ? (values as Mat4) : Matrix4Math.identity();
+}
+
+/**
+ * A geometry layer (normals, UVs) as a lookup by corner: its mapping says
+ * whether values are per control point, per polygon vertex, per polygon or
+ * one for all; IndexToDirect layers go through their index array.
+ */
+function layerElement(
+	layer: FBXNode,
+	data: ArrayLike<number>,
+	index: ArrayLike<number>,
+	size: number,
+): ((cp: number, pv: number, poly: number) => number[]) | undefined {
+	if (data.length === 0) return undefined;
+	const text = (name: string) =>
+		String(layer.children.find((c) => c.name === name)?.props[0] ?? "");
+	const mapping = text("MappingInformationType");
+	const indexed =
+		/^Index/.test(text("ReferenceInformationType")) && index.length > 0;
+	return (cp, pv, poly) => {
+		let i =
+			mapping === "ByPolygonVertex"
+				? pv
+				: mapping === "ByPolygon"
+					? poly
+					: mapping === "AllSame"
+						? 0
+						: cp; // ByControlPoint / ByVertice
+		if (indexed) i = Number(index[i] ?? i);
+		return Array.from({ length: size }, (_, c) =>
+			Number(data[i * size + c] ?? 0),
+		);
+	};
 }
 
 /** Which local transform an AnimationCurveNode drives. */
@@ -820,7 +1068,9 @@ interface FbxCurve {
  * Classifies a curve node from its OP connection property ("Lcl Translation",
  * "Lcl Rotation", "Lcl Scaling") or, failing that, its short name ("T", "R", "S").
  */
-function transformKindFromProperty(name: string | undefined): TransformKind | undefined {
+function transformKindFromProperty(
+	name: string | undefined,
+): TransformKind | undefined {
 	switch (name) {
 		case "Lcl Translation":
 		case "T":
@@ -851,9 +1101,14 @@ function axisFromProperty(name: string | undefined): number | undefined {
 }
 
 /** Numeric values of a Properties70 `P` entry (they start at props[4]). */
-function readProperty70(node: FBXNode | undefined, name: string): number[] | undefined {
+function readProperty70(
+	node: FBXNode | undefined,
+	name: string,
+): number[] | undefined {
 	const props70 = node?.children.find((c) => c.name === "Properties70");
-	const p = props70?.children.find((c) => c.name === "P" && c.props[0] === name);
+	const p = props70?.children.find(
+		(c) => c.name === "P" && c.props[0] === name,
+	);
 	if (!p) return undefined;
 	return p.props.slice(4).map((v) => Number(v));
 }
@@ -867,7 +1122,11 @@ function staticTransform(
 	const fallback = kind === "S" ? 1 : 0;
 	const modelProp = readProperty70(
 		model,
-		kind === "T" ? "Lcl Translation" : kind === "R" ? "Lcl Rotation" : "Lcl Scaling",
+		kind === "T"
+			? "Lcl Translation"
+			: kind === "R"
+				? "Lcl Rotation"
+				: "Lcl Scaling",
 	);
 	const out: Vec3 = [fallback, fallback, fallback];
 	for (let axis = 0; axis < 3; axis++) {
@@ -965,7 +1224,10 @@ function buildTransformTrack(group: {
 		}
 		const q = fbxEulerToQuat(v, order);
 		// Keep neighbours in the same hemisphere so slerp takes the short way.
-		if (prev && prev[0] * q[0] + prev[1] * q[1] + prev[2] * q[2] + prev[3] * q[3] < 0) {
+		if (
+			prev &&
+			prev[0] * q[0] + prev[1] * q[1] + prev[2] * q[2] + prev[3] * q[3] < 0
+		) {
 			for (let i = 0; i < 4; i++) q[i] = -q[i]!;
 		}
 		prev = q;
@@ -996,8 +1258,7 @@ export function loadFBX(
 	if (typeof srcOrData === "string") {
 		const trimmed = srcOrData.trim();
 		const isInline =
-			trimmed.includes("FBXHeaderExtension") ||
-			trimmed.includes("Kaydara FBX");
+			trimmed.includes("FBXHeaderExtension") || trimmed.includes("Kaydara FBX");
 		if (!isInline && typeof fs !== "undefined" && fs.existsSync) {
 			try {
 				let filePath = srcOrData.startsWith("file://")
@@ -1009,10 +1270,11 @@ export function loadFBX(
 				if (fs.existsSync(filePath)) {
 					const buf = fs.readFileSync(filePath);
 					data = new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
+					// Textures are looked up next to the model.
+					options = { basePath: path.dirname(filePath), ...options };
 				}
 			} catch (_) {}
 		}
 	}
 	return FbxLoader.parse(data, options);
 }
-

@@ -47,6 +47,7 @@ struct VertexInput {
     @location(2) normal   : vec3<f32>,
     @location(3) joints   : vec4<f32>,
     @location(4) weights  : vec4<f32>,
+    @location(5) color    : vec4<f32>, // vertex color (display / sRGB), white when absent
 };
 
 struct VertexOutput {
@@ -55,6 +56,7 @@ struct VertexOutput {
     @location(1)       worldPos    : vec3<f32>,
     @location(2)       worldNormal : vec3<f32>,
     @location(3)       linearDepth : f32,
+    @location(4)       color       : vec4<f32>,
 };
 
 @vertex
@@ -99,6 +101,7 @@ fn vs_main(in: VertexInput) -> VertexOutput {
 
     out.clipPos = cam.viewProjMatrix * worldPos4;
     out.uv = in.uv;
+    out.color = in.color;
 
     out.linearDepth = dot(worldPos4.xyz - cam.cameraPos.xyz, cam.cameraDir.xyz);
     return out;
@@ -243,12 +246,12 @@ fn shadeMesh(in: VertexOutput, isFront: bool) -> MeshFragment {
     if (texColor.a < model.shade.a) {
         discard;
     }
-    let alpha = texColor.a * model.params.x * model.colorTint.a * matteCoverage(in.clipPos.xy);
+    let alpha = texColor.a * in.color.a * model.params.x * model.colorTint.a * matteCoverage(in.clipPos.xy);
     if (alpha <= 0.001) {
         discard;
     }
 
-    let baseRgb = texColor.rgb * model.colorTint.rgb;
+    let baseRgb = texColor.rgb * in.color.rgb * model.colorTint.rgb;
     var out: MeshFragment;
     if (model.materialParams.w > 1.5) {
         var toon = baseRgb;

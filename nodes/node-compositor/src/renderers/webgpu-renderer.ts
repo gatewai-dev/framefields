@@ -1956,6 +1956,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 						shadeColor: mat?.shadeColor,
 						alphaCutoff: mat?.alphaCutoff,
 						textureWrap: mat?.textureWrap,
+						textureFilter: mat?.textureFilter,
 						shininess:
 							target?.shininess ?? lop.shininess ?? mat?.shininess ?? 32,
 						roughness: target?.roughness ?? lop.roughness ?? mat?.roughness,

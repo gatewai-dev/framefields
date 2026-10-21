@@ -1,6 +1,18 @@
 import fs from "node:fs";
-import type { LoadModelOptions, Material3D, Mesh3DData, Model3DData } from "./types.js";
-import { accumulateVertexNormals, computeBounds, createIndexArray, resolveModelTransform, transformModelBounds, transformPositions } from "./mesh-utils.js";
+import {
+	accumulateVertexNormals,
+	computeBounds,
+	createIndexArray,
+	resolveModelTransform,
+	transformModelBounds,
+	transformPositions,
+} from "./mesh-utils.js";
+import type {
+	LoadModelOptions,
+	Material3D,
+	Mesh3DData,
+	Model3DData,
+} from "./types.js";
 
 interface PlyProperty {
 	name: string;
@@ -36,7 +48,9 @@ export class PlyLoader {
 		const header = PlyLoader.parseHeader(headerText.text);
 
 		if (header.format === "ascii") {
-			const bodyText = new TextDecoder("utf-8").decode(bytes.subarray(headerText.endOffset));
+			const bodyText = new TextDecoder("utf-8").decode(
+				bytes.subarray(headerText.endOffset),
+			);
 			return PlyLoader.parseAsciiBody(header, bodyText, options);
 		}
 
@@ -49,7 +63,10 @@ export class PlyLoader {
 		);
 	}
 
-	private static extractHeader(bytes: Uint8Array): { text: string; endOffset: number } {
+	private static extractHeader(bytes: Uint8Array): {
+		text: string;
+		endOffset: number;
+	} {
 		const searchLen = Math.min(bytes.length, 10000);
 		const slice = bytes.subarray(0, searchLen);
 		const str = new TextDecoder("utf-8").decode(slice);
@@ -76,7 +93,8 @@ export class PlyLoader {
 		elements: PlyElement[];
 	} {
 		const lines = headerStr.split(/\r?\n/);
-		let format: "ascii" | "binary_little_endian" | "binary_big_endian" = "ascii";
+		let format: "ascii" | "binary_little_endian" | "binary_big_endian" =
+			"ascii";
 		let version = "1.0";
 		const elements: PlyElement[] = [];
 		let currentElement: PlyElement | null = null;
@@ -148,8 +166,12 @@ export class PlyLoader {
 		const nxIdx = vProps.findIndex((p) => p.name === "nx");
 		const nyIdx = vProps.findIndex((p) => p.name === "ny");
 		const nzIdx = vProps.findIndex((p) => p.name === "nz");
-		const uIdx = vProps.findIndex((p) => p.name === "u" || p.name === "s" || p.name === "texture_u");
-		const vCoordIdx = vProps.findIndex((p) => p.name === "v" || p.name === "t" || p.name === "texture_v");
+		const uIdx = vProps.findIndex(
+			(p) => p.name === "u" || p.name === "s" || p.name === "texture_u",
+		);
+		const vCoordIdx = vProps.findIndex(
+			(p) => p.name === "v" || p.name === "t" || p.name === "texture_v",
+		);
 		const rIdx = vProps.findIndex((p) => p.name === "red" || p.name === "r");
 		const gIdx = vProps.findIndex((p) => p.name === "green" || p.name === "g");
 		const bIdx = vProps.findIndex((p) => p.name === "blue" || p.name === "b");
@@ -194,7 +216,10 @@ export class PlyLoader {
 				const r = (Number.parseFloat(parts[rIdx] ?? "255") || 0) / 255;
 				const g = (Number.parseFloat(parts[gIdx] ?? "255") || 0) / 255;
 				const b = (Number.parseFloat(parts[bIdx] ?? "255") || 0) / 255;
-				const a = aIdx !== -1 ? (Number.parseFloat(parts[aIdx] ?? "255") || 0) / 255 : 1.0;
+				const a =
+					aIdx !== -1
+						? (Number.parseFloat(parts[aIdx] ?? "255") || 0) / 255
+						: 1.0;
 				rawColors.push(r, g, b, a);
 			}
 		}
@@ -233,7 +258,11 @@ export class PlyLoader {
 		isLittleEndian: boolean,
 		options: LoadModelOptions,
 	): Model3DData {
-		const view = new DataView(bodyBytes.buffer, bodyBytes.byteOffset, bodyBytes.byteLength);
+		const view = new DataView(
+			bodyBytes.buffer,
+			bodyBytes.byteOffset,
+			bodyBytes.byteLength,
+		);
 		let offset = 0;
 
 		const vertexElement = header.elements.find((e) => e.name === "vertex");
@@ -304,10 +333,18 @@ export class PlyLoader {
 		};
 
 		for (let v = 0; v < vertexCount; v++) {
-			let x = 0, y = 0, z = 0;
-			let nx = 0, ny = 0, nz = 0;
-			let u = 0, vCoord = 0;
-			let r = 1, g = 1, b = 1, a = 1;
+			let x = 0,
+				y = 0,
+				z = 0;
+			let nx = 0,
+				ny = 0,
+				nz = 0;
+			let u = 0,
+				vCoord = 0;
+			let r = 1,
+				g = 1,
+				b = 1,
+				a = 1;
 
 			for (const prop of vProps) {
 				const val = readType(prop.type);
@@ -321,10 +358,14 @@ export class PlyLoader {
 				else if (pName === "nz") nz = val;
 				else if (pName === "u" || pName === "s") u = val;
 				else if (pName === "v" || pName === "t") vCoord = val;
-				else if (pName === "red" || pName === "r") r = prop.type.includes("int") ? val / 255 : val;
-				else if (pName === "green" || pName === "g") g = prop.type.includes("int") ? val / 255 : val;
-				else if (pName === "blue" || pName === "b") b = prop.type.includes("int") ? val / 255 : val;
-				else if (pName === "alpha" || pName === "a") a = prop.type.includes("int") ? val / 255 : val;
+				else if (pName === "red" || pName === "r")
+					r = prop.type.includes("int") ? val / 255 : val;
+				else if (pName === "green" || pName === "g")
+					g = prop.type.includes("int") ? val / 255 : val;
+				else if (pName === "blue" || pName === "b")
+					b = prop.type.includes("int") ? val / 255 : val;
+				else if (pName === "alpha" || pName === "a")
+					a = prop.type.includes("int") ? val / 255 : val;
 			}
 
 			rawPositions.push(x, y, z);
@@ -387,7 +428,8 @@ export class PlyLoader {
 
 		const defaultMaterial: Material3D = {
 			name: "ply_default",
-			diffuseColor: [0.8, 0.8, 0.85, 1.0],
+			// Vertex colors carry the color; the neutral gray would only dim them.
+			diffuseColor: rawColors ? [1, 1, 1, 1] : [0.8, 0.8, 0.85, 1.0],
 			shininess: 32.0,
 			specularIntensity: 0.5,
 			...options.defaultMaterial,
@@ -405,7 +447,6 @@ export class PlyLoader {
 				materialName: "ply_default",
 			},
 		];
-
 
 		return {
 			name: "PLY_Model",

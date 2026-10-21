@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { Signal } from "@framefields/core";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { Composition, Layer, Layer3D, LayerAnimation, Light } from "./index.js";
 import { computeMse, decodePngPixels, getPixel } from "./test-utils/pixels.js";
 
@@ -272,7 +272,17 @@ endsolid tetrahedron`;
 		xyziChunk.writeUInt8(0, 18); // z
 		xyziChunk.writeUInt8(1, 19); // color index 1
 
-		const mainChildren = Buffer.concat([sizeChunk, xyziChunk]);
+		// Palette: color index 1 (the first RGBA entry) is red.
+		const rgbaChunk = Buffer.alloc(12 + 256 * 4);
+		rgbaChunk.write("RGBA", 0);
+		rgbaChunk.writeUInt32LE(256 * 4, 4);
+		rgbaChunk.writeUInt32LE(0, 8);
+		rgbaChunk.writeUInt8(230, 12);
+		rgbaChunk.writeUInt8(30, 13);
+		rgbaChunk.writeUInt8(30, 14);
+		rgbaChunk.writeUInt8(255, 15);
+
+		const mainChildren = Buffer.concat([sizeChunk, xyziChunk, rgbaChunk]);
 		const mainChunk = Buffer.alloc(12);
 		mainChunk.write("MAIN", 0);
 		mainChunk.writeUInt32LE(0, 4);
@@ -339,6 +349,86 @@ endsolid tetrahedron`;
 		const img = await decodePngPixels(buffer);
 		expect(img.width).toBe(800);
 		expect(img.height).toBe(600);
+
+		// The voxel's palette color reaches the screen (vertex colors). The one
+		// voxel sits in a corner of its 2x2x2 grid, up and right of center.
+		const center = getPixel(img, 425, 265);
+		expect(center.r).toBeGreaterThan(80);
+		expect(center.r).toBeGreaterThan(center.g * 2);
+		expect(center.r).toBeGreaterThan(center.b * 2);
+
+		await fs.rm(tmpDir, { recursive: true, force: true });
+	});
+
+	it("renders PLY vertex colors", async () => {
+		const tmpDir = await fs.mkdtemp(
+			path.join(os.tmpdir(), "framefields-ply-colors-"),
+		);
+		const plyPath = path.join(tmpDir, "quad.ply");
+		// Left edge red, right edge blue.
+		await fs.writeFile(
+			plyPath,
+			`ply
+format ascii 1.0
+element vertex 4
+property float x
+property float y
+property float z
+property uchar red
+property uchar green
+property uchar blue
+element face 2
+property list uchar int vertex_indices
+end_header
+-100.0 -100.0 0.0 255 0 0
+ 100.0 -100.0 0.0 0 0 255
+ 100.0  100.0 0.0 0 0 255
+-100.0  100.0 0.0 255 0 0
+3 0 1 2
+3 0 2 3
+`,
+		);
+
+		const comp = new Composition({
+			width: 400,
+			height: 300,
+			fps: 30,
+			durationMs: 1000,
+			backgroundColor: "#000000",
+		});
+		comp.add(
+			Layer.camera({
+				id: "cam3d",
+				x: 200,
+				y: 150,
+				z: -600,
+				targetX: 200,
+				targetY: 150,
+				targetZ: 0,
+			}),
+		);
+		comp.add(
+			Layer3D.ply(plyPath, {
+				id: "ply-colored",
+				x: 200,
+				y: 150,
+				z: 0,
+				scale: 1.0,
+				material: "unlit",
+			}),
+		);
+
+		const img = await decodePngPixels(await comp.renderFrame({ frame: 0 }));
+		// Sample inside the quad, near each edge (the quad may appear mirrored).
+		const a = getPixel(img, 160, 150);
+		const b = getPixel(img, 240, 150);
+		const [left, right] = a.r > a.b ? [a, b] : [b, a];
+		expect(left.r).toBeGreaterThan(150);
+		expect(left.b).toBeLessThan(100);
+		expect(right.b).toBeGreaterThan(150);
+		expect(right.r).toBeLessThan(100);
+		expect(left.g).toBeLessThan(40);
+		expect(right.g).toBeLessThan(40);
 
 		await fs.rm(tmpDir, { recursive: true, force: true });
 	});
@@ -436,6 +526,391 @@ end_header
 		const offCenterPix = getPixel(img, 500, 300);
 		expect(offCenterPix.r).toBeGreaterThan(30);
 
+		await fs.rm(tmpDir, { recursive: true, force: true });
+	});
+});
+
+describe("Model textures (OBJ / FBX)", () => {
+	/** A 64×64 PNG: top half red, bottom half blue (image space). */
+	const redOverBluePng = async (file: string) => {
+		const { Canvas } = await import("skia-canvas");
+		const c = new Canvas(64, 64);
+		const ctx = c.getContext("2d");
+		ctx.fillStyle = "rgb(255,0,0)";
+		ctx.fillRect(0, 0, 64, 32);
+		ctx.fillStyle = "rgb(0,0,255)";
+		ctx.fillRect(0, 32, 64, 32);
+		await fs.writeFile(file, await c.toBuffer("png"));
+	};
+
+	/** Renders a model layer unlit in a 400×300 frame. */
+	const render = async (model: ReturnType<typeof Layer.obj>) => {
+		const comp = new Composition({
+			width: 400,
+			height: 300,
+			fps: 30,
+			durationMs: 1000,
+			backgroundColor: "#000000",
+		});
+		comp.add(
+			Layer.camera({
+				id: "cam3d",
+				x: 200,
+				y: 150,
+				z: -600,
+				targetX: 200,
+				targetY: 150,
+				targetZ: 0,
+			}),
+		);
+		comp.add(model);
+		return decodePngPixels(await comp.renderFrame({ frame: 0 }));
+	};
+
+	/** The texture's top (red) shows at the top of the quad, its bottom (blue) below. */
+	const expectRedOverBlue = (img: Awaited<ReturnType<typeof render>>) => {
+		const top = getPixel(img, 200, 115);
+		const bottom = getPixel(img, 200, 185);
+		expect(top.r).toBeGreaterThan(150);
+		expect(top.b).toBeLessThan(80);
+		expect(bottom.b).toBeGreaterThan(150);
+		expect(bottom.r).toBeLessThan(80);
+	};
+
+	it("draws an OBJ's map_Kd texture from its .mtl", async () => {
+		const tmpDir = await fs.mkdtemp(
+			path.join(os.tmpdir(), "framefields-obj-tex-"),
+		);
+		await fs.mkdir(path.join(tmpDir, "maps"));
+		await redOverBluePng(path.join(tmpDir, "maps", "paint.png"));
+		await fs.writeFile(
+			path.join(tmpDir, "quad.mtl"),
+			"newmtl Paint\nKd 1 1 1\nmap_Kd maps/paint.png\n",
+		);
+		// Y up, as OBJ files are authored: vt (0, 0) is the image's bottom-left.
+		await fs.writeFile(
+			path.join(tmpDir, "quad.obj"),
+			`mtllib quad.mtl
+v -100 -100 0
+v 100 -100 0
+v 100 100 0
+v -100 100 0
+vt 0 0
+vt 1 0
+vt 1 1
+vt 0 1
+usemtl Paint
+f 1/1 2/2 3/3 4/4
+`,
+		);
+
+		const img = await render(
+			Layer.obj(path.join(tmpDir, "quad.obj"), {
+				id: "obj-tex",
+				x: 200,
+				y: 150,
+				z: 0,
+				// The world is y-down; turn the y-up model upright.
+				rotateX: 180,
+				material: "unlit",
+			}),
+		);
+		expectRedOverBlue(img);
+		await fs.rm(tmpDir, { recursive: true, force: true });
+	});
+
+	it("skips textures in formats the renderer cannot decode", async () => {
+		const tmpDir = await fs.mkdtemp(
+			path.join(os.tmpdir(), "framefields-bad-tex-"),
+		);
+		await fs.writeFile(
+			path.join(tmpDir, "paint.tga"),
+			Buffer.from([1, 2, 3, 4]),
+		);
+		await fs.writeFile(
+			path.join(tmpDir, "quad.mtl"),
+			"newmtl Paint\nKd 0 1 0\nmap_Kd paint.tga\n",
+		);
+		await fs.writeFile(
+			path.join(tmpDir, "quad.obj"),
+			"mtllib quad.mtl\nv -100 -100 0\nv 100 -100 0\nv 100 100 0\nv -100 100 0\nusemtl Paint\nf 1 2 3 4\n",
+		);
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+		const img = await render(
+			Layer.obj(path.join(tmpDir, "quad.obj"), {
+				id: "obj-bad-tex",
+				x: 200,
+				y: 150,
+				z: 0,
+				material: "unlit",
+			}),
+		);
+		// Drawn untextured in its Kd color.
+		const center = getPixel(img, 200, 150);
+		expect(center.g).toBeGreaterThan(150);
+		expect(warn).toHaveBeenCalledWith(
+			expect.stringContaining(
+				'"paint.tga" for material "Paint" is in an unsupported format',
+			),
+		);
+		warn.mockRestore();
+		await fs.rm(tmpDir, { recursive: true, force: true });
+	});
+
+	it("keeps texels sharp with a glTF NEAREST sampler", async () => {
+		const tmpDir = await fs.mkdtemp(
+			path.join(os.tmpdir(), "framefields-nearest-"),
+		);
+		const { Canvas } = await import("skia-canvas");
+		const c = new Canvas(2, 2);
+		const ctx = c.getContext("2d");
+		ctx.fillStyle = "rgb(255,0,0)";
+		ctx.fillRect(0, 0, 1, 2);
+		ctx.fillStyle = "rgb(0,0,255)";
+		ctx.fillRect(1, 0, 1, 2);
+		const png = await c.toBuffer("png");
+
+		const pos = new Float32Array([
+			-100, -100, 0, 100, -100, 0, -100, 100, 0, 100, 100, 0,
+		]);
+		const uv = new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]);
+		const idx = new Uint16Array([0, 2, 1, 1, 2, 3]);
+		const bin = Buffer.concat([pos, uv, idx].map((a) => Buffer.from(a.buffer)));
+		const file = path.join(tmpDir, "quad.gltf");
+		await fs.writeFile(
+			file,
+			JSON.stringify({
+				asset: { version: "2.0" },
+				buffers: [
+					{
+						byteLength: bin.length,
+						uri: `data:application/octet-stream;base64,${bin.toString("base64")}`,
+					},
+				],
+				bufferViews: [
+					{ buffer: 0, byteOffset: 0, byteLength: 48 },
+					{ buffer: 0, byteOffset: 48, byteLength: 32 },
+					{ buffer: 0, byteOffset: 80, byteLength: 12 },
+				],
+				accessors: [
+					{ bufferView: 0, componentType: 5126, count: 4, type: "VEC3" },
+					{ bufferView: 1, componentType: 5126, count: 4, type: "VEC2" },
+					{ bufferView: 2, componentType: 5123, count: 6, type: "SCALAR" },
+				],
+				meshes: [
+					{
+						primitives: [
+							{
+								attributes: { POSITION: 0, TEXCOORD_0: 1 },
+								indices: 2,
+								material: 0,
+							},
+						],
+					},
+				],
+				images: [{ uri: `data:image/png;base64,${png.toString("base64")}` }],
+				samplers: [{ magFilter: 9728, wrapS: 33071, wrapT: 33071 }],
+				textures: [{ source: 0, sampler: 0 }],
+				materials: [
+					{ pbrMetallicRoughness: { baseColorTexture: { index: 0 } } },
+				],
+			}),
+		);
+
+		const img = await render(
+			Layer.gltf(file, {
+				id: "gltf-nearest",
+				x: 200,
+				y: 150,
+				z: 0,
+				material: "unlit",
+			}),
+		);
+		// Just either side of the texel edge (the quad's middle): pure colors, no blend.
+		const a = getPixel(img, 192, 150);
+		const b = getPixel(img, 208, 150);
+		const [red, blue] = a.r > a.b ? [a, b] : [b, a];
+		expect(red.r).toBeGreaterThan(235);
+		expect(red.b).toBeLessThan(20);
+		expect(blue.b).toBeGreaterThan(235);
+		expect(blue.r).toBeLessThan(20);
+		await fs.rm(tmpDir, { recursive: true, force: true });
+	});
+
+	it("draws an FBX material's diffuse texture", async () => {
+		const tmpDir = await fs.mkdtemp(
+			path.join(os.tmpdir(), "framefields-fbx-tex-"),
+		);
+		await redOverBluePng(path.join(tmpDir, "paint.png"));
+		await fs.writeFile(
+			path.join(tmpDir, "quad.fbx"),
+			`; FBX 7.4.0 project file
+Objects:  {
+	Geometry: 1001, "Geometry::Quad", "Mesh" {
+		Vertices: *12 {
+			a: -100,-100,0, 100,-100,0, 100,100,0, -100,100,0
+		}
+		PolygonVertexIndex: *4 {
+			a: 0,1,2,-4
+		}
+		LayerElementUV: 0 {
+			Version: 101
+			Name: "UVMap"
+			MappingInformationType: "ByControlPoint"
+			ReferenceInformationType: "Direct"
+			UV: *8 {
+				a: 0,0, 1,0, 1,1, 0,1
+			}
+		}
+	}
+	Model: 3001, "Model::Quad", "Mesh" {
+	}
+	Material: 2001, "Material::Paint", "" {
+		Properties70:  {
+			P: "DiffuseColor", "Color", "", "A",1,1,1
+		}
+	}
+	Texture: 4001, "Texture::PaintDiffuse", "" {
+		RelativeFilename: "paint.png"
+	}
+}
+
+Connections:  {
+	C: "OO", 1001, 3001
+	C: "OO", 2001, 3001
+	C: "OP", 4001, 2001, "DiffuseColor"
+}
+`,
+		);
+
+		const img = await render(
+			Layer.fbx(path.join(tmpDir, "quad.fbx"), {
+				id: "fbx-tex",
+				x: 200,
+				y: 150,
+				z: 0,
+				// The world is y-down; turn the y-up model upright.
+				rotateX: 180,
+				material: "unlit",
+			}),
+		);
+		expectRedOverBlue(img);
+		await fs.rm(tmpDir, { recursive: true, force: true });
+	});
+});
+
+describe("FBX skinning", () => {
+	it("moves a skinned mesh with its animated bone", async () => {
+		const tmpDir = await fs.mkdtemp(
+			path.join(os.tmpdir(), "framefields-fbx-skin-"),
+		);
+		const file = path.join(tmpDir, "skinned.fbx");
+		// A quad fully weighted to "Bone", whose x translation goes 0 -> 100 over 1 s.
+		await fs.writeFile(
+			file,
+			`; FBX 7.4.0 project file
+Objects:  {
+	Geometry: 1001, "Geometry::Quad", "Mesh" {
+		Vertices: *12 {
+			a: -50,-50,0, 50,-50,0, 50,50,0, -50,50,0
+		}
+		PolygonVertexIndex: *4 {
+			a: 0,1,2,-4
+		}
+	}
+	Model: 3001, "Model::Body", "Mesh" {
+	}
+	Model: 3002, "Model::Bone", "LimbNode" {
+	}
+	Deformer: 5001, "Deformer::Skin", "Skin" {
+	}
+	Deformer: 6001, "SubDeformer::Bone", "Cluster" {
+		Indexes: *4 {
+			a: 0,1,2,3
+		}
+		Weights: *4 {
+			a: 1,1,1,1
+		}
+	}
+	AnimationStack: 7001, "AnimStack::Slide", "" {
+	}
+	AnimationLayer: 7002, "AnimLayer::Base", "" {
+	}
+	AnimationCurveNode: 7003, "AnimCurveNode::T", "" {
+	}
+	AnimationCurve: 7004, "AnimCurve::", "" {
+		KeyTime: *2 {
+			a: 0,46186158000
+		}
+		KeyValueFloat: *2 {
+			a: 0,100
+		}
+	}
+}
+
+Connections:  {
+	C: "OO", 1001, 3001
+	C: "OO", 3001, 0
+	C: "OO", 3002, 0
+	C: "OO", 5001, 1001
+	C: "OO", 6001, 5001
+	C: "OO", 3002, 6001
+	C: "OO", 7002, 7001
+	C: "OO", 7003, 7002
+	C: "OP", 7003, 3002, "Lcl Translation"
+	C: "OP", 7004, 7003, "d|X"
+}
+`,
+		);
+
+		const comp = new Composition({
+			width: 400,
+			height: 300,
+			fps: 30,
+			durationMs: 1000,
+			backgroundColor: "#000000",
+		});
+		comp.add(
+			Layer.camera({
+				id: "cam3d",
+				x: 200,
+				y: 150,
+				z: -600,
+				targetX: 200,
+				targetY: 150,
+				targetZ: 0,
+			}),
+		);
+		comp.add(
+			Layer.fbx(file, {
+				id: "fbx-skinned",
+				x: 200,
+				y: 150,
+				z: 0,
+				color: "#ff0000",
+				material: "unlit",
+				loop: false,
+			}),
+		);
+
+		/** Mean x of the red pixels. */
+		const redCenterX = async (frame: number) => {
+			const img = await decodePngPixels(await comp.renderFrame({ frame }));
+			let sum = 0;
+			let count = 0;
+			for (let y = 0; y < img.height; y += 2)
+				for (let x = 0; x < img.width; x += 2)
+					if (getPixel(img, x, y).r > 128) {
+						sum += x;
+						count++;
+					}
+			expect(count).toBeGreaterThan(50);
+			return sum / count;
+		};
+		const start = await redCenterX(0);
+		const half = await redCenterX(15);
+		// 50 model units at this distance is ~25 px.
+		expect(Math.abs(half - start)).toBeGreaterThan(15);
 		await fs.rm(tmpDir, { recursive: true, force: true });
 	});
 });

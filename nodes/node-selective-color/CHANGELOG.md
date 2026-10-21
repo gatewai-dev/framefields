@@ -1,5 +1,7 @@
 # @framefields/node-selective-color
 
+## 2.4.0
+
 ## 2.3.2
 
 ## 2.3.1

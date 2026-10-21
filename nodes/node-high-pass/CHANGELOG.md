@@ -1,5 +1,7 @@
 # @framefields/node-high-pass
 
+## 2.4.0
+
 ## 2.3.2
 
 ## 2.3.1

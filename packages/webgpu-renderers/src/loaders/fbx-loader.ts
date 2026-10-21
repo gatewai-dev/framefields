@@ -3,6 +3,7 @@ import path from "node:path";
 import { inflateSync } from "node:zlib";
 import { type Vec3, Vector3Math } from "../math3d/index.js";
 import {
+	isSupportedTexture,
 	readTextureFile,
 	textureMime,
 	warnMissingTexture,
@@ -369,6 +370,10 @@ export class FbxLoader {
 				stringChild(video, "RelativeFilename") ??
 				stringChild(video, "Filename");
 
+			if (ref && !isSupportedTexture(ref)) {
+				warnMissingTexture("FbxLoader", material.name, ref);
+				continue;
+			}
 			let bytes: Uint8Array | undefined;
 			const content = video?.children.find((n) => n.name === "Content")
 				?.props[0];

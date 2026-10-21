@@ -619,7 +619,7 @@ f 1/1 2/2 3/3 4/4
 		await fs.rm(tmpDir, { recursive: true, force: true });
 	});
 
-	it("still renders when a texture cannot be decoded", async () => {
+	it("skips textures in formats the renderer cannot decode", async () => {
 		const tmpDir = await fs.mkdtemp(
 			path.join(os.tmpdir(), "framefields-bad-tex-"),
 		);
@@ -649,8 +649,9 @@ f 1/1 2/2 3/3 4/4
 		const center = getPixel(img, 200, 150);
 		expect(center.g).toBeGreaterThan(150);
 		expect(warn).toHaveBeenCalledWith(
-			expect.stringContaining("Could not decode texture"),
-			expect.anything(),
+			expect.stringContaining(
+				'"paint.tga" for material "Paint" is in an unsupported format',
+			),
 		);
 		warn.mockRestore();
 		await fs.rm(tmpDir, { recursive: true, force: true });

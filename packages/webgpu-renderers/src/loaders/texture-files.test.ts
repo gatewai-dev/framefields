@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FbxLoader, loadFBX } from "./fbx-loader.js";
 import { loadOBJ, ObjLoader } from "./obj-loader.js";
-import { readTextureFile } from "./texture-files.js";
+import { isSupportedTexture, readTextureFile } from "./texture-files.js";
 
 const PNG_BYTES = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4]);
 
@@ -139,5 +139,16 @@ map_Bump maps/height.png
 
 		const model = FbxLoader.buildModelFromTree(root, { basePath: dir });
 		expect(model.materials.Painted?.diffuseTextureBuffer).toEqual(embedded);
+	});
+});
+
+describe("texture formats", () => {
+	it("skips formats the renderer cannot decode, even when the file exists", () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "framefields-tga-"));
+		fs.writeFileSync(path.join(dir, "paint.tga"), PNG_BYTES);
+		expect(isSupportedTexture("paint.tga")).toBe(false);
+		expect(isSupportedTexture("C:\\maps\\paint.PNG")).toBe(true);
+		expect(readTextureFile("paint.tga", dir)).toBeUndefined();
+		fs.rmSync(dir, { recursive: true, force: true });
 	});
 });

@@ -7,7 +7,7 @@ export interface Mesh3DData {
 	normals: Float32Array; // 3 floats per vertex (nx, ny, nz)
 	uvs: Float32Array; // 2 floats per vertex (u, v)
 	indices: Uint16Array | Uint32Array;
-	colors?: Float32Array; // 4 floats per vertex (r, g, b, a)
+	colors?: Float32Array; // 4 floats per vertex (r, g, b, a), display (sRGB) 0..1; multiplies the base color
 	tangents?: Float32Array; // 4 floats per vertex (x, y, z, w)
 	// Skinned Mesh / Skeletal Animation attributes
 	jointIndices?: Float32Array; // 4 bone indices per vertex

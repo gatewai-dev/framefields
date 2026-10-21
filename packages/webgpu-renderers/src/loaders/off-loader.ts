@@ -1,6 +1,18 @@
 import fs from "node:fs";
-import type { LoadModelOptions, Material3D, Mesh3DData, Model3DData } from "./types.js";
-import { accumulateVertexNormals, computeBounds, createIndexArray, resolveModelTransform, transformModelBounds, transformPositions } from "./mesh-utils.js";
+import {
+	accumulateVertexNormals,
+	computeBounds,
+	createIndexArray,
+	resolveModelTransform,
+	transformModelBounds,
+	transformPositions,
+} from "./mesh-utils.js";
+import type {
+	LoadModelOptions,
+	Material3D,
+	Mesh3DData,
+	Model3DData,
+} from "./types.js";
 
 export class OffLoader {
 	/**
@@ -13,13 +25,18 @@ export class OffLoader {
 		const text =
 			typeof data === "string"
 				? data
-				: new TextDecoder("utf-8").decode(data instanceof Uint8Array ? data : new Uint8Array(data));
+				: new TextDecoder("utf-8").decode(
+						data instanceof Uint8Array ? data : new Uint8Array(data),
+					);
 
 		const lines = text.split(/\r?\n/);
 		let lineIdx = 0;
 
 		// 1. Header line
-		while (lineIdx < lines.length && (!lines[lineIdx]!.trim() || lines[lineIdx]!.trim().startsWith("#"))) {
+		while (
+			lineIdx < lines.length &&
+			(!lines[lineIdx]!.trim() || lines[lineIdx]!.trim().startsWith("#"))
+		) {
 			lineIdx++;
 		}
 
@@ -91,10 +108,19 @@ export class OffLoader {
 			}
 
 			if (hasColors && parts.length > propOffset) {
-				const r = (Number.parseFloat(parts[propOffset] ?? "255") || 0) / (Number.parseFloat(parts[propOffset] ?? "255") > 1 ? 255 : 1);
-				const g = (Number.parseFloat(parts[propOffset + 1] ?? "255") || 0) / (Number.parseFloat(parts[propOffset + 1] ?? "255") > 1 ? 255 : 1);
-				const b = (Number.parseFloat(parts[propOffset + 2] ?? "255") || 0) / (Number.parseFloat(parts[propOffset + 2] ?? "255") > 1 ? 255 : 1);
-				const a = parts.length > propOffset + 3 ? (Number.parseFloat(parts[propOffset + 3] ?? "1") || 1) : 1.0;
+				const r =
+					(Number.parseFloat(parts[propOffset] ?? "255") || 0) /
+					(Number.parseFloat(parts[propOffset] ?? "255") > 1 ? 255 : 1);
+				const g =
+					(Number.parseFloat(parts[propOffset + 1] ?? "255") || 0) /
+					(Number.parseFloat(parts[propOffset + 1] ?? "255") > 1 ? 255 : 1);
+				const b =
+					(Number.parseFloat(parts[propOffset + 2] ?? "255") || 0) /
+					(Number.parseFloat(parts[propOffset + 2] ?? "255") > 1 ? 255 : 1);
+				const a =
+					parts.length > propOffset + 3
+						? Number.parseFloat(parts[propOffset + 3] ?? "1") || 1
+						: 1.0;
 				rawColors.push(r, g, b, a);
 			}
 
@@ -134,7 +160,8 @@ export class OffLoader {
 
 		const defaultMaterial: Material3D = {
 			name: "off_default",
-			diffuseColor: [0.8, 0.8, 0.85, 1.0],
+			// Vertex colors carry the color; the neutral gray would only dim them.
+			diffuseColor: hasColors ? [1, 1, 1, 1] : [0.8, 0.8, 0.85, 1.0],
 			shininess: 32.0,
 			specularIntensity: 0.5,
 			...options.defaultMaterial,
@@ -152,7 +179,6 @@ export class OffLoader {
 				materialName: "off_default",
 			},
 		];
-
 
 		return {
 			name: "OFF_Model",

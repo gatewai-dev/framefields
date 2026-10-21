@@ -661,10 +661,13 @@ export class GltfLoader {
 				const colors = read(prim.attributes.COLOR_0);
 				let rgba: Float32Array | undefined;
 				if (colors) {
+					// COLOR_0 is linear; Mesh3DData colors are display (sRGB), like base colors.
 					rgba = new Float32Array(numVerts * 4).fill(1);
 					for (let v = 0; v < numVerts; v++)
-						for (let c = 0; c < colors.itemSize; c++)
-							rgba[v * 4 + c] = colors.data[v * colors.itemSize + c] ?? 1;
+						for (let c = 0; c < colors.itemSize; c++) {
+							const value = colors.data[v * colors.itemSize + c] ?? 1;
+							rgba[v * 4 + c] = c < 3 ? linearToSrgb(value) : value;
+						}
 				}
 
 				let indices: Uint16Array | Uint32Array;
@@ -839,4 +842,9 @@ export function loadGLB(
 	options: LoadModelOptions = {},
 ): Model3DData {
 	return GltfLoader.load(srcOrData, options);
+}
+
+function linearToSrgb(c: number): number {
+	const x = Math.min(Math.max(c, 0), 1);
+	return x <= 0.0031308 ? x * 12.92 : 1.055 * x ** (1 / 2.4) - 0.055;
 }

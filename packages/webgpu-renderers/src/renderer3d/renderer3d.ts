@@ -1169,11 +1169,26 @@ export class Renderer3D {
 		}
 		indexBuffer.unmap();
 
+		let colorBuffer: GPUBuffer | undefined;
+		if (mesh.colors && mesh.colors.length >= numVerts * 4) {
+			colorBuffer = this.device.createBuffer({
+				label: "Mesh3DVertexColors",
+				size: Math.max(16, numVerts * 16),
+				usage: GPUBufferUsage.VERTEX,
+				mappedAtCreation: true,
+			});
+			new Float32Array(colorBuffer.getMappedRange()).set(
+				mesh.colors.subarray(0, numVerts * 4),
+			);
+			colorBuffer.unmap();
+		}
+
 		cached = {
 			vertexBuffer,
 			indexBuffer,
 			indexCount: mesh.indices.length,
 			indexFormat: is32Bit ? "uint32" : "uint16",
+			colorBuffer,
 		};
 		this.meshBuffersCache.set(mesh, cached);
 		return cached;
@@ -1207,6 +1222,7 @@ export class Renderer3D {
 			indexBuffer: meshBuffers.indexBuffer,
 			indexCount: meshBuffers.indexCount,
 			indexFormat: meshBuffers.indexFormat,
+			colorBuffer: meshBuffers.colorBuffer,
 		};
 	}
 

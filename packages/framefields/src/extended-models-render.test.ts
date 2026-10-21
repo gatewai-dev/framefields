@@ -272,7 +272,17 @@ endsolid tetrahedron`;
 		xyziChunk.writeUInt8(0, 18); // z
 		xyziChunk.writeUInt8(1, 19); // color index 1
 
-		const mainChildren = Buffer.concat([sizeChunk, xyziChunk]);
+		// Palette: color index 1 (the first RGBA entry) is red.
+		const rgbaChunk = Buffer.alloc(12 + 256 * 4);
+		rgbaChunk.write("RGBA", 0);
+		rgbaChunk.writeUInt32LE(256 * 4, 4);
+		rgbaChunk.writeUInt32LE(0, 8);
+		rgbaChunk.writeUInt8(230, 12);
+		rgbaChunk.writeUInt8(30, 13);
+		rgbaChunk.writeUInt8(30, 14);
+		rgbaChunk.writeUInt8(255, 15);
+
+		const mainChildren = Buffer.concat([sizeChunk, xyziChunk, rgbaChunk]);
 		const mainChunk = Buffer.alloc(12);
 		mainChunk.write("MAIN", 0);
 		mainChunk.writeUInt32LE(0, 4);
@@ -339,6 +349,86 @@ endsolid tetrahedron`;
 		const img = await decodePngPixels(buffer);
 		expect(img.width).toBe(800);
 		expect(img.height).toBe(600);
+
+		// The voxel's palette color reaches the screen (vertex colors). The one
+		// voxel sits in a corner of its 2x2x2 grid, up and right of center.
+		const center = getPixel(img, 425, 265);
+		expect(center.r).toBeGreaterThan(80);
+		expect(center.r).toBeGreaterThan(center.g * 2);
+		expect(center.r).toBeGreaterThan(center.b * 2);
+
+		await fs.rm(tmpDir, { recursive: true, force: true });
+	});
+
+	it("renders PLY vertex colors", async () => {
+		const tmpDir = await fs.mkdtemp(
+			path.join(os.tmpdir(), "framefields-ply-colors-"),
+		);
+		const plyPath = path.join(tmpDir, "quad.ply");
+		// Left edge red, right edge blue.
+		await fs.writeFile(
+			plyPath,
+			`ply
+format ascii 1.0
+element vertex 4
+property float x
+property float y
+property float z
+property uchar red
+property uchar green
+property uchar blue
+element face 2
+property list uchar int vertex_indices
+end_header
+-100.0 -100.0 0.0 255 0 0
+ 100.0 -100.0 0.0 0 0 255
+ 100.0  100.0 0.0 0 0 255
+-100.0  100.0 0.0 255 0 0
+3 0 1 2
+3 0 2 3
+`,
+		);
+
+		const comp = new Composition({
+			width: 400,
+			height: 300,
+			fps: 30,
+			durationMs: 1000,
+			backgroundColor: "#000000",
+		});
+		comp.add(
+			Layer.camera({
+				id: "cam3d",
+				x: 200,
+				y: 150,
+				z: -600,
+				targetX: 200,
+				targetY: 150,
+				targetZ: 0,
+			}),
+		);
+		comp.add(
+			Layer3D.ply(plyPath, {
+				id: "ply-colored",
+				x: 200,
+				y: 150,
+				z: 0,
+				scale: 1.0,
+				material: "unlit",
+			}),
+		);
+
+		const img = await decodePngPixels(await comp.renderFrame({ frame: 0 }));
+		// Sample inside the quad, near each edge (the quad may appear mirrored).
+		const a = getPixel(img, 160, 150);
+		const b = getPixel(img, 240, 150);
+		const [left, right] = a.r > a.b ? [a, b] : [b, a];
+		expect(left.r).toBeGreaterThan(150);
+		expect(left.b).toBeLessThan(100);
+		expect(right.b).toBeGreaterThan(150);
+		expect(right.r).toBeLessThan(100);
+		expect(left.g).toBeLessThan(40);
+		expect(right.g).toBeLessThan(40);
 
 		await fs.rm(tmpDir, { recursive: true, force: true });
 	});

@@ -77,6 +77,8 @@ export interface GPUMeshBuffers {
 	indexBuffer: GPUBuffer;
 	indexCount: number;
 	indexFormat: GPUIndexFormat;
+	/** Per-vertex RGBA (display / sRGB), 4 floats each; absent = white. */
+	colorBuffer?: GPUBuffer;
 }
 
 export class Mesh3DPipeline {
@@ -96,6 +98,11 @@ export class Mesh3DPipeline {
 	/** (0.5, 0.5, 1): an unperturbed tangent-space normal. */
 	private flatNormalTexture: GPUTexture;
 	private defaultSkinningBuffer: GPUBuffer;
+	/** White vertex colors for meshes without any, grown to the largest mesh. */
+	private whiteColorBuffer: GPUBuffer | null = null;
+	private whiteColorCapacity = 0;
+	/** Outgrown white buffers: earlier draws this frame may still read them. */
+	private retiredColorBuffers: GPUBuffer[] = [];
 
 	// 16 (model) + 16 (normal) + 4 (tint) + 4 (params) + 4 (materialParams) + 4 (shade) + 8 (pbr, emissive) + 4 (maps) = 60 floats (240 bytes)
 	private modelData = new Float32Array(52 + SURFACE_PARAMS_FLOATS);
@@ -198,6 +205,10 @@ export class Mesh3DPipeline {
 						{ shaderLocation: 3, offset: 32, format: "float32x4" }, // joints
 						{ shaderLocation: 4, offset: 48, format: "float32x4" }, // weights
 					],
+				},
+				{
+					arrayStride: 16, // RGBA vertex color
+					attributes: [{ shaderLocation: 5, offset: 0, format: "float32x4" }],
 				},
 			],
 		};
@@ -403,6 +414,7 @@ export class Mesh3DPipeline {
 		pass.setBindGroup(2, textureBindGroup);
 		pass.setBindGroup(3, lightsBindGroup);
 		pass.setVertexBuffer(0, meshBuffers.vertexBuffer);
+		pass.setVertexBuffer(1, this.colorsFor(meshBuffers));
 		pass.setIndexBuffer(meshBuffers.indexBuffer, meshBuffers.indexFormat);
 		pass.drawIndexed(meshBuffers.indexCount);
 	}
@@ -418,11 +430,35 @@ export class Mesh3DPipeline {
 		pass.setBindGroup(0, lightCameraBindGroup);
 		pass.setBindGroup(1, this.packModel(data));
 		pass.setVertexBuffer(0, meshBuffers.vertexBuffer);
+		pass.setVertexBuffer(1, this.colorsFor(meshBuffers));
 		pass.setIndexBuffer(meshBuffers.indexBuffer, meshBuffers.indexFormat);
 		pass.drawIndexed(meshBuffers.indexCount);
 	}
 
+	private colorsFor(meshBuffers: GPUMeshBuffers): GPUBuffer {
+		if (meshBuffers.colorBuffer) return meshBuffers.colorBuffer;
+		// 64 bytes per vertex in the main buffer.
+		const needed = Math.max(1, Math.ceil(meshBuffers.vertexBuffer.size / 64));
+		if (!this.whiteColorBuffer || this.whiteColorCapacity < needed) {
+			if (this.whiteColorBuffer)
+				this.retiredColorBuffers.push(this.whiteColorBuffer);
+			const capacity = 2 ** Math.ceil(Math.log2(needed));
+			this.whiteColorBuffer = this.device.createBuffer({
+				label: "Mesh3DWhiteVertexColors",
+				size: capacity * 16,
+				usage: GPUBufferUsage.VERTEX,
+				mappedAtCreation: true,
+			});
+			new Float32Array(this.whiteColorBuffer.getMappedRange()).fill(1);
+			this.whiteColorBuffer.unmap();
+			this.whiteColorCapacity = capacity;
+		}
+		return this.whiteColorBuffer;
+	}
+
 	destroy(): void {
+		this.whiteColorBuffer?.destroy();
+		for (const buffer of this.retiredColorBuffers) buffer.destroy();
 		this.modelPool.destroy();
 		this.skinningPool.destroy();
 		this.defaultWhiteTexture.destroy();

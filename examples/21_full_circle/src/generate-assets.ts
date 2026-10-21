@@ -16,6 +16,7 @@ import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import dotenv from "dotenv";
+import { ai } from "framefields";
 import { analyzeBeatGrid } from "./beat-grid.js";
 import {
 	type Circle,
@@ -23,7 +24,7 @@ import {
 	cleanTrack,
 	measureCircle,
 } from "./circles.js";
-import { download, estimate, exists, FalClient } from "./fal.js";
+import { download, estimate, exists } from "./gateway.js";
 import { ASSETS, ROOT } from "./paths.js";
 import { SCORE, SCORE_SECONDS, SHOTS } from "./shots.js";
 import { readWav } from "./wav.js";
@@ -47,10 +48,11 @@ const STILL_MP = (STILL.width * STILL.height) / 1e6;
 
 const elapsed = (t0: number) => `${((Date.now() - t0) / 1000).toFixed(0)}s`;
 
-function client(): FalClient {
-	const key = process.env.FAL_API_KEY ?? process.env.FAL_KEY;
-	if (!key) throw new Error("FAL_API_KEY missing from .env");
-	return new FalClient(key);
+let spent = 0;
+
+function checkApiKey(): void {
+	const key = process.env.FRAMEFIELDS_API_KEY;
+	if (!key) throw new Error("FRAMEFIELDS_API_KEY missing from .env");
 }
 
 async function fonts() {
@@ -62,30 +64,34 @@ async function fonts() {
 	}
 }
 
-async function images(fal: FalClient) {
+async function images() {
+	checkApiKey();
 	await Promise.all(
 		SHOTS.map(async (shot) => {
 			const dest = path.join(ASSETS, `${shot.id}.png`);
 			if (await exists(dest)) return;
 			const t0 = Date.now();
-			const out = await fal.run<{ images: { url: string }[] }>(
+			const { data: out } = await ai.subscribe<{ images: { url: string }[] }>(
 				"fal-ai/z-image/turbo",
 				{
-					prompt: shot.image,
-					image_size: STILL,
-					num_inference_steps: 8,
-					output_format: "png",
+					input: {
+						prompt: shot.image,
+						image_size: STILL,
+						num_inference_steps: 8,
+						output_format: "png",
+					},
 				},
-				STILL_MP,
 			);
 			await download(out.images[0].url, dest);
+			spent += estimate("fal-ai/z-image/turbo", STILL_MP);
 			console.log(`image  ${shot.id} (${elapsed(t0)})`);
 		}),
 	);
 }
 
-/** fal accepts data URIs for image inputs, so the local still is sent as-is. */
-async function videos(fal: FalClient, target?: string) {
+/** The gateway accepts data URIs for image inputs, so the local still is sent as-is. */
+async function videos(target?: string) {
+	checkApiKey();
 	const shotList = target ? SHOTS.filter((s) => s.id === target) : SHOTS;
 	await Promise.all(
 		shotList.map(async (shot) => {
@@ -93,37 +99,43 @@ async function videos(fal: FalClient, target?: string) {
 			if (await exists(dest)) return;
 			const still = await fs.readFile(path.join(ASSETS, `${shot.id}.png`));
 			const t0 = Date.now();
-			const out = await fal.run<{ video: { url: string } }>(
+			const { data: out } = await ai.subscribe<{ video: { url: string } }>(
 				shot.model,
 				{
-					prompt: shot.motion,
-					image_url: `data:image/png;base64,${still.toString("base64")}`,
-					duration: shot.seconds,
-					resolution: "1080P",
-					prompt_expansion_mode: "disabled",
+					input: {
+						prompt: shot.motion,
+						image_url: `data:image/png;base64,${still.toString("base64")}`,
+						duration: shot.seconds,
+						resolution: "1080P",
+						prompt_expansion_mode: "disabled",
+					},
 				},
-				shot.seconds,
 			);
 			await download(out.video.url, dest);
+			spent += estimate(shot.model, shot.seconds);
 			console.log(`video  ${shot.id} via ${shot.model} (${elapsed(t0)})`);
 		}),
 	);
 }
 
-async function music(fal: FalClient) {
+async function music() {
+	checkApiKey();
 	const dest = path.join(ASSETS, "score.wav");
 	if (await exists(dest)) return;
 	const t0 = Date.now();
-	const out = await fal.run<{
+	const { data: out } = await ai.subscribe<{
 		audio: { url: string };
 		duration: number;
 		seed: number;
-	}>(
-		"minimax/music-3",
-		{ prompt: SCORE.prompt, lyrics: SCORE.lyrics, duration: SCORE_SECONDS },
-		SCORE_SECONDS,
-	);
+	}>("minimax/music-3", {
+		input: {
+			prompt: SCORE.prompt,
+			lyrics: SCORE.lyrics,
+			duration: SCORE_SECONDS,
+		},
+	});
 	await download(out.audio.url, dest);
+	spent += estimate("minimax/music-3", SCORE_SECONDS);
 	console.log(
 		`music  score ${out.duration.toFixed(1)}s seed ${out.seed} (${elapsed(t0)})`,
 	);
@@ -224,18 +236,15 @@ await fs.mkdir(ASSETS, { recursive: true });
 if (step === "cost") {
 	cost();
 } else {
-	// The analysis steps are local; only generation needs a fal key.
-	const fal = runs("fonts", "images", "videos", "music") ? client() : null;
 	if (runs("fonts")) await fonts();
-	if (fal && runs("images")) await images(fal);
+	if (runs("images")) await images();
 	// Music and motion are independent; run them side by side.
 	await Promise.all([
-		fal && runs("videos") ? videos(fal, target) : undefined,
-		fal && runs("music") ? music(fal) : undefined,
+		runs("videos") ? videos(target) : undefined,
+		runs("music") ? music() : undefined,
 	]);
 	if (runs("music", "grid")) await grid();
 	if (runs("videos", "circles")) await circles(target);
-	if (fal && fal.totalUsd > 0)
-		console.log(`spent  ~$${fal.totalUsd.toFixed(3)}`);
+	if (spent > 0) console.log(`spent  ~$${spent.toFixed(3)}`);
 }
 process.exit(0);

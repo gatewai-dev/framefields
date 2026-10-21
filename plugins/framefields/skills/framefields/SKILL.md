@@ -16,6 +16,7 @@ This skill takes a project from nothing to a verified first render. For anything
 | Post-processing, color grading, VFX, on-device vision (tracking, cutouts, pose) | `framefields-effects` |
 | Frame inspection, frame grids, pixel tests, video export and QA | `framefields-render` |
 | Generating images, video, music, voice with AI models (`ai`) | this skill, section 6 |
+| Reporting bugs or engine defects to GitHub | this skill, section 8 |
 
 ---
 
@@ -255,7 +256,7 @@ Never go straight to a full video render. On a machine without a GPU every rende
 4. `npm run preview` when a person is watching: they play the film with sound before you export (see below).
 5. `npm run render` once frames and motion look right.
 
-Show the user the frame PNGs or the grid before the full render. `framefields-render` covers pixel-probe tests, render QA (`renderVideo({ qa })`), and diagnosing blank frames. If you suspect an issue or defect in the engine itself, file an issue at https://github.com/gatewai-dev/framefields.
+Show the user the frame PNGs or the grid before the full render. `framefields-render` covers pixel-probe tests, render QA (`renderVideo({ qa })`), and diagnosing blank frames. If you suspect an issue or defect in the engine itself or ai gateway, see [section 8](#8-report-engine-issues).
 
 ### Live preview
 
@@ -339,3 +340,20 @@ Then `Layer.image("assets/generated/street.jpg")` / `Layer.video("assets/generat
 ## 7. Grow the film
 
 Once the first render works, move to the specialist skills: `framefields-compose` for splitting the film into scene modules on a beat grid, `framefields-effects` for grading, grain, and vision-driven effects, and `framefields-render` for tests and delivery checks. Keep `theme.ts` as the single source of sizes, colors, fonts, and timing as the project grows.
+
+## 8. Report engine issues
+
+When you encounter an unexpected crash, native WebGPU / Dawn failure, WGSL shader compilation error, compositor schema validation defect, or behavior bug in `framefields` itself (distinguishable from project-level configuration or asset errors):
+
+1. **Ask the user first:** Never open an issue autonomously without explicit confirmation. Explain what went wrong, summarize the reproduction, and ask if they would like an issue reported to `gatewai-dev/framefields`.
+2. **Collect diagnostic details:**
+   - Operating system and architecture (`process.platform`, `process.arch`).
+   - Node.js version (`node --version`) and `framefields` version.
+   - GPU backend and device (run `describeGpu()` or note Metal, Vulkan, DX12, or CPU lavapipe/WARP).
+   - Minimal reproduction code (the smallest composition or script that triggers it).
+   - Exact error message, full stack trace, or validation failure log.
+3. **Open the issue:** Once the user confirms, submit the issue via GitHub CLI:
+   ```bash
+   gh issue create --repo gatewai-dev/framefields --title "<concise summary>" --body "<diagnostic details and repro>"
+   ```
+   If `gh` is unavailable or not authenticated in the environment, output the title, formatted body, and a direct link for the user: https://github.com/gatewai-dev/framefields/issues/new.

@@ -17,7 +17,8 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { download, exists, FalClient, PRICING } from "./fal.js";
+import { ai } from "framefields";
+import { download, exists, PRICING } from "./gateway.js";
 import { BAR_SEC, BPM, PLAN_SEC, SAMPLE_RATE } from "./grid.js";
 import { alignLyrics, type HeardWord } from "./music/align.js";
 import { analyzeBeatGrid } from "./music/beat-grid.js";
@@ -41,17 +42,19 @@ const stem = (name: string) => asset(`stems/${name}.wav`);
 
 const step = process.argv[2] ?? "all";
 
-function client(): FalClient {
+let spent = 0;
+
+function checkApiKey(): void {
 	process.loadEnvFile(path.join(ROOT, ".env"));
-	const key = process.env.FAL_API_KEY ?? process.env.FAL_KEY;
-	if (!key) throw new Error("FAL_API_KEY missing from the repo root .env");
-	return new FalClient(key);
+	const key = process.env.FRAMEFIELDS_API_KEY;
+	if (!key)
+		throw new Error("FRAMEFIELDS_API_KEY missing from the repo root .env");
 }
 
 /** Generous upper bound on the music model's compute time, for the estimate. */
 const SONG_COMPUTE_SEC = 120;
 
-async function song(fal: FalClient, seed: number): Promise<void> {
+async function song(seed: number): Promise<void> {
 	if (await exists(SONG)) return;
 	const durations = sectionDurationsMs();
 	// v2.5 has no global styles: the first chunk's styles set the whole song's
@@ -66,16 +69,18 @@ async function song(fal: FalClient, seed: number): Promise<void> {
 		})),
 	};
 	const t0 = Date.now();
-	const out = await fal.run<{ audio: { url: string } }>(
+	const { data: out } = await ai.subscribe<{ audio: { url: string } }>(
 		"fal-ai/elevenlabs/music/v2.5",
-		{ composition_plan: plan, seed, output_format: "mp3_48000_192" },
-		SONG_COMPUTE_SEC,
+		{
+			input: { composition_plan: plan, seed, output_format: "mp3_48000_192" },
+		},
 	);
 	await download(out.audio.url, SONG);
 	await fs.writeFile(
 		SONG_META,
 		JSON.stringify({ url: out.audio.url, seed, plan }, null, 2),
 	);
+	spent += PRICING["fal-ai/elevenlabs/music/v2.5"].usd * SONG_COMPUTE_SEC;
 	console.log(
 		`song   ${SONG} seed ${seed} (${((Date.now() - t0) / 1000).toFixed(0)} s)`,
 	);
@@ -85,21 +90,21 @@ async function song(fal: FalClient, seed: number): Promise<void> {
 type StemName = "vocals" | "drums";
 const STEM_NAMES: StemName[] = ["vocals", "drums"];
 
-async function stems(fal: FalClient): Promise<void> {
+async function stems(): Promise<void> {
 	if (await exists(STEMS)) return;
 	const { url } = JSON.parse(await fs.readFile(SONG_META, "utf8")) as {
 		url: string;
 	};
-	const out = await fal.run<Record<StemName, { url: string } | null>>(
-		"fal-ai/demucs",
-		{
+	const { data: out } = await ai.subscribe<
+		Record<StemName, { url: string } | null>
+	>("fal-ai/demucs", {
+		input: {
 			audio_url: url,
 			model: "htdemucs_ft",
 			stems: STEM_NAMES,
 			output_format: "wav",
 		},
-		PLAN_SEC,
-	);
+	});
 	const urls: Partial<Record<StemName, string>> = {};
 	for (const name of STEM_NAMES) {
 		const file = out[name];
@@ -108,6 +113,7 @@ async function stems(fal: FalClient): Promise<void> {
 		urls[name] = file.url;
 	}
 	await fs.writeFile(STEMS, JSON.stringify(urls, null, 2));
+	spent += PRICING["fal-ai/demucs"].usd * PLAN_SEC;
 	console.log(`stems  ${STEM_NAMES.join(", ")}`);
 }
 
@@ -132,25 +138,28 @@ const KEYTERMS = [
 	"Illustrator",
 ];
 
-async function words(fal: FalClient): Promise<void> {
+async function words(): Promise<void> {
 	if (await exists(WORDS)) return;
 	const { vocals: url } = JSON.parse(
 		await fs.readFile(STEMS, "utf8"),
 	) as Record<StemName, string>;
-	const out = await fal.run<{ words: ScribeWord[] }>(
+	const { data: out } = await ai.subscribe<{ words: ScribeWord[] }>(
 		"fal-ai/elevenlabs/speech-to-text/scribe-v2",
 		{
-			audio_url: url,
-			language_code: "eng",
-			keyterms: KEYTERMS,
-			tag_audio_events: false,
+			input: {
+				audio_url: url,
+				language_code: "eng",
+				keyterms: KEYTERMS,
+				tag_audio_events: false,
+			},
 		},
-		PLAN_SEC / 60,
 	);
 	const heard: HeardWord[] = out.words
 		.filter((w) => w.type === "word")
 		.map(({ text, start, end }) => ({ text: text.trim(), start, end }));
 	await fs.writeFile(WORDS, JSON.stringify(heard, null, 1));
+	spent +=
+		PRICING["fal-ai/elevenlabs/speech-to-text/scribe-v2"].usd * (PLAN_SEC / 60);
 	console.log(
 		`words  ${heard.length} heard: ${heard.map((h) => h.text).join(" ")}`,
 	);
@@ -292,11 +301,11 @@ async function skippedLines(): Promise<string[]> {
 const MAX_TAKES = 4;
 
 /** Generates takes until one sings every line, setting rejected ones aside. */
-async function generate(fal: FalClient): Promise<void> {
+async function generate(): Promise<void> {
 	for (let take = 1; ; take++) {
-		await song(fal, take);
-		await stems(fal);
-		await words(fal);
+		await song(take);
+		await stems();
+		await words();
 		const skipped = await skippedLines();
 		if (!skipped.length) return;
 		const rejected = path.resolve(
@@ -324,9 +333,9 @@ if (step === "cost") {
 	);
 } else {
 	if (step === "all") {
-		const fal = client();
-		await generate(fal);
-		console.log(`fal    $${fal.totalUsd.toFixed(3)}`);
+		checkApiKey();
+		await generate();
+		if (spent > 0) console.log(`spent  ~$${spent.toFixed(3)}`);
 	}
 	await measure();
 }

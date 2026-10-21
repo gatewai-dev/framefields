@@ -22,7 +22,7 @@ pnpm test
 | Beat grid → `assets/score.json` | `src/beat-grid.ts` (onset flux, autocorrelation, comb refinement, drop-anchored downbeat) | free |
 | Circle tracks → `assets/circles.json` | `src/circles.ts` (ffmpeg grey frames, seeded flood fill per frame) | free |
 
-`FAL_API_KEY` is read from the repo root `.env`. Every step is idempotent; delete a file to regenerate it.
+`FRAMEFIELDS_API_KEY` is read from the repo root `.env`. Every step is idempotent; delete a file to regenerate it.
 Generated media is gitignored; the two JSON files are tracked so tests and the edit math run without it.
 
 ## How the film is built

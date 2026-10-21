@@ -4,7 +4,7 @@
 
 ### Compositing, motion graphics, and 3D for code-first video — one npm package that AI agents drive with code.
 
-[**Documentation**](https://framefields.dev/docs) &ensp;·&ensp; [**Website**](https://framefields.dev) &ensp;·&ensp; [**Discord**](https://discord.gg/cbqMGGme5) &ensp;·&ensp; [**Examples**](examples)
+[**Documentation**](https://framefields.dev/docs) &ensp;·&ensp; [**Website**](https://framefields.dev) &ensp;·&ensp; [**Models**](https://framefields.dev/models) &ensp;·&ensp; [**Discord**](https://discord.gg/cbqMGGme5) &ensp;·&ensp; [**Examples**](examples)
 
 [![npm](https://img.shields.io/badge/npm-framefields-cb3837?logo=npm&logoColor=white)](https://www.npmjs.com/package/framefields)
 [![docs](https://img.shields.io/badge/docs-framefields.dev%2Fdocs-6366f1)](https://framefields.dev/docs)
@@ -163,10 +163,33 @@ process.exit(0);
 
 ---
 
+## AI Gateway
+
+Framefields includes optional, built-in access to the [**framefields.dev AI Gateway**](https://framefields.dev/models), letting agents and developers generate creative media—cinematic images, video footage, background music, voiceovers, and sound effects—directly from code. Authenticated via `FRAMEFIELDS_API_KEY` (an `ff_live_…` key from your [dashboard](https://framefields.dev/dashboard/keys)), the built-in `ai` client provides a unified interface (`run`, `subscribe`, `stream`, and `queue`) across hundreds of creative foundation models like Flux, Seedance, OpenAI, Nano Banana, Kling, Minimax, Suno, and ElevenLabs without configuring separate provider accounts or billing.
+
+To get started, store your API key in `.env` and create a dedicated script (such as `src/generate.ts`) that calls `ai.subscribe()` to render media into `assets/`. Because AI generation is asynchronous and billed per execution, assets are generated once, saved locally, and tracked with Git LFS—ready to be loaded cleanly into `Layer.image()`, `Layer.video()`, or `Layer.audio()` inside your frame-accurate compositions without recurring cost or latency during previews and renders. Browse the full model catalog and schemas at [**framefields.dev/models**](https://framefields.dev/models).
+
+```typescript
+import { ai } from "framefields";
+
+// 1. Generate an image asset with Flux Schnell
+const still = await ai.subscribe<{ images: { url: string }[] }>("flux/schnell", {
+  input: { prompt: "Cyberpunk alley in the rain, volumetric neon, 35mm", image_size: "landscape_16_9" },
+});
+
+// 2. Animate it into video with Kling or generate music & voiceovers
+const clip = await ai.subscribe<{ video: { url: string } }>("kling-video/v2.1/standard/image-to-video", {
+  input: { prompt: "Slow forward tracking shot through neon rain", image_url: still.data.images[0].url, duration: "5" },
+});
+```
+
+---
+
 ## Documentation
 
 Everything else—including full API references, interactive tutorials, and guides—is available at [**framefields.dev/docs**](https://framefields.dev/docs):
 
+- **[AI Gateway & Asset Generation](https://framefields.dev/models)** — Unified SDK for generating images, video clips, music, and voice via hundreds of hosted models
 - **[Typography & Animators](https://framefields.dev/docs)** — Slug analytic vector text, After Effects-style range animators, and typewriter cadence
 - **[WebGPU 2D VFX](https://framefields.dev/docs)** — 50+ shaders: 3D LUTs, Curves, Film Grain, Glassmorphism, and Blur
 - **[Unified 3D Scenes](https://framefields.dev/docs)** — LookAt cameras, PBR materials, studio lighting, shadows, and glTF/GLB models

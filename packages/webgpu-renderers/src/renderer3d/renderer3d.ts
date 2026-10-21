@@ -175,6 +175,8 @@ export interface DrawMesh3DOpts extends SurfaceParams {
 	alphaCutoff?: number;
 	/** Texture addressing outside [0, 1] */
 	textureWrap?: "repeat" | "clamp" | "mirror";
+	/** Magnification filter: "nearest" keeps texels sharp (pixel art). */
+	textureFilter?: "linear" | "nearest";
 	/** Blinn-Phong specular shininess exponent */
 	shininess?: number;
 	/** Roughness factor [0, 1] */
@@ -1251,6 +1253,7 @@ export class Renderer3D {
 			shadeColor,
 			alphaCutoff,
 			textureWrap = "clamp",
+			textureFilter = "linear",
 			shininess = 32.0,
 			roughness,
 			specularIntensity = 0.5,
@@ -1265,6 +1268,9 @@ export class Renderer3D {
 		const sampler = this.samplerCache.getSampler(this.device, {
 			addressModeU: address,
 			addressModeV: address,
+			magFilter: textureFilter,
+			// Anisotropy requires linear filtering.
+			...(textureFilter === "nearest" && { maxAnisotropy: 1 }),
 		});
 
 		const glassy =

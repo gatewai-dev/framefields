@@ -657,6 +657,86 @@ f 1/1 2/2 3/3 4/4
 		await fs.rm(tmpDir, { recursive: true, force: true });
 	});
 
+	it("keeps texels sharp with a glTF NEAREST sampler", async () => {
+		const tmpDir = await fs.mkdtemp(
+			path.join(os.tmpdir(), "framefields-nearest-"),
+		);
+		const { Canvas } = await import("skia-canvas");
+		const c = new Canvas(2, 2);
+		const ctx = c.getContext("2d");
+		ctx.fillStyle = "rgb(255,0,0)";
+		ctx.fillRect(0, 0, 1, 2);
+		ctx.fillStyle = "rgb(0,0,255)";
+		ctx.fillRect(1, 0, 1, 2);
+		const png = await c.toBuffer("png");
+
+		const pos = new Float32Array([
+			-100, -100, 0, 100, -100, 0, -100, 100, 0, 100, 100, 0,
+		]);
+		const uv = new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]);
+		const idx = new Uint16Array([0, 2, 1, 1, 2, 3]);
+		const bin = Buffer.concat([pos, uv, idx].map((a) => Buffer.from(a.buffer)));
+		const file = path.join(tmpDir, "quad.gltf");
+		await fs.writeFile(
+			file,
+			JSON.stringify({
+				asset: { version: "2.0" },
+				buffers: [
+					{
+						byteLength: bin.length,
+						uri: `data:application/octet-stream;base64,${bin.toString("base64")}`,
+					},
+				],
+				bufferViews: [
+					{ buffer: 0, byteOffset: 0, byteLength: 48 },
+					{ buffer: 0, byteOffset: 48, byteLength: 32 },
+					{ buffer: 0, byteOffset: 80, byteLength: 12 },
+				],
+				accessors: [
+					{ bufferView: 0, componentType: 5126, count: 4, type: "VEC3" },
+					{ bufferView: 1, componentType: 5126, count: 4, type: "VEC2" },
+					{ bufferView: 2, componentType: 5123, count: 6, type: "SCALAR" },
+				],
+				meshes: [
+					{
+						primitives: [
+							{
+								attributes: { POSITION: 0, TEXCOORD_0: 1 },
+								indices: 2,
+								material: 0,
+							},
+						],
+					},
+				],
+				images: [{ uri: `data:image/png;base64,${png.toString("base64")}` }],
+				samplers: [{ magFilter: 9728, wrapS: 33071, wrapT: 33071 }],
+				textures: [{ source: 0, sampler: 0 }],
+				materials: [
+					{ pbrMetallicRoughness: { baseColorTexture: { index: 0 } } },
+				],
+			}),
+		);
+
+		const img = await render(
+			Layer.gltf(file, {
+				id: "gltf-nearest",
+				x: 200,
+				y: 150,
+				z: 0,
+				material: "unlit",
+			}),
+		);
+		// Just either side of the texel edge (the quad's middle): pure colors, no blend.
+		const a = getPixel(img, 192, 150);
+		const b = getPixel(img, 208, 150);
+		const [red, blue] = a.r > a.b ? [a, b] : [b, a];
+		expect(red.r).toBeGreaterThan(235);
+		expect(red.b).toBeLessThan(20);
+		expect(blue.b).toBeGreaterThan(235);
+		expect(blue.r).toBeLessThan(20);
+		await fs.rm(tmpDir, { recursive: true, force: true });
+	});
+
 	it("draws an FBX material's diffuse texture", async () => {
 		const tmpDir = await fs.mkdtemp(
 			path.join(os.tmpdir(), "framefields-fbx-tex-"),

@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { type Mat4, Matrix4Math, type Vec3 } from "../math3d/index.js";
 import { MAX_JOINTS, poseNodes } from "./pose.js";
+import { textureMime } from "./texture-files.js";
 import type {
 	AnimationClip3D,
 	LoadModelOptions,
@@ -97,11 +98,25 @@ interface GltfPrimitive {
 	indices?: number;
 	material?: number;
 	mode?: number; // 4 = TRIANGLES
+	extensions?: { KHR_draco_mesh_compression?: unknown };
 }
 
 interface GltfMesh {
 	name?: string;
 	primitives: GltfPrimitive[];
+}
+
+interface GltfTextureTransform {
+	offset?: [number, number];
+	rotation?: number;
+	scale?: [number, number];
+	texCoord?: number;
+}
+
+interface GltfTextureInfo {
+	index: number;
+	texCoord?: number;
+	extensions?: { KHR_texture_transform?: GltfTextureTransform };
 }
 
 interface GltfMaterial {
@@ -110,12 +125,12 @@ interface GltfMaterial {
 		baseColorFactor?: [number, number, number, number];
 		metallicFactor?: number;
 		roughnessFactor?: number;
-		baseColorTexture?: { index: number; texCoord?: number };
-		metallicRoughnessTexture?: { index: number; texCoord?: number };
+		baseColorTexture?: GltfTextureInfo;
+		metallicRoughnessTexture?: GltfTextureInfo;
 	};
-	normalTexture?: { index: number; texCoord?: number; scale?: number };
-	occlusionTexture?: { index: number; texCoord?: number; strength?: number };
-	emissiveTexture?: { index: number; texCoord?: number };
+	normalTexture?: GltfTextureInfo & { scale?: number };
+	occlusionTexture?: GltfTextureInfo & { strength?: number };
+	emissiveTexture?: GltfTextureInfo;
 	emissiveFactor?: [number, number, number];
 	doubleSided?: boolean;
 	alphaMode?: "OPAQUE" | "MASK" | "BLEND";
@@ -137,9 +152,15 @@ interface GltfImage {
 interface GltfTexture {
 	source?: number;
 	sampler?: number;
+	extensions?: {
+		EXT_texture_webp?: { source?: number };
+		KHR_texture_basisu?: { source?: number };
+	};
 }
 
 interface GltfSampler {
+	magFilter?: number;
+	minFilter?: number;
 	wrapS?: number;
 	wrapT?: number;
 }
@@ -185,6 +206,8 @@ interface GltfAnimation {
 
 interface GltfDocument {
 	asset?: { version: string };
+	extensionsUsed?: string[];
+	extensionsRequired?: string[];
 	scene?: number;
 	scenes?: Array<{ name?: string; nodes?: number[] }>;
 	nodes?: GltfNode[];
@@ -198,6 +221,21 @@ interface GltfDocument {
 	accessors?: GltfAccessor[];
 	bufferViews?: GltfBufferView[];
 	buffers?: GltfBuffer[];
+}
+
+/** Mesh compression the loader cannot decode: a file that requires it fails with a clear error. */
+const UNSUPPORTED_REQUIRED_EXTENSIONS: Record<string, string> = {
+	KHR_draco_mesh_compression: "Draco mesh compression",
+	EXT_meshopt_compression: "meshopt compression",
+};
+
+/**
+ * The UV set and transform a material's textures share: the mesh's UVs are
+ * read from that set with the transform baked in.
+ */
+interface UvPlan {
+	texCoord: number;
+	transform?: GltfTextureTransform;
 }
 
 const GLB_MAGIC = 0x46546c67; // "glTF"
@@ -280,6 +318,14 @@ export class GltfLoader {
 					}
 				}
 			}
+		}
+
+		for (const ext of doc.extensionsRequired ?? []) {
+			const what = UNSUPPORTED_REQUIRED_EXTENSIONS[ext];
+			if (what)
+				throw new Error(
+					`glTF file requires ${ext} (${what}), which framefields cannot decode. Re-export the model without mesh compression (in Blender's glTF exporter, turn off Compression).`,
+				);
 		}
 
 		return GltfLoader.buildModel(doc, binaryBuffers, options, basePath);
@@ -403,12 +449,82 @@ export class GltfLoader {
 		const file = path.isAbsolute(image.uri)
 			? image.uri
 			: path.join(basePath, decodeURIComponent(image.uri));
-		if (!fs.existsSync(file)) return undefined;
-		const ext = path.extname(file).toLowerCase();
+		if (!fs.existsSync(file)) {
+			GltfLoader.warn(
+				`Image "${image.uri}" was not found next to the model; textures using it are skipped.`,
+			);
+			return undefined;
+		}
 		return {
 			bytes: new Uint8Array(fs.readFileSync(file)),
-			mime: image.mimeType ?? (ext === ".png" ? "image/png" : "image/jpeg"),
+			mime: image.mimeType ?? textureMime(file),
 		};
+	}
+
+	private static warn(message: string): void {
+		console.warn(`[GltfLoader] ${message}`);
+	}
+
+	/** The UV set of a texture reference (KHR_texture_transform may override it). */
+	private static texCoordOf(info: GltfTextureInfo): number {
+		return (
+			info.extensions?.KHR_texture_transform?.texCoord ?? info.texCoord ?? 0
+		);
+	}
+
+	/** The UV set and transform of the material's base color map (else its first map). */
+	private static uvPlan(mat: GltfMaterial | undefined): UvPlan {
+		const first = [
+			mat?.pbrMetallicRoughness?.baseColorTexture,
+			mat?.normalTexture,
+			mat?.pbrMetallicRoughness?.metallicRoughnessTexture,
+			mat?.occlusionTexture,
+			mat?.emissiveTexture,
+		].find((t) => t !== undefined);
+		return first
+			? {
+					texCoord: GltfLoader.texCoordOf(first),
+					transform: first.extensions?.KHR_texture_transform,
+				}
+			: { texCoord: 0 };
+	}
+
+	/**
+	 * A texture's decodable image: EXT_texture_webp's source when present.
+	 * KTX2 / Basis (KHR_texture_basisu) and other formats the renderer
+	 * cannot decode are skipped with a warning.
+	 */
+	private static textureImage(
+		doc: GltfDocument,
+		binaryBuffers: Uint8Array[],
+		textureIndex: number,
+		basePath: string | undefined,
+		label: string,
+	): { bytes: Uint8Array; mime: string; sampler?: GltfSampler } | undefined {
+		const texture = doc.textures?.[textureIndex];
+		if (!texture) return undefined;
+		const source =
+			texture.extensions?.EXT_texture_webp?.source ?? texture.source;
+		if (source === undefined) {
+			if (texture.extensions?.KHR_texture_basisu)
+				GltfLoader.warn(
+					`${label} is a KTX2 / Basis texture, which framefields cannot decode; it is skipped (use PNG, JPEG or WebP).`,
+				);
+			return undefined;
+		}
+		const image = GltfLoader.imageBytes(doc, binaryBuffers, source, basePath);
+		if (!image) return undefined;
+		if (!SUPPORTED_IMAGE_MIMES.has(image.mime)) {
+			GltfLoader.warn(
+				`${label} is ${image.mime}, which framefields cannot decode; it is skipped (use PNG, JPEG or WebP).`,
+			);
+			return undefined;
+		}
+		const sampler =
+			texture.sampler !== undefined
+				? doc.samplers?.[texture.sampler]
+				: undefined;
+		return { ...image, sampler };
 	}
 
 	private static buildMaterial(
@@ -449,51 +565,62 @@ export class GltfLoader {
 		} else if (mat.extensions?.KHR_materials_unlit) {
 			material.shading = "unlit";
 		}
-		const texRef = pbr?.baseColorTexture;
-		const texture = texRef ? doc.textures?.[texRef.index] : undefined;
-		if (texture?.source !== undefined) {
-			const image = GltfLoader.imageBytes(
+		// Every map is sampled with the mesh's one UV set (see uvPlan).
+		const plan = GltfLoader.uvPlan(mat);
+		const image = (info: GltfTextureInfo | undefined, slot: string) => {
+			if (!info) return undefined;
+			const label = `The ${slot} map of material "${name}"`;
+			const set = GltfLoader.texCoordOf(info);
+			if (set !== plan.texCoord) {
+				GltfLoader.warn(
+					`${label} uses UV set ${set}, but the mesh draws with UV set ${plan.texCoord}; the map is skipped.`,
+				);
+				return undefined;
+			}
+			const t = info.extensions?.KHR_texture_transform;
+			if (JSON.stringify(t ?? null) !== JSON.stringify(plan.transform ?? null))
+				GltfLoader.warn(
+					`${label} has a different KHR_texture_transform than the mesh's first map; it is drawn with that one's.`,
+				);
+			return GltfLoader.textureImage(
 				doc,
 				binaryBuffers,
-				texture.source,
+				info.index,
 				basePath,
+				label,
 			);
-			if (image) {
-				material.diffuseTextureBuffer = image.bytes;
-				material.diffuseTextureMime = image.mime;
-				const wrap =
-					texture.sampler !== undefined
-						? doc.samplers?.[texture.sampler]?.wrapS
-						: undefined;
-				material.textureWrap =
-					wrap === 33071 ? "clamp" : wrap === 33648 ? "mirror" : "repeat";
-			}
-		}
-		const mapBytes = (ref?: { index: number }) => {
-			const tex = ref ? doc.textures?.[ref.index] : undefined;
-			return tex?.source !== undefined
-				? GltfLoader.imageBytes(doc, binaryBuffers, tex.source, basePath)?.bytes
-				: undefined;
 		};
-		const normal = mapBytes(mat.normalTexture);
+		const base = image(pbr?.baseColorTexture, "base color");
+		if (base) {
+			material.diffuseTextureBuffer = base.bytes;
+			material.diffuseTextureMime = base.mime;
+			const wrap = base.sampler?.wrapS;
+			material.textureWrap =
+				wrap === 33071 ? "clamp" : wrap === 33648 ? "mirror" : "repeat";
+			if (base.sampler?.magFilter === 9728) material.textureFilter = "nearest";
+		}
+		const mapBytes = (info: GltfTextureInfo | undefined, slot: string) =>
+			image(info, slot)?.bytes;
+		const normal = mapBytes(mat.normalTexture, "normal");
 		if (normal) {
 			material.normalTextureBuffer = normal;
 			material.normalScale = mat.normalTexture?.scale ?? 1;
 		}
-		const mr = mapBytes(pbr?.metallicRoughnessTexture);
+		const mr = mapBytes(pbr?.metallicRoughnessTexture, "metallic-roughness");
 		if (mr) {
 			material.metallicRoughnessTextureBuffer = mr;
 			// With a map the factors scale it, and glTF's default factor is 1.
 			material.roughness = pbr?.roughnessFactor ?? 1;
 			material.metallic = pbr?.metallicFactor ?? 1;
 		}
-		const occlusion = mapBytes(mat.occlusionTexture);
+		const occlusion = mapBytes(mat.occlusionTexture, "occlusion");
 		if (occlusion) {
 			material.occlusionTextureBuffer = occlusion;
 			material.occlusionStrength = mat.occlusionTexture?.strength ?? 1;
 		}
 		// glTF's emissiveFactor defaults to 0: a map alone does not glow.
-		const emissiveMap = material.emissive && mapBytes(mat.emissiveTexture);
+		const emissiveMap =
+			material.emissive && mapBytes(mat.emissiveTexture, "emissive");
 		if (emissiveMap) material.emissiveTextureBuffer = emissiveMap;
 		return material;
 	}
@@ -591,6 +718,8 @@ export class GltfLoader {
 			);
 		});
 
+		const uvPlans = (doc.materials ?? []).map((mat) => GltfLoader.uvPlan(mat));
+
 		const nodes = GltfLoader.buildNodes(doc);
 		const skins = (doc.skins ?? []).map((skin) => ({
 			joints: skin.joints,
@@ -658,6 +787,17 @@ export class GltfLoader {
 
 				const pos = read(prim.attributes.POSITION)!;
 				const numVerts = pos.count;
+				const plan =
+					prim.material !== undefined ? uvPlans[prim.material] : undefined;
+				const attributes = prim.attributes as Record<
+					string,
+					number | undefined
+				>;
+				const uvs =
+					read(attributes[`TEXCOORD_${plan?.texCoord ?? 0}`])?.data ??
+					read(prim.attributes.TEXCOORD_0)?.data ??
+					new Float32Array(numVerts * 2);
+				if (plan?.transform) applyTextureTransform(uvs, plan.transform);
 				const colors = read(prim.attributes.COLOR_0);
 				let rgba: Float32Array | undefined;
 				if (colors) {
@@ -703,9 +843,7 @@ export class GltfLoader {
 					normals:
 						read(prim.attributes.NORMAL)?.data ??
 						new Float32Array(numVerts * 3),
-					uvs:
-						read(prim.attributes.TEXCOORD_0)?.data ??
-						new Float32Array(numVerts * 2),
+					uvs,
 					colors: rgba,
 					jointIndices: skinned
 						? read(prim.attributes.JOINTS_0)?.data
@@ -798,15 +936,17 @@ export class GltfLoader {
 			return GltfLoader.parse(srcOrData, options);
 		}
 
+		const cleanPath = srcOrData.startsWith("file://")
+			? srcOrData.replace("file://", "")
+			: srcOrData;
 		if (
 			srcOrData.startsWith("/") ||
 			srcOrData.startsWith("./") ||
 			srcOrData.startsWith("../") ||
-			srcOrData.startsWith("file://")
+			srcOrData.startsWith("file://") ||
+			// A relative path such as "models/robot.glb" (inline glTF JSON starts with "{").
+			(!srcOrData.trimStart().startsWith("{") && fs.existsSync(cleanPath))
 		) {
-			const cleanPath = srcOrData.startsWith("file://")
-				? srcOrData.replace("file://", "")
-				: srcOrData;
 			const buf = fs.readFileSync(cleanPath);
 			const basePath = path.dirname(cleanPath);
 			return GltfLoader.parse(buf, options, basePath);
@@ -847,4 +987,32 @@ export function loadGLB(
 function linearToSrgb(c: number): number {
 	const x = Math.min(Math.max(c, 0), 1);
 	return x <= 0.0031308 ? x * 12.92 : 1.055 * x ** (1 / 2.4) - 0.055;
+}
+
+/** The image types the renderer decodes (sharp). */
+const SUPPORTED_IMAGE_MIMES = new Set([
+	"image/png",
+	"image/jpeg",
+	"image/webp",
+	"image/gif",
+	"image/tiff",
+	"image/avif",
+]);
+
+/**
+ * Bakes KHR_texture_transform into UVs in place: uv' = T * R * S * uv
+ * (offset, then rotation counter-clockwise in UV space, then scale).
+ */
+function applyTextureTransform(
+	uvs: Float32Array,
+	{ offset = [0, 0], rotation = 0, scale = [1, 1] }: GltfTextureTransform,
+): void {
+	const c = Math.cos(rotation);
+	const s = Math.sin(rotation);
+	for (let i = 0; i < uvs.length; i += 2) {
+		const u = uvs[i]! * scale[0];
+		const v = uvs[i + 1]! * scale[1];
+		uvs[i] = c * u + s * v + offset[0];
+		uvs[i + 1] = -s * u + c * v + offset[1];
+	}
 }

@@ -39,6 +39,8 @@ export interface Material3D {
 	diffuseTextureMime?: string;
 	/** Texture addressing for UVs outside [0, 1] (glTF samplers default to repeat). */
 	textureWrap?: "repeat" | "clamp" | "mirror";
+	/** Magnification filter (glTF sampler magFilter); "nearest" keeps texels sharp. */
+	textureFilter?: "linear" | "nearest";
 	normalTexture?: string;
 	twoSided?: boolean;
 	/** "mask" discards texels below `alphaCutoff`; "blend" draws after the opaque meshes. */

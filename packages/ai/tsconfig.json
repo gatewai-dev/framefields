@@ -1,0 +1,8 @@
+{
+	"extends": "@framefields/tsconfig/base.json",
+	"compilerOptions": {
+		"lib": ["ES2022", "ESNext", "DOM", "DOM.Iterable", "DOM.AsyncIterable"]
+	},
+	"include": ["."],
+	"exclude": ["dist", "build", "node_modules"]
+}

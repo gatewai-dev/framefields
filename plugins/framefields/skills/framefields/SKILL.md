@@ -1,6 +1,6 @@
 ---
 name: framefields
-description: Start a new framefields video project, or add framefields to an existing Node.js project. Use when the user wants to make a video with framefields and the project has no framefields setup yet, or asks how to install framefields, scaffold a composition and render script, or get from an empty folder to a first MP4. Hands off to framefields-compose, framefields-effects, and framefields-render for the details.
+description: Start a new framefields video project, or add framefields to an existing Node.js project. Use when the user wants to make a video with framefields and the project has no framefields setup yet, or asks how to install framefields, scaffold a composition and render script, get from an empty folder to a first MP4, or generate images, video, music or voice for a film with AI models (`ai` from framefields, the framefields AI gateway, FRAMEFIELDS_API_KEY). Hands off to framefields-compose, framefields-effects, and framefields-render for the details.
 ---
 
 # framefields
@@ -15,6 +15,7 @@ This skill takes a project from nothing to a verified first render. For anything
 | Scenes, layout, typography, animation, beat grids, film structure | `framefields-compose` |
 | Post-processing, color grading, VFX, on-device vision (tracking, cutouts, pose) | `framefields-effects` |
 | Frame inspection, frame grids, pixel tests, video export and QA | `framefields-render` |
+| Generating images, video, music, voice with AI models (`ai`) | this skill, section 6 |
 
 ---
 
@@ -278,6 +279,63 @@ The framefields render worker (Docker, RunPod pod or serverless) renders a pushe
 
 A failed job returns `{ code, hint, retryable }`; resubmit unchanged only when `retryable` is true. Job format and error codes: https://framefields.dev/docs/guides/render-service/
 
-## 6. Grow the film
+## 6. Generate assets with AI
+
+`framefields` exports `ai`: hundreds of AI models (images, video, music, sound effects, voice, upscaling, background removal) through the framefields AI gateway, each named by its catalog id and billed to the user's framefields account. `run`, `subscribe`, `stream`, `queue` and `storage` cover every model.
+
+```typescript
+import { ai } from "framefields";
+
+const { data, requestId } = await ai.subscribe<{ images: { url: string }[] }>("flux/schnell", {
+  input: { prompt: "Neon street at night, rain, 35mm", image_size: "landscape_16_9" },
+});
+console.log(data.images[0].url);
+```
+
+**The key.** Requests authenticate with `FRAMEFIELDS_API_KEY` (an `ff_live_…` key from https://framefields.dev/dashboard/keys). Put it in the project's `.env` (gitignored) and load it with `tsx --env-file=.env`, or call `ai.config({ apiKey })`. Never write the key into source, and never ask the user to paste it into chat: ask them to add it to `.env` themselves. Without a key, every call throws before any request is sent. Failures throw `ApiError` with the gateway's `type`: on `insufficient_credits` (status `402`) tell the user to top up at https://framefields.dev/dashboard/billing rather than retrying; `key_limit_reached` means the key's monthly cap; `rate_limited` and `too_many_inflight_requests` mean wait and retry. A `ValidationError` (`422`) lists the bad input fields in `fieldErrors`.
+
+**Generate once, into `assets/`, in its own script.** Generation costs money and is not deterministic, so it never runs inside `buildFilm()`, the preview, tests or the render worker. Write `src/generate.ts`, run it on purpose, download every output into `assets/generated/` (tracked in Git LFS, as above), and reference the local file from the film. Generated output URLs expire, and the worker renders from the repository.
+
+```typescript
+// src/generate.ts — run with: tsx --env-file=.env src/generate.ts
+import fs from "node:fs/promises";
+import path from "node:path";
+import { ai } from "framefields";
+
+const OUT = path.resolve(import.meta.dirname, "../assets/generated");
+await fs.mkdir(OUT, { recursive: true });
+
+async function save(url: string, name: string): Promise<string> {
+  const file = path.join(OUT, name);
+  await fs.writeFile(file, Buffer.from(await (await fetch(url)).arrayBuffer()));
+  return file;
+}
+
+const still = await ai.subscribe<{ images: { url: string }[] }>("flux/schnell", {
+  input: { prompt: "Neon street at night, rain, 35mm", image_size: "landscape_16_9", seed: 7 },
+});
+await save(still.data.images[0].url, "street.jpg");
+
+// Feed a local file to a model: put a Blob in the input and it is uploaded for you
+// (or call ai.storage.upload(blob) yourself and pass the URL).
+const image_url = new Blob([await fs.readFile(path.join(OUT, "street.jpg"))], { type: "image/jpeg" });
+const clip = await ai.subscribe<{ video: { url: string } }>("kling-video/v2.1/standard/image-to-video", {
+  input: { prompt: "slow push in, rain falling", image_url, duration: "5" },
+  logs: true,
+  onQueueUpdate: (u) => u.status === "IN_PROGRESS" && u.logs.forEach((l) => console.log(l.message)),
+});
+await save(clip.data.video.url, "street.mp4");
+process.exit(0);
+```
+
+Then `Layer.image("assets/generated/street.jpg")` / `Layer.video("assets/generated/street.mp4")` in the film.
+
+- **Pick the model and its input from the catalog.** https://framefields.dev/models lists every model with its id, category, price per unit and input schema. Each model has its own input and output fields (`images[0].url`, `video.url`, `audio.url`, `audio_file.url` …): read the schema and pass the output shape as the type argument, or log `data` once, instead of guessing.
+- **Long jobs** (video, music): `subscribe` waits and polls. For several at once, `ai.queue.submit(model, { input })` each, keep every `request_id`, then `ai.queue.result(model, { requestId })`; an interrupted script can collect the results instead of paying again. Reading a status or result is free and retried on transient errors; submitting is never retried, so it can't bill twice.
+- **Ask before spending.** Before a batch, or before any video model, tell the user which models you will call, how many times, and the catalog price; generate a single draft first and show it.
+- Pass a fixed `seed` where the model accepts one, and keep the prompts in `generate.ts`, so a result can be regenerated.
+- Frame-rate and size: generated clips rarely match the composition's `fps` or aspect. Use `fit: "cover"` on the layer, and check the clip's real duration before cutting to it.
+
+## 7. Grow the film
 
 Once the first render works, move to the specialist skills: `framefields-compose` for splitting the film into scene modules on a beat grid, `framefields-effects` for grading, grain, and vision-driven effects, and `framefields-render` for tests and delivery checks. Keep `theme.ts` as the single source of sizes, colors, fonts, and timing as the project grows.

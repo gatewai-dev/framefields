@@ -1,0 +1,39 @@
+{
+	"name": "@framefields/ai",
+	"version": "2.3.2",
+	"private": false,
+	"description": "AI models (images, video, music, voice) through the framefields AI gateway, authenticated with a FRAMEFIELDS_API_KEY.",
+	"publishConfig": {
+		"access": "public"
+	},
+	"type": "module",
+	"sideEffects": false,
+	"license": "Apache-2.0",
+	"module": "./dist/index.mjs",
+	"types": "./dist/index.d.mts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.mts",
+			"development": "./src/index.ts",
+			"import": "./dist/index.mjs",
+			"default": "./dist/index.mjs"
+		}
+	},
+	"files": [
+		"dist/**"
+	],
+	"scripts": {
+		"build": "tsdown && node scripts/check-provider-neutral.mjs --dist",
+		"dev": "tsdown --watch",
+		"clean": "rm -rf .turbo && rm -rf node_modules && rm -rf dist",
+		"test": "node scripts/check-provider-neutral.mjs && vitest run --passWithNoTests",
+		"typecheck": "tsc --noEmit -p ."
+	},
+	"devDependencies": {
+		"@framefields/tsconfig": "workspace:*",
+		"@types/node": "^24.1.0",
+		"tsdown": "^0.19.0",
+		"typescript": "^5.8.3",
+		"vitest": "4.1.5"
+	}
+}

@@ -1,4 +1,15 @@
 export {
+	type Ai,
+	type AiConfig,
+	ApiError,
+	ai,
+	FRAMEFIELDS_AI_PROXY_URL,
+	type QueueStatus,
+	type Result,
+	type RunOptions,
+	ValidationError,
+} from "@framefields/ai";
+export {
 	AudioSignal,
 	type AudioSignalOptions,
 	computed,

@@ -31,7 +31,7 @@ pnpm test
 | Images | `fal-ai/flux-2-pro`: a backdrop, a camera on a green screen, a light leak on black, a paper grain (`images.ts`) | `assets/images/` |
 
 The soundtrack is `assets/song.mp3` exactly as generated: nothing stretches, shifts or re-masters it, so
-the film's clock is the take's clock. `FAL_API_KEY` is read from the repo root `.env`. The music model
+the film's clock is the take's clock. `FRAMEFIELDS_API_KEY` is read from the repo root `.env`. The music model
 treats section lengths as guidance, so nothing in the picture assumes the plan held: regenerate the song
 and the film re-cuts itself.
 

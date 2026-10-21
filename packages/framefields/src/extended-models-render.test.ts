@@ -798,3 +798,119 @@ Connections:  {
 		await fs.rm(tmpDir, { recursive: true, force: true });
 	});
 });
+
+describe("FBX skinning", () => {
+	it("moves a skinned mesh with its animated bone", async () => {
+		const tmpDir = await fs.mkdtemp(
+			path.join(os.tmpdir(), "framefields-fbx-skin-"),
+		);
+		const file = path.join(tmpDir, "skinned.fbx");
+		// A quad fully weighted to "Bone", whose x translation goes 0 -> 100 over 1 s.
+		await fs.writeFile(
+			file,
+			`; FBX 7.4.0 project file
+Objects:  {
+	Geometry: 1001, "Geometry::Quad", "Mesh" {
+		Vertices: *12 {
+			a: -50,-50,0, 50,-50,0, 50,50,0, -50,50,0
+		}
+		PolygonVertexIndex: *4 {
+			a: 0,1,2,-4
+		}
+	}
+	Model: 3001, "Model::Body", "Mesh" {
+	}
+	Model: 3002, "Model::Bone", "LimbNode" {
+	}
+	Deformer: 5001, "Deformer::Skin", "Skin" {
+	}
+	Deformer: 6001, "SubDeformer::Bone", "Cluster" {
+		Indexes: *4 {
+			a: 0,1,2,3
+		}
+		Weights: *4 {
+			a: 1,1,1,1
+		}
+	}
+	AnimationStack: 7001, "AnimStack::Slide", "" {
+	}
+	AnimationLayer: 7002, "AnimLayer::Base", "" {
+	}
+	AnimationCurveNode: 7003, "AnimCurveNode::T", "" {
+	}
+	AnimationCurve: 7004, "AnimCurve::", "" {
+		KeyTime: *2 {
+			a: 0,46186158000
+		}
+		KeyValueFloat: *2 {
+			a: 0,100
+		}
+	}
+}
+
+Connections:  {
+	C: "OO", 1001, 3001
+	C: "OO", 3001, 0
+	C: "OO", 3002, 0
+	C: "OO", 5001, 1001
+	C: "OO", 6001, 5001
+	C: "OO", 3002, 6001
+	C: "OO", 7002, 7001
+	C: "OO", 7003, 7002
+	C: "OP", 7003, 3002, "Lcl Translation"
+	C: "OP", 7004, 7003, "d|X"
+}
+`,
+		);
+
+		const comp = new Composition({
+			width: 400,
+			height: 300,
+			fps: 30,
+			durationMs: 1000,
+			backgroundColor: "#000000",
+		});
+		comp.add(
+			Layer.camera({
+				id: "cam3d",
+				x: 200,
+				y: 150,
+				z: -600,
+				targetX: 200,
+				targetY: 150,
+				targetZ: 0,
+			}),
+		);
+		comp.add(
+			Layer.fbx(file, {
+				id: "fbx-skinned",
+				x: 200,
+				y: 150,
+				z: 0,
+				color: "#ff0000",
+				material: "unlit",
+				loop: false,
+			}),
+		);
+
+		/** Mean x of the red pixels. */
+		const redCenterX = async (frame: number) => {
+			const img = await decodePngPixels(await comp.renderFrame({ frame }));
+			let sum = 0;
+			let count = 0;
+			for (let y = 0; y < img.height; y += 2)
+				for (let x = 0; x < img.width; x += 2)
+					if (getPixel(img, x, y).r > 128) {
+						sum += x;
+						count++;
+					}
+			expect(count).toBeGreaterThan(50);
+			return sum / count;
+		};
+		const start = await redCenterX(0);
+		const half = await redCenterX(15);
+		// 50 model units at this distance is ~25 px.
+		expect(Math.abs(half - start)).toBeGreaterThan(15);
+		await fs.rm(tmpDir, { recursive: true, force: true });
+	});
+});

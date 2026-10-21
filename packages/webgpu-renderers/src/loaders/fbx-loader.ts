@@ -1,6 +1,12 @@
 import fs from "node:fs";
+import path from "node:path";
 import { inflateSync } from "node:zlib";
 import { type Vec3, Vector3Math } from "../math3d/index.js";
+import {
+	readTextureFile,
+	textureMime,
+	warnMissingTexture,
+} from "./texture-files.js";
 import type {
 	AnimationClip3D,
 	LoadModelOptions,
@@ -37,8 +43,7 @@ export class FbxLoader {
 	}
 
 	public static isBinary(buffer: ArrayBuffer | Uint8Array): boolean {
-		const view =
-			buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+		const view = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
 		if (view.length < 27) return false;
 		const header = "Kaydara FBX Binary  \0\x1a\0";
 		for (let i = 0; i < header.length; i++) {
@@ -302,6 +307,91 @@ export class FbxLoader {
 		return root;
 	}
 
+	/** Material properties a texture can feed, by the FBX (or Maya / 3ds Max) property name. */
+	private static textureSlot(prop: string): "diffuse" | "normal" | undefined {
+		const p = prop.toLowerCase();
+		if (
+			p === "diffusecolor" ||
+			p === "diffuse" ||
+			p.endsWith("|basecolor") ||
+			p.endsWith("|base_color") ||
+			p === "basecolor"
+		)
+			return "diffuse";
+		if (
+			p === "normalmap" ||
+			p.endsWith("|normalcamera") ||
+			p.endsWith("|bump_map")
+		)
+			return "normal";
+		return undefined;
+	}
+
+	/**
+	 * Fills a material's diffuse / normal map from its connected Texture
+	 * objects: the bytes embedded in the Video's `Content`, else the file
+	 * named by `RelativeFilename` / `FileName`, looked up next to the model.
+	 */
+	private static attachTextures(
+		material: Material3D,
+		materialId: number | string,
+		objects: Map<number | string, { name: string; node: FBXNode }>,
+		connections: Array<{
+			childId: number | string;
+			parentId: number | string;
+			propName?: string;
+		}>,
+		basePath: string | undefined,
+	): void {
+		const stringChild = (node: FBXNode | undefined, name: string) => {
+			const value = node?.children.find((c) => c.name === name)?.props[0];
+			return typeof value === "string" && value ? value : undefined;
+		};
+		for (const c of connections) {
+			if (c.parentId !== materialId || !c.propName) continue;
+			const slot = FbxLoader.textureSlot(c.propName);
+			const texture = objects.get(c.childId);
+			if (!slot || texture?.node.name !== "Texture") continue;
+			if (
+				slot === "diffuse"
+					? material.diffuseTextureBuffer
+					: material.normalTextureBuffer
+			)
+				continue;
+
+			const video = connections
+				.filter((v) => v.parentId === c.childId && !v.propName)
+				.map((v) => objects.get(v.childId)?.node)
+				.find((n) => n?.name === "Video");
+			const ref =
+				stringChild(texture.node, "RelativeFilename") ??
+				stringChild(texture.node, "FileName") ??
+				stringChild(video, "RelativeFilename") ??
+				stringChild(video, "Filename");
+
+			let bytes: Uint8Array | undefined;
+			const content = video?.children.find((n) => n.name === "Content")
+				?.props[0];
+			if (content instanceof Uint8Array && content.length > 0) bytes = content;
+			else if (ref) bytes = readTextureFile(ref, basePath)?.bytes;
+
+			if (!bytes) {
+				if (ref) warnMissingTexture("FbxLoader", material.name, ref);
+				continue;
+			}
+			if (slot === "diffuse") {
+				material.diffuseTextureBuffer = bytes;
+				material.diffuseTextureMime = textureMime(ref ?? "");
+				if (ref) material.diffuseTexture = ref;
+				// FBX UVs commonly tile; textures repeat by default in FBX tools.
+				material.textureWrap = "repeat";
+			} else {
+				material.normalTextureBuffer = bytes;
+				if (ref) material.normalTexture = ref;
+			}
+		}
+	}
+
 	/**
 	 * Builds ready-to-render Model3DData from parsed FBX node tree.
 	 */
@@ -351,11 +441,32 @@ export class FbxLoader {
 			}
 		}
 
+		// Geometry -> Model -> Material: a mesh uses its model's first material.
+		const materialNameForGeometry = (geometryId: number | string) => {
+			for (const c of connections) {
+				// Some exporters connect the material to the geometry itself.
+				const mat =
+					c.parentId === geometryId ? objects.get(c.childId) : undefined;
+				if (mat?.node.name === "Material" && !c.propName) return mat.name;
+			}
+			for (const g of connections) {
+				if (g.childId !== geometryId || g.propName) continue;
+				for (const m of connections) {
+					if (m.parentId !== g.parentId || m.propName) continue;
+					const mat = objects.get(m.childId);
+					if (mat?.node.name === "Material") return mat.name;
+				}
+			}
+			return undefined;
+		};
+
 		// 1. Parse Geometry Meshes
 		const meshes: Mesh3DData[] = [];
 		const materials: Record<string, Material3D> = {};
 
-		function extractArrayProp(node: FBXNode | undefined): number[] | Float32Array | Float64Array | Int32Array {
+		function extractArrayProp(
+			node: FBXNode | undefined,
+		): number[] | Float32Array | Float64Array | Int32Array {
 			if (!node) return [];
 			if (
 				node.props[0] instanceof Float32Array ||
@@ -369,14 +480,23 @@ export class FbxLoader {
 			if (aChild && aChild.props.length > 0) {
 				return aChild.props as number[];
 			}
-			if (Array.isArray(node.props) && node.props.length > 0 && typeof node.props[0] === "number") {
+			if (
+				Array.isArray(node.props) &&
+				node.props.length > 0 &&
+				typeof node.props[0] === "number"
+			) {
 				return node.props as number[];
 			}
 			return [];
 		}
 
 		for (const [id, entry] of objects) {
-			if (entry.node.name === "Geometry" && (entry.type === "Mesh" || entry.node.props[2] === "Mesh" || entry.type === "")) {
+			if (
+				entry.node.name === "Geometry" &&
+				(entry.type === "Mesh" ||
+					entry.node.props[2] === "Mesh" ||
+					entry.type === "")
+			) {
 				const geomNode = entry.node;
 
 				const verticesNode = geomNode.children.find(
@@ -403,12 +523,9 @@ export class FbxLoader {
 				const rawNormals = extractArrayProp(normalsNode);
 
 				const uvsNode = uvLayer?.children.find((c) => c.name === "UV");
-				const uvIndexNode = uvLayer?.children.find(
-					(c) => c.name === "UVIndex",
-				);
+				const uvIndexNode = uvLayer?.children.find((c) => c.name === "UVIndex");
 				const rawUvs = extractArrayProp(uvsNode);
 				const rawUvIndices = extractArrayProp(uvIndexNode);
-
 
 				// Triangulate polygons (indices with negative termination)
 				const triangles: Array<[number, number, number]> = [];
@@ -596,7 +713,7 @@ export class FbxLoader {
 						: new Uint16Array(outIndices),
 					jointIndices,
 					jointWeights,
-					materialName: entry.name,
+					materialName: materialNameForGeometry(id) ?? entry.name,
 				});
 			}
 		}
@@ -620,7 +737,10 @@ export class FbxLoader {
 								const g = Number(p.props[5] ?? 1);
 								const b = Number(p.props[6] ?? 1);
 								diffuseColor = [r, g, b, 1.0];
-							} else if (pName === "Shininess" || pName === "ShininessExponent") {
+							} else if (
+								pName === "Shininess" ||
+								pName === "ShininessExponent"
+							) {
 								shininess = Number(p.props[4] ?? 32);
 							} else if (pName === "Opacity") {
 								opacity = Number(p.props[4] ?? 1);
@@ -630,12 +750,20 @@ export class FbxLoader {
 					}
 				}
 
-				materials[entry.name] = {
+				const material: Material3D = {
 					name: entry.name,
 					diffuseColor,
 					shininess,
 					opacity,
 				};
+				FbxLoader.attachTextures(
+					material,
+					entry.id,
+					objects,
+					connections,
+					options.basePath,
+				);
+				materials[entry.name] = material;
 			}
 		}
 
@@ -820,7 +948,9 @@ interface FbxCurve {
  * Classifies a curve node from its OP connection property ("Lcl Translation",
  * "Lcl Rotation", "Lcl Scaling") or, failing that, its short name ("T", "R", "S").
  */
-function transformKindFromProperty(name: string | undefined): TransformKind | undefined {
+function transformKindFromProperty(
+	name: string | undefined,
+): TransformKind | undefined {
 	switch (name) {
 		case "Lcl Translation":
 		case "T":
@@ -851,9 +981,14 @@ function axisFromProperty(name: string | undefined): number | undefined {
 }
 
 /** Numeric values of a Properties70 `P` entry (they start at props[4]). */
-function readProperty70(node: FBXNode | undefined, name: string): number[] | undefined {
+function readProperty70(
+	node: FBXNode | undefined,
+	name: string,
+): number[] | undefined {
 	const props70 = node?.children.find((c) => c.name === "Properties70");
-	const p = props70?.children.find((c) => c.name === "P" && c.props[0] === name);
+	const p = props70?.children.find(
+		(c) => c.name === "P" && c.props[0] === name,
+	);
 	if (!p) return undefined;
 	return p.props.slice(4).map((v) => Number(v));
 }
@@ -867,7 +1002,11 @@ function staticTransform(
 	const fallback = kind === "S" ? 1 : 0;
 	const modelProp = readProperty70(
 		model,
-		kind === "T" ? "Lcl Translation" : kind === "R" ? "Lcl Rotation" : "Lcl Scaling",
+		kind === "T"
+			? "Lcl Translation"
+			: kind === "R"
+				? "Lcl Rotation"
+				: "Lcl Scaling",
 	);
 	const out: Vec3 = [fallback, fallback, fallback];
 	for (let axis = 0; axis < 3; axis++) {
@@ -965,7 +1104,10 @@ function buildTransformTrack(group: {
 		}
 		const q = fbxEulerToQuat(v, order);
 		// Keep neighbours in the same hemisphere so slerp takes the short way.
-		if (prev && prev[0] * q[0] + prev[1] * q[1] + prev[2] * q[2] + prev[3] * q[3] < 0) {
+		if (
+			prev &&
+			prev[0] * q[0] + prev[1] * q[1] + prev[2] * q[2] + prev[3] * q[3] < 0
+		) {
 			for (let i = 0; i < 4; i++) q[i] = -q[i]!;
 		}
 		prev = q;
@@ -996,8 +1138,7 @@ export function loadFBX(
 	if (typeof srcOrData === "string") {
 		const trimmed = srcOrData.trim();
 		const isInline =
-			trimmed.includes("FBXHeaderExtension") ||
-			trimmed.includes("Kaydara FBX");
+			trimmed.includes("FBXHeaderExtension") || trimmed.includes("Kaydara FBX");
 		if (!isInline && typeof fs !== "undefined" && fs.existsSync) {
 			try {
 				let filePath = srcOrData.startsWith("file://")
@@ -1009,10 +1150,11 @@ export function loadFBX(
 				if (fs.existsSync(filePath)) {
 					const buf = fs.readFileSync(filePath);
 					data = new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
+					// Textures are looked up next to the model.
+					options = { basePath: path.dirname(filePath), ...options };
 				}
 			} catch (_) {}
 		}
 	}
 	return FbxLoader.parse(data, options);
 }
-

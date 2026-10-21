@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { Signal } from "@framefields/core";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { Composition, Layer, Layer3D, LayerAnimation, Light } from "./index.js";
 import { computeMse, decodePngPixels, getPixel } from "./test-utils/pixels.js";
 
@@ -526,6 +526,194 @@ end_header
 		const offCenterPix = getPixel(img, 500, 300);
 		expect(offCenterPix.r).toBeGreaterThan(30);
 
+		await fs.rm(tmpDir, { recursive: true, force: true });
+	});
+});
+
+describe("Model textures (OBJ / FBX)", () => {
+	/** A 64×64 PNG: top half red, bottom half blue (image space). */
+	const redOverBluePng = async (file: string) => {
+		const { Canvas } = await import("skia-canvas");
+		const c = new Canvas(64, 64);
+		const ctx = c.getContext("2d");
+		ctx.fillStyle = "rgb(255,0,0)";
+		ctx.fillRect(0, 0, 64, 32);
+		ctx.fillStyle = "rgb(0,0,255)";
+		ctx.fillRect(0, 32, 64, 32);
+		await fs.writeFile(file, await c.toBuffer("png"));
+	};
+
+	/** Renders a model layer unlit in a 400×300 frame. */
+	const render = async (model: ReturnType<typeof Layer.obj>) => {
+		const comp = new Composition({
+			width: 400,
+			height: 300,
+			fps: 30,
+			durationMs: 1000,
+			backgroundColor: "#000000",
+		});
+		comp.add(
+			Layer.camera({
+				id: "cam3d",
+				x: 200,
+				y: 150,
+				z: -600,
+				targetX: 200,
+				targetY: 150,
+				targetZ: 0,
+			}),
+		);
+		comp.add(model);
+		return decodePngPixels(await comp.renderFrame({ frame: 0 }));
+	};
+
+	/** The texture's top (red) shows at the top of the quad, its bottom (blue) below. */
+	const expectRedOverBlue = (img: Awaited<ReturnType<typeof render>>) => {
+		const top = getPixel(img, 200, 115);
+		const bottom = getPixel(img, 200, 185);
+		expect(top.r).toBeGreaterThan(150);
+		expect(top.b).toBeLessThan(80);
+		expect(bottom.b).toBeGreaterThan(150);
+		expect(bottom.r).toBeLessThan(80);
+	};
+
+	it("draws an OBJ's map_Kd texture from its .mtl", async () => {
+		const tmpDir = await fs.mkdtemp(
+			path.join(os.tmpdir(), "framefields-obj-tex-"),
+		);
+		await fs.mkdir(path.join(tmpDir, "maps"));
+		await redOverBluePng(path.join(tmpDir, "maps", "paint.png"));
+		await fs.writeFile(
+			path.join(tmpDir, "quad.mtl"),
+			"newmtl Paint\nKd 1 1 1\nmap_Kd maps/paint.png\n",
+		);
+		// Y up, as OBJ files are authored: vt (0, 0) is the image's bottom-left.
+		await fs.writeFile(
+			path.join(tmpDir, "quad.obj"),
+			`mtllib quad.mtl
+v -100 -100 0
+v 100 -100 0
+v 100 100 0
+v -100 100 0
+vt 0 0
+vt 1 0
+vt 1 1
+vt 0 1
+usemtl Paint
+f 1/1 2/2 3/3 4/4
+`,
+		);
+
+		const img = await render(
+			Layer.obj(path.join(tmpDir, "quad.obj"), {
+				id: "obj-tex",
+				x: 200,
+				y: 150,
+				z: 0,
+				// The world is y-down; turn the y-up model upright.
+				rotateX: 180,
+				material: "unlit",
+			}),
+		);
+		expectRedOverBlue(img);
+		await fs.rm(tmpDir, { recursive: true, force: true });
+	});
+
+	it("still renders when a texture cannot be decoded", async () => {
+		const tmpDir = await fs.mkdtemp(
+			path.join(os.tmpdir(), "framefields-bad-tex-"),
+		);
+		await fs.writeFile(
+			path.join(tmpDir, "paint.tga"),
+			Buffer.from([1, 2, 3, 4]),
+		);
+		await fs.writeFile(
+			path.join(tmpDir, "quad.mtl"),
+			"newmtl Paint\nKd 0 1 0\nmap_Kd paint.tga\n",
+		);
+		await fs.writeFile(
+			path.join(tmpDir, "quad.obj"),
+			"mtllib quad.mtl\nv -100 -100 0\nv 100 -100 0\nv 100 100 0\nv -100 100 0\nusemtl Paint\nf 1 2 3 4\n",
+		);
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+		const img = await render(
+			Layer.obj(path.join(tmpDir, "quad.obj"), {
+				id: "obj-bad-tex",
+				x: 200,
+				y: 150,
+				z: 0,
+				material: "unlit",
+			}),
+		);
+		// Drawn untextured in its Kd color.
+		const center = getPixel(img, 200, 150);
+		expect(center.g).toBeGreaterThan(150);
+		expect(warn).toHaveBeenCalledWith(
+			expect.stringContaining("Could not decode texture"),
+			expect.anything(),
+		);
+		warn.mockRestore();
+		await fs.rm(tmpDir, { recursive: true, force: true });
+	});
+
+	it("draws an FBX material's diffuse texture", async () => {
+		const tmpDir = await fs.mkdtemp(
+			path.join(os.tmpdir(), "framefields-fbx-tex-"),
+		);
+		await redOverBluePng(path.join(tmpDir, "paint.png"));
+		await fs.writeFile(
+			path.join(tmpDir, "quad.fbx"),
+			`; FBX 7.4.0 project file
+Objects:  {
+	Geometry: 1001, "Geometry::Quad", "Mesh" {
+		Vertices: *12 {
+			a: -100,-100,0, 100,-100,0, 100,100,0, -100,100,0
+		}
+		PolygonVertexIndex: *4 {
+			a: 0,1,2,-4
+		}
+		LayerElementUV: 0 {
+			Version: 101
+			Name: "UVMap"
+			MappingInformationType: "ByControlPoint"
+			ReferenceInformationType: "Direct"
+			UV: *8 {
+				a: 0,0, 1,0, 1,1, 0,1
+			}
+		}
+	}
+	Model: 3001, "Model::Quad", "Mesh" {
+	}
+	Material: 2001, "Material::Paint", "" {
+		Properties70:  {
+			P: "DiffuseColor", "Color", "", "A",1,1,1
+		}
+	}
+	Texture: 4001, "Texture::PaintDiffuse", "" {
+		RelativeFilename: "paint.png"
+	}
+}
+
+Connections:  {
+	C: "OO", 1001, 3001
+	C: "OO", 2001, 3001
+	C: "OP", 4001, 2001, "DiffuseColor"
+}
+`,
+		);
+
+		const img = await render(
+			Layer.fbx(path.join(tmpDir, "quad.fbx"), {
+				id: "fbx-tex",
+				x: 200,
+				y: 150,
+				z: 0,
+				// The world is y-down; turn the y-up model upright.
+				rotateX: 180,
+				material: "unlit",
+			}),
+		);
+		expectRedOverBlue(img);
 		await fs.rm(tmpDir, { recursive: true, force: true });
 	});
 });

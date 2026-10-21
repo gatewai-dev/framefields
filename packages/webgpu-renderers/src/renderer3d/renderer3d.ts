@@ -1413,7 +1413,18 @@ export class Renderer3D {
 		const source = Buffer.from(
 			encoded instanceof Uint8Array ? encoded : new Uint8Array(encoded),
 		);
-		const { width, height } = await sharp(source).metadata();
+		let width: number | undefined;
+		let height: number | undefined;
+		try {
+			({ width, height } = await sharp(source).metadata());
+		} catch (err) {
+			// TGA, PSD and other formats sharp cannot decode: draw untextured.
+			console.warn(
+				`[Renderer3D] Could not decode texture "${label}"; drawing without it:`,
+				err instanceof Error ? err.message : err,
+			);
+			return undefined;
+		}
 		if (!width || !height) return undefined;
 		const mipLevelCount = Math.floor(Math.log2(Math.max(width, height))) + 1;
 		const texture = this.device.createTexture({

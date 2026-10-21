@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { type Vec3, Vector3Math } from "../math3d/index.js";
+import { readTextureFile, warnMissingTexture } from "./texture-files.js";
 import type {
 	LoadModelOptions,
 	Material3D,
@@ -22,11 +23,9 @@ export class ObjLoader {
 		const options: LoadModelOptions =
 			typeof mtlTextOrOptions === "object" && mtlTextOrOptions !== null
 				? mtlTextOrOptions
-				: maybeOptions ?? {};
+				: (maybeOptions ?? {});
 		const mtlText =
-			typeof mtlTextOrOptions === "string"
-				? mtlTextOrOptions
-				: options.mtlText;
+			typeof mtlTextOrOptions === "string" ? mtlTextOrOptions : options.mtlText;
 
 		const rawPositions: Vec3[] = [];
 		const rawNormals: Vec3[] = [];
@@ -52,7 +51,10 @@ export class ObjLoader {
 
 		const materials: Record<string, Material3D> = {};
 		if (mtlText) {
-			Object.assign(materials, ObjLoader.parseMtl(mtlText));
+			Object.assign(
+				materials,
+				ObjLoader.loadTextures(ObjLoader.parseMtl(mtlText), options.basePath),
+			);
 		}
 
 		const lines = objText.split(/\r?\n/);
@@ -71,7 +73,14 @@ export class ObjLoader {
 						const resolvedMtlPath = path.resolve(options.basePath, mtlFileName);
 						if (fs.existsSync(resolvedMtlPath)) {
 							const content = fs.readFileSync(resolvedMtlPath, "utf-8");
-							Object.assign(materials, ObjLoader.parseMtl(content));
+							// Texture paths are relative to the .mtl file.
+							Object.assign(
+								materials,
+								ObjLoader.loadTextures(
+									ObjLoader.parseMtl(content),
+									path.dirname(resolvedMtlPath),
+								),
+							);
 						}
 					} catch (_) {}
 				}
@@ -171,12 +180,12 @@ export class ObjLoader {
 			maxZ = 1;
 		}
 
-		let centerX = (minX + maxX) * 0.5;
-		let centerY = (minY + maxY) * 0.5;
-		let centerZ = (minZ + maxZ) * 0.5;
-		let sizeX = Math.max(1e-4, maxX - minX);
-		let sizeY = Math.max(1e-4, maxY - minY);
-		let sizeZ = Math.max(1e-4, maxZ - minZ);
+		const centerX = (minX + maxX) * 0.5;
+		const centerY = (minY + maxY) * 0.5;
+		const centerZ = (minZ + maxZ) * 0.5;
+		const sizeX = Math.max(1e-4, maxX - minX);
+		const sizeY = Math.max(1e-4, maxY - minY);
+		const sizeZ = Math.max(1e-4, maxZ - minZ);
 		const maxDim = Math.max(sizeX, sizeY, sizeZ);
 
 		let scaleMultiplier = 1.0;
@@ -324,8 +333,7 @@ export class ObjLoader {
 		const finalCenterX = (finalMinX + finalMaxX) * 0.5;
 		const finalCenterY = (finalMinY + finalMaxY) * 0.5;
 		const finalCenterZ = (finalMinZ + finalMaxZ) * 0.5;
-		const sphereRadius =
-			Math.hypot(finalSizeX, finalSizeY, finalSizeZ) * 0.5;
+		const sphereRadius = Math.hypot(finalSizeX, finalSizeY, finalSizeZ) * 0.5;
 
 		return {
 			meshes,
@@ -373,7 +381,12 @@ export class ObjLoader {
 					const r = Number.parseFloat(parts[1] ?? "1");
 					const g = Number.parseFloat(parts[2] ?? "1");
 					const b = Number.parseFloat(parts[3] ?? "1");
-					currentMat.diffuseColor = [r, g, b, currentMat.diffuseColor?.[3] ?? 1.0];
+					currentMat.diffuseColor = [
+						r,
+						g,
+						b,
+						currentMat.diffuseColor?.[3] ?? 1.0,
+					];
 				} else if (cmd === "ks") {
 					// Specular color: Ks r g b
 					const r = Number.parseFloat(parts[1] ?? "1");
@@ -399,14 +412,76 @@ export class ObjLoader {
 					}
 				} else if (cmd === "map_kd") {
 					// Diffuse texture map
-					currentMat.diffuseTexture = parts.slice(1).join(" ");
-				} else if (cmd === "map_bump" || cmd === "bump") {
-					// Normal / bump map
-					currentMat.normalTexture = parts.slice(1).join(" ");
+					currentMat.diffuseTexture = ObjLoader.mapFileName(parts);
+					// MTL maps repeat unless `-clamp on`.
+					const clamp = parts.findIndex((p) => p.toLowerCase() === "-clamp");
+					currentMat.textureWrap =
+						clamp > 0 && parts[clamp + 1]?.toLowerCase() === "on"
+							? "clamp"
+							: "repeat";
+				} else if (cmd === "norm" || cmd === "map_kn") {
+					// Tangent-space normal map
+					currentMat.normalTexture = ObjLoader.mapFileName(parts);
 				}
+				// map_Bump / bump are height maps, which the renderer does not use.
 			}
 		}
 
+		return materials;
+	}
+
+	/** Option arities of MTL map statements (`-o`, `-s`, `-t` take 1–3 numbers). */
+	private static readonly MAP_OPTION_ARGS: Record<string, number> = {
+		"-blendu": 1,
+		"-blendv": 1,
+		"-cc": 1,
+		"-clamp": 1,
+		"-texres": 1,
+		"-bm": 1,
+		"-boost": 1,
+		"-imfchan": 1,
+		"-type": 1,
+		"-mm": 2,
+	};
+
+	/** The file name of a map statement (`map_Kd -s 1 1 1 wood grain.png`), past its options. */
+	private static mapFileName(parts: string[]): string {
+		let i = 1;
+		while (i < parts.length && parts[i]?.startsWith("-")) {
+			const option = parts[i]!.toLowerCase();
+			i++;
+			if (option === "-o" || option === "-s" || option === "-t") {
+				for (let n = 0; n < 3 && i < parts.length; n++) {
+					if (Number.isNaN(Number(parts[i]))) break;
+					i++;
+				}
+			} else {
+				i += ObjLoader.MAP_OPTION_ARGS[option] ?? 0;
+			}
+		}
+		return parts.slice(i).join(" ");
+	}
+
+	/** Reads the diffuse and normal maps the materials name, relative to `dir`. */
+	private static loadTextures(
+		materials: Record<string, Material3D>,
+		dir: string | undefined,
+	): Record<string, Material3D> {
+		if (!dir) return materials;
+		for (const mat of Object.values(materials)) {
+			if (mat.diffuseTexture && !mat.diffuseTextureBuffer) {
+				const file = readTextureFile(mat.diffuseTexture, dir);
+				if (file) {
+					mat.diffuseTextureBuffer = file.bytes;
+					mat.diffuseTextureMime = file.mime;
+				} else warnMissingTexture("ObjLoader", mat.name, mat.diffuseTexture);
+			}
+			if (mat.normalTexture && !mat.normalTextureBuffer) {
+				const file = readTextureFile(mat.normalTexture, dir);
+				if (file) mat.normalTextureBuffer = file.bytes;
+				else warnMissingTexture("ObjLoader", mat.name, mat.normalTexture);
+			}
+		}
 		return materials;
 	}
 }
@@ -464,4 +539,3 @@ export function loadOBJ(
 	}
 	return ObjLoader.parse(text, mtlText, options);
 }
-

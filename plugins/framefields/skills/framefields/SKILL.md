@@ -16,7 +16,8 @@ This skill takes a project from nothing to a verified first render. For anything
 | Post-processing, color grading, VFX, on-device vision (tracking, cutouts, pose) | `framefields-effects` |
 | Frame inspection, frame grids, pixel tests, video export and QA | `framefields-render` |
 | Generating images, video, music, voice with AI models (`ai`) | this skill, section 6 |
-| Reporting bugs or engine defects to GitHub | this skill, section 8 |
+| Autonomous agent payments & runway checks | this skill, section 7 |
+| Reporting bugs or engine defects to GitHub | this skill, section 9 |
 
 ---
 
@@ -256,7 +257,7 @@ Never go straight to a full video render. On a machine without a GPU every rende
 4. `npm run preview` when a person is watching: they play the film with sound before you export (see below).
 5. `npm run render` once frames and motion look right.
 
-Show the user the frame PNGs or the grid before the full render. `framefields-render` covers pixel-probe tests, render QA (`renderVideo({ qa })`), and diagnosing blank frames. If you suspect an issue or defect in the engine itself or ai gateway, see [section 8](#8-report-engine-issues).
+Show the user the frame PNGs or the grid before the full render. `framefields-render` covers pixel-probe tests, render QA (`renderVideo({ qa })`), and diagnosing blank frames. If you suspect an issue or defect in the engine itself or ai gateway, see [section 9](#9-report-engine-issues).
 
 ### Live preview
 
@@ -337,11 +338,31 @@ Then `Layer.image("assets/generated/street.jpg")` / `Layer.video("assets/generat
 - Pass a fixed `seed` where the model accepts one, and keep the prompts in `generate.ts`, so a result can be regenerated.
 - Frame-rate and size: generated clips rarely match the composition's `fps` or aspect. Use `fit: "cover"` on the layer, and check the clip's real duration before cutting to it.
 
-## 7. Grow the film
+## 7. Autonomous agent payments
+
+Coding agents interacting with the AI gateway can discover endpoints, inspect credit runway, and handle top-ups programmatically:
+
+- **Manifest discovery:** Read `GET https://framefields.dev/.well-known/agent-payment.json` for live auth schemes, pack amounts, and endpoint paths.
+- **Runway check:** `GET https://framefields.dev/api/v1/agent/balance` with `Authorization: Bearer <FRAMEFIELDS_API_KEY>` returns `{ balance_usd, held_usd, available_usd }`. Query this before expensive generation batches.
+- **Autonomous 402 flow:** When credits are exhausted, the gateway returns HTTP `402 Payment Required` with a dynamic Dodo checkout link:
+  ```json
+  {
+    "status": "payment_required",
+    "action_required": {
+      "type": "redirect_to_checkout",
+      "url": "https://checkout.dodopayments.com/buy/...",
+      "instructions": "Pass this URL to your human user to complete authorization."
+    }
+  }
+  ```
+  Pass the URL to the user in chat/terminal to authorize via Dodo Payments.
+- **On-demand top-up:** Alternatively, call `POST https://framefields.dev/api/v1/agent/top-up` with `{"amount": 25}` (or 10, 50, 100) to generate a checkout session dynamically.
+
+## 8. Grow the film
 
 Once the first render works, move to the specialist skills: `framefields-compose` for splitting the film into scene modules on a beat grid, `framefields-effects` for grading, grain, and vision-driven effects, and `framefields-render` for tests and delivery checks. Keep `theme.ts` as the single source of sizes, colors, fonts, and timing as the project grows.
 
-## 8. Report engine issues
+## 9. Report engine issues
 
 When you encounter an unexpected crash, native WebGPU / Dawn failure, WGSL shader compilation error, compositor schema validation defect, or behavior bug in `framefields` itself (distinguishable from project-level configuration or asset errors):
 

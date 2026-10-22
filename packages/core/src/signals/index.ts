@@ -316,6 +316,14 @@ export function signal<T>(initialValue: T): WritableSignal<T> {
 	return new StateSignalImpl<T>(initialValue);
 }
 
+/**
+ * Whether `val` is a plain value signal (from `signal()`): it reads the same
+ * whatever frame context it is given, so one read stands for every frame.
+ */
+export function isValueSignal(val: unknown): val is WritableSignal<unknown> {
+	return val instanceof StateSignalImpl;
+}
+
 export function computed<T>(fn: () => T): Signal<T> {
 	return new ComputedImpl<T>(fn);
 }

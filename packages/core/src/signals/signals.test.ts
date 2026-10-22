@@ -4,6 +4,7 @@ import {
 	frameArraySignal,
 	frameSignal,
 	isSignal,
+	isValueSignal,
 	Signal,
 	signal,
 	updateClockSignals,
@@ -173,5 +174,13 @@ describe("Signals Reactive Core", () => {
 			deltaTime: 1 / 48,
 		});
 		expect(valAtHalfSec).toBe(20);
+	});
+
+	it("tells plain value signals from frame-dependent ones", () => {
+		expect(isValueSignal(signal(0.5))).toBe(true);
+		expect(isValueSignal(computed(() => 1))).toBe(false);
+		expect(isValueSignal(Signal.programmatic((ctx) => ctx.time))).toBe(false);
+		expect(isValueSignal(frameArraySignal([1, 2, 3]))).toBe(false);
+		expect(isValueSignal(0.5)).toBe(false);
 	});
 });

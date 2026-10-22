@@ -1,4 +1,8 @@
-import { isSignal, type VirtualMediaData } from "@framefields/core";
+import {
+	isSignal,
+	isValueSignal,
+	type VirtualMediaData,
+} from "@framefields/core";
 import { shaderStore } from "../shader-store.js";
 import { signalRegistry } from "../signals/signal-registry.js";
 
@@ -284,22 +288,27 @@ export class WebGPUAudioProcessor {
 					const signalData = new Float32Array(numSamples);
 					const durationSec =
 						durationSeconds > 0 ? durationSeconds : numSamples / _sampleRate;
-					for (let s = 0; s < numSamples; s++) {
-						const t = elapsedSeconds + s / _sampleRate;
-						const f = t * fps;
-						const progress = durationSec > 0 ? t / durationSec : 0;
-						signalData[s] =
-							Number(
-								directVal.get({
-									frame: f,
-									fps,
-									time: t,
-									duration: durationSec * fps,
-									durationMs: durationSec * 1000,
-									progress,
-									deltaTime: 1 / _sampleRate,
-								}),
-							) || 0;
+					if (isValueSignal(directVal)) {
+						// A plain value reads the same at every sample: read it once
+						signalData.fill(Number(directVal.get()) || 0);
+					} else {
+						for (let s = 0; s < numSamples; s++) {
+							const t = elapsedSeconds + s / _sampleRate;
+							const f = t * fps;
+							const progress = durationSec > 0 ? t / durationSec : 0;
+							signalData[s] =
+								Number(
+									directVal.get({
+										frame: f,
+										fps,
+										time: t,
+										duration: durationSec * fps,
+										durationMs: durationSec * 1000,
+										progress,
+										deltaTime: 1 / _sampleRate,
+									}),
+								) || 0;
+						}
 					}
 					const buf = device.createBuffer({
 						size: Math.max(16, Math.ceil(signalData.byteLength / 16) * 16),
@@ -400,6 +409,35 @@ export class WebGPUAudioProcessor {
 
 		// 3. Process in chunks to prevent GPU driver timeout (TDR) and browser freezing
 		const CHUNK_SIZE = 65536;
+		// Chunks submitted before the oldest is read back. The queue runs them in
+		// order (the state buffer carries across), so waiting on each readback
+		// before submitting the next only adds a GPU round trip per chunk.
+		const MAX_CHUNKS_IN_FLIGHT = 8;
+		const pending: {
+			stagingBuffer: GPUBuffer;
+			offset: number;
+			chunkSamples: number;
+		}[] = [];
+
+		const readBackOldest = async () => {
+			const chunk = pending.shift();
+			if (!chunk) return;
+			const { stagingBuffer, offset, chunkSamples } = chunk;
+			await stagingBuffer.mapAsync(GPUMapMode.READ);
+			const mappedRange = new Float32Array(stagingBuffer.getMappedRange());
+
+			for (let c = 0; c < numChannels; c++) {
+				channels[c].set(
+					mappedRange.subarray(c * chunkSamples, (c + 1) * chunkSamples),
+					offset,
+				);
+			}
+
+			stagingBuffer.unmap();
+			stagingBuffer.destroy();
+
+			await yieldToMain();
+		};
 
 		try {
 			for (let offset = 0; offset < numSamples; offset += CHUNK_SIZE) {
@@ -572,22 +610,19 @@ export class WebGPUAudioProcessor {
 
 				device.queue.submit([commandEncoder.finish()]);
 
-				// Map & Read back
-				await stagingBuffer.mapAsync(GPUMapMode.READ);
-				const mappedRange = new Float32Array(stagingBuffer.getMappedRange());
-
-				for (let c = 0; c < numChannels; c++) {
-					channels[c].set(
-						mappedRange.subarray(c * chunkSamples, (c + 1) * chunkSamples),
-						offset,
-					);
+				// Read back later; the next chunk's writes queue behind this one
+				pending.push({ stagingBuffer, offset, chunkSamples });
+				if (pending.length >= MAX_CHUNKS_IN_FLIGHT) {
+					await readBackOldest();
 				}
-
-				stagingBuffer.unmap();
-
-				await yieldToMain();
+			}
+			while (pending.length > 0) {
+				await readBackOldest();
 			}
 		} finally {
+			for (const { stagingBuffer } of pending) {
+				stagingBuffer.destroy();
+			}
 			for (const b of createdBuffers) {
 				b.destroy();
 			}

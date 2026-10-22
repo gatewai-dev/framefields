@@ -1,5 +1,17 @@
 # framefields
 
+## 2.4.1
+
+### Patch Changes
+
+- Speed up audio mixing for long timelines:
+  - Decode only the stretch of a source each clip plays, 0.5s early so MP3/AAC decoders warm up; samples match a whole-file decode exactly.
+  - Skip subtrees with no source and no sound-producing processor.
+  - Pass a lone child's buffer up instead of copying it per level.
+  - Read plain value signals once instead of once per sample.
+  - Keep up to 8 effect chunks in flight on the GPU before reading back.
+  - ffmpeg fallback: drop the 100 MB output cap and decode only the needed range.
+
 ## 2.4.0
 
 ### Minor Changes

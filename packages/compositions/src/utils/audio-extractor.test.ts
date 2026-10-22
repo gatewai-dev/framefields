@@ -1,7 +1,18 @@
+import { execFileSync } from "node:child_process";
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { decodeAudioSource } from "./audio-extractor.js";
+
+const hasFfmpeg = (() => {
+	try {
+		execFileSync("ffmpeg", ["-version"], { stdio: "ignore" });
+		return true;
+	} catch {
+		return false;
+	}
+})();
 
 function encodeTestWav(
 	samples: Float32Array,
@@ -72,4 +83,28 @@ describe("Audio Extractor: decodeAudioSource", () => {
 		expect(maxAbs).toBeGreaterThan(0.7);
 		expect(maxAbs).toBeLessThanOrEqual(0.76);
 	});
+
+	it.skipIf(!hasFfmpeg)(
+		"decodes a source longer than a few minutes in full",
+		async () => {
+			// 48 kHz stereo float is 384 KB/s: five minutes is past any small
+			// output cap a decoder pipe might have.
+			const file = path.join(
+				await fs.mkdtemp(path.join(os.tmpdir(), "audio-extractor-")),
+				"long.mp3",
+			);
+			execFileSync("ffmpeg", [
+				...["-v", "error", "-y", "-f", "lavfi"],
+				...["-i", "sine=frequency=440:sample_rate=48000:duration=300"],
+				...["-ac", "2", "-c:a", "libmp3lame", "-b:a", "64k", file],
+			]);
+
+			const result = await decodeAudioSource(file);
+			expect(result?.channels.length).toBe(2);
+			expect(result?.channels[0]?.length ?? 0).toBeGreaterThanOrEqual(
+				299 * (result?.sampleRate ?? 0),
+			);
+		},
+		120_000,
+	);
 });

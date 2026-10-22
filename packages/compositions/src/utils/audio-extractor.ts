@@ -116,6 +116,40 @@ export interface AudioClip {
 export async function decodeAudioSource(
 	url: string,
 ): Promise<{ channels: Float32Array[]; sampleRate: number } | null> {
+	const decoded = await decodeAudioRange(url);
+	return decoded
+		? { channels: decoded.channels, sampleRate: decoded.sampleRate }
+		: null;
+}
+
+/**
+ * Seconds decoded ahead of a requested range: a compressed stream (MP3, AAC)
+ * decoded from mid-file only matches a whole-file decode once the decoder has
+ * warmed up on the packets before it.
+ */
+const DECODE_PREROLL_SEC = 0.5;
+
+/**
+ * A decoded stretch of a source. `channels[c][i]` is sample `startIndex + i`
+ * of a whole-file decode, so callers index it as they would the whole file.
+ * Samples in [validFromSec, validToSec) match a whole-file decode exactly.
+ */
+interface DecodedAudioRange {
+	channels: Float32Array[];
+	sampleRate: number;
+	startIndex: number;
+	validFromSec: number;
+	validToSec: number;
+}
+
+/**
+ * Decodes [range.startSec, range.endSec) of a source (the whole file without
+ * a range), so a short clip from a long file decodes only what it plays.
+ */
+async function decodeAudioRange(
+	url: string,
+	range?: { startSec: number; endSec: number },
+): Promise<DecodedAudioRange | null> {
 	mediaLogger.debug(
 		`[AudioExtractor] decodeAudioSource started for url: ${url}`,
 	);
@@ -161,7 +195,14 @@ export async function decodeAudioSource(
 				for (let c = 0; c < audioBuffer.numberOfChannels; c++) {
 					channels.push(new Float32Array(audioBuffer.getChannelData(c)));
 				}
-				return { channels, sampleRate: audioBuffer.sampleRate };
+				// decodeAudioData only decodes whole files.
+				return {
+					channels,
+					sampleRate: audioBuffer.sampleRate,
+					startIndex: 0,
+					validFromSec: 0,
+					validToSec: Number.POSITIVE_INFINITY,
+				};
 			} finally {
 				void audioCtx.close();
 				mediaLogger.debug(`[AudioExtractor] AudioContext closed for ${url}`);
@@ -187,17 +228,22 @@ export async function decodeAudioSource(
 			}
 
 			const sink = new AudioSampleSink(track);
-			const generator = sink.samples(0);
+			const decodeFromSec = range
+				? Math.max(0, range.startSec - DECODE_PREROLL_SEC)
+				: 0;
+			const generator = sink.samples(decodeFromSec, range?.endSec);
 
 			const decodedPlanes: Float32Array[][] = [];
 			let totalFrames = 0;
 			let sampleRate = 48000;
 			let numChannels = 1;
+			let firstTimestamp: number | null = null;
 
 			mediaLogger.debug(
 				`[AudioExtractor] Starting mediabunny generator loop for ${url}...`,
 			);
 			for await (const sample of generator) {
+				if (firstTimestamp === null) firstTimestamp = sample.timestamp;
 				sampleRate = sample.sampleRate;
 				numChannels = sample.numberOfChannels;
 				const sampleFrames = sample.numberOfFrames;
@@ -279,7 +325,29 @@ export async function decodeAudioSource(
 				return merged;
 			});
 
-			return { channels, sampleRate };
+			// A whole-file decode starts at the sample samples(0) yields first;
+			// a range is placed on that same index.
+			let startIndex = 0;
+			if (decodeFromSec > 0 && firstTimestamp !== null) {
+				const origin = await sink.getSample(0);
+				const originTimestamp =
+					origin?.timestamp ?? (await track.getFirstTimestamp());
+				origin?.close();
+				startIndex = Math.round(
+					(firstTimestamp - originTimestamp) * sampleRate,
+				);
+			}
+			const endedEarly =
+				!range || (startIndex + totalFrames) / sampleRate < range.endSec;
+
+			return {
+				channels,
+				sampleRate,
+				startIndex,
+				validFromSec: decodeFromSec > 0 && range ? range.startSec : 0,
+				validToSec:
+					endedEarly || !range ? Number.POSITIVE_INFINITY : range.endSec,
+			};
 		} catch (err) {
 			if (
 				err instanceof Error &&
@@ -289,10 +357,32 @@ export async function decodeAudioSource(
 			}
 			if (typeof process !== "undefined" && process.versions?.node) {
 				try {
-					const { execSync } = await import("node:child_process");
-					const stdout = execSync(
-						`ffmpeg -v error -i "${url}" -f f32le -ar 48000 -ac 2 pipe:1`,
-						{ maxBuffer: 100 * 1024 * 1024 },
+					const { execFileSync } = await import("node:child_process");
+					// ffmpeg's input -ss decodes from before the seek point and discards
+					// up to it, so the range starts on an exact 48 kHz sample.
+					const ffStartIndex = range
+						? Math.round(Math.max(0, range.startSec) * 48000)
+						: 0;
+					const ffStartSec = ffStartIndex / 48000;
+					const stdout = execFileSync(
+						"ffmpeg",
+						[
+							"-v",
+							"error",
+							...(ffStartSec > 0 ? ["-ss", String(ffStartSec)] : []),
+							"-i",
+							url,
+							...(range ? ["-t", String(range.endSec - ffStartSec)] : []),
+							"-f",
+							"f32le",
+							"-ar",
+							"48000",
+							"-ac",
+							"2",
+							"pipe:1",
+						],
+						// 48 kHz stereo f32 is 384 KB/s: a fixed cap drops long sources.
+						{ maxBuffer: Number.POSITIVE_INFINITY },
 					);
 					const totalSamples = stdout.byteLength / 4;
 					const numFrames = totalSamples / 2;
@@ -307,7 +397,16 @@ export async function decodeAudioSource(
 						left[i] = interleaved[i * 2];
 						right[i] = interleaved[i * 2 + 1];
 					}
-					return { channels: [left, right], sampleRate: 48000 };
+					const ffEndedEarly =
+						!range || ffStartSec + numFrames / 48000 < range.endSec;
+					return {
+						channels: [left, right],
+						sampleRate: 48000,
+						startIndex: ffStartIndex,
+						validFromSec: ffStartSec,
+						validToSec:
+							ffEndedEarly || !range ? Number.POSITIVE_INFINITY : range.endSec,
+					};
 				} catch (ffmpegErr) {
 					mediaLogger.warn(
 						{ ffmpegErr },
@@ -342,6 +441,8 @@ export async function decodeAudioSource(
 
 /**
  * Resamples a PCM buffer using linear interpolation to target sample rate & speed.
+ * `trimOffsetSamples` is a whole-file index; `inputStartIndex` is the
+ * whole-file index of `inputChannel[0]` when it holds only a range.
  */
 async function resampleAndStretchPCM(
 	inputChannel: Float32Array,
@@ -350,6 +451,7 @@ async function resampleAndStretchPCM(
 	speed: number,
 	outputLength: number,
 	trimOffsetSamples: number,
+	inputStartIndex = 0,
 ): Promise<Float32Array> {
 	const output = new Float32Array(outputLength);
 	const resampleRatio = sourceSampleRate / targetSampleRate;
@@ -361,7 +463,9 @@ async function resampleAndStretchPCM(
 		if (i > 0 && i % YIELD_INTERVAL === 0) {
 			await yieldToMain();
 		}
-		const srcIndex = trimOffsetSamples + i * factor;
+		// Subtracting the integer start after the sum keeps the position exact,
+		// so a range resamples bit-for-bit as the whole file would.
+		const srcIndex = trimOffsetSamples + i * factor - inputStartIndex;
 		const indexFloor = Math.floor(srcIndex);
 		const indexCeil = Math.ceil(srcIndex);
 
@@ -385,6 +489,63 @@ async function resampleAndStretchPCM(
 	}
 
 	return output;
+}
+
+/** Seconds decoded past a clip's last source sample, for interpolation. */
+const RANGE_MARGIN_SEC = 0.05;
+
+/** Processors that only scale what is already there, so silence stays silence. */
+const GAIN_ONLY_PROCESSORS = new Set(["Compositor", "CompositorLayer"]);
+
+/** Adds `src` into `dest` starting at `destStart` (which may be negative). */
+function addInto(dest: Float32Array, src: Float32Array, destStart: number) {
+	const from = Math.max(0, -destStart);
+	const to = Math.min(src.length, dest.length - destStart);
+	for (let i = from; i < to; i++) {
+		dest[destStart + i] += src[i];
+	}
+}
+
+/**
+ * A node's stereo mix, allocated on first write. A child that covers the
+ * whole bus while it is still silent is taken over instead of copied (adding
+ * into silence changes nothing), so a chain of single-child nodes passes one
+ * buffer up instead of allocating and summing a full-length copy per level.
+ */
+class MixBus {
+	channels: Float32Array[] | null = null;
+
+	constructor(readonly length: number) {}
+
+	/** The bus channels, allocated (silent) if nothing was written yet. */
+	get(): Float32Array[] {
+		this.channels ??= [
+			new Float32Array(this.length),
+			new Float32Array(this.length),
+		];
+		return this.channels;
+	}
+
+	/** Whether `src` written at `start` could replace the bus outright. */
+	canAdopt(src: Float32Array[], start: number): boolean {
+		return (
+			this.channels === null &&
+			start === 0 &&
+			src.every((ch) => ch.length === this.length)
+		);
+	}
+
+	/** Mixes `src` into the bus starting at sample `start`. */
+	add(src: Float32Array[], start: number): void {
+		if (this.canAdopt(src, start) && src[0] !== src[1]) {
+			this.channels = src;
+			return;
+		}
+		const dest = this.get();
+		for (let c = 0; c < 2; c++) {
+			addInto(dest[c], src[c], start);
+		}
+	}
 }
 
 /**
@@ -413,16 +574,59 @@ export async function mixAudioTracks(
 		`[AudioExtractor] Composition total duration: ${durationMs}ms (${totalDurationSec}s). Total mixed samples to allocate: ${totalTargetSamples}`,
 	);
 
-	// Output mixed buffer is stereo
-	const outputLeft = new Float32Array(totalTargetSamples);
-	const outputRight = new Float32Array(totalTargetSamples);
-	const mixedChannels = [outputLeft, outputRight];
+	// Decoded ranges per source, so clips sharing a stretch of a file decode it once
+	const decodedCache = new Map<string, DecodedAudioRange[]>();
+	const undecodable = new Set<string>();
 
-	// Map to cache decoded sources so we don't decode multiple clips of the same file twice
-	const decodedCache = new Map<
-		string,
-		{ channels: Float32Array[]; sampleRate: number } | null
-	>();
+	async function getDecodedRange(
+		url: string,
+		startSec: number,
+		endSec: number,
+	): Promise<DecodedAudioRange | null> {
+		if (undecodable.has(url)) return null;
+		let ranges = decodedCache.get(url);
+		const hit = ranges?.find(
+			(r) => r.validFromSec <= startSec && r.validToSec >= endSec,
+		);
+		if (hit) return hit;
+		const decoded = await decodeAudioRange(url, { startSec, endSec });
+		if (!decoded) {
+			undecodable.add(url);
+			return null;
+		}
+		if (!ranges) {
+			ranges = [];
+			decodedCache.set(url, ranges);
+		}
+		ranges.push(decoded);
+		return decoded;
+	}
+
+	// A subtree without a source or a sound-producing processor mixes to
+	// silence (text, images, shapes), so it is skipped instead of being
+	// allocated, processed and summed at full length.
+	const audibleCache = new WeakMap<VirtualMediaData, boolean>();
+	function isAudible(node: VirtualMediaData): boolean {
+		const cached = audibleCache.get(node);
+		if (cached !== undefined) return cached;
+		const op = node.operation;
+		let audible = false;
+		if (op?.op === "source") {
+			const mediaType = getMediaType(node);
+			audible = mediaType === "Audio" || mediaType === "Video";
+		} else if (
+			op?.op &&
+			!GAIN_ONLY_PROCESSORS.has(op.op) &&
+			audioRegistry.get(op.op)
+		) {
+			audible = true;
+		}
+		if (!audible && node.children) {
+			audible = node.children.some((child) => child && isAudible(child));
+		}
+		audibleCache.set(node, audible);
+		return audible;
+	}
 
 	async function traverse(
 		node: VirtualMediaData,
@@ -432,7 +636,7 @@ export async function mixAudioTracks(
 		inheritedSpeed: number,
 		inheritedDurationFrames: number | null,
 	): Promise<Float32Array[] | null> {
-		if (!node) return null;
+		if (!node || !isAudible(node)) return null;
 		const op = node.operation;
 		if (!op) {
 			const durationMs = getActiveMediaMetadata(node)?.durationMs ?? 0;
@@ -449,9 +653,7 @@ export async function mixAudioTracks(
 			);
 			if (localSamplesCount <= 0) return null;
 
-			const localLeft = new Float32Array(localSamplesCount);
-			const localRight = new Float32Array(localSamplesCount);
-			const localChannels = [localLeft, localRight];
+			const bus = new MixBus(localSamplesCount);
 
 			for (const child of node.children) {
 				const childChannels = await traverse(
@@ -469,19 +671,10 @@ export async function mixAudioTracks(
 					const childStartSample = Math.round(
 						(childStartFrame / fps) * targetSampleRate,
 					);
-					for (let c = 0; c < 2; c++) {
-						const dest = localChannels[c];
-						const src = childChannels[c];
-						const len = Math.min(src.length, dest.length - childStartSample);
-						for (let i = 0; i < len; i++) {
-							if (childStartSample + i >= 0) {
-								dest[childStartSample + i] += src[i];
-							}
-						}
-					}
+					bus.add(childChannels, childStartSample);
 				}
 			}
-			return localChannels;
+			return bus.channels;
 		}
 
 		const volume =
@@ -525,9 +718,7 @@ export async function mixAudioTracks(
 		);
 		if (localSamplesCount <= 0) return null;
 
-		const localLeft = new Float32Array(localSamplesCount);
-		const localRight = new Float32Array(localSamplesCount);
-		const localChannels = [localLeft, localRight];
+		const bus = new MixBus(localSamplesCount);
 
 		const processSegment = async (
 			seg: { startSec: number; endSec?: number } | null,
@@ -574,54 +765,76 @@ export async function mixAudioTracks(
 						(Number(params.trimStartSec) || 0) + totalSeekSec,
 					);
 
-					// Load and decode from cache or file
-					let decoded = decodedCache.get(params.sourceUrl);
-					if (decoded === undefined) {
-						decoded = await decodeAudioSource(params.sourceUrl);
-						decodedCache.set(params.sourceUrl, decoded);
-					}
+					const clipDurationSec = actualDurationFrames / fps;
+					const clipSamplesCount = Math.min(
+						localSamplesCount - segmentStartSample,
+						Math.ceil(clipDurationSec * targetSampleRate),
+					);
+
+					// Decode (or reuse) only the stretch of the source this clip plays
+					const decoded =
+						clipSamplesCount > 0 && segmentStartSample < localSamplesCount
+							? await getDecodedRange(
+									params.sourceUrl,
+									effectiveTrimSec,
+									effectiveTrimSec +
+										(clipSamplesCount / targetSampleRate) * finalSpeed +
+										RANGE_MARGIN_SEC,
+								)
+							: null;
 
 					if (decoded) {
-						const clipDurationSec = actualDurationFrames / fps;
-						const clipSamplesCount = Math.min(
-							localSamplesCount - segmentStartSample,
-							Math.ceil(clipDurationSec * targetSampleRate),
+						const trimOffsetSamples = Math.round(
+							effectiveTrimSec * decoded.sampleRate,
 						);
 
-						if (
-							clipSamplesCount > 0 &&
-							segmentStartSample < localSamplesCount
-						) {
-							const trimOffsetSamples = Math.round(
-								effectiveTrimSec * decoded.sampleRate,
-							);
+						// Resample left & right channels
+						const stretchedLeft = await resampleAndStretchPCM(
+							decoded.channels[0],
+							decoded.sampleRate,
+							targetSampleRate,
+							finalSpeed,
+							clipSamplesCount,
+							trimOffsetSamples,
+							decoded.startIndex,
+						);
 
-							// Resample left & right channels
-							const srcLeft = decoded.channels[0];
-							const srcRight =
-								decoded.channels.length > 1
-									? decoded.channels[1]
-									: decoded.channels[0]; // fallback to mono
+						// A mono source plays the same samples on both sides
+						const stretchedRight =
+							decoded.channels.length > 1
+								? await resampleAndStretchPCM(
+										decoded.channels[1],
+										decoded.sampleRate,
+										targetSampleRate,
+										finalSpeed,
+										clipSamplesCount,
+										trimOffsetSamples,
+										decoded.startIndex,
+									)
+								: stretchedLeft;
 
-							const stretchedLeft = await resampleAndStretchPCM(
-								srcLeft,
-								decoded.sampleRate,
-								targetSampleRate,
-								finalSpeed,
-								clipSamplesCount,
-								trimOffsetSamples,
-							);
-
-							const stretchedRight = await resampleAndStretchPCM(
-								srcRight,
-								decoded.sampleRate,
-								targetSampleRate,
-								finalSpeed,
-								clipSamplesCount,
-								trimOffsetSamples,
-							);
-
+						const stretched = [stretchedLeft, stretchedRight];
+						if (bus.canAdopt(stretched, segmentStartSample)) {
+							// The clip fills the silent bus: scale it in place and keep it
+							if (volume !== 1) {
+								for (let i = 0; i < clipSamplesCount; i++) {
+									stretchedLeft[i] *= volume;
+								}
+								if (stretchedRight !== stretchedLeft) {
+									for (let i = 0; i < clipSamplesCount; i++) {
+										stretchedRight[i] *= volume;
+									}
+								}
+							}
+							bus.channels = [
+								stretchedLeft,
+								stretchedRight === stretchedLeft
+									? stretchedLeft.slice()
+									: stretchedRight,
+							];
+						} else {
 							// Add to local mix with volume scaling
+							const [localLeft, localRight] = bus.get();
 							for (let i = 0; i < clipSamplesCount; i++) {
 								const outIndex = segmentStartSample + i;
 								localLeft[outIndex] += stretchedLeft[i] * volume;
@@ -651,17 +864,7 @@ export async function mixAudioTracks(
 						const childStartSample = Math.round(
 							(childStartFrame / fps) * targetSampleRate,
 						);
-						const destStartSample = segmentStartSample + childStartSample;
-						for (let c = 0; c < 2; c++) {
-							const dest = localChannels[c];
-							const src = childChannels[c];
-							const len = Math.min(src.length, dest.length - destStartSample);
-							for (let i = 0; i < len; i++) {
-								if (destStartSample + i >= 0) {
-									dest[destStartSample + i] += src[i];
-								}
-							}
-						}
+						bus.add(childChannels, segmentStartSample + childStartSample);
 					}
 				}
 			}
@@ -681,12 +884,14 @@ export async function mixAudioTracks(
 						segmentStartSample < localSamplesCount &&
 						segmentStartSample >= 0
 					) {
-						const slicedChannels = localChannels.map((ch) =>
-							ch.subarray(
-								segmentStartSample,
-								segmentStartSample + clipSamplesCount,
-							),
-						);
+						const slicedChannels = bus
+							.get()
+							.map((ch) =>
+								ch.subarray(
+									segmentStartSample,
+									segmentStartSample + clipSamplesCount,
+								),
+							);
 						// The layer's own clock: its in-point moves the source, not its
 						// animation, and a CompositorLayer's keyframes count from its
 						// own first frame (as its picture's do), not the composition's.
@@ -729,12 +934,23 @@ export async function mixAudioTracks(
 			await processSegment(null, 0);
 		}
 
-		return localChannels;
+		return bus.channels;
 	}
 
 	const normalized = normalizeTimeline(virtualMedia, fps);
 	const rootChannels = await traverse(normalized, 0, 0, 1, 1, null);
-	if (rootChannels) {
+
+	// Output mixed buffer is stereo; a root mix of the same length is used as is
+	const mixedChannels =
+		rootChannels?.every((ch) => ch.length === totalTargetSamples) &&
+		rootChannels[0] !== rootChannels[1]
+			? rootChannels
+			: [
+					new Float32Array(totalTargetSamples),
+					new Float32Array(totalTargetSamples),
+				];
+	const [outputLeft, outputRight] = mixedChannels;
+	if (rootChannels && mixedChannels !== rootChannels) {
 		for (let c = 0; c < 2; c++) {
 			const dest = mixedChannels[c];
 			const src = rootChannels[c];

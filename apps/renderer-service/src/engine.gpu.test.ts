@@ -72,15 +72,24 @@ gpu("engine hooks", () => {
 			backgroundColor: "#204060",
 		});
 
-	it("reports progress for every frame, then the audio mix", async () => {
+	it("reports progress for every frame, then each phase after them", async () => {
 		const seen: string[] = [];
 		const result = await film().renderVideo({
 			onProgress: (p) => seen.push(`${p.phase}:${p.frame}/${p.totalFrames}`),
 		});
 		await result.cleanup();
-		expect(seen.filter((s) => s.startsWith("render:"))).toHaveLength(48);
-		expect(seen.at(-2)).toBe("render:48/48");
-		expect(seen.at(-1)).toBe("audio:48/48");
+		expect(seen.slice(0, 3)).toEqual([
+			"prepare:0/48",
+			"render:0/48",
+			"render:1/48",
+		]);
+		// The phase start, then one event per frame.
+		expect(seen.filter((s) => s.startsWith("render:"))).toHaveLength(49);
+		const last = seen.indexOf("render:48/48");
+		expect(seen[last + 1]).toBe("audio:48/48");
+		expect(seen).toContain("audio-encode:48/48");
+		expect(seen).toContain("mux:48/48");
+		expect(seen.at(-1)).toBe("done:48/48");
 	}, 120_000);
 
 	it("aborts between frames with the signal's reason", async () => {

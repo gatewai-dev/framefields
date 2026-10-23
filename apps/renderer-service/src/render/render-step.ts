@@ -8,6 +8,7 @@ import type {
 	StepContext,
 } from "../jobs/pipeline.js";
 import type { JobInput, RenderSettings } from "../jobs/schema.js";
+import type { JobProgress } from "../jobs/store.js";
 import { rendererLogger } from "../logger.js";
 import { gpuStatus } from "../worker/gpu.js";
 import { workerHealth } from "../worker/health.js";
@@ -189,6 +190,7 @@ async function renderOutput(
 				const { ext, contentType } = containerFor(codec);
 				const started = Date.now();
 				let lastEmit = 0;
+				let lastPhase: string | undefined;
 				let expectedFrames: number | undefined;
 				const result = await output.target.renderVideo({
 					outputPath: `${base}.${ext}`,
@@ -198,30 +200,24 @@ async function renderOutput(
 					qa: settings.qa,
 					renderer,
 					signal: controller.signal,
-					onProgress: (p: {
-						phase: string;
-						frame: number;
-						totalFrames: number;
-					}) => {
+					onProgress: (p: EngineProgress) => {
 						stall.touch();
 						expectedFrames = p.totalFrames;
+						// The job reports its own "done" after the upload.
+						if (p.phase === "done") return;
 						const now = Date.now();
+						const lastFrame = p.phase === "render" && p.frame >= p.totalFrames;
 						if (
-							now - lastEmit < PROGRESS_INTERVAL_MS &&
-							p.frame < p.totalFrames
+							p.phase === lastPhase &&
+							!lastFrame &&
+							now - lastEmit < PROGRESS_INTERVAL_MS
 						)
 							return;
 						lastEmit = now;
-						const fps = p.frame / Math.max(0.001, (now - started) / 1000);
+						lastPhase = p.phase;
 						ctx.progress({
-							phase: p.phase === "audio" ? "encoding" : "rendering",
+							...toJobProgress(p, (now - started) / 1000),
 							output: count > 1 ? index : undefined,
-							frame: p.frame,
-							total: p.totalFrames,
-							fps: Math.round(fps * 10) / 10,
-							etaSec: Math.round(
-								(p.totalFrames - p.frame) / Math.max(fps, 0.001),
-							),
 						});
 					},
 				});
@@ -318,6 +314,61 @@ async function renderOutput(
 	} finally {
 		stall.stop();
 	}
+}
+
+/**
+ * What `renderVideo({ onProgress })` reports. Engines before the phase
+ * breakdown send only "render" and "audio", without the optional fields.
+ */
+interface EngineProgress {
+	phase: string;
+	frame: number;
+	totalFrames: number;
+	fps?: number;
+	etaSec?: number;
+	detail?: string;
+}
+
+/** What each engine phase after the frames is doing, for the job message. */
+const AFTER_FRAMES: Record<string, string> = {
+	audio: "mixing audio",
+	"audio-encode": "encoding audio",
+	mux: "muxing",
+	convert: "converting to GIF",
+};
+
+/** Maps an engine progress event to the job's progress. */
+export function toJobProgress(
+	p: EngineProgress,
+	elapsedSec: number,
+): JobProgress {
+	if (p.phase === "prepare") {
+		return {
+			phase: "rendering",
+			frame: 0,
+			total: p.totalFrames,
+			message: "preparing",
+		};
+	}
+	if (p.phase === "render") {
+		const fps = p.fps ?? p.frame / Math.max(0.001, elapsedSec);
+		return {
+			phase: "rendering",
+			frame: p.frame,
+			total: p.totalFrames,
+			fps: Math.round(fps * 10) / 10,
+			etaSec:
+				p.etaSec ??
+				Math.round((p.totalFrames - p.frame) / Math.max(fps, 0.001)),
+		};
+	}
+	const label = AFTER_FRAMES[p.phase] ?? p.phase;
+	return {
+		phase: "encoding",
+		frame: p.frame,
+		total: p.totalFrames,
+		message: p.detail ? `${label} (${p.detail})` : label,
+	};
 }
 
 export function containerFor(codec: string): {

@@ -255,7 +255,7 @@ Never go straight to a full video render. On a machine without a GPU every rende
 2. `npm run frames -- 0 30 60` and look at the PNGs in `output/`. A black frame usually means a missing font, a layer outside the canvas, or opacity stuck at 0.
 3. `npm run grid` and check the motion reads smoothly across the contact sheet.
 4. `npm run preview` when a person is watching: they play the film with sound before you export (see below).
-5. `npm run render` once frames and motion look right.
+5. `npm run render` once frames and motion look right. Run it in the background with a long timeout. It logs each phase (`Rendered 40% …`, `Mixing audio`, `Muxing mp4`, `Done in …`) and a `Still …` line when one runs long, so a pause after the last frame is the audio mix or mux, not a hang.
 
 Show the user the frame PNGs or the grid before the full render. `framefields-render` covers pixel-probe tests, render QA (`renderVideo({ qa })`), and diagnosing blank frames. If you suspect an issue or defect in the engine itself or ai gateway, see [section 9](#9-report-engine-issues).
 

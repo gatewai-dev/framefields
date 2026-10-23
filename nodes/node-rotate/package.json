@@ -1,6 +1,6 @@
 {
 	"name": "@framefields/node-rotate",
-	"version": "2.4.1",
+	"version": "2.4.2",
 	"private": false,
 	"framefields": {
 		"type": "Rotate",

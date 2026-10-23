@@ -1,5 +1,7 @@
 # @framefields/example-21-full-circle
 
+## 2.4.2
+
 ## 2.4.1
 
 ## 2.4.0

@@ -82,7 +82,7 @@ Every frame is rendered by framefields directly from TypeScript in [`examples/`]
 pnpm add framefields
 ```
 
-> **Requirements:** Node.js ≥ 22. Native GPU acceleration via WebGPU / Dawn (macOS Metal, Linux Vulkan, Windows D3D12).
+> **Requirements:** Node.js ≥ 22. Native GPU acceleration via WebGPU / Dawn (macOS Metal, Linux Vulkan, Windows D3D12). Machines without a dedicated GPU can render on the CPU via Mesa lavapipe on Linux or WARP on Windows (~10–12× slower than GPU; suitable for headless CI and test frames).
 
 ---
 

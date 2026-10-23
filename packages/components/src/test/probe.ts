@@ -7,11 +7,11 @@ import { defineComponent } from "../core/contract.js";
 
 export const probe = defineComponent({
 	name: "Probe",
-	props: {
+	props: () => ({
 		label: z.string().default("probe"),
 		ticks: z.array(z.number().int().min(0)).default([]),
 		size: z.number().positive().default(100),
-	},
+	}),
 	defaults: { enter: "rise", hold: 5 },
 	build(ctx, props) {
 		const plate = ctx.host.box({

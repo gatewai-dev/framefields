@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import { fakeHost } from "../test/fake-host.js";
 import { probe } from "../test/probe.js";
-import { bind, pulseKeys } from "./contract.js";
+import { bind, defineComponent, pulseKeys } from "./contract.js";
 
 const make = () => bind(fakeHost(), probe);
 
@@ -127,5 +128,59 @@ describe("pulseKeys", () => {
 			[30, 1.2],
 			[36, 1, "power2.out"],
 		]);
+	});
+});
+
+describe("component lifetimes", () => {
+	const settles = (o: { openEnded?: boolean; afterHold?: number }) =>
+		defineComponent({
+			name: "Settles",
+			props: () => ({ tag: z.string().optional() }),
+			defaults: { hold: 10 },
+			build: (ctx) => ({
+				children: [ctx.host.box({ id: ctx.partId("x") })],
+				width: 100,
+				height: 50,
+				duration: 20,
+				cues: {},
+				...o,
+			}),
+		});
+
+	it("keeps open-ended components up until an exit is asked for", () => {
+		const host = fakeHost();
+		const up = bind(host, settles({ openEnded: true }))({});
+		expect(up.span.end).toBe(Number.POSITIVE_INFINITY);
+		const out = bind(
+			host,
+			settles({ openEnded: true }),
+		)({ exit: { preset: "fade", duration: 6 } });
+		expect(out.span.duration).toBe(20 + 10 + 6);
+		expect(
+			bind(host, settles({ openEnded: true }))({ duration: 50 }).span.duration,
+		).toBe(50);
+	});
+
+	it("adds the component's own after-hold exit to the window", () => {
+		const c = bind(fakeHost(), settles({ afterHold: 12 }))({});
+		expect(c.span.duration).toBe(20 + 10 + 12);
+	});
+
+	it("slides mask presets the full size through a clipping root", () => {
+		const c = bind(
+			fakeHost(),
+			settles({}),
+		)({ enter: "mask-up" }) as unknown as {
+			overflow?: string;
+			children: Array<{
+				animation: {
+					tracks: Array<{ prop: string; keyframes: Array<{ value: number }> }>;
+				};
+			}>;
+		};
+		expect(c.overflow).toBe("hidden");
+		const tracks = c.children[0]?.animation.tracks ?? [];
+		expect(tracks.map((t) => t.prop)).toEqual(["y"]);
+		expect(tracks[0]?.keyframes[0]?.value).toBe(50);
 	});
 });

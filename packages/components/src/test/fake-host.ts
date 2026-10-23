@@ -106,6 +106,19 @@ export function fakeHost(): Host & { created: LayoutNode[] } {
 			}) as never,
 		measure: fakeMeasure,
 		fonts: () => ["Inter", "JetBrains Mono"],
+		media: (source, o) =>
+			make({ kind: "media", id: o.id ?? "media", source, ...o }) as never,
+		style: (node, config) => {
+			(node as unknown as { styles?: unknown[] }).styles = [
+				...((node as unknown as { styles?: unknown[] }).styles ?? []),
+				config,
+			];
+			return node;
+		},
+		matte: (node, matte) => {
+			(node as unknown as { matte?: unknown }).matte = { node: matte };
+			return node;
+		},
 		autoId: (prefix) => {
 			const n = (counters.get(prefix) ?? 0) + 1;
 			counters.set(prefix, n);

@@ -2,6 +2,8 @@
  * Named entrances and exits shared by every component's `enter` / `exit`.
  * A preset becomes plain keyframes on the component's `stage` part, which is
  * pinned at (0, 0) inside the root, so offsets never fight the root's layout.
+ * Mask presets slide the stage a full width or height through the root,
+ * which clips it.
  */
 import { LayerAnimation } from "@framefields/compositions/program";
 import type { Theme } from "./theme.js";
@@ -18,7 +20,11 @@ export type MotionPresetName =
 	| "slide-right"
 	| "slide-up"
 	| "slide-down"
-	| "tilt";
+	| "tilt"
+	| "mask-up"
+	| "mask-down"
+	| "mask-left"
+	| "mask-right";
 
 export const MOTION_PRESETS: readonly MotionPresetName[] = [
 	"none",
@@ -32,13 +38,17 @@ export const MOTION_PRESETS: readonly MotionPresetName[] = [
 	"slide-up",
 	"slide-down",
 	"tilt",
+	"mask-up",
+	"mask-down",
+	"mask-left",
+	"mask-right",
 ];
 
 export interface MotionOptions {
 	/** Frames; default the theme's `base` speed. */
 	duration?: number;
 	ease?: string;
-	/** Travel in px; default 40 (rise / drop) or 120 (slides) × theme.scale. */
+	/** Travel in px; default 40 (rise / drop) or 120 (slides) × theme.scale. Masks travel the full size. */
 	distance?: number;
 	/** Frames to wait after the window starts (enter) or before it ends (exit). */
 	delay?: number;
@@ -90,9 +100,25 @@ export function resolveMotion(
 	};
 }
 
+/** The box a mask preset slides through. */
+export interface MotionSize {
+	width: number;
+	height: number;
+}
+
+const isMask = (m: ResolvedMotion) => m.preset.startsWith("mask-");
+
 /** Offset (dx, dy) a translating preset starts from (enter) or ends at (exit). */
-function offsetOf(m: ResolvedMotion): [number, number] {
+function offsetOf(m: ResolvedMotion, size?: MotionSize): [number, number] {
 	switch (m.preset) {
+		case "mask-up":
+			return [0, size?.height ?? m.distance];
+		case "mask-down":
+			return [0, -(size?.height ?? m.distance)];
+		case "mask-left":
+			return [size?.width ?? m.distance, 0];
+		case "mask-right":
+			return [-(size?.width ?? m.distance), 0];
 		case "rise":
 		case "slide-up":
 			return [0, m.distance];
@@ -112,15 +138,21 @@ function offsetOf(m: ResolvedMotion): [number, number] {
  * Keyframes for an entrance that ends settled at frame `at + delay + duration`
  * (local frames of the animated node).
  */
-export function enterAnimation(m: ResolvedMotion, at = 0): LayerAnimation {
+export function enterAnimation(
+	m: ResolvedMotion,
+	at = 0,
+	size?: MotionSize,
+): LayerAnimation {
 	const s = at + m.delay;
 	const e = s + m.duration;
 	const anim = LayerAnimation.create();
-	anim.keys("opacity", [
-		[s, 0],
-		[e, 1, m.ease],
-	]);
-	const [dx, dy] = offsetOf(m);
+	// Masks reveal by travel alone: no fade.
+	if (!isMask(m))
+		anim.keys("opacity", [
+			[s, 0],
+			[e, 1, m.ease],
+		]);
+	const [dx, dy] = offsetOf(m, size);
 	if (dx !== 0)
 		anim.keys("x", [
 			[s, dx],
@@ -158,15 +190,20 @@ export function enterAnimation(m: ResolvedMotion, at = 0): LayerAnimation {
 /**
  * Keyframes for an exit that finishes at local frame `end - delay`.
  */
-export function exitAnimation(m: ResolvedMotion, end: number): LayerAnimation {
+export function exitAnimation(
+	m: ResolvedMotion,
+	end: number,
+	size?: MotionSize,
+): LayerAnimation {
 	const e = end - m.delay;
 	const s = Math.max(0, e - m.duration);
 	const anim = LayerAnimation.create();
-	anim.keys("opacity", [
-		[s, 1],
-		[e, 0, m.ease],
-	]);
-	const [dx, dy] = offsetOf(m);
+	if (!isMask(m))
+		anim.keys("opacity", [
+			[s, 1],
+			[e, 0, m.ease],
+		]);
+	const [dx, dy] = offsetOf(m, size);
 	// Exits leave the way entrances arrive: rise exits upward, and so on.
 	if (dx !== 0)
 		anim.keys("x", [

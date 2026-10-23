@@ -384,8 +384,10 @@ signals).
 
 Named entrances/exits used by every component's `enter` / `exit`:
 `fade`, `rise`, `drop`, `scale`, `pop` (overshoot), `slide-{left,right,up,down}`,
-`tilt` (3D perspective settle), `none`. `blur` (needs the blur effect on the host) and
-`mask-{up,down,left,right}` (needs a matte) arrive with `TextReveal` in M2. Each preset accepts `{ duration, ease, distance, delay }` overrides and reads
+`tilt` (3D perspective settle), `none`, and (M2) `mask-{up,down,left,right}`: the stage
+slides its full width or height through the root, which clips (`overflow: hidden`), with no
+fade. A `blur` preset is deferred: framefields' blur is an effect driven by signals, not a
+keyable node prop; `TextReveal` `blur` covers text. Each preset accepts `{ duration, ease, distance, delay }` overrides and reads
 defaults from `theme.motion`.
 
 Springs are evaluated in closed form and **baked to keyframes** with `bake.ts`
@@ -969,17 +971,16 @@ Each milestone ends with a changeset for `framefields` (minor), docs, and its ex
 | Milestone | Scope | Exit criteria |
 |---|---|---|
 | **M0 · Foundations** ✅ | Package scaffold; host binding in framefields (`./components` export, root re-exports, tsdown entry, `bindComponent`); `core/*` modules (§5); test harness (fake host, GPU render test, determinism); tree-shake check; `components.json` collector. | Done: a test-only `Probe` component passes §9.1–9.5 (§12). |
-| **M1 · Pointer & camera** | `MousePointer` (rebuilt to the existing changeset design plus the Wave 1 additions), `FocusZoom`, `AppFrame`. | Example `30_product_demo`: a screen recording in a browser frame, pointer with clicks and auto-zoom, click SFX placed from cues. |
-| **M2 · Type** | `TextReveal`, `Counter`, `Annotate`. | Example `31_type_and_numbers`: every reveal style, counters, annotations on wrapped text; all §7.4–7.6 acceptance tests green. |
+| **M1 · Pointer & camera** ✅ | `MousePointer` (rebuilt to the existing changeset design plus the Wave 1 additions), `FocusZoom`, `AppFrame`. | Example `30_product_demo`: a screen recording in a browser frame, pointer with clicks and auto-zoom, click SFX placed from cues. |
+| **M2 · Type** ✅ | `TextReveal`, `Counter`, `Annotate`. | All §7.4–7.6 acceptance tests green (§14). No example film for M2 or later milestones: examples stop at `30_product_demo`. |
 | **M3 · Speech & shell** | `Captions` (incl. transcript parsers and `behind`), `Terminal`. | Example `32_talking_head_social` (portrait, captions behind the speaker, audio pulse) and a terminal segment in a dev-tool launch cut. |
 | **M4 · Wave 2a** | `CodeBlock`, `TitleCard`, `LowerThird`, `Meter`. | Full specs written first (§8 → §7 format). |
 | **M5 · Wave 2b** | `ChatThread`, `Callout`, `Spotlight`, `Confetti`, `Toasts`. | As above. |
 | **M6 · Re-score** | Rank Wave 3 against usage and requests. | Updated §8.2. |
 
-Housekeeping before M1: `.changeset/components-mouse-pointer.md` and the
-`packages/components` lockfile entry describe a package that is not on disk. Either restore
-that implementation as the M1 starting point or retarget the changeset to `framefields`
-when M1 lands.
+Housekeeping (done in M1): the stale `.changeset/components-mouse-pointer.md` described a
+standalone package that never shipped; it is replaced by `framefields` changesets per
+milestone (the components package is private and bundled).
 
 ---
 
@@ -988,8 +989,8 @@ when M1 lands.
 | # | Question | Status |
 |---|---|---|
 | Q1 | Root re-export or `framefields/components` only? | **Decided (M0):** components and user-facing types at the root, full toolkit at the subpath (§3.1). |
-| Q2 | Is text `content` keyframeable with hold interpolation? | **Answered:** yes, `text` is an animatable prop (`.keys("text", …)`, which `FontManager.measure().caretX` is documented to pair with). `Counter` `count` style and `TextReveal` `type` / `stream` use it directly. |
-| Q3 | Node targets inside flex layouts need resolved geometry at build time. | **Partly answered:** `computeLayoutSync(yoga, { layout, viewport, measure })` already exists in `@framefields/compositions/program`. M1 adds a `host.layout(root)` backed by it; until then node targets require absolute nodes and the error says so. |
+| Q2 | Is text `content` keyframeable with hold interpolation? | **Corrected (M1):** the `text` track is a *reveal amount*, not a string: ≤ 1 is a fraction, > 1 a character count (so one character of n is keyed as `1 / n`). Typing (`AppFrame` URLs, `TextReveal` `type`) keys counts with `hold`. Changing strings per frame is not possible, so `Counter` uses digit reels for both styles and `stream` uses glyph animators. |
+| Q3 | Node targets inside flex layouts need resolved geometry at build time. | **Open:** `computeLayoutSync(yoga, …)` exists in `@framefields/compositions/program`, but no `host.layout` was needed for M1/M2: node targets still require absolute nodes and the error says so. `TextReveal.rects(match)` and `AppFrame.at(x, y)` cover the common cases. |
 | Q4 | PascalCase factories vs. a namespace? | **Decided:** PascalCase named exports. A namespace object defeats tree-shaking. |
 | Q5 | Should built-in themes ship fonts? | **Decided:** no. Fonts stay user-registered. |
 | Q6 | Seconds vs. frames for user-facing times. | **Decided:** frames everywhere; `fps` base prop for real-world inputs and theme speeds. |
@@ -1014,3 +1015,78 @@ Deviations from the original plan, all reflected above: no `AnimatableNode` type
 (§3.3), a narrower root export (§3.1), an added `fps` base prop (§4.2), `blur` / `mask`
 presets moved to M2 (§5.4), and a baseline-relative tree-shake check (§9.5). The probe
 component lives in tests only, so there was nothing to delete.
+
+## 13. M1 delivery notes
+
+What landed: `MousePointer`, `AppFrame`, `FocusZoom` (§7.1, §7.2, §7.7), their unit tests
+and `m1.render.test.ts`, the tree-shake cases, and `examples/30_product_demo`.
+
+Decisions and deviations:
+
+- **Props are a factory** (`props: () => zodShape`) and shared schemas (`basePropsSchema()`,
+  `targetSchema()`) and glyph tables are built on first use, so importing a component builds
+  nothing; the tree-shake baseline (§9.5) enforces it.
+- **Contract additions:** `BuildContext.requested` (the user's width / height), `BuildResult`
+  `origin` (components that work in parent coordinates sit at 0, 0), `duration: null`
+  (open-ended containers; an exit then needs an explicit `duration`) and `api` (extra methods
+  on the node: `positionAt`, `contentRect`, `at`, `toScreen` …). Host gained `media` and
+  `style` (layer styles).
+- **MousePointer:** default size 44 px, motion blur via the node's `motionBlurShutter`
+  (45° when `true`), click rests count as pressed so drift never moves a click, and the moving
+  part is a box the size of the glyph (1 × 1 boxes cull their children).
+- **FocusZoom camera:** moves interpolate the *view rectangle* between framings that are
+  clamped beforehand, eased minimum-jerk. Every content point then moves one way on screen,
+  with no sideways wiggle while zooming. Smoothing pan and zoom separately and clamping the
+  result made the view drift sideways mid-zoom. Moves land by `settleBy` (two frames before a
+  cluster's first click); `bounds` keeps a zoomed view inside a region (e.g. the app
+  window); `follow` frames click clusters and does not chase the pointer. Smear presets are
+  24 / 60 / 140° shutter.
+
+## 14. M2 delivery notes
+
+What landed: `TextReveal`, `Counter`, `Annotate` (§7.4–7.6), `core/glyphs.ts`, mask
+presets, unit tests on the fake host and `m2.render.test.ts` (every glyph style ends
+pixel-identical to the static text; scramble frames identical in any render order; wrapped
+underlines; settled counters hold still).
+
+How it is built:
+
+- **Per-unit GPU schedules (`core/glyphs.ts`).** The renderer's expression selector reads
+  the text node's local `frame` and the unit index (`textIndex` counts every character,
+  spaces included; `wordIndex`; `lineIndex`). A schedule bakes each unit's start and an
+  ease table sampled with `core/ease.ts` into the expression, so cue frames are exact, any
+  order works (`random`, `center` …) and back / elastic overshoot comes through. One text
+  node per paragraph; `evaluateGlyphExpression` mirrors the renderer for unit tests.
+- **Node-based styles** where glyph animators can't do it: `mask` (one clipped node per
+  line), `scramble` (a clipped reel per character), and `slam` (a node per unit: the
+  renderer pivots glyphs on their own boxes, so a word can't scale as one). Both hand over to
+  the paragraph node the frame they settle, so the final frame is still the static text.
+- **`wipe`** is a CSS-gradient box matte (`host.matte`); shape mattes don't mask in the
+  renderer. The front trails blur from a baked front-position table.
+- **Counter:** every digit place is a clipped reel; values are integers in the last shown
+  digit (`99.5` at two decimals is `9950`). `roll` spins like an odometer, capped at
+  `MAX_TURNS` (3) full turns per move plus the remainder, so the landing digit is exact;
+  `count` steps the same reels. Formats: a d3-style subset (`[$][,][.precision][d|f|%]`),
+  `Intl.NumberFormatOptions` (affixes and separators from `formatToParts`), or a function
+  (laid out per character from the right). Places fade in and the number slides to keep
+  `align` as they appear.
+- **Annotate:** strokes draw on in sequence by length; hand-drawn marks boil with `d` hold
+  keys; text ranges give one stroke per line; arrows' boxes include the tail.
+
+Deviations from §7.4–7.6:
+
+- **Lifetime.** New `BuildResult.openEnded`: text, numbers and marks stay on screen after
+  they settle unless an `exit` or `duration` is given (then `hold` applies). New
+  `BuildResult.afterHold` / `BuildContext.hold` let a component play its own exit after the
+  hold (`TextReveal` `exitStyle`).
+- **TextReveal:** rich `TextSpan[]` text is replaced by `emphasis` (words or patterns in the
+  accent colour), which keeps one measured string. `exitStyle` excludes `scramble` and
+  `slam`; `mask` exits only a `mask` reveal. Added `cps` and `caret` for `type` / `stream`,
+  and `rects(match)` on the node (parent coordinates) for `Annotate` and cameras.
+- **Counter:** digits are always tabular (reels need fixed cells), so the final frame
+  matches a tabular layout, not a proportional `Layer.text`. The `duration` / `ease` props
+  are `countDuration` / `ease` (base `duration` is the window); `signal`-driven values and
+  the `flip` style are deferred.
+- **Annotate:** targets must be static (moving targets belong to `Callout`). `hand.wobble`
+  is 0–1 (× 5 px at theme scale), `pencil` has no grain yet, and `highlight` multiplies on
+  light themes and tints on dark ones instead of being inserted under the target.

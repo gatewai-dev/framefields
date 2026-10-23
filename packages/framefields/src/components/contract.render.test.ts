@@ -12,10 +12,10 @@ import { bindComponent } from "./index.js";
 const Probe = bindComponent(
 	defineComponent({
 		name: "Probe",
-		props: {
+		props: () => ({
 			color: z.string().default("#ff0000"),
 			size: z.number().default(100),
-		},
+		}),
 		defaults: { enter: { preset: "rise", duration: 10 }, hold: 20 },
 		build(ctx, props) {
 			const plate = ctx.host.box({

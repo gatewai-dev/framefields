@@ -96,38 +96,49 @@ const fn = <T>() =>
 		message: "Expected a function",
 	});
 
-const MotionPresetSchema = z.union([
-	z.enum(MOTION_PRESETS as [string, ...string[]]),
-	z.object({
-		preset: z.enum(MOTION_PRESETS as [string, ...string[]]),
-		duration: z.number().int().positive().optional(),
-		ease: z.string().optional(),
-		distance: z.number().optional(),
-		delay: z.number().int().min(0).optional(),
-	}),
-]);
+function motionPresetSchema() {
+	return z.union([
+		z.enum(MOTION_PRESETS as [string, ...string[]]),
+		z.object({
+			preset: z.enum(MOTION_PRESETS as [string, ...string[]]),
+			duration: z.number().int().positive().optional(),
+			ease: z.string().optional(),
+			distance: z.number().optional(),
+			delay: z.number().int().min(0).optional(),
+		}),
+	]);
+}
 
-/** Props every component accepts. */
-export const BasePropsSchema = z.object({
-	id: z.string().min(1).optional(),
-	at: z.number().int().min(0).optional(),
-	duration: z.number().int().positive().optional(),
-	hold: z.number().int().min(0).optional(),
-	enter: z.union([MotionPresetSchema, z.literal(false)]).optional(),
-	exit: z.union([MotionPresetSchema, z.literal(false)]).optional(),
-	x: z.number().optional(),
-	y: z.number().optional(),
-	width: z.number().positive().optional(),
-	height: z.number().positive().optional(),
-	position: z.enum(["absolute", "relative"]).optional(),
-	theme: z
-		.custom<ThemeInput>((v) => typeof v === "object" && v !== null)
-		.optional(),
-	seed: z.number().int().optional(),
-	fps: z.number().positive().optional(),
-	customize:
-		fn<(parts: Record<string, Animatable<LayoutNode>>) => void>().optional(),
-});
+let baseProps: ReturnType<typeof buildBaseProps> | undefined;
+
+/** Props every component accepts (built on first use). */
+export function basePropsSchema() {
+	baseProps ??= buildBaseProps();
+	return baseProps;
+}
+
+function buildBaseProps() {
+	return z.object({
+		id: z.string().min(1).optional(),
+		at: z.number().int().min(0).optional(),
+		duration: z.number().int().positive().optional(),
+		hold: z.number().int().min(0).optional(),
+		enter: z.union([motionPresetSchema(), z.literal(false)]).optional(),
+		exit: z.union([motionPresetSchema(), z.literal(false)]).optional(),
+		x: z.number().optional(),
+		y: z.number().optional(),
+		width: z.number().positive().optional(),
+		height: z.number().positive().optional(),
+		position: z.enum(["absolute", "relative"]).optional(),
+		theme: z
+			.custom<ThemeInput>((v) => typeof v === "object" && v !== null)
+			.optional(),
+		seed: z.number().int().optional(),
+		fps: z.number().positive().optional(),
+		customize:
+			fn<(parts: Record<string, Animatable<LayoutNode>>) => void>().optional(),
+	});
+}
 
 export interface BaseProps {
 	/** Root id; parts get `<id>-<part>`. */
@@ -170,19 +181,59 @@ export interface BuildContext {
 	partId(part: string): string;
 	/** A seeded stream for `key`, stable across unrelated prop changes. */
 	rng(key: string | number): Rng;
+	/** The size the user asked for (base `width` / `height`), if any. */
+	requested: { width?: number; height?: number };
+	/** Frames the finished state holds (base `hold`, or the component's default). */
+	hold: number;
 }
 
-export interface BuildResult<C extends Cues> {
+/** Where the root ended up: what a component's `api` can rely on. */
+export interface Placement {
+	/** The root's x / y in its parent (0, 0 when it sits in flow). */
+	x: number;
+	y: number;
+	width: number;
+	height: number;
+	/** True when x / y are real parent coordinates (absolute placement). */
+	absolute: boolean;
+	/** The component's first frame in the parent's timeline. */
+	start: number;
+}
+
+export interface BuildResult<C extends Cues, E extends object = object> {
 	/** The component's content, laid out inside a box of `width` × `height`. */
 	children: LayoutNode[];
 	width: number;
 	height: number;
-	/** Natural length in frames: when the content's own animation settles. */
-	duration: number;
+	/**
+	 * Natural length in frames: when the content's own animation settles.
+	 * `null` = open-ended (containers): the component lasts as long as its
+	 * parent unless `duration` is given.
+	 */
+	duration: number | null;
+	/**
+	 * Stay on screen after `duration` (like `duration: null`) unless an exit
+	 * or a `duration` is asked for; then `duration` is the natural length.
+	 * For things that settle and should remain: text, numbers, marks.
+	 */
+	openEnded?: boolean;
+	/**
+	 * Frames the component plays itself after `duration + hold` (its own
+	 * exit, e.g. text leaving unit by unit). Added to the window.
+	 */
+	afterHold?: number;
 	/** Cues in the component's local frames (0 = component start). */
 	cues: C;
 	/** Named sub-nodes, exposed to `customize` and `part()`. */
 	parts?: Record<string, Animatable<LayoutNode>>;
+	/**
+	 * Absolute position the root takes when the user gives neither `x` / `y`
+	 * nor `position` (components that work in their parent's coordinates,
+	 * like a pointer or a camera, sit at 0, 0).
+	 */
+	origin?: [x: number, y: number];
+	/** Extra methods and values added (non-enumerable) to the returned node. */
+	api?: (placement: Placement) => E;
 }
 
 export interface ComponentDefaults {
@@ -191,18 +242,27 @@ export interface ComponentDefaults {
 	hold?: number;
 }
 
-export interface ComponentDefinition<S extends z.ZodRawShape, C extends Cues> {
+export interface ComponentDefinition<
+	S extends z.ZodRawShape,
+	C extends Cues,
+	E extends object = object,
+> {
 	/** PascalCase name, as exported. */
 	name: string;
-	/** Zod shape of the component's own props (base props are added). */
-	props: S;
+	/**
+	 * Zod shape of the component's own props (base props are added). A
+	 * factory, called on first use, so importing a component builds nothing.
+	 */
+	props: () => S;
 	defaults?: ComponentDefaults;
-	build(ctx: BuildContext, props: z.output<z.ZodObject<S>>): BuildResult<C>;
+	build(ctx: BuildContext, props: z.output<z.ZodObject<S>>): BuildResult<C, E>;
 }
 
-export function defineComponent<S extends z.ZodRawShape, C extends Cues>(
-	definition: ComponentDefinition<S, C>,
-): ComponentDefinition<S, C> {
+export function defineComponent<
+	S extends z.ZodRawShape,
+	C extends Cues,
+	E extends object = object,
+>(definition: ComponentDefinition<S, C, E>): ComponentDefinition<S, C, E> {
 	return definition;
 }
 
@@ -213,13 +273,13 @@ export type PropsOf<D> =
 		: never;
 
 export type CuesOf<D> =
-	D extends ComponentDefinition<z.ZodRawShape, infer C> ? C : never;
+	D extends ComponentDefinition<z.ZodRawShape, infer C, object> ? C : never;
 
 /** What every component adds to its root node. */
 export interface ComponentExtras<C extends Cues> {
 	/** Moments the component produced, in the parent's timeline. */
 	readonly cues: C;
-	/** The component's window in the parent's timeline. */
+	/** The component's window in the parent's timeline (`end` is Infinity when open-ended). */
 	readonly span: { start: number; end: number; duration: number };
 	/** A named part (`root`, `stage`, and the component's own). */
 	part(name: string): Animatable<LayoutNode> | undefined;
@@ -236,13 +296,17 @@ const kebab = (name: string) =>
  * calls this once per component behind a PURE annotation, so bundlers drop
  * the ones nobody imports.
  */
-export function bind<S extends z.ZodRawShape, C extends Cues>(
+export function bind<
+	S extends z.ZodRawShape,
+	C extends Cues,
+	E extends object = object,
+>(
 	host: Host,
-	definition: ComponentDefinition<S, C>,
-): (props: z.input<z.ZodObject<S>> & BaseProps) => ComponentNode<C> {
+	definition: ComponentDefinition<S, C, E>,
+): (props: z.input<z.ZodObject<S>> & BaseProps) => ComponentNode<C> & E {
 	let schema: z.ZodObject | undefined;
 	return (input) => {
-		schema ??= BasePropsSchema.extend(definition.props).strict();
+		schema ??= basePropsSchema().extend(definition.props()).strict();
 		const parsed = schema.safeParse(input ?? {});
 		if (!parsed.success) {
 			const issues = parsed.error.issues
@@ -258,15 +322,17 @@ export function bind<S extends z.ZodRawShape, C extends Cues>(
 	};
 }
 
-function assemble<S extends z.ZodRawShape, C extends Cues>(
+function assemble<S extends z.ZodRawShape, C extends Cues, E extends object>(
 	host: Host,
-	definition: ComponentDefinition<S, C>,
+	definition: ComponentDefinition<S, C, E>,
 	props: BaseProps & z.output<z.ZodObject<S>>,
-): ComponentNode<C> {
+): ComponentNode<C> & E {
 	const theme = defineTheme(props.theme ?? {});
 	const fps = props.fps ?? 30;
 	const seed = props.seed ?? 1;
 	const id = props.id ?? host.autoId(kebab(definition.name));
+	const defaults = definition.defaults ?? {};
+	const hold = props.hold ?? defaults.hold ?? 0;
 	const ctx: BuildContext = {
 		host,
 		theme,
@@ -275,10 +341,11 @@ function assemble<S extends z.ZodRawShape, C extends Cues>(
 		id,
 		partId: (part) => `${id}-${part}`,
 		rng: (key) => hashRng(seed, key),
+		requested: { width: props.width, height: props.height },
+		hold,
 	};
 
 	const built = definition.build(ctx, props);
-	const defaults = definition.defaults ?? {};
 	const enter = resolveMotion(
 		props.enter === undefined ? defaults.enter : props.enter,
 		"enter",
@@ -291,13 +358,25 @@ function assemble<S extends z.ZodRawShape, C extends Cues>(
 		theme,
 		fps,
 	);
-	const hold = props.hold ?? defaults.hold ?? 0;
+	const openEnded =
+		built.duration === null ||
+		(built.openEnded === true && !exit && !built.afterHold);
 	const duration =
 		props.duration ??
-		Math.max(
-			1,
-			built.duration + hold + (exit ? exit.duration + exit.delay : 0),
+		(openEnded || built.duration === null
+			? null
+			: Math.max(
+					1,
+					built.duration +
+						hold +
+						(built.afterHold ?? 0) +
+						(exit ? exit.duration + exit.delay : 0),
+				));
+	if (duration === null && exit) {
+		throw new Error(
+			`${definition.name}: an exit needs a known end. Give \`duration\`, or drop \`exit\`.`,
 		);
+	}
 	const width = props.width ?? built.width;
 	const height = props.height ?? built.height;
 
@@ -310,21 +389,33 @@ function assemble<S extends z.ZodRawShape, C extends Cues>(
 		height,
 		children: built.children,
 	});
-	if (enter) stage.animate(enterAnimation(enter, 0));
-	if (exit) stage.animate(exitAnimation(exit, duration));
+	const size = { width, height };
+	if (enter) stage.animate(enterAnimation(enter, 0, size));
+	if (exit && duration !== null)
+		stage.animate(exitAnimation(exit, duration, size));
 
-	const absolute = props.x !== undefined || props.y !== undefined;
+	const origin =
+		props.x === undefined && props.y === undefined && !props.position
+			? built.origin
+			: undefined;
+	const absolute =
+		props.x !== undefined || props.y !== undefined || origin !== undefined;
+	const rootX = props.x ?? origin?.[0] ?? 0;
+	const rootY = props.y ?? origin?.[1] ?? 0;
 	const root = host.box({
 		id,
 		...(absolute
-			? { position: "absolute" as const, x: props.x ?? 0, y: props.y ?? 0 }
+			? { position: "absolute" as const, x: rootX, y: rootY }
 			: props.position
 				? { position: props.position }
 				: {}),
 		width,
 		height,
+		// Mask presets slide the stage through the root's own box.
+		...((enter?.preset.startsWith("mask-") ||
+			exit?.preset.startsWith("mask-")) && { overflow: "hidden" as const }),
 		startFrame: props.at ?? 0,
-		durationFrames: duration,
+		...(duration !== null && { durationFrames: duration }),
 		children: [stage],
 	});
 
@@ -340,10 +431,27 @@ function assemble<S extends z.ZodRawShape, C extends Cues>(
 	Object.defineProperties(root, {
 		cues: { value: cues, enumerable: false },
 		span: {
-			value: { start, end: start + duration, duration },
+			value: {
+				start,
+				end: duration === null ? Number.POSITIVE_INFINITY : start + duration,
+				duration: duration ?? Number.POSITIVE_INFINITY,
+			},
 			enumerable: false,
 		},
 		part: { value: (name: string) => parts[name], enumerable: false },
 	});
-	return root as ComponentNode<C>;
+	if (built.api) {
+		const api = built.api({
+			x: absolute ? rootX : 0,
+			y: absolute ? rootY : 0,
+			width,
+			height,
+			absolute,
+			start,
+		});
+		for (const [key, value] of Object.entries(api)) {
+			Object.defineProperty(root, key, { value, enumerable: false });
+		}
+	}
+	return root as ComponentNode<C> & E;
 }

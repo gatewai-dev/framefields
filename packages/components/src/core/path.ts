@@ -112,3 +112,44 @@ export function toPathData(points: readonly Vec2[], closed = false): string {
 	if (closed) parts.push("Z");
 	return parts.join(" ");
 }
+
+/**
+ * Scale and offset absolute SVG path data (M, L, H, V, C, S, Q, T, Z):
+ * `x' = x × scale + dx`. Used to size glyphs designed on a small grid.
+ */
+export function transformPathData(
+	d: string,
+	scale: number,
+	dx = 0,
+	dy = 0,
+): string {
+	const r = (n: number) => Math.round(n * 1000) / 1000;
+	const tokens = d.match(/[a-zA-Z]|-?\d*\.?\d+(?:e[-+]?\d+)?/g) ?? [];
+	const out: string[] = [];
+	let command = "";
+	let axis = 0;
+	for (const token of tokens) {
+		if (/[a-zA-Z]/.test(token)) {
+			if (token !== token.toUpperCase() && token.toLowerCase() !== "z") {
+				throw new Error(
+					`transformPathData: relative command "${token}" is not supported`,
+				);
+			}
+			if (token.toUpperCase() === "A") {
+				throw new Error("transformPathData: arcs are not supported");
+			}
+			command = token.toUpperCase();
+			axis = 0;
+			out.push(command);
+			continue;
+		}
+		const n = Number(token);
+		if (command === "H") out.push(String(r(n * scale + dx)));
+		else if (command === "V") out.push(String(r(n * scale + dy)));
+		else {
+			out.push(String(r(n * scale + (axis % 2 === 0 ? dx : dy))));
+			axis++;
+		}
+	}
+	return out.join(" ").replace(/ ?([A-Z]) ?/g, "$1");
+}

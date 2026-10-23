@@ -9,11 +9,17 @@
  */
 
 import {
+	annotate,
+	appFrame,
 	type BaseProps,
 	bind,
 	type ComponentDefinition,
 	type ComponentExtras,
 	type Cues,
+	counter,
+	focusZoom,
+	mousePointer,
+	textReveal,
 } from "@framefields/components";
 import type { BoxNode } from "@framefields/compositions/program";
 import type { z } from "zod";
@@ -28,14 +34,40 @@ export type ComponentNode<C extends Cues = Cues> = AnimatableNode<BoxNode> &
  * Bind a component definition to framefields, producing its factory. Use it
  * for your own components built with `defineComponent`.
  */
-export function bindComponent<S extends z.ZodRawShape, C extends Cues>(
-	definition: ComponentDefinition<S, C>,
-): (props: z.input<z.ZodObject<S>> & BaseProps) => ComponentNode<C> {
+export function bindComponent<
+	S extends z.ZodRawShape,
+	C extends Cues,
+	E extends object = object,
+>(
+	definition: ComponentDefinition<S, C, E>,
+): (props: z.input<z.ZodObject<S>> & BaseProps) => ComponentNode<C> & E {
 	return bind(host, definition) as never;
 }
 
+/** An animated pointer that travels, clicks, drags and changes shape, with a cue for every click. */
+export const MousePointer = /* @__PURE__ */ bindComponent(mousePointer);
+
+/** Window chrome (desktop window, browser, terminal) around any content; `at(x, y)` points into it. */
+export const AppFrame = /* @__PURE__ */ bindComponent(appFrame);
+
+/** A camera over 2D content that pushes in on clicks or shots and eases back out. */
+export const FocusZoom = /* @__PURE__ */ bindComponent(focusZoom);
+
+/** Text that animates in and out by character, word or line, ending on exactly the static text. */
+export const TextReveal = /* @__PURE__ */ bindComponent(textReveal);
+
+/** A number that counts to its value on odometer reels, format-aware. */
+export const Counter = /* @__PURE__ */ bindComponent(counter);
+
+/** Marks that draw on to point at something: underline, circle, arrow, highlight … hand-drawn or clean. */
+export const Annotate = /* @__PURE__ */ bindComponent(annotate);
+
 export {
 	type Anchor,
+	type AnnotateCues,
+	type AppFrameApi,
+	type AppFrameCues,
+	type AppFrameKind,
 	type ArcPath,
 	type ArrowCurve,
 	type ArrowGeometry,
@@ -45,11 +77,11 @@ export {
 	type BakedKey,
 	type BakeOptions,
 	type BaseProps,
-	BasePropsSchema,
 	type BuildContext,
 	type BuildResult,
 	bakeFunction,
 	bakeSamples,
+	basePropsSchema,
 	beats,
 	boilKeys,
 	boundsOf,
@@ -58,11 +90,16 @@ export {
 	type ComponentDefinition,
 	type ComponentExtras,
 	type ComponentMeta,
+	type CounterCues,
+	type CounterFormat,
+	CURSOR_STYLES,
 	type Cue,
 	type Cues,
 	type CuesOf,
+	type CursorStyle,
 	catmullRom,
 	chain,
+	constantExpression,
 	contrastRatio,
 	cover,
 	defineComponent,
@@ -71,33 +108,52 @@ export {
 	dist,
 	drawOnKeys,
 	type EaseFn,
+	EXIT_STYLES,
+	type ExitStyle,
 	ease,
 	ellipsePath,
 	enterAnimation,
 	evaluateEase,
+	evaluateGlyphExpression,
 	exitAnimation,
+	type FocusZoomApi,
+	type FocusZoomCues,
+	type Followable,
 	type FrameWindow,
 	findRange,
 	frameSpan,
+	type GlyphAnimator,
+	type GlyphProps,
+	type GlyphUnit,
+	glyphAnimator,
 	type HandOptions,
 	hashRng,
 	hashString,
 	lerp2,
 	linePath,
+	lineShift,
+	MARKS,
+	type Mark,
 	type MeasureOptions,
 	type Metrics,
 	MOTION_PRESETS,
 	type MotionOptions,
 	type MotionPreset,
 	type MotionPresetName,
+	type MotionSize,
+	type MousePointerApi,
+	type MousePointerCues,
 	offsetCues,
+	type Placement,
 	type PropsOf,
 	type PulseOptions,
 	pulseKeys,
 	quantize,
+	REVEAL_STYLES,
 	type Rect,
 	type ResolvedMotion,
 	type ResolvedTarget,
+	type RevealStyle,
 	type Rng,
 	rangeRects,
 	resolveMotion,
@@ -105,6 +161,7 @@ export {
 	rng,
 	type StaggerOrder,
 	scaleFrames,
+	scheduleExpression,
 	springAt,
 	springSettleFrames,
 	squigglePath,
@@ -112,6 +169,8 @@ export {
 	staggerRanks,
 	type Target,
 	type TargetContext,
+	type TextRevealApi,
+	type TextRevealCues,
 	type Theme,
 	type ThemeInput,
 	type ThemeName,
@@ -121,7 +180,9 @@ export {
 	toFrames,
 	toPathData,
 	toSeconds,
+	type UnitSchedule,
 	type Vec2,
+	type Waypoint,
 	type WordRange,
 	within,
 	wobblePoints,

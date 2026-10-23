@@ -90,7 +90,7 @@ export function findRange(
  * Per-line x offset that `align` adds inside a box of `options.width`
  * (measurement itself lays every line out from the left edge).
  */
-function lineShift(
+export function lineShift(
 	metrics: Metrics,
 	line: number,
 	options: MeasureOptions,

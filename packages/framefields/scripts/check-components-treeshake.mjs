@@ -16,6 +16,13 @@ const CONTRACT = "invalid props";
 const STROKES = "wobble:";
 const TARGETS = "has no absolute geometry";
 const MOTION = "Unknown motion preset";
+const POINTER = "hover regions must be static targets";
+const FRAME = "Expected a layer, an array of layers, or a media path";
+const CAMERA = "must be a static target.";
+const REVEAL = "is not registered. Registered:";
+const COUNTER = "Counter: unsupported format";
+const ANNOTATE = "Moving targets arrive with Callout";
+const GLYPHS = "L[k+1]-L[k]";
 
 /** [names imported, markers that must not survive, max added bytes]. */
 const cases = [
@@ -23,6 +30,17 @@ const cases = [
 	[["boxPath", "ellipsePath"], [CONTRACT, TARGETS, MOTION], 6_000],
 	[["resolveTarget", "targetPoint"], [CONTRACT, STROKES, MOTION], 10_000],
 	[["staggerOffsets", "toFrames"], [CONTRACT, STROKES, TARGETS, MOTION], 3_000],
+	// Each component alone: none of the others.
+	[
+		["MousePointer"],
+		[FRAME, CAMERA, REVEAL, COUNTER, ANNOTATE, GLYPHS],
+		60_000,
+	],
+	[["AppFrame"], [POINTER, CAMERA, REVEAL, COUNTER, ANNOTATE, GLYPHS], 45_000],
+	[["FocusZoom"], [POINTER, FRAME, REVEAL, COUNTER, ANNOTATE, GLYPHS], 40_000],
+	[["TextReveal"], [POINTER, FRAME, CAMERA, COUNTER, ANNOTATE], 55_000],
+	[["Counter"], [POINTER, FRAME, CAMERA, REVEAL, ANNOTATE, GLYPHS], 45_000],
+	[["Annotate"], [POINTER, FRAME, CAMERA, REVEAL, COUNTER, GLYPHS], 50_000],
 ];
 
 async function bundle(contents) {
@@ -42,13 +60,30 @@ const baseline = `import { Layer } from ${JSON.stringify(root)};\nconsole.log(La
 const base = await bundle(baseline);
 
 const failures = [];
+// Using framefields without components must carry none of them: component
+// modules may not build anything (schemas, glyphs) at import time.
+for (const marker of [
+	CONTRACT,
+	STROKES,
+	TARGETS,
+	POINTER,
+	FRAME,
+	CAMERA,
+	REVEAL,
+	COUNTER,
+	ANNOTATE,
+	GLYPHS,
+]) {
+	if (base.includes(marker))
+		failures.push(`import { Layer } alone kept component code ("${marker}")`);
+}
 for (const [names, forbidden, budget] of cases) {
 	const code = await bundle(
 		`${baseline}\nimport { ${names.join(", ")} } from ${JSON.stringify(components)};\nconsole.log(${names.join(", ")});`,
 	);
 	const label = `import { ${names.join(", ")} }`;
 	for (const marker of forbidden) {
-		if (code.includes(marker) && !base.includes(marker)) {
+		if (code.includes(marker)) {
 			failures.push(`${label} kept code containing "${marker}"`);
 		}
 	}

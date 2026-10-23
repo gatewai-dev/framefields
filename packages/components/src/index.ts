@@ -5,6 +5,18 @@
  */
 
 export {
+	type AnnotateCues,
+	annotate,
+	MARKS,
+	type Mark,
+} from "./annotate/index.js";
+export {
+	type AppFrameApi,
+	type AppFrameCues,
+	type AppFrameKind,
+	appFrame,
+} from "./app-frame/index.js";
+export {
 	type BakedKey,
 	type BakeOptions,
 	bakeFunction,
@@ -14,9 +26,9 @@ export {
 } from "./core/bake.js";
 export {
 	type BaseProps,
-	BasePropsSchema,
 	type BuildContext,
 	type BuildResult,
+	basePropsSchema,
 	bind,
 	type ComponentDefaults,
 	type ComponentDefinition,
@@ -27,6 +39,7 @@ export {
 	type CuesOf,
 	defineComponent,
 	offsetCues,
+	type Placement,
 	type PropsOf,
 	type PulseOptions,
 	pulseKeys,
@@ -46,7 +59,23 @@ export {
 	wobblePoints,
 } from "./core/draw.js";
 export { type EaseFn, ease, evaluateEase } from "./core/ease.js";
-export type { Animatable, AnimatableMethods, Host } from "./core/host.js";
+export {
+	constantExpression,
+	evaluateGlyphExpression,
+	type GlyphAnimator,
+	type GlyphProps,
+	type GlyphUnit,
+	glyphAnimator,
+	scheduleExpression,
+	type UnitSchedule,
+} from "./core/glyphs.js";
+export type {
+	Animatable,
+	AnimatableMethods,
+	Host,
+	LayerStyleConfig,
+	MediaOptions,
+} from "./core/host.js";
 export { type ComponentMeta, defineMeta } from "./core/meta.js";
 export {
 	enterAnimation,
@@ -55,6 +84,7 @@ export {
 	type MotionOptions,
 	type MotionPreset,
 	type MotionPresetName,
+	type MotionSize,
 	type ResolvedMotion,
 	resolveMotion,
 } from "./core/motion.js";
@@ -80,6 +110,7 @@ export {
 } from "./core/targets.js";
 export {
 	findRange,
+	lineShift,
 	type MeasureFn,
 	type MeasureOptions,
 	type Metrics,
@@ -111,3 +142,31 @@ export {
 	toSeconds,
 	within,
 } from "./core/timing.js";
+export {
+	type CounterCues,
+	type CounterFormat,
+	counter,
+} from "./counter/index.js";
+export {
+	type FocusZoomApi,
+	type FocusZoomCues,
+	type Followable,
+	focusZoom,
+} from "./focus-zoom/index.js";
+export {
+	CURSOR_STYLES,
+	type CursorStyle,
+	type MousePointerApi,
+	type MousePointerCues,
+	mousePointer,
+	type Waypoint,
+} from "./mouse-pointer/index.js";
+export {
+	EXIT_STYLES,
+	type ExitStyle,
+	REVEAL_STYLES,
+	type RevealStyle,
+	type TextRevealApi,
+	type TextRevealCues,
+	textReveal,
+} from "./text-reveal/index.js";

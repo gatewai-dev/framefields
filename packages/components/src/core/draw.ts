@@ -113,17 +113,20 @@ export function boxPath(
 		[x0, y0],
 	];
 	if (wobble <= 0) return toPathData(corners.slice(0, 4), true);
-	const points: Vec2[] = [];
+	// A pen starts a little along the top edge, goes round, and closes past
+	// where it started.
+	const w = x1 - x0;
+	const points: Vec2[] = [[x0 + w * 0.06, y0]];
 	for (let i = 0; i < 4; i++) {
 		const a = corners[i]!;
 		const b = corners[i + 1]!;
-		for (let s = 0; s < 8; s++) {
+		for (let s = 1; s <= 8; s++) {
 			const t = s / 8;
+			if (i === 0 && a[0] + (b[0] - a[0]) * t < x0 + w * 0.06) continue;
 			points.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]);
 		}
 	}
-	// Overshoot past the first corner, the way a pen closes a box.
-	points.push([x0 + (x1 - x0) * 0.08, y0]);
+	points.push([x0 + w * 0.14, y0 + (y1 - y0) * 0.01]);
 	return toPathData(wobblePoints(points, { wobble, seed }, variant));
 }
 

@@ -235,25 +235,26 @@ tsx src/render.ts
 
 ### Reading render progress
 
-`renderVideo` logs its own progress to stdout, one JSON line per event (the text is in `msg`). The log stays short however long the film is, about 15 lines for an export:
+`renderVideo` logs its own progress to stderr, one short `[framefields]` line per event. The log stays short however long the film is, about 15 lines for an export:
 
 ```text
-Preparing 1800 frames (60.0s) at 1920x1080, 30 fps, h264
-Rendering 1800 frames
-Rendered 10% (180/1800 frames) · 41.2 fps · eta 39.3s
+[framefields] Preparing 1800 frames (60.0s) at 1920x1080, 30 fps, h264
+[framefields] Rendering 1800 frames
+[framefields] Rendered 10% (180/1800 frames) · 41.2 fps · eta 39.3s
 …
-Rendered 100% (1800/1800 frames) · 41.8 fps · in 43.1s
-Mixing audio
-Encoding 60.0s of audio (aac)
-Muxing mp4
-Done in 51.4s (14.2 MB): prepare 1.2s · render 43.1s · audio 3.2s · audio-encode 1.1s · mux 0.8s
+[framefields] Rendered 100% (1800/1800 frames) · 41.8 fps · in 43.1s
+[framefields] Mixing audio
+[framefields] Encoding 60.0s of audio (aac)
+[framefields] Muxing mp4
+[framefields] Done in 51.4s (14.2 MB): prepare 1.2s · render 43.1s · audio 3.2s · audio-encode 1.1s · mux 0.8s
 ```
 
 - **Work continues after the last frame.** "Mixing audio" decodes every audio and video clip in the film, then the soundtrack is encoded and "Muxing" writes the file. With many or long clips this takes a while. It is not a hang; wait for `Done in …`.
 - **A quiet phase prints `Still …` lines**, e.g. `Still mixing audio (42%, 3/7 clips: music.mp3), 1m 10s in this phase`: after 10 s, 30 s, 70 s, then backing off to one every 5 min. Each says which phase is running and for how long. A render is stuck only when no line arrives for well over the last gap. Killing it at any point leaves no video.
 - **A failure names its phase:** `Failed while mixing audio after 12.3s`, with the error.
 - **Run long exports in the background** with the longest timeout your harness allows, and read the output when it finishes rather than polling it.
-- `LOG_LEVEL=warn` silences these lines; `LOG_LEVEL=debug` adds per-stage detail.
+- `LOG_LEVEL=warn` silences these lines; `LOG_LEVEL=debug` adds per-stage detail. Warnings and errors read `[framefields] warn: …` / `error: …`.
+- With `NODE_ENV=production` (or `FRAMEFIELDS_LOG_FORMAT=json`) the lines are pino JSON on stdout instead, with the text in `msg`; `FRAMEFIELDS_LOG_FORMAT=text` forces the short lines.
 - For your own progress output, `onProgress` gets every event as `{ phase, frame, totalFrames, elapsedMs, phaseProgress?, fps?, etaSec?, detail? }`. `phase` runs `prepare`, `render` (audio-only output skips it), `audio`, `audio-encode`, `mux`, `convert` (GIF only), `done`.
 
 ---

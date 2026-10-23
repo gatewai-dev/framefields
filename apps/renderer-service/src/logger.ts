@@ -21,6 +21,10 @@ const version = (() => {
 	return "unknown";
 })();
 
+// The project's framefields logs through its own logger; keep its lines JSON
+// like ours, also outside production. Set before any engine is imported.
+process.env.FRAMEFIELDS_LOG_FORMAT ??= "json";
+
 /** Per-job / per-request fields merged into every log line. */
 export const loggerContext = new AsyncLocalStorage<Record<string, unknown>>();
 

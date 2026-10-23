@@ -8,7 +8,7 @@ import { CrashJournal } from "../jobs/journal.js";
 import { testConfig } from "../test-helpers.js";
 import { recycleReason } from "../worker/recycle.js";
 import { buildPlan, isRenderable } from "./load.js";
-import { classifyRenderError } from "./render-step.js";
+import { classifyRenderError, toJobProgress } from "./render-step.js";
 import { ExitTrap, openSandbox } from "./sandbox.js";
 
 let ws: string;
@@ -402,5 +402,51 @@ describe("crash journal", () => {
 		journal.begin({ jobId: "j3", createdAt: "x", startedAt: "y" });
 		journal.end();
 		expect(journal.recover()).toBeUndefined();
+	});
+});
+
+describe("render progress", () => {
+	it("maps frames to rendering, with the engine's rate when it sends one", () => {
+		expect(
+			toJobProgress(
+				{ phase: "render", frame: 60, totalFrames: 120, fps: 30, etaSec: 2 },
+				4,
+			),
+		).toEqual({
+			phase: "rendering",
+			frame: 60,
+			total: 120,
+			fps: 30,
+			etaSec: 2,
+		});
+		// Older engines send no rate: it is worked out from the elapsed time.
+		expect(
+			toJobProgress({ phase: "render", frame: 60, totalFrames: 120 }, 4),
+		).toMatchObject({ fps: 15, etaSec: 4 });
+	});
+
+	it("names the phase after the frames in the message", () => {
+		expect(
+			toJobProgress(
+				{
+					phase: "audio",
+					frame: 120,
+					totalFrames: 120,
+					detail: "3/7 clips: music.mp3",
+				},
+				9,
+			),
+		).toEqual({
+			phase: "encoding",
+			frame: 120,
+			total: 120,
+			message: "mixing audio (3/7 clips: music.mp3)",
+		});
+		expect(
+			toJobProgress({ phase: "mux", frame: 120, totalFrames: 120 }, 9),
+		).toMatchObject({ phase: "encoding", message: "muxing" });
+		expect(
+			toJobProgress({ phase: "prepare", frame: 0, totalFrames: 120 }, 0),
+		).toMatchObject({ phase: "rendering", frame: 0, message: "preparing" });
 	});
 });

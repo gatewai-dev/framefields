@@ -50,6 +50,7 @@ import { preloadFonts } from "./asset-preloader.js";
 import { bootstrapMediabunny } from "./bootstrap-mediabunny.js";
 import { discoverAndRegisterNodeRenderers } from "./dynamic-node-discovery.js";
 import { rendererLogger } from "./logger.js";
+import { type RenderProgress, RenderReporter } from "./render-reporter.js";
 
 // Vision reports its inference backend once per process (see
 // VISION_BACKEND_LISTENER in @framefields/vision).
@@ -264,35 +265,6 @@ if (typeof skiaProto.getAttribute === "undefined") {
 	skiaProto.getAttribute = () => null;
 }
 
-// ─── Types ──────────────────────────────────────────────────────────────────────
-
-export interface WorkerInput {
-	virtualMedia: VirtualMediaData;
-	width: number;
-	height: number;
-	fps: number;
-	startFrame: number;
-	endFrame: number;
-	renderId: string;
-	outputFormat: "png" | "pixels";
-	workerIndex: number;
-}
-
-export type WorkerMessage =
-	| { type: "frame"; renderId: string; frameIndex: number; pixels: Uint8Array }
-	| { type: "png"; renderId: string; data: Uint8Array }
-	| { type: "done"; renderId: string }
-	| {
-			type: "lut";
-			renderId: string;
-			raw: {
-				points: Array<[number, number, number]>;
-				size: number;
-				type: "1D" | "3D";
-			};
-	  }
-	| { type: "error"; renderId?: string; error: string };
-
 // ─── Concurrency Limiter ───────────────────────────────────────────────────────
 
 const CPU_COUNT = os.cpus().length;
@@ -375,6 +347,14 @@ const returnStillId = (id: string): void => {
 };
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
+
+async function fileSize(file: string): Promise<number | undefined> {
+	try {
+		return (await fs.stat(file)).size;
+	} catch {
+		return undefined;
+	}
+}
 
 function toEvenDimension(n: number): number {
 	const v = Math.round(n);
@@ -1071,7 +1051,11 @@ export class HeadlessWebGPURenderer {
 			 * `signal.reason` and the partial output is deleted.
 			 */
 			signal?: AbortSignal;
-			/** Called after each frame is queued for encoding, then once for audio. */
+			/**
+			 * Called as the render moves through its phases: "prepare", each
+			 * frame ("render"), "audio" (mixing, per clip), "audio-encode",
+			 * "mux", "convert" (GIF only) and "done".
+			 */
 			onProgress?: (progress: RenderProgress) => void;
 		},
 	): Promise<{
@@ -1149,7 +1133,27 @@ export class HeadlessWebGPURenderer {
 			"[HeadlessWebGPURenderer] Acquiring slot for video render (inline)",
 		);
 
+		if (renderSemaphore.stats.active >= renderSemaphore.stats.max) {
+			rendererLogger.info(
+				{ renderId, ...renderSemaphore.stats },
+				`[HeadlessWebGPURenderer] Waiting for a render slot (${renderSemaphore.stats.active} running, ${renderSemaphore.stats.queued} queued)`,
+			);
+		}
 		await renderSemaphore.acquire();
+
+		const reporter = new RenderReporter({
+			renderId,
+			totalFrames,
+			onProgress: options?.onProgress,
+		});
+		const seconds = `${(durationMs / 1000).toFixed(1)}s`;
+		reporter.stage(
+			"prepare",
+			isAudioOnly
+				? `Preparing ${seconds} of audio (${audioCodec})`
+				: `Preparing ${totalFrames} frames (${seconds}) at ${width}x${height}, ${fps} fps, ${codecOption}`,
+			{ width, height, fps, durationMs, codec: codecOption },
+		);
 
 		let lastCpuUsage = process.cpuUsage();
 		let lastCpuTime = process.hrtime.bigint();
@@ -1232,7 +1236,6 @@ export class HeadlessWebGPURenderer {
 
 		let outputStarted = false;
 		let outputFinalized = false;
-		const device = await ensureDevice();
 
 		// Resources for inline rendering (cleaned up in finally block)
 		let surface: NodeSurfaceProvider | undefined;
@@ -1240,6 +1243,8 @@ export class HeadlessWebGPURenderer {
 		let pipeline: ZeroCopyWebCodecsPipeline | undefined;
 
 		try {
+			// Inside the try, so a device failure still releases the slot.
+			const device = await ensureDevice();
 			await output.start();
 			outputStarted = true;
 			await preloadFonts(virtualMedia, device);
@@ -1302,15 +1307,10 @@ export class HeadlessWebGPURenderer {
 				};
 				await prePass(0);
 
+				reporter.stage("render", `Rendering ${totalFrames} frames`);
 				// Render and encode frames using pipelined double-buffered DMA staging ring
 				for (let i = 0; i < totalFrames; i++) {
 					options?.signal?.throwIfAborted();
-					if (i % 10 === 0) {
-						rendererLogger.info(
-							{ renderId, frame: i, totalFrames },
-							`[HeadlessWebGPURenderer] Rendering frame ${i}/${totalFrames}`,
-						);
-					}
 
 					if (ctx && surface && renderer && pipeline) {
 						// Assets first used on a later frame (a LUT, a glyph) get the
@@ -1363,11 +1363,7 @@ export class HeadlessWebGPURenderer {
 						);
 
 						await pipeline.enqueueFrame(i, targetTexture, encoder);
-						options?.onProgress?.({
-							phase: "render",
-							frame: i + 1,
-							totalFrames,
-						});
+						if (i + 1 < totalFrames) reporter.frameDone(i + 1);
 					} else {
 						throw new Error("Invalid render context state");
 					}
@@ -1375,6 +1371,8 @@ export class HeadlessWebGPURenderer {
 
 				if (pipeline) {
 					await pipeline.drain();
+					// 100% once the last frames left the staging ring.
+					reporter.frameDone(totalFrames);
 					const pipelineStats = pipeline.getStats();
 					if (inspector && qaOptions) {
 						videoQa = inspector.stats(
@@ -1395,17 +1393,22 @@ export class HeadlessWebGPURenderer {
 
 			// ── Audio ──────────────────────────────────────────────────────────────
 			options?.signal?.throwIfAborted();
-			options?.onProgress?.({
-				phase: "audio",
-				frame: totalFrames,
-				totalFrames,
-			});
+			reporter.stage("audio", "Mixing audio");
 			const { channels, sampleRate } = await mixAudioTracks(
 				virtualMedia,
 				fps,
 				48_000,
 				device,
 				renderId,
+				{
+					onProgress: ({ done, total, source }) =>
+						reporter.update(
+							total > 0
+								? `${done}/${total} clips${source ? `: ${source}` : ""}`
+								: "no audio clips",
+							total > 0 ? done / total : undefined,
+						),
+				},
 			);
 
 			const numChannels = channels.length;
@@ -1416,6 +1419,10 @@ export class HeadlessWebGPURenderer {
 
 			const totalSamples = channels[0].length;
 			const chunkSize = Math.round(0.1 * sampleRate);
+			reporter.stage(
+				"audio-encode",
+				`Encoding ${(totalSamples / sampleRate).toFixed(1)}s of audio (${audioCodec})`,
+			);
 
 			for (let offset = 0; offset < totalSamples; offset += chunkSize) {
 				const currentChunk = Math.min(chunkSize, totalSamples - offset);
@@ -1442,9 +1449,16 @@ export class HeadlessWebGPURenderer {
 				} finally {
 					sample.close();
 				}
+				const written = offset + currentChunk;
+				reporter.update(
+					`${(written / sampleRate).toFixed(1)}s/${(totalSamples / sampleRate).toFixed(1)}s`,
+					written / totalSamples,
+				);
 			}
 
 			options?.signal?.throwIfAborted();
+			// Flushes the encoders and writes the container index.
+			reporter.stage("mux", `Muxing ${extension}`);
 			await output.finalize();
 			outputFinalized = true;
 
@@ -1467,15 +1481,16 @@ export class HeadlessWebGPURenderer {
 			};
 
 			if (codecOption === "gif") {
-				rendererLogger.debug(
-					"[HeadlessWebGPURenderer] Converting rendered MP4 to high-quality GIF...",
-				);
+				reporter.stage("convert", "Converting to GIF (ffmpeg)");
 				await convertMp4ToGif(tempFilePath, tempGifPath);
+				reporter.finish({ bytes: await fileSize(tempGifPath) });
 				return { filePath: tempGifPath, cleanup, ...(qa && { qa }) };
 			}
 
+			reporter.finish({ bytes: await fileSize(tempFilePath) });
 			return { filePath: tempFilePath, cleanup, ...(qa && { qa }) };
 		} catch (error) {
+			reporter.fail(error, options?.signal?.aborted === true);
 			if (outputStarted && !outputFinalized) {
 				try {
 					await output.finalize();
@@ -1489,6 +1504,7 @@ export class HeadlessWebGPURenderer {
 			} catch {}
 			throw error;
 		} finally {
+			reporter.dispose();
 			if (statsInterval) {
 				clearInterval(statsInterval);
 			}
@@ -1527,15 +1543,6 @@ export class HeadlessWebGPURenderer {
 			);
 		}
 	}
-}
-
-/** Progress reported by `renderVideo({ onProgress })`. */
-export interface RenderProgress {
-	/** "render" while frames are drawn and encoded, "audio" while mixing. */
-	phase: "render" | "audio";
-	/** Frames finished so far (1-based). */
-	frame: number;
-	totalFrames: number;
 }
 
 export const HeadlessMediaRenderer = HeadlessWebGPURenderer;

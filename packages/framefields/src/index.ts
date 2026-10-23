@@ -1094,7 +1094,11 @@ export interface RenderVideoOptions {
 	 * `signal.reason` and no file is left behind.
 	 */
 	signal?: AbortSignal;
-	/** Called as frames finish (`phase: "render"`), then once for the audio mix. */
+	/**
+	 * Called as the render moves through its phases: "prepare", each frame
+	 * ("render"), "audio" (per clip mixed), "audio-encode", "mux", "convert"
+	 * (GIF only) and "done". The engine logs the same phases on its own.
+	 */
 	onProgress?: (progress: RenderProgress) => void;
 }
 

@@ -548,6 +548,35 @@ class MixBus {
 	}
 }
 
+/** Progress reported by `mixAudioTracks` as each audio or video clip is mixed. */
+export interface AudioMixProgress {
+	/** Clips mixed so far. */
+	done: number;
+	/** Audio and video clips in the tree; muted or empty ones may be skipped. */
+	total: number;
+	/** File name of the clip just mixed (no directory or query string). */
+	source?: string;
+}
+
+export interface MixAudioOptions {
+	onProgress?: (progress: AudioMixProgress) => void;
+}
+
+/** A clip's file name for progress, without paths or signed-URL queries. */
+function sourceLabel(url: string): string {
+	if (url.startsWith("data:")) return "inline audio";
+	const name = url.split(/[?#]/)[0].split(/[\\/]/).pop();
+	return name ? decodeURIComponentSafe(name) : "audio";
+}
+
+function decodeURIComponentSafe(s: string): string {
+	try {
+		return decodeURIComponent(s);
+	} catch {
+		return s;
+	}
+}
+
 /**
  * Recursively parses the VirtualMediaData tree and mixes all active audio tracks
  * into a single unified stereo PCM stream (Float32Array channels).
@@ -558,6 +587,7 @@ export async function mixAudioTracks(
 	targetSampleRate = 48000,
 	device?: GPUDevice,
 	renderId?: string,
+	options: MixAudioOptions = {},
 ): Promise<{ channels: Float32Array[]; sampleRate: number }> {
 	mediaLogger.debug(
 		`[AudioExtractor] mixAudioTracks started. FPS: ${fps}, targetSampleRate: ${targetSampleRate}`,
@@ -844,6 +874,14 @@ export async function mixAudioTracks(
 					}
 					await yieldToMain();
 				}
+				if (mediaType === "Audio" || mediaType === "Video") {
+					clipsDone++;
+					options.onProgress?.({
+						done: clipsDone,
+						total: clipsTotal,
+						...(params.sourceUrl && { source: sourceLabel(params.sourceUrl) }),
+					});
+				}
 			}
 
 			// Traverse children recursively
@@ -938,6 +976,26 @@ export async function mixAudioTracks(
 	}
 
 	const normalized = normalizeTimeline(virtualMedia, fps);
+
+	// Clips to mix, for progress: one per segment of each audio or video source.
+	let clipsTotal = 0;
+	let clipsDone = 0;
+	if (options.onProgress) {
+		const count = (node: VirtualMediaData | undefined) => {
+			if (!node) return;
+			const op = node.operation;
+			if (op?.op === "source") {
+				const mediaType = getMediaType(node);
+				if (mediaType === "Audio" || mediaType === "Video") {
+					clipsTotal += Math.max(1, op.timeline?.segments?.length ?? 0);
+				}
+			}
+			for (const child of node.children ?? []) count(child);
+		};
+		count(normalized);
+		options.onProgress({ done: 0, total: clipsTotal });
+	}
+
 	const rootChannels = await traverse(normalized, 0, 0, 1, 1, null);
 
 	// Output mixed buffer is stereo; a root mix of the same length is used as is

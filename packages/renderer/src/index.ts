@@ -5,5 +5,6 @@ export * from "./headless-webgpu-renderer.js";
 export * from "./job-reset.js";
 export * from "./logger.js";
 export * from "./node-manifest.js";
+export type { RenderPhase, RenderProgress } from "./render-reporter.js";
 export * from "./video-qa.js";
 export * from "./zero-copy-webcodecs-pipeline.js";

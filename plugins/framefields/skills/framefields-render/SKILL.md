@@ -233,6 +233,30 @@ tsx src/render.ts preview
 tsx src/render.ts
 ```
 
+### Reading render progress
+
+`renderVideo` logs its own progress to stderr, one short `[framefields]` line per event. The log stays short however long the film is, about 15 lines for an export:
+
+```text
+[framefields] Preparing 1800 frames (60.0s) at 1920x1080, 30 fps, h264
+[framefields] Rendering 1800 frames
+[framefields] Rendered 10% (180/1800 frames) · 41.2 fps · eta 39.3s
+…
+[framefields] Rendered 100% (1800/1800 frames) · 41.8 fps · in 43.1s
+[framefields] Mixing audio
+[framefields] Encoding 60.0s of audio (aac)
+[framefields] Muxing mp4
+[framefields] Done in 51.4s (14.2 MB): prepare 1.2s · render 43.1s · audio 3.2s · audio-encode 1.1s · mux 0.8s
+```
+
+- **Work continues after the last frame.** "Mixing audio" decodes every audio and video clip in the film, then the soundtrack is encoded and "Muxing" writes the file. With many or long clips this takes a while. It is not a hang; wait for `Done in …`.
+- **A quiet phase prints `Still …` lines**, e.g. `Still mixing audio (42%, 3/7 clips: music.mp3), 1m 10s in this phase`: after 10 s, 30 s, 70 s, then backing off to one every 5 min. Each says which phase is running and for how long. A render is stuck only when no line arrives for well over the last gap. Killing it at any point leaves no video.
+- **A failure names its phase:** `Failed while mixing audio after 12.3s`, with the error.
+- **Run long exports in the background** with the longest timeout your harness allows, and read the output when it finishes rather than polling it.
+- `LOG_LEVEL=warn` silences these lines; `LOG_LEVEL=debug` adds per-stage detail. Warnings and errors read `[framefields] warn: …` / `error: …`.
+- With `NODE_ENV=production` (or `FRAMEFIELDS_LOG_FORMAT=json`) the lines are pino JSON on stdout instead, with the text in `msg`; `FRAMEFIELDS_LOG_FORMAT=text` forces the short lines.
+- For your own progress output, `onProgress` gets every event as `{ phase, frame, totalFrames, elapsedMs, phaseProgress?, fps?, etaSec?, detail? }`. `phase` runs `prepare`, `render` (audio-only output skips it), `audio`, `audio-encode`, `mux`, `convert` (GIF only), `done`.
+
 ---
 
 ## Built-in Video QA (`renderVideo({ qa })`)
@@ -302,7 +326,8 @@ ffmpeg -i output/final-video.mp4 -af "volumedetect" -f null -
 | Audio cuts out early | Missing `durationFrames` on audio layer | Explicitly assign `durationFrames: totalFrames` on `Layer.audio()`. |
 | Vision cutout / mask is empty on a single `renderFrame` | Vision reads the previous rendered frame; frame 0 has none | Render two or more consecutive frames with the same `HeadlessMediaRenderer` and keep the last. `renderVideo` handles this automatically. |
 | Ghosted double of the subject in a vision cutout | Frames rendered out of order (frame grid, or jumping from frame 3 to 48), so the cutout uses pixels from another frame | Verify vision layers with sequential frames or the exported MP4, not `renderFrameGrid`. |
-| Script hangs after rendering | Background worker thread pool held open | Always include `process.exit(0)` at the end of render scripts. |
+| Output stops after `Rendered 100%` | Audio is being mixed, encoded or muxed | Not a hang: wait for `Still …` lines and `Done in …` (see **Reading render progress**). |
+| Script hangs after `Done in …` | Background worker thread pool held open | Always include `process.exit(0)` at the end of render scripts. |
 | Render very slow on a Linux server | Frames drawn on a CPU adapter (lavapipe) | `await describeGpu()` shows `software: true`; fix the GPU's Vulkan driver (`vulkaninfo --summary`). |
 | Encoder fails to open (`h264_rkmpp`, NVENC) | framefields < 2.2 uses the hardware encoder untested | Use framefields 2.2+, which falls back to libx264 etc., or set `FRAMEFIELDS_HW_CODECS=off`. |
 | Render worker job fails | Project not render-ready (lockfile, export, LFS) | Read the job's `code` and `hint`; checklist at https://framefields.dev/docs/guides/render-service/ |

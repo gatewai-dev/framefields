@@ -274,17 +274,21 @@ function parseEase(ease?: string | EaseRef): EaseRef | undefined {
  * Fluent builder and runtime representation for layer animations.
  * Supports chainable keyframes, reactive signal binding, Perlin wiggles, and springs.
  */
-export class LayerAnimation implements LayerAnimationSpec {
-	public tracks: AnimationTrack[] = [];
+export class LayerAnimation<TProp extends AnimatableProp = AnimatableProp>
+	implements LayerAnimationSpec<TProp>
+{
+	public tracks: AnimationTrack<TProp>[] = [];
 	/** Hold each value for this many frames (see {@link LayerAnimation.stepped}). */
 	public frameStep?: number;
 
-	constructor(tracks: AnimationTrack[] = []) {
+	constructor(tracks: AnimationTrack<TProp>[] = []) {
 		this.tracks = [...tracks];
 	}
 
-	public static create(): LayerAnimation {
-		return new LayerAnimation();
+	public static create<
+		P extends AnimatableProp = AnimatableProp,
+	>(): LayerAnimation<P> {
+		return new LayerAnimation<P>();
 	}
 
 	/**
@@ -293,8 +297,10 @@ export class LayerAnimation implements LayerAnimationSpec {
 	 * look of stop motion and cel animation. Applies to all of the layer's
 	 * tracks, including ones added by other `.animate()` calls.
 	 */
-	public static stepped(frames = 2): LayerAnimation {
-		return new LayerAnimation().stepped(frames);
+	public static stepped<P extends AnimatableProp = AnimatableProp>(
+		frames = 2,
+	): LayerAnimation<P> {
+		return new LayerAnimation<P>().stepped(frames);
 	}
 
 	/** See {@link LayerAnimation.stepped}. */
@@ -303,37 +309,37 @@ export class LayerAnimation implements LayerAnimationSpec {
 		return this;
 	}
 
-	public static fromTo(
-		prop: AnimatableProp,
+	public static fromTo<P extends AnimatableProp = AnimatableProp>(
+		prop: P,
 		fromValue: number | string | boolean,
 		toValue: number | string | boolean,
 		options: FromToOptions = {},
-	): LayerAnimation {
-		return new LayerAnimation().fromTo(prop, fromValue, toValue, options);
+	): LayerAnimation<P> {
+		return new LayerAnimation<P>().fromTo(prop, fromValue, toValue, options);
 	}
 
 	/** A track from a list of `[frame, value, ease?]` keyframes; see {@link LayerAnimation.keys}. */
-	public static keys(
-		prop: AnimatableProp,
+	public static keys<P extends AnimatableProp = AnimatableProp>(
+		prop: P,
 		keyframes: readonly KeyframeTuple[],
-	): LayerAnimation {
-		return new LayerAnimation().keys(prop, keyframes);
+	): LayerAnimation<P> {
+		return new LayerAnimation<P>().keys(prop, keyframes);
 	}
 
-	public static signal(
-		prop: AnimatableProp,
+	public static signal<P extends AnimatableProp = AnimatableProp>(
+		prop: P,
 		signalOrHandleId: unknown,
 		options: SignalTrackOptions = {},
-	): LayerAnimation {
-		return new LayerAnimation().signal(prop, signalOrHandleId, options);
+	): LayerAnimation<P> {
+		return new LayerAnimation<P>().signal(prop, signalOrHandleId, options);
 	}
 
-	public static colorSignal(
-		prop: AnimatableProp,
+	public static colorSignal<P extends AnimatableProp = AnimatableProp>(
+		prop: P,
 		signalOrHandleId: unknown,
 		options: ColorSignalOptions,
-	): LayerAnimation {
-		return new LayerAnimation().colorSignal(prop, signalOrHandleId, options);
+	): LayerAnimation<P> {
+		return new LayerAnimation<P>().colorSignal(prop, signalOrHandleId, options);
 	}
 
 	public static kineticSweep(
@@ -443,7 +449,7 @@ export class LayerAnimation implements LayerAnimationSpec {
 		return new LayerAnimation().fromTo("rotation", fromAngle, toAngle, options);
 	}
 
-	public addTrack(track: AnimationTrack): this {
+	public addTrack(track: AnimationTrack<TProp>): this {
 		this.tracks.push(track);
 		return this;
 	}
@@ -471,12 +477,13 @@ export class LayerAnimation implements LayerAnimationSpec {
 			(t) => t.prop === prop && (!t.source || t.source.type === "keyframe"),
 		);
 		if (!track) {
-			track = {
+			const newTrack: AnimationTrack<TProp> = {
 				id: `${prop}_fromTo_${this.tracks.length}`,
-				prop,
+				prop: prop as TProp,
 				keyframes: [],
 			};
-			this.tracks.push(track);
+			this.tracks.push(newTrack);
+			track = newTrack;
 		}
 
 		const id = track.id;
@@ -528,12 +535,13 @@ export class LayerAnimation implements LayerAnimationSpec {
 			(t) => t.prop === prop && (!t.source || t.source.type === "keyframe"),
 		);
 		if (!track) {
-			track = {
+			const newTrack: AnimationTrack<TProp> = {
 				id: `${prop}_track_${this.tracks.length}`,
-				prop,
+				prop: prop as TProp,
 				keyframes: [],
 			};
-			this.tracks.push(track);
+			this.tracks.push(newTrack);
+			track = newTrack;
 		}
 
 		const parsedEase = parseEase(ease);
@@ -834,7 +842,7 @@ export class LayerAnimation implements LayerAnimationSpec {
 
 		this.tracks.push({
 			id,
-			prop,
+			prop: prop as TProp,
 			source,
 			keyframes: [],
 		});
@@ -869,7 +877,7 @@ export class LayerAnimation implements LayerAnimationSpec {
 
 		this.tracks.push({
 			id,
-			prop,
+			prop: prop as TProp,
 			source,
 			keyframes: [],
 		});
@@ -891,7 +899,7 @@ export class LayerAnimation implements LayerAnimationSpec {
 
 		this.tracks.push({
 			id,
-			prop,
+			prop: prop as TProp,
 			source,
 			keyframes: [],
 		});
@@ -912,7 +920,7 @@ export class LayerAnimation implements LayerAnimationSpec {
 
 		this.tracks.push({
 			id,
-			prop,
+			prop: prop as TProp,
 			source,
 			keyframes: [],
 		});
@@ -1033,7 +1041,7 @@ export class LayerAnimation implements LayerAnimationSpec {
 	 * Attaches this animation to a target LayoutNode and returns the node.
 	 */
 	public applyTo<T extends { animation?: LayerAnimationSpec }>(node: T): T {
-		node.animation = this.toSpec();
+		node.animation = this.toSpec() as unknown as LayerAnimationSpec;
 		return node;
 	}
 
@@ -1049,26 +1057,31 @@ export class LayerAnimation implements LayerAnimationSpec {
 		this.tracks = mergeAnimationTracks([
 			...this.tracks,
 			...others.flatMap((o) => o.tracks),
-		]);
+		]) as unknown as AnimationTrack<TProp>[];
 		return this;
 	}
 
-	public static merge(
-		...anims: Array<LayerAnimation | { tracks: AnimationTrack[] }>
-	): LayerAnimation {
-		return new LayerAnimation().merge(...anims);
+	public static merge<P extends AnimatableProp = AnimatableProp>(
+		...anims: Array<LayerAnimation<P> | { tracks: AnimationTrack<P>[] }>
+	): LayerAnimation<P> {
+		const result = new LayerAnimation<P>();
+		result.tracks = mergeAnimationTracks(
+			anims.flatMap((o) => o.tracks),
+		) as unknown as AnimationTrack<P>[];
+		return result;
 	}
 
 	/**
 	 * Returns the validated LayerAnimation specification object.
 	 */
-	public toSpec(): LayerAnimationSpec {
+	public toSpec(): LayerAnimationSpec<TProp> {
 		return {
 			tracks: this.tracks,
+			...(this.frameStep !== undefined && { frameStep: this.frameStep }),
 		};
 	}
 
-	public toJSON(): LayerAnimationSpec {
+	public toJSON(): LayerAnimationSpec<TProp> {
 		return this.toSpec();
 	}
 }

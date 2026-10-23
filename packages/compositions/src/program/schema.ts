@@ -14,10 +14,12 @@
  *  - no backwards compatibility: v1 shapes fail fast with E-codes
  */
 
-import type {
-	MeshAudioDeformConfig,
-	TextSpan,
-	TextSpanMark,
+import {
+	Effect,
+	type EffectDomain,
+	type MeshAudioDeformConfig,
+	type TextSpan,
+	type TextSpanMark,
 } from "@framefields/core";
 import { ColorSchema } from "@framefields/node-sdk";
 export type { TextSpan, TextSpanMark };
@@ -58,6 +60,33 @@ export const ShapeTypeSchema = z.enum([
 	"path",
 ]);
 export type ShapeType = z.infer<typeof ShapeTypeSchema>;
+
+export interface EffectSpec<TOp extends string = string> {
+	op: TOp;
+	[key: string]: unknown;
+}
+
+export type ProgramEffect =
+	| Effect<object, string, EffectDomain>
+	| EffectSpec
+	| (Record<string, unknown> & { op: string });
+
+export const EffectSpecSchema = z.union([
+	z.instanceof(Effect),
+	z
+		.object({
+			op: z.string().min(1),
+		})
+		.passthrough(),
+	z.custom<Effect<object, string, EffectDomain>>((val) =>
+		Boolean(
+			val &&
+				typeof val === "object" &&
+				"op" in val &&
+				typeof (val as { op: unknown }).op === "string",
+		),
+	),
+]);
 
 export const AnimatablePropSchema = z.enum([
 	"x",
@@ -164,6 +193,143 @@ export const AnimatablePropSchema = z.enum([
 	"exposure",
 ]);
 export type AnimatableProp = z.infer<typeof AnimatablePropSchema>;
+
+export type SpatialAnimatableProp =
+	| "x"
+	| "y"
+	| "z"
+	| "scale"
+	| "scaleX"
+	| "scaleY"
+	| "scaleZ"
+	| "rotation"
+	| "rotateX"
+	| "rotateY"
+	| "rotateZ"
+	| "opacity"
+	| "width"
+	| "height"
+	| "hidden"
+	| "perspective"
+	| "perspectiveOriginX"
+	| "perspectiveOriginY"
+	| "translateZ"
+	| "motionBlurShutter";
+
+export type BoxAnimatableProp =
+	| SpatialAnimatableProp
+	| "gap"
+	| "padding"
+	| "borderRadius"
+	| "fill"
+	| "color"
+	| "borderColor"
+	| "borderWidth"
+	| "shininess"
+	| "roughness"
+	| "specularIntensity"
+	| "ambientIntensity"
+	| "metallic"
+	| "ior"
+	| "dispersion"
+	| "transmission"
+	| "fresnelPower"
+	| "emissive"
+	| "emissiveIntensity"
+	| "envIntensity"
+	| "exposure";
+
+export type TextAnimatableProp =
+	| SpatialAnimatableProp
+	| "text"
+	| "fontSize"
+	| "letterSpacing"
+	| "fill"
+	| "color"
+	| "rangeStart"
+	| "rangeEnd"
+	| "offset"
+	| "animatorRangeStart"
+	| "animatorRangeEnd"
+	| "animatorOffset"
+	| "firstMargin"
+	| "lastMargin"
+	| "baselineShift";
+
+export type ShapeAnimatableProp =
+	| SpatialAnimatableProp
+	| "d"
+	| "trimStart"
+	| "trimEnd"
+	| "trimOffset"
+	| "strokeWidth"
+	| "strokeDashOffset"
+	| "cornerRadius"
+	| "starInnerRadiusRatio"
+	| "fillColor"
+	| "strokeColor"
+	| "borderColor"
+	| "borderWidth";
+
+export type MediaAnimatableProp = SpatialAnimatableProp | "volume" | "muted";
+
+export type CameraAnimatableProp =
+	| SpatialAnimatableProp
+	| "cameraX"
+	| "cameraY"
+	| "cameraZ"
+	| "targetX"
+	| "targetY"
+	| "targetZ"
+	| "cameraPitch"
+	| "cameraYaw"
+	| "cameraRoll"
+	| "cameraFov"
+	| "cameraZoom"
+	| "focalLength"
+	| "focusDistance"
+	| "fStop"
+	| "maxBlurRadius"
+	| "shakeTranslation"
+	| "shakeRotation"
+	| "orbitRadius"
+	| "orbitAzimuth"
+	| "orbitElevation";
+
+export type LightAnimatableProp =
+	| SpatialAnimatableProp
+	| "intensity"
+	| "angle"
+	| "radius"
+	| "penumbra"
+	| "decay"
+	| "color";
+
+export type Model3DAnimatableProp =
+	| SpatialAnimatableProp
+	| "animationProgress"
+	| "animationTime"
+	| "animationSpeed"
+	| "wireframe";
+
+export type AnimatablePropsFor<TNode> = TNode extends { kind: "text" }
+	? TextAnimatableProp
+	: TNode extends { kind: "shape" }
+		? ShapeAnimatableProp
+		: TNode extends { kind: "media" }
+			? MediaAnimatableProp
+			: TNode extends { kind: "camera" }
+				? CameraAnimatableProp
+				: TNode extends { kind: "light" }
+					? LightAnimatableProp
+					: TNode extends { kind: "model" } | { kind: "model3d" }
+						? Model3DAnimatableProp
+						: TNode extends
+									| { kind: "flex" }
+									| { kind: "box" }
+									| { kind: "block" }
+							? BoxAnimatableProp
+							: AnimatableProp;
 
 export const MatteModeSchema = z.enum([
 	"alpha",
@@ -479,7 +645,11 @@ export const AnimationTrackSchema = z
 		durationFrames: z.number().int().min(1).optional(),
 	})
 	.strict();
-export type AnimationTrack = z.infer<typeof AnimationTrackSchema>;
+export type BaseAnimationTrack = z.infer<typeof AnimationTrackSchema>;
+export type AnimationTrack<TProp extends AnimatableProp = AnimatableProp> =
+	Omit<BaseAnimationTrack, "prop"> & {
+		prop: TProp;
+	};
 
 export const LayerAnimationSchema = z
 	.object({
@@ -492,7 +662,12 @@ export const LayerAnimationSchema = z
 	})
 	.strict()
 	.superRefine(animationInvariants);
-export type LayerAnimationSpec = z.infer<typeof LayerAnimationSchema>;
+
+export type BaseLayerAnimationSpec = z.infer<typeof LayerAnimationSchema>;
+export type LayerAnimationSpec<TProp extends AnimatableProp = AnimatableProp> =
+	Omit<BaseLayerAnimationSpec, "tracks"> & {
+		tracks: AnimationTrack<TProp>[];
+	};
 
 // ── layout node tree ──────────────────────────────────────────────────
 // Hand-written interfaces anchor the mutual recursion (schema + type).
@@ -526,7 +701,7 @@ const BaseNodeFields = {
 	opacity: z.number().min(0).max(1).default(1),
 	blendMode: z.string().optional(),
 	/** Per-node WebGPU effect chain (`layer.withEffect(s)`); resolved to operations in to-virtual-media. */
-	effects: z.array(z.unknown()).optional(),
+	effects: z.array(EffectSpecSchema).optional(),
 	rotation: z.number().default(0),
 	scale: z.number().min(0).default(1),
 	/** Transform pivot, 0–1 fraction of the node box (0.5 = center). */
@@ -671,6 +846,10 @@ export interface CompositionNodeBase {
 	durationFrames?: number;
 	motionBlurShutter?: number;
 	animation?: LayerAnimationSpec;
+	/** Attached effect chain. */
+	effects?: ProgramEffect[];
+	/** Crop options attached directly to the node. */
+	crop?: unknown;
 	vision?: unknown;
 	relighting?: unknown;
 }
@@ -936,6 +1115,7 @@ export interface TextNode extends CompositionNodeBase {
 export interface MediaNode extends CompositionNodeBase {
 	kind: "media";
 	inputHandleId: string;
+	src?: string;
 	dataType?: string;
 	fit?: "cover" | "contain" | "fill" | "none";
 	dpr?: number;
@@ -1453,6 +1633,7 @@ export const MediaNodeSchema: z.ZodType<MediaNode> = z
 		kind: z.literal("media"),
 		/** Graph binding — which connected input this node renders. */
 		inputHandleId: z.string().min(1),
+		src: z.string().optional(),
 		dataType: z.string().optional(),
 		fit: z.enum(["cover", "contain", "fill", "none"]).default("contain"),
 		dpr: z.number().min(1).max(4).optional(),
@@ -1602,7 +1783,7 @@ export const CompositorProgramSchema = z
 		fonts: z.array(z.string()).optional(),
 		signals: z.record(z.string(), z.unknown()).optional(),
 		/** Composition-wide effect chain (`comp.apply(effect)`); resolved to operations downstream. */
-		effects: z.array(z.unknown()).optional(),
+		effects: z.array(EffectSpecSchema).optional(),
 		/** Composition-wide vision config or bundle. */
 		vision: z.unknown().optional(),
 		/** Per-frame notification hook. */

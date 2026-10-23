@@ -508,13 +508,20 @@ function emitClasses(effects: EffectModel[], ctx: Context): string {
 		}
 		out.push("};", "");
 
+		const domain = effect.manifest.kind === "audio" ? "audio" : "visual";
 		if (effect.manifest.custom) {
 			out.push(
 				`/** @internal Extended by \`effects/custom/${customFile(effect)}\`, which exports \`${effect.className}\`. */`,
 			);
 		}
-		out.push(`export class ${name} extends Effect<${props}> {`);
-		out.push(`\tpublic readonly op = ${literal(effect.op)};`, "");
+		out.push(
+			`export class ${name} extends Effect<${props}, ${literal(effect.op)}, ${literal(domain)}> {`,
+		);
+		out.push(`\tpublic readonly op = ${literal(effect.op)} as const;`);
+		out.push(
+			`\tpublic override readonly domain = ${literal(domain)} as const;`,
+			"",
+		);
 		for (const field of effect.fields) {
 			const type = field.valueType + (field.hasDefault ? "" : " | undefined");
 			out.push(`\tpublic declare ${key(field.key)}: ${type};`);
@@ -585,14 +592,31 @@ function emitIndex(effects: EffectModel[], ctx: Context): string {
 	const interfaces = [...ctx.interfaces.keys()]
 		.sort()
 		.map((name) => `type ${name}`);
+	const visualEffects = effects.filter((e) => e.manifest.kind !== "audio");
+	const audioEffects = effects.filter((e) => e.manifest.kind === "audio");
+	const visualUnion =
+		visualEffects.map((e) => e.className).join(" | ") || "never";
+	const audioUnion =
+		audioEffects.map((e) => e.className).join(" | ") || "never";
+
 	return [
 		BANNER,
+		...importsFor(effects, "import"),
 		...importsFor(effects, "export"),
 		...(interfaces.length > 0
 			? [`export { ${interfaces.join(", ")} } from "./classes.js";`]
 			: []),
 		'export { effectMeta } from "./meta.js";',
 		'export { effectFactories } from "./registry.js";',
+		"",
+		"/** Discriminated unions of all generated effects by domain. */",
+		`export type AnyGeneratedVisualEffect = ${visualUnion};`,
+		`export type AnyGeneratedAudioEffect = ${audioUnion};`,
+		"export type AnyGeneratedEffect = AnyGeneratedVisualEffect | AnyGeneratedAudioEffect;",
+		"",
+		"export interface GeneratedEffectConfigMap {",
+		...effects.map((e) => `\t${literal(e.op)}: ${e.className}Props;`),
+		"}",
 		"",
 	].join("\n");
 }

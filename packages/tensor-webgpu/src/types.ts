@@ -4,8 +4,8 @@ export type {
 	DeflickerOptions,
 	DepthNormalsOptions,
 	FaceLandmarksOptions,
-	NormalRelightingOptions,
 	NormalizedLandmarkList,
+	NormalRelightingOptions,
 	OpticalFlowOptions,
 	PoseSkeletonOptions,
 	SegmentationOptions,
@@ -18,7 +18,7 @@ export type {
 
 export type TensorSource =
 	| GPUTexture
-	| { inputHandleId?: string; id?: string; [key: string]: unknown }
+	| { inputHandleId?: string; id?: string }
 	| string;
 
 export interface TensorViewExport {

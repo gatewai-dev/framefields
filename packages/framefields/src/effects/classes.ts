@@ -10,6 +10,13 @@ import type { EffectProp } from "./types.js";
 // (./generated, written by scripts/generate-effects.mts). The classes below
 // are still hand-written and move there in later phases of spec/sync-node.md.
 export * from "./generated/index.js";
+
+import type {
+	AnyGeneratedAudioEffect,
+	AnyGeneratedVisualEffect,
+	GeneratedEffectConfigMap,
+} from "./generated/index.js";
+
 export type { EffectProp } from "./types.js";
 
 export interface LevelChannel {
@@ -26,8 +33,9 @@ export interface LevelsProps {
 	blue?: LevelChannel;
 }
 
-export class Levels extends Effect<LevelsProps> {
-	public readonly op = "Levels";
+export class Levels extends Effect<LevelsProps, "Levels", "visual"> {
+	public readonly op = "Levels" as const;
+	public override readonly domain = "visual" as const;
 
 	public declare master: LevelChannel;
 	public declare red: LevelChannel;
@@ -62,8 +70,9 @@ export interface FilmGrainProps {
 	highlights?: EffectProp<number>;
 }
 
-export class FilmGrain extends Effect<FilmGrainProps> {
-	public readonly op = "FilmGrain";
+export class FilmGrain extends Effect<FilmGrainProps, "FilmGrain", "visual"> {
+	public readonly op = "FilmGrain" as const;
+	public override readonly domain = "visual" as const;
 
 	public declare strength: number;
 	public declare size: number;
@@ -89,8 +98,13 @@ export class FilmGrain extends Effect<FilmGrainProps> {
 	}
 }
 
-export class CustomEffect extends Effect<Record<string, unknown>> {
+export class CustomEffect extends Effect<
+	Record<string, unknown>,
+	string,
+	"visual"
+> {
 	public readonly op: string;
+	public override readonly domain = "visual" as const;
 
 	constructor(opName: string, config: Record<string, unknown> = {}) {
 		super(config);
@@ -121,8 +135,13 @@ export interface AudioSignalExtractorProps {
 	nodeId?: string;
 }
 
-export class AudioSignalExtractor extends Effect<AudioSignalExtractorProps> {
-	public readonly op = "AudioSignalExtractor";
+export class AudioSignalExtractor extends Effect<
+	AudioSignalExtractorProps,
+	"AudioSignalExtractor",
+	"audio"
+> {
+	public readonly op = "AudioSignalExtractor" as const;
+	public override readonly domain = "audio" as const;
 
 	public declare extractionMode: AudioSignalExtractorProps["extractionMode"];
 	public declare attackMs: number;
@@ -197,8 +216,9 @@ export interface CurvesProps {
 	satVsSat?: CurvesChannelPoint[];
 }
 
-export class Curves extends Effect<CurvesProps> {
-	public readonly op = "Curves";
+export class Curves extends Effect<CurvesProps, "Curves", "visual"> {
+	public readonly op = "Curves" as const;
+	public override readonly domain = "visual" as const;
 
 	public declare curveType: CurvesProps["curveType"];
 	public declare master: CurvesChannelPoint[];
@@ -270,8 +290,13 @@ export interface SelectiveColorProps {
 	blacks?: Partial<SelectiveColorAdjustment>;
 }
 
-export class SelectiveColor extends Effect<SelectiveColorProps> {
-	public readonly op = "SelectiveColor";
+export class SelectiveColor extends Effect<
+	SelectiveColorProps,
+	"SelectiveColor",
+	"visual"
+> {
+	public readonly op = "SelectiveColor" as const;
+	public override readonly domain = "visual" as const;
 
 	public declare method: "Relative" | "Absolute";
 	public declare reds: SelectiveColorAdjustment;
@@ -319,8 +344,13 @@ export interface GradientMapProps {
 	opacity?: EffectProp<number>;
 }
 
-export class GradientMap extends Effect<GradientMapProps> {
-	public readonly op = "GradientMap";
+export class GradientMap extends Effect<
+	GradientMapProps,
+	"GradientMap",
+	"visual"
+> {
+	public readonly op = "GradientMap" as const;
+	public override readonly domain = "visual" as const;
 
 	public declare stops: GradientMapStop[];
 	public declare smooth: boolean;
@@ -353,8 +383,13 @@ export interface ShadowsHighlightsProps {
 	midtoneContrast?: EffectProp<number>;
 }
 
-export class ShadowsHighlights extends Effect<ShadowsHighlightsProps> {
-	public readonly op = "ShadowsHighlights";
+export class ShadowsHighlights extends Effect<
+	ShadowsHighlightsProps,
+	"ShadowsHighlights",
+	"visual"
+> {
+	public readonly op = "ShadowsHighlights" as const;
+	public override readonly domain = "visual" as const;
 
 	public declare shadowAmount: number;
 	public declare shadowTonalWidth: number;
@@ -385,8 +420,9 @@ export interface ApplyLUTProps {
 	intensity?: EffectProp<number>;
 }
 
-export class ApplyLUT extends Effect<ApplyLUTProps> {
-	public readonly op = "ApplyLUT";
+export class ApplyLUT extends Effect<ApplyLUTProps, "ApplyLUT", "visual"> {
+	public readonly op = "ApplyLUT" as const;
+	public override readonly domain = "visual" as const;
 
 	public declare lutUrl: string;
 	public declare intensity: number;
@@ -406,8 +442,13 @@ export interface UnsharpMaskProps {
 	threshold?: EffectProp<number>;
 }
 
-export class UnsharpMask extends Effect<UnsharpMaskProps> {
-	public readonly op = "UnsharpMask";
+export class UnsharpMask extends Effect<
+	UnsharpMaskProps,
+	"UnsharpMask",
+	"visual"
+> {
+	public readonly op = "UnsharpMask" as const;
+	public override readonly domain = "visual" as const;
 
 	public declare amount: number;
 	public declare radius: number;
@@ -429,8 +470,9 @@ export interface HighPassProps {
 	monochrome?: boolean;
 }
 
-export class HighPass extends Effect<HighPassProps> {
-	public readonly op = "HighPass";
+export class HighPass extends Effect<HighPassProps, "HighPass", "visual"> {
+	public readonly op = "HighPass" as const;
+	public override readonly domain = "visual" as const;
 
 	public declare radius: number;
 	public declare contrastBoost: number;
@@ -466,8 +508,13 @@ export interface HalftoneScreenProps {
 	opacity?: EffectProp<number>;
 }
 
-export class HalftoneScreen extends Effect<HalftoneScreenProps> {
-	public readonly op = "HalftoneScreen";
+export class HalftoneScreen extends Effect<
+	HalftoneScreenProps,
+	"HalftoneScreen",
+	"visual"
+> {
+	public readonly op = "HalftoneScreen" as const;
+	public override readonly domain = "visual" as const;
 
 	public declare mode: HalftoneMode;
 	public declare dotShape: HalftoneDotShape;
@@ -514,8 +561,13 @@ export interface TileOffsetProps {
 	edgeMode?: TileOffsetEdgeMode;
 }
 
-export class TileOffset extends Effect<TileOffsetProps> {
-	public readonly op = "TileOffset";
+export class TileOffset extends Effect<
+	TileOffsetProps,
+	"TileOffset",
+	"visual"
+> {
+	public readonly op = "TileOffset" as const;
+	public override readonly domain = "visual" as const;
 
 	public declare offsetX: number;
 	public declare offsetY: number;
@@ -541,8 +593,13 @@ export interface MotionBlurProps {
 	depthAware?: boolean;
 }
 
-export class MotionBlur extends Effect<MotionBlurProps> {
-	public readonly op = "MotionBlur";
+export class MotionBlur extends Effect<
+	MotionBlurProps,
+	"MotionBlur",
+	"visual"
+> {
+	public readonly op = "MotionBlur" as const;
+	public override readonly domain = "visual" as const;
 
 	public declare shutterAngle: number;
 	public declare samples: number;
@@ -570,8 +627,9 @@ export interface SSAOProps {
 	blurRadius?: EffectProp<number>;
 }
 
-export class SSAO extends Effect<SSAOProps> {
-	public readonly op = "SSAO";
+export class SSAO extends Effect<SSAOProps, "SSAO", "visual"> {
+	public readonly op = "SSAO" as const;
+	public override readonly domain = "visual" as const;
 
 	public declare radius: number;
 	public declare bias: number;
@@ -600,8 +658,9 @@ export interface PBRGlassProps {
 	tintColor?: EffectProp<string>;
 }
 
-export class PBRGlass extends Effect<PBRGlassProps> {
-	public readonly op = "PBRGlass";
+export class PBRGlass extends Effect<PBRGlassProps, "PBRGlass", "visual"> {
+	public readonly op = "PBRGlass" as const;
+	public override readonly domain = "visual" as const;
 
 	public declare ior: number;
 	public declare roughness: number;
@@ -631,8 +690,13 @@ export interface DepthOfFieldProps {
 	quality?: "low" | "medium" | "high" | "ultra";
 }
 
-export class DepthOfField extends Effect<DepthOfFieldProps> {
-	public readonly op = "DepthOfField";
+export class DepthOfField extends Effect<
+	DepthOfFieldProps,
+	"DepthOfField",
+	"visual"
+> {
+	public readonly op = "DepthOfField" as const;
+	public override readonly domain = "visual" as const;
 
 	public declare focusDistance: number;
 	public declare focalLength: number;
@@ -663,8 +727,9 @@ export interface CropProps {
 	mode?: "cropped" | "rest";
 }
 
-export class Crop extends Effect<CropProps> {
-	public readonly op = "Crop";
+export class Crop extends Effect<CropProps, "Crop", "visual"> {
+	public readonly op = "Crop" as const;
+	public override readonly domain = "visual" as const;
 
 	public declare cropType: "rect" | "path";
 	public declare leftPercentage: number;
@@ -733,8 +798,9 @@ export interface VisionProps {
  * On-device vision: tracks objects, segments instances, estimates pose and mattes people on
  * the rendered frame, feeding reactive signals. Models download lazily on first use.
  */
-export class Vision extends Effect<VisionProps> {
-	public readonly op = "Vision";
+export class Vision extends Effect<VisionProps, "Vision", "visual"> {
+	public readonly op = "Vision" as const;
+	public override readonly domain = "visual" as const;
 
 	public declare enableDetection?: boolean;
 	public declare enableSegmentation?: boolean;
@@ -789,8 +855,9 @@ export interface Relight3DProps {
 	normalMap?: unknown;
 }
 
-export class Relight3D extends Effect<Relight3DProps> {
-	public readonly op = "Relight3D";
+export class Relight3D extends Effect<Relight3DProps, "Relight3D", "visual"> {
+	public readonly op = "Relight3D" as const;
+	public override readonly domain = "visual" as const;
 
 	public declare lightType: Relight3DProps["lightType"];
 	public declare intensity: number;
@@ -842,8 +909,13 @@ export interface DeflickerProps {
 	windowSize?: number;
 }
 
-export class TemporalDeflicker extends Effect<DeflickerProps> {
-	public readonly op = "TemporalDeflicker";
+export class TemporalDeflicker extends Effect<
+	DeflickerProps,
+	"TemporalDeflicker",
+	"visual"
+> {
+	public readonly op = "TemporalDeflicker" as const;
+	public override readonly domain = "visual" as const;
 
 	public declare blendWeight: number;
 	public declare disocclusionThreshold: number;
@@ -872,8 +944,9 @@ export interface ModulateProps {
 	sepia?: EffectProp<number>;
 }
 
-export class Modulate extends Effect<ModulateProps> {
-	public readonly op = "Modulate";
+export class Modulate extends Effect<ModulateProps, "Modulate", "visual"> {
+	public readonly op = "Modulate" as const;
+	public override readonly domain = "visual" as const;
 
 	public declare hue: number;
 	public declare brightness: number;
@@ -894,3 +967,63 @@ export class Modulate extends Effect<ModulateProps> {
 		});
 	}
 }
+
+export type HandWrittenVisualEffect =
+	| Levels
+	| FilmGrain
+	| CustomEffect
+	| Curves
+	| SelectiveColor
+	| GradientMap
+	| ShadowsHighlights
+	| ApplyLUT
+	| UnsharpMask
+	| HighPass
+	| HalftoneScreen
+	| TileOffset
+	| MotionBlur
+	| SSAO
+	| PBRGlass
+	| DepthOfField
+	| Crop
+	| Vision
+	| Relight3D
+	| TemporalDeflicker
+	| Modulate;
+
+export type HandWrittenAudioEffect = AudioSignalExtractor;
+
+export type AnyVisualEffect =
+	| AnyGeneratedVisualEffect
+	| HandWrittenVisualEffect;
+export type AnyAudioEffect = AnyGeneratedAudioEffect | HandWrittenAudioEffect;
+export type AnyEffect = AnyVisualEffect | AnyAudioEffect;
+export type EffectOp = AnyEffect["op"];
+
+export interface EffectConfigMap extends GeneratedEffectConfigMap {
+	Levels: LevelsProps;
+	FilmGrain: FilmGrainProps;
+	AudioSignalExtractor: AudioSignalExtractorProps;
+	Curves: CurvesProps;
+	SelectiveColor: SelectiveColorProps;
+	GradientMap: GradientMapProps;
+	ShadowsHighlights: ShadowsHighlightsProps;
+	ApplyLUT: ApplyLUTProps;
+	UnsharpMask: UnsharpMaskProps;
+	HighPass: HighPassProps;
+	HalftoneScreen: HalftoneScreenProps;
+	TileOffset: TileOffsetProps;
+	MotionBlur: MotionBlurProps;
+	SSAO: SSAOProps;
+	PBRGlass: PBRGlassProps;
+	DepthOfField: DepthOfFieldProps;
+	Crop: CropProps;
+	Vision: VisionProps;
+	Relight3D: Relight3DProps;
+	TemporalDeflicker: DeflickerProps;
+	Modulate: ModulateProps;
+}
+
+export type EffectPropsFor<O extends EffectOp> = O extends keyof EffectConfigMap
+	? EffectConfigMap[O]
+	: Record<string, unknown>;

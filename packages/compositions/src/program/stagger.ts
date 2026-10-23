@@ -1,3 +1,5 @@
+import { assertNever } from "@framefields/core";
+
 export type StaggerDirection = "forward" | "reverse" | "center-out";
 
 /**
@@ -20,8 +22,9 @@ export function computeStaggerDelay(
 			return Math.round(dist * staggerFrames);
 		}
 		case "forward":
-		default:
 			return index * staggerFrames;
+		default:
+			return assertNever(direction);
 	}
 }
 

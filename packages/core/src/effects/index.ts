@@ -6,6 +6,7 @@ import {
 	signal,
 	type WritableSignal,
 } from "../signals/index.js";
+import type { NodeOperation } from "../types/index.js";
 
 export type EffectConfigValue<T> =
 	| T
@@ -17,8 +18,15 @@ export type EffectConfig<T extends object> = {
 	[K in keyof T]: EffectConfigValue<T[K]>;
 };
 
-export abstract class Effect<TConfig extends object = Record<string, unknown>> {
-	public abstract readonly op: string;
+export type EffectDomain = "visual" | "audio" | "both";
+
+export abstract class Effect<
+	TConfig extends object = Record<string, unknown>,
+	TOp extends string = string,
+	TDomain extends EffectDomain = "visual",
+> {
+	public abstract readonly op: TOp;
+	public readonly domain: TDomain = "visual" as TDomain;
 	public readonly signals: {
 		[K in keyof TConfig]: WritableSignal<TConfig[K]> | Signal<TConfig[K]>;
 	};
@@ -27,7 +35,9 @@ export abstract class Effect<TConfig extends object = Record<string, unknown>> {
 
 	constructor(initialConfig: TConfig) {
 		this.config = { ...initialConfig };
-		this.signals = {} as any;
+		this.signals = {} as {
+			[K in keyof TConfig]: WritableSignal<TConfig[K]> | Signal<TConfig[K]>;
+		};
 
 		for (const [key, val] of Object.entries(initialConfig)) {
 			if (isSignal(val)) {
@@ -39,6 +49,7 @@ export abstract class Effect<TConfig extends object = Record<string, unknown>> {
 
 		// Proxy for seamless property access and mutation:
 		// e.g. `vignette.strength -= 0.1` updates `signals.strength.value`
+		// biome-ignore lint/correctness/noConstructorReturn: Effect proxies dynamic signal properties on the instance
 		return new Proxy(this, {
 			get(target, prop, receiver) {
 				if (typeof prop === "string" && prop in target.signals) {
@@ -116,7 +127,7 @@ export abstract class Effect<TConfig extends object = Record<string, unknown>> {
 	/**
 	 * Converts the effect into an operation node for the VirtualMediaData AST.
 	 */
-	public toOperation(): Record<string, unknown> {
+	public toOperation(): NodeOperation<TOp, TConfig> {
 		const opPayload: Record<string, unknown> = {
 			op: this.op,
 			effect: this,
@@ -138,6 +149,6 @@ export abstract class Effect<TConfig extends object = Record<string, unknown>> {
 			}
 		}
 
-		return opPayload;
+		return opPayload as NodeOperation<TOp, TConfig>;
 	}
 }

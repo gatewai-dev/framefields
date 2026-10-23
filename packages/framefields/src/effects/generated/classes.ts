@@ -476,8 +476,9 @@ const asciiDefaults: AsciiProps = {
 	invert: false,
 };
 
-export class Ascii extends Effect<AsciiProps> {
-	public readonly op = "Ascii";
+export class Ascii extends Effect<AsciiProps, "Ascii", "visual"> {
+	public readonly op = "Ascii" as const;
+	public override readonly domain = "visual" as const;
 
 	public declare cellSize: number;
 	public declare colorMode: "mono" | "source" | "green";
@@ -539,8 +540,13 @@ const audioCompressorDefaults: AudioCompressorProps = {
 	makeupGain: 0,
 };
 
-export class AudioCompressor extends Effect<AudioCompressorProps> {
-	public readonly op = "AudioCompressor";
+export class AudioCompressor extends Effect<
+	AudioCompressorProps,
+	"AudioCompressor",
+	"audio"
+> {
+	public readonly op = "AudioCompressor" as const;
+	public override readonly domain = "audio" as const;
 
 	public declare threshold: number;
 	public declare ratio: number;
@@ -601,8 +607,9 @@ const audioDelayDefaults: AudioDelayProps = {
 	pingPong: false,
 };
 
-export class AudioDelay extends Effect<AudioDelayProps> {
-	public readonly op = "AudioDelay";
+export class AudioDelay extends Effect<AudioDelayProps, "AudioDelay", "audio"> {
+	public readonly op = "AudioDelay" as const;
+	public override readonly domain = "audio" as const;
 
 	public declare delayTime: number;
 	public declare feedback: number;
@@ -654,8 +661,9 @@ const audioFadeDefaults: AudioFadeProps = {
 	fadeOutCurve: "linear",
 };
 
-export class AudioFade extends Effect<AudioFadeProps> {
-	public readonly op = "AudioFade";
+export class AudioFade extends Effect<AudioFadeProps, "AudioFade", "audio"> {
+	public readonly op = "AudioFade" as const;
+	public override readonly domain = "audio" as const;
 
 	public declare fadeInDuration: number;
 	public declare fadeOutDuration: number;
@@ -715,8 +723,13 @@ const audioNoiseGateDefaults: AudioNoiseGateProps = {
 	range: -80,
 };
 
-export class AudioNoiseGate extends Effect<AudioNoiseGateProps> {
-	public readonly op = "AudioNoiseGate";
+export class AudioNoiseGate extends Effect<
+	AudioNoiseGateProps,
+	"AudioNoiseGate",
+	"audio"
+> {
+	public readonly op = "AudioNoiseGate" as const;
+	public override readonly domain = "audio" as const;
 
 	public declare threshold: number;
 	public declare attack: number;
@@ -769,8 +782,13 @@ const audioParametricEqDefaults: AudioParametricEqProps = {
 	q: 1,
 };
 
-export class AudioParametricEq extends Effect<AudioParametricEqProps> {
-	public readonly op = "AudioParametricEq";
+export class AudioParametricEq extends Effect<
+	AudioParametricEqProps,
+	"AudioParametricEq",
+	"audio"
+> {
+	public readonly op = "AudioParametricEq" as const;
+	public override readonly domain = "audio" as const;
 
 	public declare type:
 		| "lowShelf"
@@ -836,8 +854,13 @@ const audioReverbDefaults: AudioReverbProps = {
 	width: 1,
 };
 
-export class AudioReverb extends Effect<AudioReverbProps> {
-	public readonly op = "AudioReverb";
+export class AudioReverb extends Effect<
+	AudioReverbProps,
+	"AudioReverb",
+	"audio"
+> {
+	public readonly op = "AudioReverb" as const;
+	public override readonly domain = "audio" as const;
 
 	public declare roomSize: number;
 	public declare damping: number;
@@ -940,8 +963,9 @@ const blurDefaults: BlurBaseProps = {
 };
 
 /** @internal Extended by `effects/custom/blur.ts`, which exports `Blur`. */
-export class BlurBase extends Effect<BlurBaseProps> {
-	public readonly op = "Blur";
+export class BlurBase extends Effect<BlurBaseProps, "Blur", "visual"> {
+	public readonly op = "Blur" as const;
+	public override readonly domain = "visual" as const;
 
 	public declare blurType:
 		| "Gaussian"
@@ -1047,8 +1071,13 @@ const cameraParallax3DDefaults: CameraParallax3DProps = {
 	depthInvert: false,
 };
 
-export class CameraParallax3D extends Effect<CameraParallax3DProps> {
-	public readonly op = "CameraParallax3D";
+export class CameraParallax3D extends Effect<
+	CameraParallax3DProps,
+	"CameraParallax3D",
+	"visual"
+> {
+	public readonly op = "CameraParallax3D" as const;
+	public override readonly domain = "visual" as const;
 
 	public declare motionPreset:
 		| "Custom"
@@ -1098,8 +1127,13 @@ const channelMergerDefaults: ChannelMergerProps = {
 	defaultChannel4: 1,
 };
 
-export class ChannelMerger extends Effect<ChannelMergerProps> {
-	public readonly op = "ChannelMerger";
+export class ChannelMerger extends Effect<
+	ChannelMergerProps,
+	"ChannelMerger",
+	"visual"
+> {
+	public readonly op = "ChannelMerger" as const;
+	public override readonly domain = "visual" as const;
 
 	public declare colorSpace: "RGBA" | "HSLA" | "CMYK" | "LAB";
 	public declare defaultChannel4: number;
@@ -1128,8 +1162,13 @@ const channelSplitterDefaults: ChannelSplitterProps = {
 	colorSpace: "RGBA",
 };
 
-export class ChannelSplitter extends Effect<ChannelSplitterProps> {
-	public readonly op = "ChannelSplitter";
+export class ChannelSplitter extends Effect<
+	ChannelSplitterProps,
+	"ChannelSplitter",
+	"visual"
+> {
+	public readonly op = "ChannelSplitter" as const;
+	public override readonly domain = "visual" as const;
 
 	public declare colorSpace: "RGBA" | "HSLA" | "CMYK" | "LAB";
 
@@ -1171,8 +1210,13 @@ const colorBalanceDefaults: ColorBalanceProps = {
 	preserveLuminosity: true,
 };
 
-export class ColorBalance extends Effect<ColorBalanceProps> {
-	public readonly op = "ColorBalance";
+export class ColorBalance extends Effect<
+	ColorBalanceProps,
+	"ColorBalance",
+	"visual"
+> {
+	public readonly op = "ColorBalance" as const;
+	public override readonly domain = "visual" as const;
 
 	public declare shadows: Partial<TonalShift>;
 	public declare midtones: Partial<TonalShift>;
@@ -1236,8 +1280,9 @@ const colorKeyDefaults: ColorKeyProps = {
 	spillSuppressionType: "Desaturate",
 };
 
-export class ColorKey extends Effect<ColorKeyProps> {
-	public readonly op = "ColorKey";
+export class ColorKey extends Effect<ColorKeyProps, "ColorKey", "visual"> {
+	public readonly op = "ColorKey" as const;
+	public override readonly domain = "visual" as const;
 
 	public declare keyColor: string;
 	public declare similarity: number;
@@ -1298,8 +1343,9 @@ const contourDefaults: ContourProps = {
 	smoothing: 2,
 };
 
-export class Contour extends Effect<ContourProps> {
-	public readonly op = "Contour";
+export class Contour extends Effect<ContourProps, "Contour", "visual"> {
+	public readonly op = "Contour" as const;
+	public override readonly domain = "visual" as const;
 
 	public declare levels: number;
 	public declare lineWidth: number;
@@ -1319,8 +1365,9 @@ export interface CornerPinProps {
 
 const cornerPinDefaults: CornerPinProps = {};
 
-export class CornerPin extends Effect<CornerPinProps> {
-	public readonly op = "CornerPin";
+export class CornerPin extends Effect<CornerPinProps, "CornerPin", "visual"> {
+	public readonly op = "CornerPin" as const;
+	public override readonly domain = "visual" as const;
 
 	public declare points: CornerPinPointsItem[] | undefined;
 
@@ -1405,8 +1452,9 @@ const cRTDefaults: CRTProps = {
 	chroma: 0,
 };
 
-export class CRT extends Effect<CRTProps> {
-	public readonly op = "CRT";
+export class CRT extends Effect<CRTProps, "CRT", "visual"> {
+	public readonly op = "CRT" as const;
+	public override readonly domain = "visual" as const;
 
 	public declare scanlines: number;
 	public declare lineCount: number;
@@ -1456,8 +1504,9 @@ const datamoshDefaults: DatamoshProps = {
 	warmup: 48,
 };
 
-export class Datamosh extends Effect<DatamoshProps> {
-	public readonly op = "Datamosh";
+export class Datamosh extends Effect<DatamoshProps, "Datamosh", "visual"> {
+	public readonly op = "Datamosh" as const;
+	public override readonly domain = "visual" as const;
 
 	public declare keyframes: number[];
 	public declare strength: number;
@@ -1509,8 +1558,13 @@ const displacementMapDefaults: DisplacementMapProps = {
 	wrapMode: "Clamp",
 };
 
-export class DisplacementMap extends Effect<DisplacementMapProps> {
-	public readonly op = "DisplacementMap";
+export class DisplacementMap extends Effect<
+	DisplacementMapProps,
+	"DisplacementMap",
+	"visual"
+> {
+	public readonly op = "DisplacementMap" as const;
+	public override readonly domain = "visual" as const;
 
 	public declare strengthX: number;
 	public declare strengthY: number;
@@ -1574,8 +1628,9 @@ const ditherDefaults: DitherProps = {
 	light: "#f2efe6",
 };
 
-export class Dither extends Effect<DitherProps> {
-	public readonly op = "Dither";
+export class Dither extends Effect<DitherProps, "Dither", "visual"> {
+	public readonly op = "Dither" as const;
+	public override readonly domain = "visual" as const;
 
 	public declare mode: "bayer" | "noise" | "halftone";
 	public declare levels: number;
@@ -1608,8 +1663,13 @@ const extractLUTDefaults: ExtractLUTProps = {
 	samplePoints: 150,
 };
 
-export class ExtractLUT extends Effect<ExtractLUTProps> {
-	public readonly op = "ExtractLUT";
+export class ExtractLUT extends Effect<
+	ExtractLUTProps,
+	"ExtractLUT",
+	"visual"
+> {
+	public readonly op = "ExtractLUT" as const;
+	public override readonly domain = "visual" as const;
 
 	public declare strategy: "deterministic" | "statistical";
 	public declare samplePoints: number;
@@ -1674,8 +1734,9 @@ const flipDefaults: FlipProps = {
 	symmetry: "none",
 };
 
-export class Flip extends Effect<FlipProps> {
-	public readonly op = "Flip";
+export class Flip extends Effect<FlipProps, "Flip", "visual"> {
+	public readonly op = "Flip" as const;
+	public override readonly domain = "visual" as const;
 
 	public declare horizontal: boolean;
 	public declare vertical: boolean;
@@ -1727,8 +1788,9 @@ const gooeyDefaults: GooeyProps = {
 	softness: 0.04,
 };
 
-export class Gooey extends Effect<GooeyProps> {
-	public readonly op = "Gooey";
+export class Gooey extends Effect<GooeyProps, "Gooey", "visual"> {
+	public readonly op = "Gooey" as const;
+	public override readonly domain = "visual" as const;
 
 	public declare radius: number;
 	public declare threshold: number;
@@ -1772,8 +1834,13 @@ const iridescenceDefaults: IridescenceProps = {
 	mode: "relief",
 };
 
-export class Iridescence extends Effect<IridescenceProps> {
-	public readonly op = "Iridescence";
+export class Iridescence extends Effect<
+	IridescenceProps,
+	"Iridescence",
+	"visual"
+> {
+	public readonly op = "Iridescence" as const;
+	public override readonly domain = "visual" as const;
 
 	public declare strength: number;
 	public declare scale: number;
@@ -1833,8 +1900,13 @@ const kaleidoscopeDefaults: KaleidoscopeProps = {
 	zoom: 1,
 };
 
-export class Kaleidoscope extends Effect<KaleidoscopeProps> {
-	public readonly op = "Kaleidoscope";
+export class Kaleidoscope extends Effect<
+	KaleidoscopeProps,
+	"Kaleidoscope",
+	"visual"
+> {
+	public readonly op = "Kaleidoscope" as const;
+	public override readonly domain = "visual" as const;
 
 	public declare segments: number;
 	public declare rotation: number;
@@ -1892,8 +1964,9 @@ const kenBurnsDefaults: KenBurnsProps = {
 	aspectRatio: "input",
 };
 
-export class KenBurns extends Effect<KenBurnsProps> {
-	public readonly op = "KenBurns";
+export class KenBurns extends Effect<KenBurnsProps, "KenBurns", "visual"> {
+	public readonly op = "KenBurns" as const;
+	public override readonly domain = "visual" as const;
 
 	public declare keyframes: KenBurnsKeyframesItem[];
 	public declare motionBlurSize: number;
@@ -2043,8 +2116,13 @@ const layerStyleDefaults: LayerStyleProps = {
 	},
 };
 
-export class LayerStyle extends Effect<LayerStyleProps> {
-	public readonly op = "LayerStyle";
+export class LayerStyle extends Effect<
+	LayerStyleProps,
+	"LayerStyle",
+	"visual"
+> {
+	public readonly op = "LayerStyle" as const;
+	public override readonly domain = "visual" as const;
 
 	public declare dropShadow: Partial<LayerStyleDropShadow>;
 	public declare innerShadow: Partial<LayerStyleInnerShadow>;
@@ -2104,8 +2182,9 @@ const liquifyDefaults: LiquifyProps = {
 	operations: [],
 };
 
-export class Liquify extends Effect<LiquifyProps> {
-	public readonly op = "Liquify";
+export class Liquify extends Effect<LiquifyProps, "Liquify", "visual"> {
+	public readonly op = "Liquify" as const;
+	public override readonly domain = "visual" as const;
 
 	public declare operations: LiquifyOperationsItem[];
 
@@ -2197,8 +2276,9 @@ const maskMathDefaults: MaskMathProps = {
 	outputFormat: "WhiteWithAlpha",
 };
 
-export class MaskMath extends Effect<MaskMathProps> {
-	public readonly op = "MaskMath";
+export class MaskMath extends Effect<MaskMathProps, "MaskMath", "visual"> {
+	public readonly op = "MaskMath" as const;
+	public override readonly domain = "visual" as const;
 
 	public declare operation:
 		| "Union"
@@ -2250,8 +2330,9 @@ const meshWarpDefaults: MeshWarpProps = {
 	rows: 3,
 };
 
-export class MeshWarp extends Effect<MeshWarpProps> {
-	public readonly op = "MeshWarp";
+export class MeshWarp extends Effect<MeshWarpProps, "MeshWarp", "visual"> {
+	public readonly op = "MeshWarp" as const;
+	public override readonly domain = "visual" as const;
 
 	public declare cols: number;
 	public declare rows: number;
@@ -2357,8 +2438,13 @@ const noiseGeneratorDefaults: NoiseGeneratorProps = {
 	fps: 30,
 };
 
-export class NoiseGenerator extends Effect<NoiseGeneratorProps> {
-	public readonly op = "NoiseGenerator";
+export class NoiseGenerator extends Effect<
+	NoiseGeneratorProps,
+	"NoiseGenerator",
+	"visual"
+> {
+	public readonly op = "NoiseGenerator" as const;
+	public override readonly domain = "visual" as const;
 
 	public declare noiseType: "Perlin" | "Simplex" | "Voronoi";
 	public declare outputType: "Image" | "Video";
@@ -2438,8 +2524,9 @@ const opArtDefaults: OpArtProps = {
 	colorB: "#f5f5f5",
 };
 
-export class OpArt extends Effect<OpArtProps> {
-	public readonly op = "OpArt";
+export class OpArt extends Effect<OpArtProps, "OpArt", "visual"> {
+	public readonly op = "OpArt" as const;
+	public override readonly domain = "visual" as const;
 
 	public declare pattern: "stripes" | "rings" | "checker" | "waves";
 	public declare frequency: number;
@@ -2488,8 +2575,9 @@ const paintDefaults: PaintProps = {
 	backgroundColor: "#ffffff",
 };
 
-export class Paint extends Effect<PaintProps> {
-	public readonly op = "Paint";
+export class Paint extends Effect<PaintProps, "Paint", "visual"> {
+	public readonly op = "Paint" as const;
+	public override readonly domain = "visual" as const;
 
 	public declare width: number;
 	public declare height: number;
@@ -2549,8 +2637,9 @@ const painterlyDefaults: PainterlyProps = {
 	saturation: 1.05,
 };
 
-export class Painterly extends Effect<PainterlyProps> {
-	public readonly op = "Painterly";
+export class Painterly extends Effect<PainterlyProps, "Painterly", "visual"> {
+	public readonly op = "Painterly" as const;
+	public override readonly domain = "visual" as const;
 
 	public declare style: "oil" | "watercolor";
 	public declare radius: number;
@@ -2640,8 +2729,9 @@ const patchHealDefaults: PatchHealProps = {
 	mode: "SeamlessHeal",
 };
 
-export class PatchHeal extends Effect<PatchHealProps> {
-	public readonly op = "PatchHeal";
+export class PatchHeal extends Effect<PatchHealProps, "PatchHeal", "visual"> {
+	public readonly op = "PatchHeal" as const;
+	public override readonly domain = "visual" as const;
 
 	public declare patches: PatchHealPatchesItem[] | undefined;
 	public declare centerX: number;
@@ -2692,8 +2782,9 @@ const pixelateDefaults: PixelateProps = {
 	gap: 0,
 };
 
-export class Pixelate extends Effect<PixelateProps> {
-	public readonly op = "Pixelate";
+export class Pixelate extends Effect<PixelateProps, "Pixelate", "visual"> {
+	public readonly op = "Pixelate" as const;
+	public override readonly domain = "visual" as const;
 
 	public declare size: number;
 	public declare shape: "square" | "circle" | "diamond";
@@ -2754,8 +2845,9 @@ const posterizeDefaults: PosterizeProps = {
 	pixelSize: 1,
 };
 
-export class Posterize extends Effect<PosterizeProps> {
-	public readonly op = "Posterize";
+export class Posterize extends Effect<PosterizeProps, "Posterize", "visual"> {
+	public readonly op = "Posterize" as const;
+	public override readonly domain = "visual" as const;
 
 	public declare levels: number;
 	public declare palette:
@@ -2889,8 +2981,13 @@ const proceduralVFXDefaults: ProceduralVFXProps = {
 	fps: 30,
 };
 
-export class ProceduralVFX extends Effect<ProceduralVFXProps> {
-	public readonly op = "ProceduralVFX";
+export class ProceduralVFX extends Effect<
+	ProceduralVFXProps,
+	"ProceduralVFX",
+	"visual"
+> {
+	public readonly op = "ProceduralVFX" as const;
+	public override readonly domain = "visual" as const;
 
 	public declare effectType:
 		| "Smoke"
@@ -2983,8 +3080,13 @@ const refineEdgeDefaults: RefineEdgeProps = {
 	outputMode: "Composite",
 };
 
-export class RefineEdge extends Effect<RefineEdgeProps> {
-	public readonly op = "RefineEdge";
+export class RefineEdge extends Effect<
+	RefineEdgeProps,
+	"RefineEdge",
+	"visual"
+> {
+	public readonly op = "RefineEdge" as const;
+	public override readonly domain = "visual" as const;
 
 	public declare decontaminateAmount: number;
 	public declare radius: number;
@@ -3115,8 +3217,13 @@ const refractionCaustics3DDefaults: RefractionCaustics3DProps = {
 	depthScale: 1,
 };
 
-export class RefractionCaustics3D extends Effect<RefractionCaustics3DProps> {
-	public readonly op = "RefractionCaustics3D";
+export class RefractionCaustics3D extends Effect<
+	RefractionCaustics3DProps,
+	"RefractionCaustics3D",
+	"visual"
+> {
+	public readonly op = "RefractionCaustics3D" as const;
+	public override readonly domain = "visual" as const;
 
 	public declare ior: number;
 	public declare dispersion: number;
@@ -3234,8 +3341,13 @@ const resizerScalerDefaults: ResizerScalerProps = {
 	anchorY: "center",
 };
 
-export class ResizerScaler extends Effect<ResizerScalerProps> {
-	public readonly op = "ResizerScaler";
+export class ResizerScaler extends Effect<
+	ResizerScalerProps,
+	"ResizerScaler",
+	"visual"
+> {
+	public readonly op = "ResizerScaler" as const;
+	public override readonly domain = "visual" as const;
 
 	public declare aspectRatioPreset:
 		| "9:16"
@@ -3301,8 +3413,9 @@ const rGBSplitDefaults: RGBSplitProps = {
 	radial: false,
 };
 
-export class RGBSplit extends Effect<RGBSplitProps> {
-	public readonly op = "RGBSplit";
+export class RGBSplit extends Effect<RGBSplitProps, "RGBSplit", "visual"> {
+	public readonly op = "RGBSplit" as const;
+	public override readonly domain = "visual" as const;
 
 	public declare amount: number;
 	public declare angle: number;
@@ -3341,8 +3454,9 @@ const rotateDefaults: RotateProps = {
 	scale: 1,
 };
 
-export class Rotate extends Effect<RotateProps> {
-	public readonly op = "Rotate";
+export class Rotate extends Effect<RotateProps, "Rotate", "visual"> {
+	public readonly op = "Rotate" as const;
+	public override readonly domain = "visual" as const;
 
 	public declare angle: number;
 	public declare fit: "cover" | "contain" | "fill";
@@ -3366,8 +3480,13 @@ const stereoPanningDefaults: StereoPanningProps = {
 	pan: 0,
 };
 
-export class StereoPanning extends Effect<StereoPanningProps> {
-	public readonly op = "StereoPanning";
+export class StereoPanning extends Effect<
+	StereoPanningProps,
+	"StereoPanning",
+	"audio"
+> {
+	public readonly op = "StereoPanning" as const;
+	public override readonly domain = "audio" as const;
 
 	public declare pan: number;
 
@@ -3423,8 +3542,9 @@ const toonDefaults: ToonProps = {
 	saturation: 1.15,
 };
 
-export class Toon extends Effect<ToonProps> {
-	public readonly op = "Toon";
+export class Toon extends Effect<ToonProps, "Toon", "visual"> {
+	public readonly op = "Toon" as const;
+	public override readonly domain = "visual" as const;
 
 	public declare levels: number;
 	public declare edgeThreshold: number;
@@ -3498,8 +3618,9 @@ const trailsDefaults: TrailsProps = {
 	warmup: 60,
 };
 
-export class Trails extends Effect<TrailsProps> {
-	public readonly op = "Trails";
+export class Trails extends Effect<TrailsProps, "Trails", "visual"> {
+	public readonly op = "Trails" as const;
+	public override readonly domain = "visual" as const;
 
 	public declare decay: number;
 	public declare mode: "blend" | "over" | "add" | "max";
@@ -3563,8 +3684,9 @@ const vignetteDefaults: VignetteProps = {
 	centerY: 0.5,
 };
 
-export class Vignette extends Effect<VignetteProps> {
-	public readonly op = "Vignette";
+export class Vignette extends Effect<VignetteProps, "Vignette", "visual"> {
+	public readonly op = "Vignette" as const;
+	public override readonly domain = "visual" as const;
 
 	public declare strength: number;
 	public declare radius: number;

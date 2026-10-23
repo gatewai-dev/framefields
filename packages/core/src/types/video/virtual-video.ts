@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { FrameContext } from "../../signals/index.js";
 import { type DataType, DataTypeVal, FileAssetSchema } from "../base.js";
 
 export const MediaSourceSchema = z.object({
@@ -46,12 +47,35 @@ export const BaseMediaOperationPropsSchema = z.object({
 	volume: z.number().optional(),
 	opacity: z.number().optional(),
 	startFrame: z.number().optional(),
+	durationFrames: z.number().optional(),
 	timeline: TimelineTransformSchema.optional(),
 });
 
 export type BaseMediaOperationProps = z.infer<
 	typeof BaseMediaOperationPropsSchema
 >;
+
+export type NodeInputConnection = {
+	connectionValid: boolean;
+	outputItem: {
+		type: string;
+		data: unknown;
+	} | null;
+};
+
+export type NodeOperation<
+	TOp extends string = string,
+	TConfig extends object = Record<string, unknown>,
+> = BaseMediaOperationProps & {
+	op: TOp;
+	id?: string;
+	metadata?: MediaMetadata;
+	dataType?: DataType;
+	effect?: unknown;
+	signals?: Record<string, unknown>;
+	inputs?: Record<string, NodeInputConnection>;
+	onRequestFrame?: (ctx: FrameContext) => void;
+} & TConfig;
 
 /** Original source file (leaf node) */
 export const SourceOperationSchema = BaseMediaOperationPropsSchema.extend({
@@ -84,18 +108,16 @@ export type MediaOperation = BaseMediaOperationProps &
 	(
 		| ({ op: "source" } & z.infer<typeof SourceOperationSchema>)
 		| ({ op: "text" } & z.infer<typeof TextOperationSchema>)
-		| ({
-				op: string;
-				metadata?: MediaMetadata;
-				dataType: DataType;
-		  } & Record<string, any>)
+		| NodeOperation<string, Record<string, unknown>>
 	);
 
 // --- VirtualMediaData: THE recursive data type for all media outputs ---
 
-export type VirtualMediaData = {
+export type VirtualMediaData<
+	TOperation extends MediaOperation = MediaOperation,
+> = {
 	metadata: MediaMetadata;
-	operation: MediaOperation;
+	operation: TOperation;
 	children: VirtualMediaData[];
 };
 

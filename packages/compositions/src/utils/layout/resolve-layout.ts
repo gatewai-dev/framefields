@@ -24,6 +24,7 @@
 import type { Yoga, Node as YogaNode } from "yoga-layout/load";
 export type { Yoga };
 
+import { assertNever } from "@framefields/core";
 import { loadYoga } from "yoga-layout/load";
 import type {
 	CompositionNodeBase,
@@ -173,8 +174,15 @@ function dirOf(node: LayoutNode): "row" | "column" | null {
 			return "column";
 		case "box":
 			return node.children && node.children.length > 0 ? "column" : null;
-		default:
+		case "text":
+		case "media":
+		case "shape":
+		case "camera":
+		case "light":
+		case "model3d":
 			return null;
+		default:
+			return assertNever(node);
 	}
 }
 
@@ -362,7 +370,7 @@ function buildYogaNode(
 		}
 	} else if (
 		node.kind === "text" ||
-		(node.kind === "media" && (node as any).dataType === "Caption")
+		(node.kind === "media" && node.dataType === "Caption")
 	) {
 		// Leaf: text node uses dynamic setMeasureFunc for intrinsic sizing
 		yn.setMeasureFunc((width, widthMode, height, heightMode) => {
@@ -386,7 +394,7 @@ function buildYogaNode(
 		const measured = measure?.(node) ?? null;
 		if (measured) {
 			const hasRatio = node.aspectRatio !== undefined;
-			const isCaption = (node as any).dataType === "Caption";
+			const isCaption = node.kind === "media" && node.dataType === "Caption";
 			const intrinsicRatio =
 				measured.height > 0 ? measured.width / measured.height : 1;
 

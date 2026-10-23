@@ -4,7 +4,7 @@ import type { DetectedObject, ObjectBoundingBox } from "@framefields/core";
 
 export type VisionInputSource =
 	| string
-	| { inputHandleId?: string; id?: string; [key: string]: unknown };
+	| { inputHandleId?: string; id?: string };
 
 /** RGBA pixel buffer accepted by the runner. */
 export interface VisionImageInput {

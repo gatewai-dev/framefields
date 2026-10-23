@@ -202,6 +202,9 @@ import { inputStore, mediaDecoderCache } from "@framefields/webgpu-renderers";
 import { buildChart, type ChartOptions } from "./chart.js";
 import { ClipVision, type ClipVisionOptions } from "./clip-vision.js";
 import {
+	type AnyAudioEffect,
+	type AnyEffect,
+	type AnyVisualEffect,
 	ApplyLUT,
 	type ApplyLUTProps,
 	Blur,
@@ -283,7 +286,7 @@ export interface SectionOptions {
 	readonly id?: string;
 	readonly position?: "absolute" | "relative";
 	readonly source?: string | MediaNode;
-	readonly effects?: Effect<object>[];
+	readonly effects?: AnyVisualEffect[];
 	readonly padding?: number;
 	readonly borderRadius?: number;
 	readonly borderColor?: string;
@@ -304,13 +307,13 @@ export interface SectionOptions {
 	readonly children?: LayoutNode[];
 }
 
-export type SectionNode = AnimatableNode<BoxNode> & {
-	readonly innerMedia: AnimatableNode<MediaNode>;
-	// Any effect, whatever its config shape (Blur, FilmGrain, …).
-	readonly effects: Effect<object>[];
-	addEffect(effect: Effect<object>): SectionNode;
-	withEffect(effect: Effect<object>): SectionNode;
-	withEffects(effects: Effect<object>[]): SectionNode;
+export type SectionNode = AnimatableNode<BoxNode, "visual"> & {
+	readonly innerMedia: AnimatableNode<MediaNode, "hybrid">;
+	// Any visual effect, whatever its config shape (Blur, FilmGrain, …).
+	readonly effects: AnyVisualEffect[];
+	addEffect(effect: AnyVisualEffect): SectionNode;
+	withEffect(effect: AnyVisualEffect): SectionNode;
+	withEffects(effects: AnyVisualEffect[]): SectionNode;
 };
 
 export type TrackedRegionOptions = SectionOptions;
@@ -691,6 +694,14 @@ export {
 	PersonTrack,
 	type PoseKeypointName,
 } from "./clip-vision.js";
+export type {
+	AnyAudioEffect,
+	AnyEffect,
+	AnyVisualEffect,
+	EffectConfigMap,
+	EffectOp,
+	EffectPropsFor,
+} from "./effects/index.js";
 export {
 	ApplyLUT,
 	type ApplyLUTProps,
@@ -1170,12 +1181,12 @@ export class Composition {
 	private readonly _clipVision = new Map<string, ClipVision>();
 	private _visionConfig?: VisionProps;
 	private _visionBundle?: VisionBundle;
-	private _effects: Effect<object>[] = [];
+	private _effects: AnyEffect[] = [];
 
 	/**
 	 * Applies a whole-composition post-processing effect or vision pipeline.
 	 */
-	public apply(effect: Effect<object>): this {
+	public apply(effect: AnyEffect): this {
 		if (effect instanceof Vision) {
 			this.withVision(effect);
 			return this;
@@ -2102,7 +2113,21 @@ export class Composition {
  * Layer helpers for constructing composition nodes with clean URL/path strings.
  */
 
-export type AnimatableNode<T extends LayoutNode> = T & {
+export type NodeCapability = "visual" | "audio" | "hybrid";
+
+export type CompatibleEffect<TCap extends NodeCapability> =
+	TCap extends "hybrid"
+		? AnyEffect
+		: TCap extends "visual"
+			? AnyVisualEffect
+			: TCap extends "audio"
+				? AnyAudioEffect
+				: Effect<object>;
+
+export type AnimatableNode<
+	T extends LayoutNode = LayoutNode,
+	TCap extends NodeCapability = "visual",
+> = T & {
 	glass?: Record<string, unknown>;
 	audioDeform?: MeshAudioDeformConfig | Record<string, unknown>;
 	crop?: CropProps | Crop;
@@ -2117,7 +2142,7 @@ export type AnimatableNode<T extends LayoutNode> = T & {
 			| { tracks: AnimationTrack[] }
 			| LayerAnimation[]
 		)[]
-	): AnimatableNode<T>;
+	): AnimatableNode<T, TCap>;
 	pinToLandmark(
 		target:
 			| LandmarkCoordinateSignals
@@ -2129,7 +2154,7 @@ export type AnimatableNode<T extends LayoutNode> = T & {
 					screenY?: number;
 			  },
 		options?: PinToLandmarkOptions,
-	): AnimatableNode<T>;
+	): AnimatableNode<T, TCap>;
 	pinToObject(
 		target:
 			| ObjectTrackSignals
@@ -2142,7 +2167,7 @@ export type AnimatableNode<T extends LayoutNode> = T & {
 					screenY?: number;
 			  },
 		options?: PinToObjectOptions,
-	): AnimatableNode<T>;
+	): AnimatableNode<T, TCap>;
 	/**
 	 * Track matte: `matte` (any layer) masks this one by its alpha or
 	 * brightness. It is laid out like a sibling (same parent) and timed with
@@ -2150,22 +2175,22 @@ export type AnimatableNode<T extends LayoutNode> = T & {
 	 * the matte for wipes and reveals: text through a sliding box, video
 	 * inside type, an iris circle.
 	 */
-	withMatte(matte: LayoutNode, mode?: MatteMode): AnimatableNode<T>;
+	withMatte(matte: LayoutNode, mode?: MatteMode): AnimatableNode<T, TCap>;
 	/** Alias of {@link withMatte}. */
-	withMask(mask: LayoutNode, mode?: MatteMode): AnimatableNode<T>;
-	withPbrGlass(options?: Record<string, unknown>): AnimatableNode<T>;
+	withMask(mask: LayoutNode, mode?: MatteMode): AnimatableNode<T, TCap>;
+	withPbrGlass(options?: Record<string, unknown>): AnimatableNode<T, TCap>;
 	deformWithAudio(
 		config?: MeshAudioDeformConfig | Record<string, unknown>,
-	): AnimatableNode<T>;
-	withCrop(cropConfig: CropProps | Crop): AnimatableNode<T>;
+	): AnimatableNode<T, TCap>;
+	withCrop(cropConfig: CropProps | Crop): AnimatableNode<T, TCap>;
 	/** Runs vision on this node's rendered output (see `Vision` for options and modes). */
-	withVision(config?: VisionProps | Vision): AnimatableNode<T>;
-	withRelighting(options?: NormalRelightingOptions): AnimatableNode<T>;
-	relight(options?: NormalRelightingOptions): AnimatableNode<T>;
-	withDeflicker(options?: DeflickerOptions): AnimatableNode<T>;
-	apply(effect: Effect<object>): AnimatableNode<T>;
-	withEffect(effect: Effect<object>): AnimatableNode<T>;
-	withEffects(effects: Effect<object>[]): AnimatableNode<T>;
+	withVision(config?: VisionProps | Vision): AnimatableNode<T, TCap>;
+	withRelighting(options?: NormalRelightingOptions): AnimatableNode<T, TCap>;
+	relight(options?: NormalRelightingOptions): AnimatableNode<T, TCap>;
+	withDeflicker(options?: DeflickerOptions): AnimatableNode<T, TCap>;
+	apply(effect: CompatibleEffect<TCap>): AnimatableNode<T, TCap>;
+	withEffect(effect: CompatibleEffect<TCap>): AnimatableNode<T, TCap>;
+	withEffects(effects: CompatibleEffect<TCap>[]): AnimatableNode<T, TCap>;
 	section(
 		targetOrOptions?: ObjectTrackSignals | SectionOptions,
 		options?: SectionOptions,
@@ -2173,15 +2198,18 @@ export type AnimatableNode<T extends LayoutNode> = T & {
 	blurRegion(
 		trackTarget: ObjectTrackSignals,
 		options?: Partial<BlurProps>,
-	): AnimatableNode<T>;
+	): AnimatableNode<T, TCap>;
 	withBlurRegion(
 		trackTarget: ObjectTrackSignals,
 		options?: Partial<BlurProps>,
-	): AnimatableNode<T>;
+	): AnimatableNode<T, TCap>;
 };
 
-function withAnimation<T extends LayoutNode>(node: T): AnimatableNode<T> {
-	const target = node as AnimatableNode<T>;
+function withAnimation<
+	T extends LayoutNode,
+	TCap extends NodeCapability = "visual",
+>(node: T): AnimatableNode<T, TCap> {
+	const target = node as AnimatableNode<T, TCap>;
 	Object.defineProperty(target, "animate", {
 		value: (
 			...anims: (
@@ -2470,7 +2498,7 @@ export const Layer = {
 	video: (
 		src: string,
 		options: Partial<MediaNode> = {},
-	): AnimatableNode<MediaNode> =>
+	): AnimatableNode<MediaNode, "hybrid"> =>
 		withAnimation({
 			id: options.id ?? autoId("video"),
 			kind: "media",
@@ -2482,7 +2510,7 @@ export const Layer = {
 	image: (
 		src: string,
 		options: Partial<MediaNode> = {},
-	): AnimatableNode<MediaNode> => {
+	): AnimatableNode<MediaNode, "visual"> => {
 		if (typeof src === "string") {
 			if (
 				/\.(json|lottie)(\?.*)?$/i.test(src) ||
@@ -2513,7 +2541,7 @@ export const Layer = {
 	svg: (
 		src: string,
 		options: Partial<MediaNode> = {},
-	): AnimatableNode<MediaNode> =>
+	): AnimatableNode<MediaNode, "visual"> =>
 		withAnimation({
 			id: options.id ?? autoId("svg"),
 			kind: "media",
@@ -2525,7 +2553,7 @@ export const Layer = {
 	lottie: (
 		src: string,
 		options: Partial<MediaNode> = {},
-	): AnimatableNode<MediaNode> =>
+	): AnimatableNode<MediaNode, "visual"> =>
 		withAnimation({
 			id: options.id ?? autoId("lottie"),
 			kind: "media",
@@ -2537,7 +2565,7 @@ export const Layer = {
 	audio: (
 		src: string,
 		options: Partial<MediaNode> = {},
-	): AnimatableNode<MediaNode> =>
+	): AnimatableNode<MediaNode, "audio"> =>
 		withAnimation({
 			id: options.id ?? autoId("audio"),
 			kind: "media",
@@ -2553,7 +2581,7 @@ export const Layer = {
 			| (string | TextSpan)[]
 			| Partial<TextNode>,
 		maybeOptions: Partial<TextNode> = {},
-	): AnimatableNode<TextNode> => {
+	): AnimatableNode<TextNode, "visual"> => {
 		const isArray = Array.isArray(contentOrOptions);
 		const isObj =
 			!isArray &&

@@ -113,3 +113,105 @@ export {
 } from "./classes.js";
 export { effectMeta } from "./meta.js";
 export { effectFactories } from "./registry.js";
+
+/** Discriminated unions of all generated effects by domain. */
+export type AnyGeneratedVisualEffect =
+	| Ascii
+	| Blur
+	| CameraParallax3D
+	| ChannelMerger
+	| ChannelSplitter
+	| ColorBalance
+	| ColorKey
+	| Contour
+	| CornerPin
+	| CRT
+	| Datamosh
+	| DisplacementMap
+	| Dither
+	| ExtractLUT
+	| Flip
+	| Gooey
+	| Iridescence
+	| Kaleidoscope
+	| KenBurns
+	| LayerStyle
+	| Liquify
+	| MaskMath
+	| MeshWarp
+	| NoiseGenerator
+	| OpArt
+	| Paint
+	| Painterly
+	| PatchHeal
+	| Pixelate
+	| Posterize
+	| ProceduralVFX
+	| RefineEdge
+	| RefractionCaustics3D
+	| ResizerScaler
+	| RGBSplit
+	| Rotate
+	| Toon
+	| Trails
+	| Vignette;
+export type AnyGeneratedAudioEffect =
+	| AudioCompressor
+	| AudioDelay
+	| AudioFade
+	| AudioNoiseGate
+	| AudioParametricEq
+	| AudioReverb
+	| StereoPanning;
+export type AnyGeneratedEffect =
+	| AnyGeneratedVisualEffect
+	| AnyGeneratedAudioEffect;
+
+export interface GeneratedEffectConfigMap {
+	Ascii: AsciiProps;
+	AudioCompressor: AudioCompressorProps;
+	AudioDelay: AudioDelayProps;
+	AudioFade: AudioFadeProps;
+	AudioNoiseGate: AudioNoiseGateProps;
+	AudioParametricEq: AudioParametricEqProps;
+	AudioReverb: AudioReverbProps;
+	Blur: BlurProps;
+	CameraParallax3D: CameraParallax3DProps;
+	ChannelMerger: ChannelMergerProps;
+	ChannelSplitter: ChannelSplitterProps;
+	ColorBalance: ColorBalanceProps;
+	ColorKey: ColorKeyProps;
+	Contour: ContourProps;
+	CornerPin: CornerPinProps;
+	CRT: CRTProps;
+	Datamosh: DatamoshProps;
+	DisplacementMap: DisplacementMapProps;
+	Dither: DitherProps;
+	ExtractLUT: ExtractLUTProps;
+	Flip: FlipProps;
+	Gooey: GooeyProps;
+	Iridescence: IridescenceProps;
+	Kaleidoscope: KaleidoscopeProps;
+	KenBurns: KenBurnsProps;
+	LayerStyle: LayerStyleProps;
+	Liquify: LiquifyProps;
+	MaskMath: MaskMathProps;
+	MeshWarp: MeshWarpProps;
+	NoiseGenerator: NoiseGeneratorProps;
+	OpArt: OpArtProps;
+	Paint: PaintProps;
+	Painterly: PainterlyProps;
+	PatchHeal: PatchHealProps;
+	Pixelate: PixelateProps;
+	Posterize: PosterizeProps;
+	ProceduralVFX: ProceduralVFXProps;
+	RefineEdge: RefineEdgeProps;
+	RefractionCaustics3D: RefractionCaustics3DProps;
+	ResizerScaler: ResizerScalerProps;
+	RGBSplit: RGBSplitProps;
+	Rotate: RotateProps;
+	StereoPanning: StereoPanningProps;
+	Toon: ToonProps;
+	Trails: TrailsProps;
+	Vignette: VignetteProps;
+}

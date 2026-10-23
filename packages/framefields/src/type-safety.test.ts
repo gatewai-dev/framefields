@@ -1,6 +1,14 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 import {
 	type AnimatableNode,
+	type AnyAudioEffect,
+	type AnyEffect,
+	type AnyVisualEffect,
+	AudioCompressor,
+	AudioDelay,
+	Blur,
+	type CompatibleEffect,
+	FilmGrain,
 	type Fps,
 	type FrameIndex,
 	fps,
@@ -12,9 +20,11 @@ import {
 	isFrameIndex,
 	isNormalized,
 	Layer,
+	Levels,
 	type MediaNode,
 	type Milliseconds,
 	ms,
+	type NodeCapability,
 	type NodeId,
 	type Normalized,
 	nodeId,
@@ -88,10 +98,82 @@ describe("Type Safety & Branded Types (Phase 1)", () => {
 
 	it("preserves typed AnimatableNode without index signature", () => {
 		const video = Layer.video("sample.mp4");
-		expectTypeOf(video).toMatchTypeOf<AnimatableNode<MediaNode>>();
+		expectTypeOf(video).toMatchTypeOf<AnimatableNode<MediaNode, "hybrid">>();
 
 		// Verify apply method accepts typed Effect instances
 		const withEff = video.apply(new Vignette({ strength: 10 }));
-		expectTypeOf(withEff).toMatchTypeOf<AnimatableNode<MediaNode>>();
+		expectTypeOf(withEff).toMatchTypeOf<AnimatableNode<MediaNode, "hybrid">>();
+	});
+});
+
+describe("Discriminated Effects & Port Capabilities (Phase 2)", () => {
+	it("distinguishes visual and audio effects by op and domain", () => {
+		const blur = new Blur({ strength: 10 });
+		expect(blur.op).toBe("Blur");
+		expect(blur.domain).toBe("visual");
+		expectTypeOf(blur.op).toEqualTypeOf<"Blur">();
+		expectTypeOf(blur.domain).toEqualTypeOf<"visual">();
+
+		const compressor = new AudioCompressor({ threshold: -18 });
+		expect(compressor.op).toBe("AudioCompressor");
+		expect(compressor.domain).toBe("audio");
+		expectTypeOf(compressor.op).toEqualTypeOf<"AudioCompressor">();
+		expectTypeOf(compressor.domain).toEqualTypeOf<"audio">();
+
+		const levels = new Levels();
+		expect(levels.op).toBe("Levels");
+		expect(levels.domain).toBe("visual");
+		expectTypeOf(levels.op).toEqualTypeOf<"Levels">();
+		expectTypeOf(levels.domain).toEqualTypeOf<"visual">();
+	});
+
+	it("narrows effect instances within AnyEffect discriminated union", () => {
+		const effect: AnyEffect = new AudioDelay({ delayTime: 0.12 });
+
+		if (effect.domain === "audio") {
+			expectTypeOf(effect).toMatchTypeOf<AnyAudioEffect>();
+		} else {
+			expectTypeOf(effect).toMatchTypeOf<AnyVisualEffect>();
+		}
+
+		if (effect.op === "AudioDelay") {
+			expect(effect.delayTime).toBe(0.12);
+		}
+	});
+
+	it("enforces capability-safe apply on layers", () => {
+		expectTypeOf<NodeCapability>().toEqualTypeOf<
+			"visual" | "audio" | "hybrid"
+		>();
+
+		const audioLayer = Layer.audio("soundtrack.mp3");
+		expectTypeOf<Parameters<typeof audioLayer.apply>[0]>().toEqualTypeOf<
+			CompatibleEffect<"audio">
+		>();
+
+		const imageLayer = Layer.image("banner.png");
+		expectTypeOf<Parameters<typeof imageLayer.apply>[0]>().toEqualTypeOf<
+			CompatibleEffect<"visual">
+		>();
+
+		const videoLayer = Layer.video("clip.mp4");
+		expectTypeOf<Parameters<typeof videoLayer.apply>[0]>().toEqualTypeOf<
+			CompatibleEffect<"hybrid">
+		>();
+
+		// Video accepts both visual and audio effects
+		const v1 = videoLayer.apply(new Blur({ strength: 5 }));
+		const v2 = v1.apply(new AudioCompressor({ threshold: -12 }));
+		expect(v2.effects?.length).toBe(2);
+
+		// Audio accepts audio effects
+		const a1 = audioLayer.apply(new AudioCompressor());
+		const a2 = a1.apply(new AudioDelay({ delayTime: 0.05 }));
+		expect(a2.effects?.length).toBe(2);
+
+		// Image accepts visual effects
+		const img1 = imageLayer.apply(new FilmGrain({ strength: 10 }));
+		const img2 = img1.apply(new Vignette({ strength: 40 }));
+		expect(img2.effects?.length).toBe(2);
 	});
 });

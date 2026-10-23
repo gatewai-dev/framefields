@@ -218,6 +218,7 @@ import {
 	type DeflickerProps,
 	DepthOfField,
 	type DepthOfFieldProps,
+	type EffectProp,
 	effectFactories,
 	FilmGrain,
 	type FilmGrainProps,
@@ -282,22 +283,25 @@ export interface SectionOptions {
 	readonly id?: string;
 	readonly position?: "absolute" | "relative";
 	readonly source?: string | MediaNode;
-	readonly effects?: unknown[];
+	readonly effects?: Effect<object>[];
 	readonly padding?: number;
 	readonly borderRadius?: number;
 	readonly borderColor?: string;
 	readonly borderWidth?: number;
-	readonly opacity?: number | unknown;
+	readonly opacity?: EffectProp<number>;
 	readonly blendMode?: string;
 	readonly fit?: "cover" | "contain";
-	readonly width?: number | unknown;
-	readonly height?: number | unknown;
-	readonly x?: number | unknown;
-	readonly y?: number | unknown;
+	readonly width?: EffectProp<SizeSpec>;
+	readonly height?: EffectProp<SizeSpec>;
+	readonly compositionWidth?: number;
+	readonly compositionHeight?: number;
+	readonly compWidth?: number;
+	readonly compHeight?: number;
+	readonly x?: EffectProp<number>;
+	readonly y?: EffectProp<number>;
 	readonly hideWhenLost?: boolean;
 	readonly smoothFrames?: number;
 	readonly children?: LayoutNode[];
-	readonly [key: string]: unknown;
 }
 
 export type SectionNode = AnimatableNode<BoxNode> & {
@@ -1166,12 +1170,12 @@ export class Composition {
 	private readonly _clipVision = new Map<string, ClipVision>();
 	private _visionConfig?: VisionProps;
 	private _visionBundle?: VisionBundle;
-	private _effects: unknown[] = [];
+	private _effects: Effect<object>[] = [];
 
 	/**
 	 * Applies a whole-composition post-processing effect or vision pipeline.
 	 */
-	public apply(effect: unknown): this {
+	public apply(effect: Effect<object>): this {
 		if (effect instanceof Vision) {
 			this.withVision(effect);
 			return this;
@@ -2105,9 +2109,8 @@ export type AnimatableNode<T extends LayoutNode> = T & {
 	vision?: Vision;
 	relighting?: NormalRelightingOptions;
 	deflicker?: DeflickerOptions;
-	effects?: unknown[];
+	effects?: Effect<object>[];
 	blurRegions?: unknown[];
-	[key: string]: unknown;
 	animate(
 		...anim: (
 			| LayerAnimation
@@ -2160,9 +2163,13 @@ export type AnimatableNode<T extends LayoutNode> = T & {
 	withRelighting(options?: NormalRelightingOptions): AnimatableNode<T>;
 	relight(options?: NormalRelightingOptions): AnimatableNode<T>;
 	withDeflicker(options?: DeflickerOptions): AnimatableNode<T>;
-	apply(effect: unknown): AnimatableNode<T>;
-	withEffect(effect: unknown): AnimatableNode<T>;
-	withEffects(effects: unknown[]): AnimatableNode<T>;
+	apply(effect: Effect<object>): AnimatableNode<T>;
+	withEffect(effect: Effect<object>): AnimatableNode<T>;
+	withEffects(effects: Effect<object>[]): AnimatableNode<T>;
+	section(
+		targetOrOptions?: ObjectTrackSignals | SectionOptions,
+		options?: SectionOptions,
+	): SectionNode;
 	blurRegion(
 		trackTarget: ObjectTrackSignals,
 		options?: Partial<BlurProps>,
@@ -2357,7 +2364,7 @@ function withAnimation<T extends LayoutNode>(node: T): AnimatableNode<T> {
 	});
 
 	Object.defineProperty(target, "apply", {
-		value: (effect: unknown) => {
+		value: (effect: Effect<object>) => {
 			if (!target.effects) {
 				target.effects = [];
 			}
@@ -2370,7 +2377,7 @@ function withAnimation<T extends LayoutNode>(node: T): AnimatableNode<T> {
 	});
 
 	Object.defineProperty(target, "withEffect", {
-		value: (effect: unknown) => {
+		value: (effect: Effect<object>) => {
 			if (!target.effects) {
 				target.effects = [];
 			}
@@ -2383,7 +2390,7 @@ function withAnimation<T extends LayoutNode>(node: T): AnimatableNode<T> {
 	});
 
 	Object.defineProperty(target, "withEffects", {
-		value: (effects: unknown[]) => {
+		value: (effects: Effect<object>[]) => {
 			if (!target.effects) {
 				target.effects = [];
 			}

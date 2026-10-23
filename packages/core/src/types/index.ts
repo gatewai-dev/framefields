@@ -1,4 +1,5 @@
 export * from "./base.js";
+export * from "./brands.js";
 export * from "./config/index.js";
 export * from "./constants.js";
 export * from "./node-processor.js";

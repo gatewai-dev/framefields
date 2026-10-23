@@ -24,6 +24,7 @@
 	"scripts": {
 		"build": "tsdown",
 		"typecheck": "tsc --noEmit",
+		"test": "vitest run",
 		"dev": "tsdown --watch",
 		"clean": "rm -rf .turbo && rm -rf node_modules && rm -rf dist"
 	},

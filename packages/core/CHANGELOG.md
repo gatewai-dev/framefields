@@ -1,5 +1,15 @@
 # @framefields/core
 
+## 2.4.3
+
+### Patch Changes
+
+- Strict compile-time type safety across the engine harness:
+  - Branded types for coordinate and unit spaces (`Pixels`, `Normalized01`, `Degrees`, `Radians`, `Frames`, `Seconds`, `Hertz`, `Decibels`).
+  - Discriminated union types and capability-safe layer ports on `NodeEffect`, `Layer` nodes, and effect classes.
+  - Compile-time exhaustiveness checking with `assertNever` and type-narrowed animation property targeting.
+  - Schema and pipeline unification with generic node operations.
+
 ## 2.4.2
 
 ## 2.4.1

@@ -1,5 +1,7 @@
 # @framefields/node-displacement-map
 
+## 2.4.3
+
 ## 2.4.2
 
 ## 2.4.1

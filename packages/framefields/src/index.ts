@@ -137,6 +137,8 @@ export {
 import fs from "node:fs/promises";
 import path from "node:path";
 import {
+	type AnimatableProp,
+	type AnimatablePropsFor,
 	type AnimationTrack,
 	type BoxNode,
 	type CameraNode,
@@ -150,10 +152,15 @@ import {
 	type LightNode,
 	lintComposition,
 	type MatteMode,
+	type MediaAnimatableProp,
 	type MediaNode,
+	type Model3DAnimatableProp,
 	type Model3DNode,
 	mergeAnimationTracks,
+	type ShapeAnimatableProp,
 	type ShapeNode,
+	type SizeSpec,
+	type TextAnimatableProp,
 	type TextNode,
 } from "@framefields/compositions/program";
 import {
@@ -633,6 +640,14 @@ export {
 } from "@framefields/compositions/program";
 export * from "@framefields/core";
 export * from "@framefields/renderers";
+export type {
+	AnimatablePropsFor,
+	TextAnimatableProp,
+	ShapeAnimatableProp,
+	MediaAnimatableProp,
+	Model3DAnimatableProp,
+	SizeSpec,
+};
 export {
 	type AnimationClip3D,
 	type AudioLatentData,
@@ -2133,14 +2148,34 @@ export type AnimatableNode<
 	crop?: CropProps | Crop;
 	vision?: Vision;
 	relighting?: NormalRelightingOptions;
+	matte?: { node: LayoutNode; mode?: MatteMode };
 	deflicker?: DeflickerOptions;
-	effects?: Effect<object>[];
+	effects?: CompatibleEffect<TCap>[];
 	blurRegions?: unknown[];
-	animate(
+	animate<P extends AnimatableProp = AnimatableProp>(
 		...anim: (
-			| LayerAnimation
-			| { tracks: AnimationTrack[] }
-			| LayerAnimation[]
+			| ([AnimatableProp] extends [P]
+					? LayerAnimation
+					: LayerAnimation<P & AnimatablePropsFor<T>>)
+			| {
+					tracks: AnimationTrack<
+						[AnimatableProp] extends [P]
+							? AnimatableProp
+							: P & AnimatablePropsFor<T>
+					>[];
+			  }
+			| (
+					| ([AnimatableProp] extends [P]
+							? LayerAnimation
+							: LayerAnimation<P & AnimatablePropsFor<T>>)
+					| {
+							tracks: AnimationTrack<
+								[AnimatableProp] extends [P]
+									? AnimatableProp
+									: P & AnimatablePropsFor<T>
+							>[];
+					  }
+			  )[]
 		)[]
 	): AnimatableNode<T, TCap>;
 	pinToLandmark(
@@ -2392,7 +2427,7 @@ function withAnimation<
 	});
 
 	Object.defineProperty(target, "apply", {
-		value: (effect: Effect<object>) => {
+		value: (effect: CompatibleEffect<TCap>) => {
 			if (!target.effects) {
 				target.effects = [];
 			}
@@ -2405,7 +2440,7 @@ function withAnimation<
 	});
 
 	Object.defineProperty(target, "withEffect", {
-		value: (effect: Effect<object>) => {
+		value: (effect: CompatibleEffect<TCap>) => {
 			if (!target.effects) {
 				target.effects = [];
 			}
@@ -2418,7 +2453,7 @@ function withAnimation<
 	});
 
 	Object.defineProperty(target, "withEffects", {
-		value: (effects: Effect<object>[]) => {
+		value: (effects: CompatibleEffect<TCap>[]) => {
 			if (!target.effects) {
 				target.effects = [];
 			}
@@ -2467,7 +2502,7 @@ function withAnimation<
 			if (!target.effects) {
 				target.effects = [];
 			}
-			target.effects.push(blur);
+			target.effects.push(blur as CompatibleEffect<TCap>);
 			return target;
 		},
 		enumerable: false,
@@ -2826,7 +2861,9 @@ export const Layer = {
 				? -opts.x
 				: opts.x &&
 						typeof (opts.x as { multiply?: unknown }).multiply === "function"
-					? (opts.x as { multiply: (n: number) => unknown }).multiply(-1)
+					? (
+							opts.x as unknown as { multiply: (n: number) => unknown }
+						).multiply(-1)
 					: 0;
 
 		const innerY = target
@@ -2835,7 +2872,9 @@ export const Layer = {
 				? -opts.y
 				: opts.y &&
 						typeof (opts.y as { multiply?: unknown }).multiply === "function"
-					? (opts.y as { multiply: (n: number) => unknown }).multiply(-1)
+					? (
+							opts.y as unknown as { multiply: (n: number) => unknown }
+						).multiply(-1)
 					: 0;
 
 		const innerMedia = (

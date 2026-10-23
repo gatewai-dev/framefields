@@ -58,7 +58,9 @@ function nodeToVirtualMedia(
 	const sourceRef =
 		node.kind === "media"
 			? (node.src ?? node.inputHandleId)
-			: node.inputHandleId;
+			: "inputHandleId" in node
+				? (node as { inputHandleId?: string }).inputHandleId
+				: undefined;
 	const isDirectMediaSource = (s: unknown) =>
 		typeof s === "string" &&
 		(s.startsWith("http://") ||
@@ -116,6 +118,7 @@ function nodeToVirtualMedia(
 			};
 		}
 		if (media && Array.isArray(node.effects)) {
+			let currentMedia: VirtualMediaData = media;
 			for (const eff of node.effects) {
 				const effOp =
 					eff &&
@@ -124,17 +127,19 @@ function nodeToVirtualMedia(
 								eff as { toOperation: () => Record<string, unknown> }
 							).toOperation()
 						: (eff as Record<string, unknown>);
-				media = {
-					metadata: { ...media.metadata },
+				currentMedia = {
+					metadata: { ...currentMedia.metadata },
 					operation: {
+						op: String(effOp.op ?? "effect"),
 						id: node.id ? `${node.id}-${effOp.op ?? "effect"}` : undefined,
 						effect: eff,
 						...effOp,
-						dataType: media.operation.dataType,
+						dataType: currentMedia.operation.dataType,
 					},
-					children: [media],
+					children: [currentMedia],
 				};
 			}
+			media = currentMedia;
 		}
 		if (media && node.vision) {
 			const visionRaw = node.vision as

@@ -10,6 +10,13 @@ import type { EffectProp } from "./types.js";
 // (./generated, written by scripts/generate-effects.mts). The classes below
 // are still hand-written and move there in later phases of spec/sync-node.md.
 export * from "./generated/index.js";
+
+import type {
+	AnyGeneratedAudioEffect,
+	AnyGeneratedVisualEffect,
+	GeneratedEffectConfigMap,
+} from "./generated/index.js";
+
 export type { EffectProp } from "./types.js";
 
 export interface LevelChannel {

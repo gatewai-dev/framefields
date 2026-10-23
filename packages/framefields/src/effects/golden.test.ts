@@ -40,10 +40,10 @@ function describeEffect(effect: Effect<object>) {
 		props: keys,
 		uniforms: round(uniforms),
 		payload: Object.fromEntries(
-			keys.map((key) => [
-				key,
-				isSignal(payload[key]) ? "signal" : typeof payload[key],
-			]),
+			keys.map((key) => {
+				const val = (payload as Record<string, unknown>)[key];
+				return [key, isSignal(val) ? "signal" : typeof val];
+			}),
 		),
 	};
 }

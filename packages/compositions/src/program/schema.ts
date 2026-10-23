@@ -16,6 +16,7 @@
 
 import {
 	Effect,
+	type EffectDomain,
 	type MeshAudioDeformConfig,
 	type TextSpan,
 	type TextSpanMark,
@@ -66,7 +67,7 @@ export interface EffectSpec<TOp extends string = string> {
 }
 
 export type ProgramEffect =
-	| Effect<object>
+	| Effect<object, string, EffectDomain>
 	| EffectSpec
 	| (Record<string, unknown> & { op: string });
 
@@ -77,7 +78,7 @@ export const EffectSpecSchema = z.union([
 			op: z.string().min(1),
 		})
 		.passthrough(),
-	z.custom<Effect<object>>((val) =>
+	z.custom<Effect<object, string, EffectDomain>>((val) =>
 		Boolean(
 			val &&
 				typeof val === "object" &&
@@ -192,6 +193,143 @@ export const AnimatablePropSchema = z.enum([
 	"exposure",
 ]);
 export type AnimatableProp = z.infer<typeof AnimatablePropSchema>;
+
+export type SpatialAnimatableProp =
+	| "x"
+	| "y"
+	| "z"
+	| "scale"
+	| "scaleX"
+	| "scaleY"
+	| "scaleZ"
+	| "rotation"
+	| "rotateX"
+	| "rotateY"
+	| "rotateZ"
+	| "opacity"
+	| "width"
+	| "height"
+	| "hidden"
+	| "perspective"
+	| "perspectiveOriginX"
+	| "perspectiveOriginY"
+	| "translateZ"
+	| "motionBlurShutter";
+
+export type BoxAnimatableProp =
+	| SpatialAnimatableProp
+	| "gap"
+	| "padding"
+	| "borderRadius"
+	| "fill"
+	| "color"
+	| "borderColor"
+	| "borderWidth"
+	| "shininess"
+	| "roughness"
+	| "specularIntensity"
+	| "ambientIntensity"
+	| "metallic"
+	| "ior"
+	| "dispersion"
+	| "transmission"
+	| "fresnelPower"
+	| "emissive"
+	| "emissiveIntensity"
+	| "envIntensity"
+	| "exposure";
+
+export type TextAnimatableProp =
+	| SpatialAnimatableProp
+	| "text"
+	| "fontSize"
+	| "letterSpacing"
+	| "fill"
+	| "color"
+	| "rangeStart"
+	| "rangeEnd"
+	| "offset"
+	| "animatorRangeStart"
+	| "animatorRangeEnd"
+	| "animatorOffset"
+	| "firstMargin"
+	| "lastMargin"
+	| "baselineShift";
+
+export type ShapeAnimatableProp =
+	| SpatialAnimatableProp
+	| "d"
+	| "trimStart"
+	| "trimEnd"
+	| "trimOffset"
+	| "strokeWidth"
+	| "strokeDashOffset"
+	| "cornerRadius"
+	| "starInnerRadiusRatio"
+	| "fillColor"
+	| "strokeColor"
+	| "borderColor"
+	| "borderWidth";
+
+export type MediaAnimatableProp = SpatialAnimatableProp | "volume" | "muted";
+
+export type CameraAnimatableProp =
+	| SpatialAnimatableProp
+	| "cameraX"
+	| "cameraY"
+	| "cameraZ"
+	| "targetX"
+	| "targetY"
+	| "targetZ"
+	| "cameraPitch"
+	| "cameraYaw"
+	| "cameraRoll"
+	| "cameraFov"
+	| "cameraZoom"
+	| "focalLength"
+	| "focusDistance"
+	| "fStop"
+	| "maxBlurRadius"
+	| "shakeTranslation"
+	| "shakeRotation"
+	| "orbitRadius"
+	| "orbitAzimuth"
+	| "orbitElevation";
+
+export type LightAnimatableProp =
+	| SpatialAnimatableProp
+	| "intensity"
+	| "angle"
+	| "radius"
+	| "penumbra"
+	| "decay"
+	| "color";
+
+export type Model3DAnimatableProp =
+	| SpatialAnimatableProp
+	| "animationProgress"
+	| "animationTime"
+	| "animationSpeed"
+	| "wireframe";
+
+export type AnimatablePropsFor<TNode> = TNode extends { kind: "text" }
+	? TextAnimatableProp
+	: TNode extends { kind: "shape" }
+		? ShapeAnimatableProp
+		: TNode extends { kind: "media" }
+			? MediaAnimatableProp
+			: TNode extends { kind: "camera" }
+				? CameraAnimatableProp
+				: TNode extends { kind: "light" }
+					? LightAnimatableProp
+					: TNode extends { kind: "model" } | { kind: "model3d" }
+						? Model3DAnimatableProp
+						: TNode extends
+									| { kind: "flex" }
+									| { kind: "box" }
+									| { kind: "block" }
+							? BoxAnimatableProp
+							: AnimatableProp;
 
 export const MatteModeSchema = z.enum([
 	"alpha",
@@ -507,7 +645,11 @@ export const AnimationTrackSchema = z
 		durationFrames: z.number().int().min(1).optional(),
 	})
 	.strict();
-export type AnimationTrack = z.infer<typeof AnimationTrackSchema>;
+export type BaseAnimationTrack = z.infer<typeof AnimationTrackSchema>;
+export type AnimationTrack<TProp extends AnimatableProp = AnimatableProp> =
+	Omit<BaseAnimationTrack, "prop"> & {
+		prop: TProp;
+	};
 
 export const LayerAnimationSchema = z
 	.object({
@@ -520,7 +662,12 @@ export const LayerAnimationSchema = z
 	})
 	.strict()
 	.superRefine(animationInvariants);
-export type LayerAnimationSpec = z.infer<typeof LayerAnimationSchema>;
+
+export type BaseLayerAnimationSpec = z.infer<typeof LayerAnimationSchema>;
+export type LayerAnimationSpec<TProp extends AnimatableProp = AnimatableProp> =
+	Omit<BaseLayerAnimationSpec, "tracks"> & {
+		tracks: AnimationTrack<TProp>[];
+	};
 
 // ── layout node tree ──────────────────────────────────────────────────
 // Hand-written interfaces anchor the mutual recursion (schema + type).
@@ -968,6 +1115,7 @@ export interface TextNode extends CompositionNodeBase {
 export interface MediaNode extends CompositionNodeBase {
 	kind: "media";
 	inputHandleId: string;
+	src?: string;
 	dataType?: string;
 	fit?: "cover" | "contain" | "fill" | "none";
 	dpr?: number;
@@ -1485,6 +1633,7 @@ export const MediaNodeSchema: z.ZodType<MediaNode> = z
 		kind: z.literal("media"),
 		/** Graph binding — which connected input this node renders. */
 		inputHandleId: z.string().min(1),
+		src: z.string().optional(),
 		dataType: z.string().optional(),
 		fit: z.enum(["cover", "contain", "fill", "none"]).default("contain"),
 		dpr: z.number().min(1).max(4).optional(),

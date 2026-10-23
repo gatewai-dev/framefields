@@ -601,6 +601,7 @@ function emitIndex(effects: EffectModel[], ctx: Context): string {
 
 	return [
 		BANNER,
+		...importsFor(effects, "import"),
 		...importsFor(effects, "export"),
 		...(interfaces.length > 0
 			? [`export { ${interfaces.join(", ")} } from "./classes.js";`]

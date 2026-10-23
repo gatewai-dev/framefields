@@ -5,11 +5,13 @@ import {
 import { describe, expect, expectTypeOf, it } from "vitest";
 import {
 	type AnimatableNode,
+	type AnimatablePropsFor,
 	type AnyAudioEffect,
 	type AnyEffect,
 	type AnyVisualEffect,
 	AudioCompressor,
 	AudioDelay,
+	assertNever,
 	Blur,
 	type CompatibleEffect,
 	FilmGrain,
@@ -24,7 +26,9 @@ import {
 	isFrameIndex,
 	isNormalized,
 	Layer,
+	LayerAnimation,
 	Levels,
+	type MediaAnimatableProp,
 	type MediaNode,
 	type Milliseconds,
 	ms,
@@ -36,7 +40,11 @@ import {
 	normalized,
 	type Seconds,
 	type SectionOptions,
+	type ShapeAnimatableProp,
+	type ShapeNode,
 	seconds,
+	type TextAnimatableProp,
+	type TextNode,
 	Vignette,
 	type VirtualMediaData,
 } from "./index.js";
@@ -134,13 +142,17 @@ describe("Discriminated Effects & Port Capabilities (Phase 2)", () => {
 	});
 
 	it("narrows effect instances within AnyEffect discriminated union", () => {
-		const effect: AnyEffect = new AudioDelay({ delayTime: 0.12 });
-
-		if (effect.domain === "audio") {
-			expectTypeOf(effect).toMatchTypeOf<AnyAudioEffect>();
-		} else {
-			expectTypeOf(effect).toMatchTypeOf<AnyVisualEffect>();
+		function inspectEffect(eff: AnyEffect) {
+			if (eff.domain === "audio") {
+				expectTypeOf(eff).toMatchTypeOf<AnyAudioEffect>();
+			} else {
+				expectTypeOf(eff).toMatchTypeOf<AnyVisualEffect>();
+			}
 		}
+
+		const effect: AnyEffect = new AudioDelay({ delayTime: 0.12 });
+		inspectEffect(effect);
+		inspectEffect(new Blur({ strength: 5 }));
 
 		if (effect.op === "AudioDelay") {
 			expect(effect.delayTime).toBe(0.12);
@@ -191,7 +203,7 @@ describe("Schema & Pipeline Unification (Phase 3)", () => {
 
 		expect(op.op).toBe("Blur");
 		expectTypeOf(op.op).toEqualTypeOf<"Blur">();
-		expectTypeOf(op).toMatchTypeOf<NodeOperation<"Blur">>();
+		expectTypeOf(op).toMatchTypeOf<{ op: "Blur" }>();
 	});
 
 	it("validates effects via EffectSpecSchema and CompositorProgramSchema", () => {
@@ -249,5 +261,46 @@ describe("Schema & Pipeline Unification (Phase 3)", () => {
 		>;
 		expectTypeOf<BlurMedia["operation"]["op"]>().toEqualTypeOf<"Blur">();
 		expectTypeOf<BlurMedia["operation"]["strength"]>().toEqualTypeOf<number>();
+	});
+});
+
+describe("Targeted Animation Props & AST Exhaustiveness (Phase 4)", () => {
+	it("enforces assertNever on unhandled union variants", () => {
+		expect(() => assertNever("unexpected" as never)).toThrow(
+			"Unhandled union variant",
+		);
+		expect(() =>
+			assertNever("custom" as never, "Custom exhaustiveness error"),
+		).toThrow("Custom exhaustiveness error");
+	});
+
+	it("narrows animatable properties by node kind", () => {
+		expectTypeOf<
+			AnimatablePropsFor<TextNode>
+		>().toMatchTypeOf<TextAnimatableProp>();
+		expectTypeOf<
+			AnimatablePropsFor<ShapeNode>
+		>().toMatchTypeOf<ShapeAnimatableProp>();
+		expectTypeOf<
+			AnimatablePropsFor<MediaNode>
+		>().toMatchTypeOf<MediaAnimatableProp>();
+
+		const shape = Layer.shape("circle");
+		const animTrim = LayerAnimation.fromTo("trimEnd", 0, 1);
+		expectTypeOf(animTrim).toEqualTypeOf<LayerAnimation<"trimEnd">>();
+		const animatedShape = shape.animate(animTrim);
+		expect(animatedShape.animation?.tracks.length).toBe(1);
+
+		const audio = Layer.audio("soundtrack.mp3");
+		const animVol = LayerAnimation.fromTo("volume", 0, 1);
+		expectTypeOf(animVol).toEqualTypeOf<LayerAnimation<"volume">>();
+		const animatedAudio = audio.animate(animVol);
+		expect(animatedAudio.animation?.tracks.length).toBe(1);
+
+		const text = Layer.text("hello");
+		const animFontSize = LayerAnimation.fromTo("fontSize", 24, 48);
+		expectTypeOf(animFontSize).toEqualTypeOf<LayerAnimation<"fontSize">>();
+		const animatedText = text.animate(animFontSize);
+		expect(animatedText.animation?.tracks.length).toBe(1);
 	});
 });

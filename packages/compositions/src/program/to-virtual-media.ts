@@ -15,12 +15,17 @@
 import {
 	createVirtualMedia,
 	type DataType,
+	type FrameContext,
 	getActiveMediaMetadata,
 	type VirtualMediaData,
 } from "@framefields/core";
 import { collectInlineSignals } from "./inline-signals.js";
 import { hoistMattes } from "./mattes.js";
-import type { CompositorProgramConfig, LayoutNode } from "./schema.js";
+import type {
+	CompositorProgramConfig,
+	LayoutNode,
+	ProgramEffect,
+} from "./schema.js";
 
 import { computeStaggerDelay } from "./stagger.js";
 
@@ -30,9 +35,15 @@ export interface CompositorToProgramOptions {
 	/** Comp duration in ms (metadata only; derived upstream). */
 	durationMs?: number;
 	/** Bind a media node's `inputHandleId` to its graph source item. */
-	resolveMedia?: (inputHandleId: string) => VirtualMediaData | undefined;
+	resolveMedia?: (inputHandleId?: string) => VirtualMediaData | undefined;
 	/** External signals mapped by inputHandleId. */
-	signals?: Record<string, any>;
+	signals?: Record<string, unknown>;
+	/** Per-frame notification hook. */
+	onRequestFrame?: ((ctx: FrameContext) => void) | unknown;
+	/** Composition-wide effect chain (`comp.apply(effect)`). */
+	effects?: ProgramEffect[];
+	/** Composition-wide vision config or bundle. */
+	vision?: unknown;
 }
 
 function nodeToVirtualMedia(
@@ -44,7 +55,10 @@ function nodeToVirtualMedia(
 	inheritedDurationFrames?: number,
 ): VirtualMediaData {
 	let children: VirtualMediaData[] = [];
-	const sourceRef = (node as any).src ?? (node as any).inputHandleId;
+	const sourceRef =
+		node.kind === "media"
+			? (node.src ?? node.inputHandleId)
+			: node.inputHandleId;
 	const isDirectMediaSource = (s: unknown) =>
 		typeof s === "string" &&
 		(s.startsWith("http://") ||
@@ -60,13 +74,13 @@ function nodeToVirtualMedia(
 
 	let media: VirtualMediaData | undefined;
 	if (node.kind === "media") {
-		if (resolveMedia) {
+		if (resolveMedia && node.inputHandleId) {
 			media = resolveMedia(node.inputHandleId);
 		}
 		if (
 			!media &&
 			sourceRef &&
-			(isDirectMediaSource(sourceRef) || (node as any).src)
+			(isDirectMediaSource(sourceRef) || Boolean(node.src))
 		) {
 			media = createVirtualMedia(
 				sourceRef,
@@ -83,8 +97,10 @@ function nodeToVirtualMedia(
 				`[Compositor] Media layer '${node.id ?? "?"}' source '${sourceRef}' could not be resolved.`,
 			);
 		}
-		if (media && (node as any).crop) {
-			const cropRaw = (node as any).crop;
+		if (media && node.crop) {
+			const cropRaw = node.crop as
+				| { toOperation?: () => Record<string, unknown> }
+				| Record<string, unknown>;
 			const cropOp =
 				typeof cropRaw.toOperation === "function"
 					? cropRaw.toOperation()
@@ -97,28 +113,33 @@ function nodeToVirtualMedia(
 					dataType: media.operation.dataType,
 				},
 				children: [media],
-			} as unknown as VirtualMediaData;
+			};
 		}
-		if (media && Array.isArray((node as any).effects)) {
-			for (const eff of (node as any).effects) {
+		if (media && Array.isArray(node.effects)) {
+			for (const eff of node.effects) {
 				const effOp =
-					typeof eff.toOperation === "function" ? eff.toOperation() : eff;
+					eff &&
+					typeof (eff as { toOperation?: unknown }).toOperation === "function"
+						? (
+								eff as { toOperation: () => Record<string, unknown> }
+							).toOperation()
+						: (eff as Record<string, unknown>);
 				media = {
 					metadata: { ...media.metadata },
 					operation: {
-						id: (node as any).id
-							? `${(node as any).id}-${effOp.op ?? "effect"}`
-							: undefined,
+						id: node.id ? `${node.id}-${effOp.op ?? "effect"}` : undefined,
 						effect: eff,
 						...effOp,
 						dataType: media.operation.dataType,
 					},
 					children: [media],
-				} as unknown as VirtualMediaData;
+				};
 			}
 		}
-		if (media && (node as any).vision) {
-			const visionRaw = (node as any).vision;
+		if (media && node.vision) {
+			const visionRaw = node.vision as
+				| { toOperation?: () => Record<string, unknown> }
+				| Record<string, unknown>;
 			const visionOp =
 				typeof visionRaw.toOperation === "function"
 					? visionRaw.toOperation()
@@ -127,13 +148,13 @@ function nodeToVirtualMedia(
 				metadata: { ...media.metadata },
 				operation: {
 					op: "Vision",
-					id: (node as any).id,
+					id: node.id,
 					effect: visionRaw,
 					...visionOp,
 					dataType: media.operation.dataType,
 				},
 				children: [media],
-			} as unknown as VirtualMediaData;
+			};
 		}
 	}
 
@@ -141,13 +162,12 @@ function nodeToVirtualMedia(
 		children = media ? [media] : [];
 	} else if ("children" in node && node.children) {
 		const staggerFrames =
-			"staggerFrames" in node && typeof (node as any).staggerFrames === "number"
-				? (node as any).staggerFrames
+			node.kind === "flex" && typeof node.staggerFrames === "number"
+				? node.staggerFrames
 				: 0;
 		const staggerDirection =
-			"staggerDirection" in node &&
-			typeof (node as any).staggerDirection === "string"
-				? (node as any).staggerDirection
+			node.kind === "flex" && typeof node.staggerDirection === "string"
+				? node.staggerDirection
 				: "forward";
 
 		const nodeStart =
@@ -159,10 +179,11 @@ function nodeToVirtualMedia(
 			Number.isFinite(node.durationFrames)
 				? Math.round(node.durationFrames)
 				: inheritedDurationFrames;
-		children = node.children.map((c, idx) => {
+		const nodeChildren = node.children;
+		children = nodeChildren.map((c, idx) => {
 			const delay = computeStaggerDelay(
 				idx,
-				node.children!.length,
+				nodeChildren.length,
 				staggerFrames,
 				staggerDirection,
 			);
@@ -219,8 +240,8 @@ function nodeToVirtualMedia(
 		if (dur === undefined) {
 			const childEnds = children.map(
 				(c) =>
-					((c.operation as any)?.startFrame ?? 0) +
-					((c.operation as any)?.durationFrames ?? defaultCompDuration),
+					(c.operation.startFrame ?? 0) +
+					(c.operation.durationFrames ?? defaultCompDuration),
 			);
 			dur = Math.max(1, Math.max(...childEnds) - startFrame);
 		}
@@ -317,27 +338,30 @@ export function compositorToProgram(
 			// their tracks; fold them in under their generated handle ids.
 			signals: {
 				...collectInlineSignals(config.layout),
-				...(signals ?? (config as any).signals ?? {}),
+				...(signals ?? config.signals ?? {}),
 			},
-			...(((config as any).onRequestFrame ||
-				(options as any).onRequestFrame) && {
-				onRequestFrame:
-					(config as any).onRequestFrame ?? (options as any).onRequestFrame,
-			}),
+			...(config.onRequestFrame || options.onRequestFrame
+				? {
+						onRequestFrame: config.onRequestFrame ?? options.onRequestFrame,
+					}
+				: {}),
 		},
 		children: hoistMattes(config.layout).map((n) =>
 			nodeToVirtualMedia(n, resolveMedia, fps, 0, durationMs),
 		),
 	} as unknown as VirtualMediaData;
 
-	const effectsList: any[] = Array.isArray((options as any).effects)
-		? (options as any).effects
-		: Array.isArray((config as any).effects)
-			? (config as any).effects
+	const effectsList: ProgramEffect[] = Array.isArray(options.effects)
+		? options.effects
+		: Array.isArray(config.effects)
+			? config.effects
 			: [];
 	for (const eff of effectsList) {
 		const effOp =
-			typeof eff.toOperation === "function" ? eff.toOperation() : eff;
+			eff &&
+			typeof (eff as { toOperation?: unknown }).toOperation === "function"
+				? (eff as { toOperation: () => Record<string, unknown> }).toOperation()
+				: (eff as Record<string, unknown>);
 		rootMedia = {
 			metadata: { ...rootMedia.metadata },
 			operation: {
@@ -348,12 +372,14 @@ export function compositorToProgram(
 		} as unknown as VirtualMediaData;
 	}
 
-	const visionRaw = (config as any).vision ?? (options as any).vision;
+	const visionRaw = config.vision ?? options.vision;
 	if (visionRaw) {
 		const visionOp =
-			typeof visionRaw.toOperation === "function"
-				? visionRaw.toOperation()
-				: visionRaw;
+			typeof (visionRaw as { toOperation?: unknown }).toOperation === "function"
+				? (
+						visionRaw as { toOperation: () => Record<string, unknown> }
+					).toOperation()
+				: (visionRaw as Record<string, unknown>);
 		rootMedia = {
 			metadata: { ...rootMedia.metadata },
 			operation: {

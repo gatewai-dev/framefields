@@ -1,5 +1,10 @@
 /// <reference types="@webgpu/types" />
-import type { VirtualMediaData } from "@framefields/core";
+import type {
+	MediaOperation,
+	NodeInputConnection,
+	NodeOperation,
+	VirtualMediaData,
+} from "@framefields/core";
 import type { RenderContextValue } from "@framefields/webgpu-renderers";
 
 export type GPUCommandEncoder = globalThis.GPUCommandEncoder;
@@ -7,9 +12,13 @@ export type GPURenderPassEncoder = globalThis.GPURenderPassEncoder;
 export type GPUTextureView = globalThis.GPUTextureView;
 export type GPUTexture = globalThis.GPUTexture;
 
-export interface NodeRenderProps {
+export type { MediaOperation, NodeInputConnection, NodeOperation };
+
+export interface NodeRenderProps<
+	TOperation extends MediaOperation = MediaOperation,
+> {
 	renderId: string;
-	virtualMedia: VirtualMediaData;
+	virtualMedia: VirtualMediaData<TOperation>;
 	volume?: number;
 	playbackRateOverride?: number;
 	trimStartOverride?: number;
@@ -39,7 +48,9 @@ export interface NodeRenderProps {
 	) => unknown;
 }
 
-export type WebGPUNodeRenderer = (args: {
+export type WebGPUNodeRenderer<
+	TOperation extends MediaOperation = MediaOperation,
+> = (args: {
 	ctx: RenderContextValue;
 	encoder: GPUCommandEncoder;
 	pass: GPURenderPassEncoder;
@@ -47,7 +58,7 @@ export type WebGPUNodeRenderer = (args: {
 	targetTexture: GPUTexture;
 	targetWidth: number;
 	targetHeight: number;
-	props: NodeRenderProps;
+	props: NodeRenderProps<TOperation>;
 	drawChild: (
 		child: VirtualMediaData,
 		overrides?: Partial<NodeRenderProps>,
@@ -68,12 +79,13 @@ export interface AudioProcessorContext {
 	renderId?: string;
 }
 
-export type AudioProcessor = (
-	channels: Float32Array[],
-	sampleRate: number,
-	virtualMedia: VirtualMediaData,
-	ctx?: AudioProcessorContext,
-) => void | Promise<void>;
+export type AudioProcessor<TOperation extends MediaOperation = MediaOperation> =
+	(
+		channels: Float32Array[],
+		sampleRate: number,
+		virtualMedia: VirtualMediaData<TOperation>,
+		ctx?: AudioProcessorContext,
+	) => void | Promise<void>;
 
 export {
 	isSignal,

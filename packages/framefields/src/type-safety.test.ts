@@ -1,3 +1,7 @@
+import {
+	CompositorProgramSchema,
+	EffectSpecSchema,
+} from "@framefields/compositions/program";
 import { describe, expect, expectTypeOf, it } from "vitest";
 import {
 	type AnimatableNode,
@@ -26,6 +30,7 @@ import {
 	ms,
 	type NodeCapability,
 	type NodeId,
+	type NodeOperation,
 	type Normalized,
 	nodeId,
 	normalized,
@@ -33,6 +38,7 @@ import {
 	type SectionOptions,
 	seconds,
 	Vignette,
+	type VirtualMediaData,
 } from "./index.js";
 
 describe("Type Safety & Branded Types (Phase 1)", () => {
@@ -175,5 +181,73 @@ describe("Discriminated Effects & Port Capabilities (Phase 2)", () => {
 		const img1 = imageLayer.apply(new FilmGrain({ strength: 10 }));
 		const img2 = img1.apply(new Vignette({ strength: 40 }));
 		expect(img2.effects?.length).toBe(2);
+	});
+});
+
+describe("Schema & Pipeline Unification (Phase 3)", () => {
+	it("strongly types NodeOperation from effect toOperation", () => {
+		const blur = new Blur({ strength: 10 });
+		const op = blur.toOperation();
+
+		expect(op.op).toBe("Blur");
+		expectTypeOf(op.op).toEqualTypeOf<"Blur">();
+		expectTypeOf(op).toMatchTypeOf<NodeOperation<"Blur">>();
+	});
+
+	it("validates effects via EffectSpecSchema and CompositorProgramSchema", () => {
+		// Valid Effect class instance
+		const effectInstance = new FilmGrain({ strength: 12 });
+		expect(EffectSpecSchema.safeParse(effectInstance).success).toBe(true);
+
+		// Valid plain effect spec object
+		const plainSpec = { op: "Blur", strength: 8 };
+		expect(EffectSpecSchema.safeParse(plainSpec).success).toBe(true);
+
+		// Invalid effect without op
+		const invalidSpec = { strength: 8 };
+		expect(EffectSpecSchema.safeParse(invalidSpec).success).toBe(false);
+
+		// Valid compositor program with effects
+		const programWithEffects = {
+			width: 1920,
+			height: 1080,
+			fps: 30,
+			layout: [
+				{
+					id: "hero",
+					kind: "box",
+					effects: [plainSpec, effectInstance],
+				},
+			],
+			effects: [plainSpec],
+		};
+		expect(CompositorProgramSchema.safeParse(programWithEffects).success).toBe(
+			true,
+		);
+
+		// Invalid compositor program with invalid effect
+		const programWithBadEffect = {
+			width: 1920,
+			height: 1080,
+			fps: 30,
+			layout: [
+				{
+					id: "hero",
+					kind: "box",
+					effects: [invalidSpec],
+				},
+			],
+		};
+		expect(
+			CompositorProgramSchema.safeParse(programWithBadEffect).success,
+		).toBe(false);
+	});
+
+	it("propagates typed operations in VirtualMediaData without any", () => {
+		type BlurMedia = VirtualMediaData<
+			NodeOperation<"Blur", { strength: number }>
+		>;
+		expectTypeOf<BlurMedia["operation"]["op"]>().toEqualTypeOf<"Blur">();
+		expectTypeOf<BlurMedia["operation"]["strength"]>().toEqualTypeOf<number>();
 	});
 });

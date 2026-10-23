@@ -14,10 +14,11 @@
  *  - no backwards compatibility: v1 shapes fail fast with E-codes
  */
 
-import type {
-	MeshAudioDeformConfig,
-	TextSpan,
-	TextSpanMark,
+import {
+	Effect,
+	type MeshAudioDeformConfig,
+	type TextSpan,
+	type TextSpanMark,
 } from "@framefields/core";
 import { ColorSchema } from "@framefields/node-sdk";
 export type { TextSpan, TextSpanMark };
@@ -58,6 +59,33 @@ export const ShapeTypeSchema = z.enum([
 	"path",
 ]);
 export type ShapeType = z.infer<typeof ShapeTypeSchema>;
+
+export interface EffectSpec<TOp extends string = string> {
+	op: TOp;
+	[key: string]: unknown;
+}
+
+export type ProgramEffect =
+	| Effect<object>
+	| EffectSpec
+	| (Record<string, unknown> & { op: string });
+
+export const EffectSpecSchema = z.union([
+	z.instanceof(Effect),
+	z
+		.object({
+			op: z.string().min(1),
+		})
+		.passthrough(),
+	z.custom<Effect<object>>((val) =>
+		Boolean(
+			val &&
+				typeof val === "object" &&
+				"op" in val &&
+				typeof (val as { op: unknown }).op === "string",
+		),
+	),
+]);
 
 export const AnimatablePropSchema = z.enum([
 	"x",
@@ -526,7 +554,7 @@ const BaseNodeFields = {
 	opacity: z.number().min(0).max(1).default(1),
 	blendMode: z.string().optional(),
 	/** Per-node WebGPU effect chain (`layer.withEffect(s)`); resolved to operations in to-virtual-media. */
-	effects: z.array(z.unknown()).optional(),
+	effects: z.array(EffectSpecSchema).optional(),
 	rotation: z.number().default(0),
 	scale: z.number().min(0).default(1),
 	/** Transform pivot, 0–1 fraction of the node box (0.5 = center). */
@@ -671,6 +699,10 @@ export interface CompositionNodeBase {
 	durationFrames?: number;
 	motionBlurShutter?: number;
 	animation?: LayerAnimationSpec;
+	/** Attached effect chain. */
+	effects?: ProgramEffect[];
+	/** Crop options attached directly to the node. */
+	crop?: unknown;
 	vision?: unknown;
 	relighting?: unknown;
 }
@@ -1602,7 +1634,7 @@ export const CompositorProgramSchema = z
 		fonts: z.array(z.string()).optional(),
 		signals: z.record(z.string(), z.unknown()).optional(),
 		/** Composition-wide effect chain (`comp.apply(effect)`); resolved to operations downstream. */
-		effects: z.array(z.unknown()).optional(),
+		effects: z.array(EffectSpecSchema).optional(),
 		/** Composition-wide vision config or bundle. */
 		vision: z.unknown().optional(),
 		/** Per-frame notification hook. */

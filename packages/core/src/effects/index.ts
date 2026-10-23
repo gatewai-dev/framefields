@@ -6,6 +6,7 @@ import {
 	signal,
 	type WritableSignal,
 } from "../signals/index.js";
+import type { NodeOperation } from "../types/index.js";
 
 export type EffectConfigValue<T> =
 	| T
@@ -126,7 +127,7 @@ export abstract class Effect<
 	/**
 	 * Converts the effect into an operation node for the VirtualMediaData AST.
 	 */
-	public toOperation(): Record<string, unknown> {
+	public toOperation(): NodeOperation<TOp, TConfig> {
 		const opPayload: Record<string, unknown> = {
 			op: this.op,
 			effect: this,
@@ -148,6 +149,6 @@ export abstract class Effect<
 			}
 		}
 
-		return opPayload;
+		return opPayload as NodeOperation<TOp, TConfig>;
 	}
 }

@@ -10,6 +10,7 @@ export default defineConfig({
 		"src/renderer/index.ts",
 		"src/fonts/index.ts",
 		"src/preview/index.ts",
+		"src/components/index.ts",
 	],
 	format: ["esm"],
 	clean: true,

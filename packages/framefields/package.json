@@ -66,6 +66,12 @@
 			"import": "./dist/fonts/index.mjs",
 			"default": "./dist/fonts/index.mjs"
 		},
+		"./components": {
+			"types": "./dist/components/index.d.mts",
+			"development": "./src/components/index.ts",
+			"import": "./dist/components/index.mjs",
+			"default": "./dist/components/index.mjs"
+		},
 		"./preview": {
 			"types": "./dist/preview/index.d.mts",
 			"development": "./src/preview/index.ts",
@@ -77,7 +83,7 @@
 		"dist/**"
 	],
 	"scripts": {
-		"build": "tsdown && node ../../scripts/sync-readme.mjs && node scripts/check-dts-bundle.mjs",
+		"build": "tsdown && node ../../scripts/sync-readme.mjs && node scripts/check-dts-bundle.mjs && node scripts/check-components-treeshake.mjs",
 		"dev": "tsdown --watch",
 		"clean": "rm -rf dist .turbo",
 		"prepack": "node ../../scripts/sync-readme.mjs",
@@ -116,6 +122,7 @@
 	"devDependencies": {
 		"@framefields/ai": "workspace:*",
 		"@framefields/client-utils": "workspace:*",
+		"@framefields/components": "workspace:*",
 		"@framefields/compositions": "workspace:*",
 		"@framefields/core": "workspace:*",
 		"@framefields/node-audio-compressor": "workspace:*",

@@ -1,0 +1,43 @@
+{
+	"name": "@framefields/components",
+	"version": "2.4.3",
+	"private": true,
+	"description": "Parametric motion components for framefields. Internal: bundled into and exported from `framefields`.",
+	"type": "module",
+	"sideEffects": false,
+	"license": "Apache-2.0",
+	"module": "./dist/index.mjs",
+	"types": "./dist/index.d.mts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.mts",
+			"development": "./src/index.ts",
+			"import": "./dist/index.mjs",
+			"default": "./dist/index.mjs"
+		}
+	},
+	"files": [
+		"dist/**"
+	],
+	"scripts": {
+		"build": "tsdown && tsx scripts/build-meta.ts",
+		"dev": "tsdown --watch",
+		"clean": "rm -rf .turbo && rm -rf node_modules && rm -rf dist",
+		"test": "vitest run",
+		"typecheck": "tsc --noEmit",
+		"meta": "tsx scripts/build-meta.ts"
+	},
+	"dependencies": {
+		"@framefields/compositions": "workspace:*",
+		"@framefields/core": "workspace:*",
+		"zod": "^4.3.6"
+	},
+	"devDependencies": {
+		"@framefields/tsconfig": "workspace:*",
+		"@types/node": "^24.1.0",
+		"tsdown": "^0.19.0",
+		"tsx": "^4.20.3",
+		"typescript": "^5.8.3",
+		"vitest": "^4.1.11"
+	}
+}

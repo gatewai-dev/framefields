@@ -3380,3 +3380,23 @@ export const Effect = Object.assign(CoreEffect, effectFactories, {
 
 export type Effect<TConfig extends object = Record<string, unknown>> =
 	CoreEffect<TConfig>;
+
+// Components: the factories and the types users touch. The authoring toolkit
+// (timing, paths, strokes, baking) lives at `framefields/components`.
+export {
+	type Anchor,
+	type BaseProps,
+	type Cue,
+	type Cues,
+	defineTheme,
+	type MotionPreset,
+	pulseKeys,
+	type Target,
+	type Theme,
+	type ThemeInput,
+	themes,
+} from "@framefields/components";
+export {
+	bindComponent,
+	type ComponentNode,
+} from "./components/index.js";

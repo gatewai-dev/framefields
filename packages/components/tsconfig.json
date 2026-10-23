@@ -1,0 +1,11 @@
+{
+	"extends": "@framefields/tsconfig/base.json",
+	"compilerOptions": {
+		"moduleResolution": "bundler",
+		"module": "ESNext",
+		"lib": ["ES2022", "ESNext", "DOM"],
+		"types": ["node"],
+		"noEmit": true
+	},
+	"include": ["src/**/*", "scripts/**/*"]
+}

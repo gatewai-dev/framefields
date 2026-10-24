@@ -181,8 +181,18 @@ export interface BuildContext {
 	partId(part: string): string;
 	/** A seeded stream for `key`, stable across unrelated prop changes. */
 	rng(key: string | number): Rng;
-	/** The size the user asked for (base `width` / `height`), if any. */
-	requested: { width?: number; height?: number };
+	/**
+	 * What the user asked for: size, window, `at`, and the root's own `x` /
+	 * `y` (3D nodes ignore their 2D parents' offsets, so they add these).
+	 */
+	requested: {
+		width?: number;
+		height?: number;
+		duration?: number;
+		at: number;
+		x: number;
+		y: number;
+	};
 	/** Frames the finished state holds (base `hold`, or the component's default). */
 	hold: number;
 }
@@ -341,7 +351,14 @@ function assemble<S extends z.ZodRawShape, C extends Cues, E extends object>(
 		id,
 		partId: (part) => `${id}-${part}`,
 		rng: (key) => hashRng(seed, key),
-		requested: { width: props.width, height: props.height },
+		requested: {
+			width: props.width,
+			height: props.height,
+			duration: props.duration,
+			at: props.at ?? 0,
+			x: props.x ?? 0,
+			y: props.y ?? 0,
+		},
 		hold,
 	};
 

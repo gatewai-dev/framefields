@@ -1,23 +1,32 @@
 import { describe, expect, it } from "vitest";
 import { annotate } from "./annotate/index.js";
 import { appFrame } from "./app-frame/index.js";
+import { backdrop } from "./backdrop/index.js";
+import { beforeAfter } from "./before-after/index.js";
 import { callout } from "./callout/index.js";
 import { captions } from "./captions/index.js";
+import { cardStack } from "./card-stack/index.js";
 import { chatThread } from "./chat-thread/index.js";
 import { codeBlock } from "./code-block/index.js";
 import { confetti } from "./confetti/index.js";
 import { bind } from "./core/contract.js";
 import { counter } from "./counter/index.js";
+import { deviceFrame } from "./device-frame/index.js";
 import { focusZoom } from "./focus-zoom/index.js";
+import { logoReveal } from "./logo-reveal/index.js";
 import { lowerThird } from "./lower-third/index.js";
 import { meter } from "./meter/index.js";
 import { mousePointer } from "./mouse-pointer/index.js";
+import { selection } from "./selection/index.js";
 import { spotlight } from "./spotlight/index.js";
 import { terminal } from "./terminal/index.js";
 import { fakeHost } from "./test/fake-host.js";
 import { textReveal } from "./text-reveal/index.js";
 import { titleCard } from "./title-card/index.js";
 import { toasts } from "./toasts/index.js";
+import { touchPoint } from "./touch-point/index.js";
+import { waveform } from "./waveform/index.js";
+import { wordCycle } from "./word-cycle/index.js";
 
 /**
  * The renderer keys layout and motion by node id: two nodes with one id
@@ -275,6 +284,133 @@ const cases: Array<[string, () => unknown]> = [
 				],
 			}),
 	],
+	...(["slide", "pop", "draw", "rise"] as const).map(
+		(style) =>
+			[
+				`LogoReveal ${style}`,
+				() =>
+					bind(
+						fakeHost(),
+						logoReveal,
+					)({
+						mark: { d: "M0 0L1 1Z", viewBox: [1, 1] },
+						name: "ab",
+						tagline: "t",
+						style,
+					}),
+			] as [string, () => unknown],
+	),
+	...(["mesh", "grid", "dots", "solid"] as const).map(
+		(kind) =>
+			[`Backdrop ${kind}`, () => bind(fakeHost(), backdrop)({ kind })] as [
+				string,
+				() => unknown,
+			],
+	),
+	...(["bars", "mirror", "dots", "radial"] as const).map(
+		(kind) =>
+			[
+				`Waveform ${kind}`,
+				() =>
+					bind(
+						fakeHost(),
+						waveform,
+					)({
+						audio: {
+							fps: 30,
+							frames: 2,
+							bands: [
+								[0, 1],
+								[1, 0],
+							],
+							level: [0, 1],
+							beats: [],
+						},
+						kind,
+						bars: 4,
+					}),
+			] as [string, () => unknown],
+	),
+	...(["roll", "fade", "slide", "type"] as const).map(
+		(transition) =>
+			[
+				`WordCycle ${transition}`,
+				() =>
+					bind(
+						fakeHost(),
+						wordCycle,
+					)({
+						text: "a {} b",
+						words: ["x", "yy", "zzz"],
+						transition,
+						slot: "pill",
+					}),
+			] as [string, () => unknown],
+	),
+	...(["phone", "tablet", "laptop"] as const).map(
+		(device) =>
+			[
+				`DeviceFrame ${device}`,
+				() =>
+					bind(fakeHost(), deviceFrame)({ device, content: "a.mp4", tilt: {} }),
+			] as [string, () => unknown],
+	),
+	[
+		"TouchPoint",
+		() =>
+			bind(
+				fakeHost(),
+				touchPoint,
+			)({
+				touches: [
+					{ to: [10, 10], tap: 2 },
+					{ to: [20, 20], press: 20 },
+					{ to: [30, 30], swipe: [30, 300] },
+				],
+			}),
+	],
+	[
+		"BeforeAfter",
+		() => bind(fakeHost(), beforeAfter)({ before: "a.mp4", after: "b.mp4" }),
+	],
+	[
+		"Selection text",
+		() =>
+			bind(
+				fakeHost(),
+				selection,
+			)({ target: { text }, drag: { frame: 0, end: 10 } }),
+	],
+	[
+		"Selection marquee",
+		() =>
+			bind(
+				fakeHost(),
+				selection,
+			)({
+				kind: "marquee",
+				drag: { frame: 0, end: 10 },
+				items: [[5, 5], { x: 0, y: 0, width: 9, height: 9 }],
+			}),
+	],
+	...(["cycle", "deal"] as const).map(
+		(mode) =>
+			[
+				`CardStack ${mode}`,
+				() =>
+					bind(
+						fakeHost(),
+						cardStack,
+					)({
+						cards: [
+							{ title: "a", body: "b", image: "i.png" },
+							{ title: "c" },
+							{ title: "d" },
+						],
+						mode,
+					}),
+			] as [string, () => unknown],
+	),
 ];
 
 describe("node ids", () => {

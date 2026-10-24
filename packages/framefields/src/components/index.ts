@@ -12,25 +12,34 @@ import {
 	annotate,
 	appFrame,
 	type BaseProps,
+	backdrop,
+	beforeAfter,
 	bind,
 	type ComponentDefinition,
 	type ComponentExtras,
 	type Cues,
 	callout,
 	captions,
+	cardStack,
 	chatThread,
 	codeBlock,
 	confetti,
 	counter,
+	deviceFrame,
 	focusZoom,
+	logoReveal,
 	lowerThird,
 	meter,
 	mousePointer,
+	selection,
 	spotlight,
 	terminal,
 	textReveal,
 	titleCard,
 	toasts,
+	touchPoint,
+	waveform,
+	wordCycle,
 } from "@framefields/components";
 import type { BoxNode } from "@framefields/compositions/program";
 import type { z } from "zod";
@@ -106,7 +115,20 @@ export const Spotlight = /* @__PURE__ */ bindComponent(spotlight);
 /** GPU confetti bursts: paper, ribbons and sparkles that fall and can settle. */
 export const Confetti = /* @__PURE__ */ bindComponent(confetti);
 
+/** The end-card lockup: mark and wordmark in one move, drawn, popped or wiped, with a glint. */
+export const LogoReveal = /* @__PURE__ */ bindComponent(logoReveal);
+
+/** A drifting mesh gradient, grid or dot field with vignette and grain, looping exactly. */
+export const Backdrop = /* @__PURE__ */ bindComponent(backdrop);
+
+/** An audiogram: bars, mirrored bars, dots or a ring bound to a track's analysed spectrum. */
+export const Waveform = /* @__PURE__ */ bindComponent(waveform);
+
+/** One slot in a line cycles through words; the line glides to fit each one. */
+export const WordCycle = /* @__PURE__ */ bindComponent(wordCycle);
+
 export {
+	type AnalyzeOptions,
 	type Anchor,
 	type AnnotateCues,
 	type AppFrameApi,
@@ -115,16 +137,24 @@ export {
 	type ArcPath,
 	type ArrowCurve,
 	type ArrowGeometry,
+	type AudioLevels,
+	analyzeChannels,
 	anchorPoint,
 	arcPath,
 	arrowPaths,
+	audioLevelsSchema,
+	BACKDROP_KINDS,
+	type BackdropCues,
+	type BackdropKind,
 	type BakedKey,
 	type BakeOptions,
 	type BaseProps,
+	type BeforeAfterCues,
 	type BuildContext,
 	type BuildResult,
 	bakeFunction,
 	bakeSamples,
+	bandEdges,
 	basePropsSchema,
 	beats,
 	boilKeys,
@@ -136,6 +166,7 @@ export {
 	type CalloutSide,
 	type CaptionStyle,
 	type CaptionsCues,
+	type CardStackCues,
 	type ChatThreadCues,
 	CODE_LANGS,
 	type CodeBlockCues,
@@ -157,7 +188,12 @@ export {
 	chain,
 	constantExpression,
 	contrastRatio,
+	cosineKeys,
 	cover,
+	DEVICES,
+	type Device,
+	type DeviceFrameApi,
+	type DeviceFrameCues,
 	defineComponent,
 	defineMeta,
 	defineTheme,
@@ -166,6 +202,7 @@ export {
 	type EaseFn,
 	EXIT_STYLES,
 	type ExitStyle,
+	type ExtrudedTextOptions,
 	ease,
 	ellipsePath,
 	enterAnimation,
@@ -181,11 +218,17 @@ export {
 	type GlyphAnimator,
 	type GlyphProps,
 	type GlyphUnit,
+	type GrainOptions,
 	glyphAnimator,
 	type HandOptions,
 	hashRng,
 	hashString,
+	LOGO_LAYOUTS,
+	LOGO_STYLES,
 	LOWER_THIRD_LAYOUTS,
+	type LogoLayout,
+	type LogoRevealCues,
+	type LogoStyle,
 	type LowerThirdCues,
 	type LowerThirdLayout,
 	lerp2,
@@ -208,8 +251,10 @@ export {
 	offsetCues,
 	type ParticleOptions,
 	type Placement,
+	type PlannedTouch,
 	type PropsOf,
 	type PulseOptions,
+	planTouches,
 	pulseKeys,
 	quantize,
 	REVEAL_STYLES,
@@ -219,13 +264,18 @@ export {
 	type RevealStyle,
 	type Rng,
 	rangeRects,
+	resampleBands,
 	resolveMotion,
 	resolveTarget,
 	rng,
+	type SelectionCues,
+	type SelectionPointer,
 	type SpotlightCues,
 	type StaggerOrder,
 	scaleFrames,
 	scheduleExpression,
+	slideKeys,
+	smoothRelease,
 	springAt,
 	springKeys,
 	springSettleFrames,
@@ -238,6 +288,7 @@ export {
 	type TargetContext,
 	type TerminalCues,
 	type TerminalStep,
+	type TextLayout,
 	type TextRevealApi,
 	type TextRevealCues,
 	type Theme,
@@ -253,7 +304,9 @@ export {
 	type ToastsCues,
 	type Token,
 	type TokenKind,
+	type TouchPointCues,
 	targetPoint,
+	textLayout,
 	themeFrames,
 	themes,
 	toFrames,
@@ -263,11 +316,35 @@ export {
 	typingFrames,
 	type UnitSchedule,
 	type Vec2,
+	WAVEFORM_KINDS,
+	type WaveformCues,
+	type WaveformKind,
 	type Waypoint,
+	WORD_SLOTS,
+	WORD_TRANSITIONS,
 	type Word,
+	type WordCycleCues,
 	type WordRange,
+	type WordSlot,
+	type WordTransition,
 	windowExpression,
 	within,
 	wobblePoints,
 	wordRanges,
 } from "@framefields/components";
+/** A phone, tablet or laptop around a screen; content in device points, `at(x, y)` for touches. */
+export const DeviceFrame = /* @__PURE__ */ bindComponent(deviceFrame);
+
+/** Taps, long presses and swipes as soft discs with ripples, for mobile demos. */
+export const TouchPoint = /* @__PURE__ */ bindComponent(touchPoint);
+
+/** Two versions of one picture split by a moving divider, with a grip and labels. */
+export const BeforeAfter = /* @__PURE__ */ bindComponent(beforeAfter);
+
+/** A text selection or marquee that follows a MousePointer drag. */
+export const Selection = /* @__PURE__ */ bindComponent(selection);
+
+/** Cards in a depth stack that shuffle forward or are dealt onto the pile. */
+export const CardStack = /* @__PURE__ */ bindComponent(cardStack);
+
+export { analyzeAudio } from "./audio.js";

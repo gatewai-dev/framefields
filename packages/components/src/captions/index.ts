@@ -14,6 +14,7 @@ import {
 	type TextNode,
 } from "@framefields/compositions/program";
 import { z } from "zod";
+import { audioLevelsSchema } from "../core/audio.js";
 import { defineComponent } from "../core/contract.js";
 import type { Rect } from "../core/draw.js";
 import {
@@ -110,6 +111,10 @@ export const captions = /* @__PURE__ */ defineComponent({
 		/** SRT, WebVTT, or word-level JSON (`[{ word | text, start, end }]`). */
 		transcript: z.string().optional(),
 		style: z.enum(CAPTION_STYLES).default("karaoke"),
+		/** The voice's levels (`analyzeAudio`): the active word swells with it. Frame 0 = the component's first frame. */
+		pulse: z.union([audioLevelsSchema(), z.literal(false)]).default(false),
+		/** Scale added at full level. */
+		pulseAmount: z.number().min(0).default(0.12),
 		group: z
 			.object({
 				maxChars: z.number().int().positive().optional(),
@@ -227,6 +232,10 @@ export const captions = /* @__PURE__ */ defineComponent({
 		const anchor =
 			props.placement.anchor ?? (style === "bold" ? "center" : "bottom");
 		const frameOf = (seconds: number) => Math.round(seconds * fps);
+		if (props.pulse && Math.abs(props.pulse.fps - fps) > 1e-6)
+			throw new Error(
+				`Captions: \`pulse\` was analysed at ${props.pulse.fps} fps but the component runs at ${fps}. Analyse with { fps: ${fps} }.`,
+			);
 		const fast = themeFrames(theme, "fast", fps);
 		const children: LayoutNode[] = [];
 		const parts: Record<string, Animatable<LayoutNode>> = {};
@@ -448,6 +457,15 @@ export const captions = /* @__PURE__ */ defineComponent({
 					),
 				);
 
+			if (props.pulse) {
+				// The phrase's slice of the voice level, indexed by its local frame.
+				const level = props.pulse.level.slice(start, end);
+				animators.push(
+					glyphAnimator("pulse", pulseExpression(wStart, wEnd, level), {
+						scale: 1 + props.pulseAmount,
+					}),
+				);
+			}
 			if (animators.length > 0) node.animators = animators as never;
 			const text = host.text(layout.text, node);
 			// A heavy outline around the glyphs, never over them.
@@ -623,4 +641,15 @@ function stripUndefined<T extends object>(o: T): Partial<T> {
 	return Object.fromEntries(
 		Object.entries(o).filter(([, v]) => v !== undefined),
 	) as Partial<T>;
+}
+
+/** The active word's weight is the voice level on that frame (0 elsewhere). */
+function pulseExpression(
+	starts: readonly number[],
+	ends: readonly number[],
+	level: readonly number[],
+): string {
+	const list = (v: readonly number[]) =>
+		`[${v.map((x) => Math.round(x * 1000) / 1000).join(",")}]`;
+	return `((S,E,L)=>{const s=S[wordIndex];if(s===undefined||frame<s||frame>=E[wordIndex])return 0;return L[floor(frame)]??0;})(${list(starts)},${list(ends)},${list(level)})`;
 }

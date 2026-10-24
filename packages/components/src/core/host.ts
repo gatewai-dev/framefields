@@ -78,7 +78,7 @@ export interface Host {
 	fonts(): readonly string[];
 	/** A default id: stable per run (a counter per prefix), like `Layer.*` ids. */
 	autoId(prefix: string): string;
-	/** A video or image layer, by file extension. */
+	/** A video, image or SVG layer, by file extension. */
 	media(source: string, options: MediaOptions): Animatable<LayoutNode>;
 	/** Attach layer styles (shadow, glow, stroke) to `node`; returns it. */
 	style<T extends Animatable<LayoutNode>>(node: T, config: LayerStyleConfig): T;
@@ -100,6 +100,50 @@ export interface Host {
 	cutout(source: string, options: CutoutOptions): Animatable<LayoutNode>;
 	/** A GPU particle system layer. */
 	particles(options: ParticleOptions): Animatable<LayoutNode>;
+	/**
+	 * A per-frame signal from values (framefields' `Signal.fromArray`), for
+	 * `LayerAnimation.signal`. Signals read the composition's frame: value
+	 * `k` drives composition frame `k`.
+	 */
+	signal(values: readonly number[], fps: number): object;
+	/**
+	 * An animated film-grain layer to put over other layers: neutral grey
+	 * carrying framefields' `FilmGrain`, soft-light blended. (Effects only
+	 * attach to media layers, so grain can't go on a box.)
+	 */
+	grain(options: GrainOptions): Animatable<LayoutNode>;
+	/** Solid extruded 3D text (framefields' `Layer3D.extrudedText`), centred on x, y. */
+	extrudedText(options: ExtrudedTextOptions): Animatable<LayoutNode>;
+}
+
+export interface GrainOptions {
+	id?: string;
+	x: number;
+	y: number;
+	width: number;
+	height: number;
+	/** 0–100, the engine's scale. */
+	strength: number;
+	size?: number;
+}
+
+export interface ExtrudedTextOptions {
+	id?: string;
+	text: string;
+	/** Centre of the text. */
+	x: number;
+	y: number;
+	depth: number;
+	fontFamily?: string;
+	fontSize: number;
+	fontWeight?: number;
+	fill?: string;
+	bevelColor?: string;
+	material?: "lit" | "glass";
+	metallic?: number;
+	roughness?: number;
+	shininess?: number;
+	opacity?: number;
 }
 
 /** A GPU particle system (framefields' `Layer.particles`), as plain data. */

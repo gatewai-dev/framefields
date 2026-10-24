@@ -125,6 +125,10 @@ export function fakeHost(): Host & { created: LayoutNode[] } {
 			}) as never,
 		particles: (o) =>
 			make({ kind: "particles", ...o, id: o.id ?? "particles" }) as never,
+		signal: (values, fps) => ({ kind: "signal", values: [...values], fps }),
+		grain: (o) => make({ kind: "grain", ...o, id: o.id ?? "grain" }) as never,
+		extrudedText: (o) =>
+			make({ kind: "model", ...o, id: o.id ?? "extruded" }) as never,
 		matte: (node, matte, mode = "alpha") => {
 			(node as unknown as { matte?: unknown }).matte = { node: matte, mode };
 			return node;

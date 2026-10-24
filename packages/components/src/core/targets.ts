@@ -193,10 +193,22 @@ function nodeRect(node: TargetNode): Rect | null {
 	return { x, y, width, height };
 }
 
-function textRects(
+/** A text target's string, measured glyphs and range, and where the node sits. */
+export interface TextLayout {
+	content: string;
+	metrics: ReturnType<MeasureFn>;
+	options: MeasureOptions;
+	range: [number, number];
+	/** The node's x / y: add to measured glyph positions. */
+	x: number;
+	y: number;
+}
+
+/** Measure a text target the way the renderer lays it out. */
+export function textLayout(
 	target: Extract<Target, { text: TargetNode }>,
 	ctx: TargetContext,
-): Rect[] {
+): TextLayout {
 	const node = target.text;
 	const content =
 		typeof node.text === "string"
@@ -240,11 +252,25 @@ function textRects(
 			`Text target: "${String(target.match)}" not found in "${content}".`,
 		);
 	}
-	const metrics = ctx.measure(content, options);
-	const rects = rangeRects(metrics, range[0], range[1], options);
+	return {
+		content,
+		metrics: ctx.measure(content, options),
+		options,
+		range: [range[0], range[1]],
+		x,
+		y,
+	};
+}
+
+function textRects(
+	target: Extract<Target, { text: TargetNode }>,
+	ctx: TargetContext,
+): Rect[] {
+	const t = textLayout(target, ctx);
+	const rects = rangeRects(t.metrics, t.range[0], t.range[1], t.options);
 	if (rects.length === 0)
 		throw new Error("Text target range covers no glyphs.");
-	return rects.map((r) => ({ ...r, x: r.x + x, y: r.y + y }));
+	return rects.map((r) => ({ ...r, x: r.x + t.x, y: r.y + t.y }));
 }
 
 /** Text node alignment (start / center / end, or left / right) as measure reads it. */

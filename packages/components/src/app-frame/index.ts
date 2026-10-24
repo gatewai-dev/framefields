@@ -342,7 +342,23 @@ export const appFrame = /* @__PURE__ */ defineComponent({
 			duration: null,
 			cues: cues as AppFrameCues,
 			parts,
-			children: build(width, height).children,
+			children: props.tilt
+				? [
+						// The presentation angle: a perspective box round the whole frame.
+						host.box({
+							id: ctx.partId("tilt"),
+							position: "absolute",
+							x: 0,
+							y: 0,
+							width,
+							height,
+							perspective: 1800 * s,
+							rotateX: props.tilt.rotateX,
+							rotateY: props.tilt.rotateY,
+							children: build(width, height).children,
+						}),
+					]
+				: build(width, height).children,
 			api: (placement): AppFrameApi => {
 				const content = parts.content as Animatable<LayoutNode> & {
 					children?: LayoutNode[];

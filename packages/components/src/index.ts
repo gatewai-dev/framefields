@@ -17,6 +17,18 @@ export {
 	appFrame,
 } from "./app-frame/index.js";
 export {
+	BACKDROP_KINDS,
+	type BackdropCues,
+	type BackdropKind,
+	backdrop,
+	cosineKeys,
+	slideKeys,
+} from "./backdrop/index.js";
+export {
+	type BeforeAfterCues,
+	beforeAfter,
+} from "./before-after/index.js";
+export {
 	CALLOUT_SIDES,
 	type CalloutCues,
 	type CalloutSide,
@@ -29,6 +41,10 @@ export {
 	captions,
 	type Word,
 } from "./captions/index.js";
+export {
+	type CardStackCues,
+	cardStack,
+} from "./card-stack/index.js";
 export { type ChatThreadCues, chatThread } from "./chat-thread/index.js";
 export {
 	CODE_LANGS,
@@ -40,6 +56,15 @@ export {
 } from "./code-block/index.js";
 export { tokenize } from "./code-block/tokenize.js";
 export { type ConfettiCues, confetti } from "./confetti/index.js";
+export {
+	type AnalyzeOptions,
+	type AudioLevels,
+	analyzeChannels,
+	audioLevelsSchema,
+	bandEdges,
+	resampleBands,
+	smoothRelease,
+} from "./core/audio.js";
 export {
 	type BakedKey,
 	type BakeOptions,
@@ -100,6 +125,8 @@ export type {
 	Animatable,
 	AnimatableMethods,
 	CutoutOptions,
+	ExtrudedTextOptions,
+	GrainOptions,
 	Host,
 	LayerStyleConfig,
 	MediaOptions,
@@ -135,7 +162,10 @@ export {
 	resolveTarget,
 	type Target,
 	type TargetContext,
+	type TargetNode,
+	type TextLayout,
 	targetPoint,
+	textLayout,
 } from "./core/targets.js";
 export {
 	findRange,
@@ -178,11 +208,26 @@ export {
 	counter,
 } from "./counter/index.js";
 export {
+	DEVICES,
+	type Device,
+	type DeviceFrameApi,
+	type DeviceFrameCues,
+	deviceFrame,
+} from "./device-frame/index.js";
+export {
 	type FocusZoomApi,
 	type FocusZoomCues,
 	type Followable,
 	focusZoom,
 } from "./focus-zoom/index.js";
+export {
+	LOGO_LAYOUTS,
+	LOGO_STYLES,
+	type LogoLayout,
+	type LogoRevealCues,
+	type LogoStyle,
+	logoReveal,
+} from "./logo-reveal/index.js";
 export {
 	LOWER_THIRD_LAYOUTS,
 	type LowerThirdCues,
@@ -203,6 +248,11 @@ export {
 	mousePointer,
 	type Waypoint,
 } from "./mouse-pointer/index.js";
+export {
+	type SelectionCues,
+	type SelectionPointer,
+	selection,
+} from "./selection/index.js";
 export { type SpotlightCues, spotlight } from "./spotlight/index.js";
 export {
 	type TerminalCues,
@@ -233,3 +283,23 @@ export {
 	type ToastsCues,
 	toasts,
 } from "./toasts/index.js";
+export {
+	type PlannedTouch,
+	planTouches,
+	type TouchPointCues,
+	touchPoint,
+} from "./touch-point/index.js";
+export {
+	WAVEFORM_KINDS,
+	type WaveformCues,
+	type WaveformKind,
+	waveform,
+} from "./waveform/index.js";
+export {
+	WORD_SLOTS,
+	WORD_TRANSITIONS,
+	type WordCycleCues,
+	type WordSlot,
+	type WordTransition,
+	wordCycle,
+} from "./word-cycle/index.js";

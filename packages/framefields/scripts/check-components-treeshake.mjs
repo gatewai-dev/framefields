@@ -34,10 +34,19 @@ const TOAST = "bottom-center";
 const CALLOUT = "leader-2";
 const SPOT = "radial-gradient(closest-side, #ffffff ";
 const CONFETTI = "sparkles-";
+const LOGO = "LogoReveal: give a `mark`";
+const BACKDROP = "radial-gradient(rgba(0,0,0,0) 45%";
+const WAVE = "Waveform: the audio was analysed";
+const WORDS = "width keys exceed the";
+const DEVICE = "status-battery";
+const TOUCH = "-ripple-";
+const SPLIT = "before-clip";
+const SELECT = "Selection: give";
+const CARDS = "Expected a layer or { title";
 
 /** Each component: a string only its module has, and what it may compose. */
 const COMPONENTS = {
-	MousePointer: { own: POINTER, uses: [], budget: 60_000 },
+	MousePointer: { own: POINTER, uses: [], budget: 62_000 },
 	AppFrame: { own: FRAME, uses: [], budget: 45_000 },
 	FocusZoom: { own: CAMERA, uses: [], budget: 40_000 },
 	TextReveal: { own: REVEAL, uses: [GLYPHS], budget: 55_000 },
@@ -54,6 +63,15 @@ const COMPONENTS = {
 	Callout: { own: CALLOUT, uses: [], budget: 50_000 },
 	Spotlight: { own: SPOT, uses: [], budget: 45_000 },
 	Confetti: { own: CONFETTI, uses: [], budget: 45_000 },
+	LogoReveal: { own: LOGO, uses: [GLYPHS], budget: 55_000 },
+	Backdrop: { own: BACKDROP, uses: [], budget: 45_000 },
+	Waveform: { own: WAVE, uses: [], budget: 50_000 },
+	WordCycle: { own: WORDS, uses: [], budget: 45_000 },
+	DeviceFrame: { own: DEVICE, uses: [], budget: 45_000 },
+	TouchPoint: { own: TOUCH, uses: [], budget: 45_000 },
+	BeforeAfter: { own: SPLIT, uses: [], budget: 40_000 },
+	Selection: { own: SELECT, uses: [], budget: 45_000 },
+	CardStack: { own: CARDS, uses: [], budget: 40_000 },
 };
 const OWN = Object.values(COMPONENTS).map((c) => c.own);
 

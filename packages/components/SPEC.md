@@ -601,7 +601,7 @@ Captions({
 | `placement` | `{ anchor: "bottom" \| "center" \| "top"; safeArea?: "portrait" \| "landscape" \| Rect; offset? }` | `bottom`, auto safe area | Portrait safe area keeps clear of platform UI overlays. |
 | `avoid` | `Target[]` | `[]` | Move a phrase up/down when it would overlap a target, e.g. a tracked face. |
 | `behind` | `{ video: string; mode?: "person" \| "subject" }` | — | Renders a vision cut-out of the clip **above** the captions, so text passes behind the speaker. |
-| `pulse` | `Signal \| false` | `false` | Active word scale = `1 + pulse × 0.08`. |
+| `pulse` | `AudioLevels \| false` | `false` | The voice's levels (§7.15, analysed from the same track the timings come from): the active word swells with the voice, scale `1 + level × pulseAmount` (default 0.12). Level frame 0 is the component's first frame. (M7; was a `Signal`.) |
 | `font`, `fontSize`, `weight` | text props | theme `display`, auto | `fontSize` auto-fits the safe-area width at `maxChars`. |
 
 **Styles (`CaptionStyle`)**
@@ -1019,6 +1019,353 @@ on the same value timeline as an optional `Counter`.
 
 ---
 
+### 7.13 `LogoReveal`
+
+The end-card lockup: a mark and a wordmark arriving as one designed move, with a glint
+on the name once it lands. The mark is an image or SVG file, or path data (which can draw
+itself on); the name is live text, flat or extruded in 3D.
+
+**Props**
+
+| Prop | Type | Default | Notes |
+|---|---|---|---|
+| `mark` | `string \| { d: string; viewBox: [w, h]; color? }` | — | A file (image or `.svg`) or path data in its own viewBox, scaled to `markSize`. |
+| `name` | `string` | — | One line. At least one of `mark` / `name`. |
+| `tagline` | `string` | — | Muted line under the name, rises in after it. |
+| `layout` | `"row" \| "stack"` | `"row"` | `row`: mark left of the name; `stack`: mark centred above. |
+| `style` | `"slide" \| "pop" \| "draw" \| "rise"` | `"slide"` | See below. |
+| `glint` | `boolean` | `true` | A light sweeps across the name's letters once the lockup lands, and the mark bumps. |
+| `depth` | `number` | `0` | Above 0 the name is extruded text that deep (px), swinging in on its Y axis. |
+| `material` | `"lit" \| "chrome" \| "glass"` | `"lit"` | Surface of extruded names. |
+| `markSize`, `nameSize`, `gap` | `number` | `150`, `120`, `0.32 × nameSize` (× scale) | |
+| `color`, `accent` | colours | theme `ink`, `accent` | Name colour; path-mark colour and glint tint. |
+| `fontFamily`, `fontWeight` | | theme `display`, `800` | |
+
+**Styles**
+
+| Style | Move |
+|---|---|
+| `slide` | The mark pops in at the lockup's centre, then glides to its place while the name wipes out from behind it (the name sits in a clip that opens with the glide). |
+| `pop` | The mark springs in with overshoot; the name's letters rise in after it, staggered. |
+| `draw` | Path marks draw their outline on, then fill; the name's letters rise in. Image marks fall back to `pop`. |
+| `rise` | Mark, name and tagline rise through masks, staggered. |
+
+Extruded names (`depth > 0`) always swing in (rotate Y −70° → 0 on a spring) whatever the
+style, and skip the letter glint: glyph animators don't reach meshes. Lighting is the
+scene's: add lights to the composition for shaded extrusions. 3D nodes ignore their 2D
+parents' offsets, so the name is placed in the root's parent coordinates (the root's own
+`x` / `y` added): give a 3D lockup a top-level, absolute placement.
+
+**Cues:** `hit` (the mark lands), `revealed` (the lockup is complete), `glint`.
+
+**Acceptance**
+
+- The lockup is centred in its measured box for both layouts, in every style (unit test
+  on the settled geometry).
+- `slide`: no letter of the name is visible before the mark starts gliding (render test).
+- A path mark's settled frame is identical in `draw` and `pop` (render test).
+
+---
+
+### 7.14 `Backdrop`
+
+The surface behind everything: a drifting mesh gradient, a grid or a dot field, with a
+vignette and film grain, looping exactly so it can sit under any length of scene.
+
+**Props**
+
+| Prop | Type | Default | Notes |
+|---|---|---|---|
+| `kind` | `"mesh" \| "grid" \| "dots" \| "solid"` | `"mesh"` | |
+| `colors` | `string[]` | theme `accent`, `accent2`, `highlight` | Mesh blob colours; grid / dot colour is the first. |
+| `background` | colour | theme `bg` | |
+| `loop` | `number` | `10 s` | Every motion is periodic in `loop`: frame `f` equals frame `f + loop`. |
+| `speed` | `number` | `1` | Scales drift amplitude, not the period (the loop stays exact). |
+| `cell` | `number` | `64 × scale` | Grid cell / dot pitch. |
+| `intensity` | `number` | `1` | Mesh blob opacity; line / dot opacity scale. |
+| `glow` | `boolean` | `true` (grid, dots) | A soft light drifting over the pattern. |
+| `vignette` | `number` | `0.45` | Edge darkening, 0–1. |
+| `grain` | `number \| false` | `0.35` | Film grain strength, 0–1. |
+
+Root covers the frame (`width` / `height`, default 1920 × 1080 × scale) from 0, 0 and
+clips. Open-ended: it lasts as long as its parent; motion is keyed for `duration` when
+given, otherwise for 60 s, in whole loops.
+
+**Implementation notes**
+
+- Mesh blobs are large radial-gradient boxes on Lissajous orbits (x at 1, y at 2 cycles
+  per loop, seeded phases); keys sit on each axis's extremes with `sine.inOut`, which is
+  an exact cosine (the pieces at the loop seam are `sine.out` / `sine.in`, close but not
+  exact), so a loop costs 3–5 keys per axis and long scenes stay inside the 128-key
+  limit. x and y live on separate nodes, each with its own limit.
+- The grid is one path and the dots one text node of `•` glyphs on the lattice (a path of
+  hundreds of circles renders in seconds; glyphs in milliseconds), each a cell larger than
+  the frame on every side, sliding one cell per loop and snapping back on the loop frame
+  (invisible: the pattern repeats).
+- Grain is the engine's `FilmGrain` on the root.
+
+**Acceptance**
+
+- Frame `f` and frame `f + loop` are identical for every kind, grain off (render test).
+- Seeds change blob phases; one seed renders identically twice (render test).
+
+---
+
+### 7.15 `Waveform`
+
+An audiogram: bars, mirrored bars, dots or a ring that move with a track's spectrum. The
+audio is analysed once, offline and deterministically, into plain data (`AudioLevels`);
+the component binds each bar to its band as a signal, so a minute of audio costs no
+keyframes.
+
+```ts
+const levels = await analyzeAudio("assets/voice.wav", { fps: 30, bands: 32 });
+comp.add([
+  Layer.audio("assets/voice.wav", { startFrame: 60 }),
+  Waveform({ audio: levels, audioStart: 60, kind: "mirror", x: 560, y: 700 }),
+]);
+```
+
+`analyzeAudio(source, { fps, bands, minHz, maxHz })` (framefields) decodes the file;
+`analyzeChannels(channels, sampleRate, options)` (components core, pure) does the work:
+a Hann-windowed FFT per frame, log-spaced bands, each band normalised to its own 98th
+percentile (floored 30 dB under the loudest band's, so a quiet band isn't stretched into
+noise; silence stays 0), an RMS `level` envelope, and onset `beats` from low-band flux.
+
+```ts
+interface AudioLevels {
+  fps: number;
+  frames: number;          // length in frames
+  bands: number[][];       // [band][frame], 0–1, low → high
+  level: number[];         // [frame], 0–1
+  beats: number[];         // frames
+}
+```
+
+**Props**
+
+| Prop | Type | Default | Notes |
+|---|---|---|---|
+| `audio` | `AudioLevels` | required | Its `fps` must equal the component's. |
+| `audioStart` | `number` | the component's `at` | Composition frame where the track starts. Signals read the composition's frame, so this is the audio layer's absolute `startFrame`. |
+| `kind` | `"bars" \| "mirror" \| "dots" \| "radial"` | `"mirror"` | `bars` grow up from a baseline, `mirror` from the centre line both ways, `dots` scale, `radial` grow outward from a ring. |
+| `bars` | `number` | `audio.bands.length` | Bands are resampled (averaged) to this count; mirrored bars place low bands in the middle. |
+| `width`, `height` | `number` | `800`, `200` (× scale); radial: `height` is the outer diameter | |
+| `gap`, `radius` | `number` | `0.45` of a bar's pitch, round | |
+| `floor` | `number` | `0.06` | Smallest bar, as a fraction of full height. |
+| `gain` | `number` | `1` | |
+| `smoothing` | `number` | `2` | Frames a bar takes to fall from a peak (offline; attack is instant). |
+| `color` | colour or `[from, to]` | theme `accent` | A pair grades the bars across. |
+
+Natural duration is the audio's length from `audioStart`; open-ended is false (the bars
+fall to the floor at the end).
+
+**Cues:** `beats` (component-local, from `audio.beats`).
+
+**Acceptance**
+
+- `analyzeChannels` finds a 440 Hz tone in the band holding 440 Hz, a 100 Hz kick's
+  onsets within one frame, and is identical on two runs (unit tests).
+- A bar's rendered height at frame `f` matches its band's level at `f − audioStart`
+  (render test).
+
+---
+
+### 7.16 `WordCycle`
+
+"Make videos *faster* / *together* / *in code*": one slot in a line cycles through words,
+the slot resizes to each word's measured width, and the rest of the line glides to fit.
+
+**Props**
+
+| Prop | Type | Default | Notes |
+|---|---|---|---|
+| `text` | `string` | required | One line with one `{}` marking the slot, e.g. `"Make videos {}"`. |
+| `words` | `string[]` | required | At least two. |
+| `every` | `number` | `1.6 s` | Frames each word stays. |
+| `cycles` | `number` | `1` | Passes through `words`; the last word stays. |
+| `transition` | `"roll" \| "fade" \| "slide" \| "type"` | `"roll"` | `roll`: up through the slot's clip; `slide`: sideways; `type`: deletes and types. |
+| `align` | `"left" \| "center" \| "right"` | `"left"` | `center` / `right`: the text before the slot glides too. |
+| `slot` | `"plain" \| "pill" \| "underline"` | `"plain"` | A pill or underline behind / under the slot that resizes with it. |
+| `color`, `slotColor` | colours | theme `ink`, `accent` | |
+| `fontSize`, `fontFamily`, `fontWeight` | | `96 × scale`, theme `display`, `800` | |
+
+The root is as wide as the line with the longest word, so the layout never reflows
+outside it. Width and position changes ease over the transition (`theme.motion.ease.move`;
+`type` steps per character), two keys a change, so many cycles stay inside the key limit.
+
+**Cues:** `changes` (`{ frame, index, word }`, the frame each new word starts arriving).
+
+**Acceptance**
+
+- At rest, the gap between the slot and the text after it equals one space's measured
+  width for every word (unit test on the keys).
+- Exactly one word is visible in the slot at rest, and a `roll` never shows a word outside
+  the slot's clip (render test).
+
+---
+
+### 7.17 `DeviceFrame`
+
+A phone, tablet or laptop around a screen: the mobile counterpart of `AppFrame`. Content
+is authored in the device's own points (a phone screen is 393 × 852) and scaled into the
+screen, so a mock UI or recording made at device size drops in unchanged, and `at(x, y)`
+maps those points to the parent for pointers, touches and zooms.
+
+**Props**
+
+| Prop | Type | Default | Notes |
+|---|---|---|---|
+| `device` | `"phone" \| "tablet" \| "laptop"` | `"phone"` | |
+| `orientation` | `"portrait" \| "landscape"` | `"portrait"` | Phone and tablet. |
+| `content` | `LayoutNode \| LayoutNode[] \| string` | — | Layers in screen points, or a media path (fills the screen with `fit`). |
+| `fit` | `"cover" \| "contain" \| "fill"` | `"cover"` | Media content. |
+| `points` | `[w, h]` | phone 393 × 852, tablet 820 × 1180, laptop 1440 × 900 | Screen size content is authored in (swapped for landscape). |
+| `finish` | `"graphite" \| "silver" \| "midnight"` or colour | `"graphite"` | Body colour; edges and buttons follow. |
+| `island` | `boolean` | `true` | Phone: the camera island (a notch-less pill). |
+| `statusBar` | `boolean \| { time?: string; dark?: boolean }` | `true` | Phone and tablet: time, signal, Wi-Fi and battery, drawn (no glyph fonts needed). |
+| `screen` | colour | `#000000` | Screen background under the content. |
+| `tilt` | `false \| { rotateX?, rotateY? }` | `false` | A 3D presentation angle (box perspective). |
+| `elevation` | `0–3` | `2` | Shadow depth. |
+
+Size: give `height` (phone / tablet) or `width` (laptop); the other follows the device's
+proportions. Defaults: phone and tablet 860 × scale tall, laptop 1280 × scale wide.
+
+**API on the returned node:** `screenRect` (the screen in the parent's coordinates),
+`at(x, y)` (screen points → the parent's coordinates; ignores `tilt`) and `fill(...nodes)`.
+
+**Parts:** `body`, `bezel`, `screen`, `content`, `island`, `status`, `buttons`, `base`,
+`shadow`, `tilt`.
+
+**Acceptance**
+
+- `at(0, 0)` and `at(...points)` are the screen's corners for every device and orientation
+  (unit test).
+- Content authored at `points` fills the screen exactly (render test: a full-size box in
+  points covers the screen rect and nothing outside it).
+
+---
+
+### 7.18 `TouchPoint`
+
+Fingers on glass: taps, double taps, long presses and swipes, drawn the way screen
+recordings show touches (a soft disc that lands, presses and lifts, with a ripple). It
+pairs with `DeviceFrame` through `at()`.
+
+**Props**
+
+| Prop | Type | Default | Notes |
+|---|---|---|---|
+| `touches` | `Touch[]` | required | `Touch = { to: Target; at?: number; tap?: number; press?: number; swipe?: Target; dwell?: number }`. `tap`: tap count (default 1 unless `press` / `swipe`); `press`: hold frames (long press); `swipe`: drag to this target and lift. `at` omitted → after the previous touch plus a reading gap. |
+| `size` | `number` | `64 × scale` | Disc diameter. |
+| `color` | colour | `#ffffff` | |
+| `opacity` | `number` | `0.55` | |
+| `ripple` | `boolean` | `true` | A ring expanding from each tap and long press. |
+| `trail` | `boolean` | `true` | A short fading streak behind swipes. |
+
+Root covers the frame (like `Callout`). Between touches the finger is lifted: the disc is
+gone, so it never "travels" like a pointer.
+
+**Cues:** `taps` (`{ frame, point }`, each tap down), `presses` (`{ frame, end, point }`),
+`swipes` (`{ frame, end, from, to }`), `touches` (every touch-down).
+
+**Acceptance**
+
+- The disc is invisible before a touch's lead-in and after its lift (render test).
+- A swipe's disc is at `from` on the swipe cue's frame and at `to` on its `end` (unit test on
+  the keys).
+
+---
+
+### 7.19 `BeforeAfter`
+
+Two versions of one picture split by a moving divider: a clip with and without an effect
+or grade, a redesign, a cleanup. The `before` side is clipped to the divider; both sides
+are laid out at the full size, so they line up exactly.
+
+**Props**
+
+| Prop | Type | Default | Notes |
+|---|---|---|---|
+| `before`, `after` | `LayoutNode \| LayoutNode[] \| string` | required | Layers or media paths, laid out at the component's size. |
+| `split` | `number \| [frame, value, ease?][]` | a sweep: 0.5 → 0.15 → 0.85 → 0.5 | Divider position, 0–1 from the left (or top). |
+| `direction` | `"horizontal" \| "vertical"` | `"horizontal"` | `horizontal`: a vertical divider moving left / right. |
+| `labels` | `[string, string] \| false` | `["Before", "After"]` | Corner pills; each fades as the divider covers it. |
+| `handle` | `boolean` | `true` | A round grip with arrows on the divider. |
+| `fit` | as `AppFrame` | `"cover"` | Media sides. |
+| `color` | colour | `#ffffff` | Divider and handle. |
+
+Default size 1280 × 720 × scale. Open-ended (a container).
+
+**Cues:** `settled` (the last split key).
+
+**Acceptance**
+
+- Left of the divider is exactly `before`, right of it exactly `after`, on every frame
+  (render test with two solid sides).
+
+---
+
+### 7.20 `Selection`
+
+A text selection or a marquee, the way an editor draws them, driven by a `MousePointer`
+drag: the highlight follows the pointer glyph by glyph (text) or corner by corner
+(marquee), and marquee items light up as the box covers them.
+
+**Props**
+
+| Prop | Type | Default | Notes |
+|---|---|---|---|
+| `kind` | `"text" \| "marquee"` | `"text"` | |
+| `target` | text target | — | `text`: `{ text, match? \| range? }` to select. |
+| `pointer` | a `MousePointer` | — | Follow its `positionAt()` during the drag. |
+| `drag` | `{ frame, end }` | `pointer.cues.drags[0]` | Frames of the drag (parent timeline). Without a pointer, the selection eases across the range in this window. |
+| `from`, `to` | `[x, y]` | the drag's | Marquee corners (parent coordinates). |
+| `items` | `Target[]` | `[]` | Marquee: these light up once covered. |
+| `clear` | `number` | — | Frame (parent timeline) the selection disappears. |
+| `color` | colour | theme `accent` | Fill at 30 %, marquee border at full. |
+
+Root covers the frame from 0, 0. Open-ended unless `clear`.
+
+**Cues:** `selected` (selection complete), `items` (`{ frame, index }`, each item covered).
+
+**Acceptance**
+
+- With a pointer, the selection's end on frame `f` is the glyph boundary nearest the
+  pointer's x on the line under it (unit test, fake host).
+- A selection over two lines draws one rect per line, matching `rangeRects` (unit test).
+
+---
+
+### 7.21 `CardStack`
+
+Cards in a depth stack that shuffle: the front card lifts away and the rest step forward,
+or cards are dealt onto the pile one by one. A testimonial carousel, feature cards, a deck
+of photos.
+
+**Props**
+
+| Prop | Type | Default | Notes |
+|---|---|---|---|
+| `cards` | `(LayoutNode \| { title, body?, image?, accent? })[]` | required | Layers sized to the card, or simple cards drawn from the theme. At least two. |
+| `mode` | `"cycle" \| "deal"` | `"cycle"` | `cycle`: the front card flies off and returns to the back; `deal`: cards land one at a time onto the pile. |
+| `every` | `number` | `1.5 s` | Frames between moves. |
+| `cycles` | `number` | `1` | Passes (cycle mode). |
+| `visible` | `number` | `3` | Cards shown behind the front one. |
+| `flyTo` | `"up" \| "left" \| "right"` | `"left"` | Where the front card flies. |
+| `cardWidth`, `cardHeight` | `number` | `640 × 400` (× scale) | |
+| `tilt` | `false \| { rotateX?, rotateY? }` | `{ rotateX: 12 }` | Perspective on the stack. |
+
+**Cues:** `changes` (`{ frame, index }`: the card that is now in front).
+
+**Acceptance**
+
+- At rest the front card is drawn last and unscaled; card `k` behind it is scaled
+  `1 − 0.06 k` and offset `k` steps up (unit test).
+- After a full cycle the stack is the starting order (unit test on the keys).
+
+---
+
 ## 8. Waves 2 and 3
 
 Specified at summary level now; each gets a full section (like §7) before its milestone
@@ -1151,6 +1498,15 @@ each component alone and forbids every other marker except those.
 | TitleCard | 8 | 10 ms |
 | LowerThird | 8 | 2 ms |
 | Meter | 6 (segments / stars: 3 per cell) | 5 ms |
+| LogoReveal | 10 | 10 ms |
+| Backdrop | 8 (mesh: 4 + blobs) | 10 ms |
+| Waveform | bars + 2 | 5 ms (analysis: 1 s per 10 min of audio, offline) |
+| WordCycle | words + 6 | 5 ms |
+| DeviceFrame | 16 + content | 5 ms |
+| TouchPoint | 3 per touch | 5 ms |
+| BeforeAfter | 10 + both sides | 2 ms |
+| Selection | 2 per line (marquee: 3 + items) | 5 ms |
+| CardStack | 4 per card | 10 ms |
 
 ### 9.7 Docs and skills
 
@@ -1176,8 +1532,8 @@ Each milestone ends with a changeset for `framefields` (minor), docs, and its ex
 | **M4 · Wave 2a** ✅ | `CodeBlock`, `TitleCard`, `LowerThird`, `Meter`. | Specs in §7.9–7.12; acceptance tests green (§16); no example film. |
 | **M5 · Wave 2b** ✅ | `ChatThread`, `Callout`, `Spotlight`, `Confetti`, `Toasts`. | Built from the §8.1 rows; behaviour and acceptance in §17; no example film. |
 | **M6 · Re-score** ✅ | Rank Wave 3 against usage and requests. | Updated §8.2 (no telemetry yet: evidence from the example films and engine features). |
-| **M7 · Wave 3a** | `LogoReveal`, `Backdrop`, `Waveform`, `WordCycle` (+ `Captions` `pulse` via audio signals). | Full specs written first (§8.2 → §7 format). |
-| **M8 · Wave 3b** | `DeviceFrame` + `TouchPoint`, `BeforeAfter`, `Selection`, `CardStack`. | As above. |
+| **M7 · Wave 3a** ✅ | `LogoReveal`, `Backdrop`, `Waveform`, `WordCycle` (+ `Captions` `pulse` via audio levels). | Specs in §7.13–7.16; acceptance tests green (§18); no example film. |
+| **M8 · Wave 3b** ✅ | `DeviceFrame` + `TouchPoint`, `BeforeAfter`, `Selection`, `CardStack`. | Specs in §7.17–7.21; acceptance tests green (§19); no example film. |
 
 Housekeeping (done in M1): the stale `.changeset/components-mouse-pointer.md` described a
 standalone package that never shipped; it is replaced by `framefields` changesets per
@@ -1325,7 +1681,8 @@ How it is built:
 Deviations from §7.3 / §7.8:
 
 - **Captions:** `pulse` (voice-driven active-word scale) and `avoid` are deferred: glyph
-  signal selectors need a way to bind user signals into a text node. Phrase cues are
+  signal selectors need a way to bind user signals into a text node. (`pulse` landed in
+  M7 from analysed levels, §18.) Phrase cues are
   `{ frame, end, text }`. The default font is the theme's display face at weight 800 (body
   weight for `clean`).
 - **Terminal:** the default prompt is `$ ` and spinners / checks are drawn, because common
@@ -1423,3 +1780,96 @@ Deviations from the §8.1 rows:
 - Confetti paper doesn't flip in 3D: GPU particles have no per-particle rotation, so the
   flutter comes from curl noise.
 - Emoji need an emoji-capable font; the default theme fonts have none.
+
+## 18. M7 delivery notes
+
+What landed: `LogoReveal`, `Backdrop`, `Waveform`, `WordCycle` (§7.13–7.16), `Captions`
+`pulse`, audio analysis (`analyzeChannels` in core, `analyzeAudio` in framefields), unit
+tests for each, the components in `ids.test.ts` and the tree-shake table, and
+`m7.render.test.ts` (the slide's name hidden until the glide; draw and pop settle alike; an
+extruded name renders; every backdrop kind loops exactly; grain applies; seeds change the
+mesh; a bar follows its band on the composition's clock at two start frames; one word at
+rest and a roll that never leaves the slot; the pulse moves only the active word, and level
+0 matches no pulse).
+
+How they are built:
+
+- **Audio as plain data.** Analysis is offline and deterministic (`AudioLevels`: bands,
+  level, beats per frame). `Waveform` binds each band through `host.signal`
+  (`Signal.fromArray`), so long tracks cost no keyframes; `Captions` bakes the phrase's
+  level slice into its glyph expression table. The GPU `AudioSignal` extractor is not used:
+  it is async and its output is a runtime object, not data.
+- **Signals read the composition's frame**, not the layer's (checked with an offset parent),
+  hence `audioStart`. It defaults to the component's `at`, which is right whenever the
+  waveform starts with its track at the top level.
+- **Bars key `height` and `y`.** 2D boxes have no `scaleY` (only 3D models and glyph
+  animators do), so each bar takes two signals per band, shared by mirrored bars.
+- **LogoReveal** path marks accept any SVG path data: `transformPathData` now scales
+  relative commands and arcs. The mark is drawn last, so in `slide` the name wipes out from
+  behind it through its clip. The glint is a char-indexed light band (glyph `fillColor`).
+- **WordCycle** splits the line into before / slot / after; spaces at the slot are measured
+  (`"a a"` minus `"aa"`) rather than trusted to trailing whitespace. Words sit in a clip as
+  wide as the slot.
+- **Contract:** `BuildContext.requested` now carries `duration`, `at`, `x` and `y`
+  (Backdrop keys its loops for the window; Waveform defaults `audioStart`; LogoReveal
+  places 3D names).
+- **Host:** `signal` (`frameArraySignal` itself: the `Signal` namespace would add ~7.6 KB
+  to every component), `grain`, `extrudedText` (`Layer3D.extrudedText`), and `.svg` files
+  in `media` (`Layer.svg`). Effects attach only to media layers, so `grain` is its own
+  layer: a mid-grey SVG carrying `FilmGrain`, blended `soft-light`.
+- **Tree-shaking:** four new rows; the shared host grew ~1 KB, so MousePointer's budget
+  moves from 60 to 62 KB (it also carries the larger `transformPathData`).
+
+Deviations from the specs as first written:
+
+- Captions `pulse` takes `AudioLevels`, not a `Signal` (§7.3 updated); glyphs scale about
+  their own centres, so a pulsing word swells letter by letter.
+- Waveform smoothing is offline release smoothing, not the engine's signal smoothing.
+- WordCycle eases rather than springs (key budget); `type` re-centres a centred line once,
+  as the new word lands.
+- Backdrop's loop seam is close to, not exactly, the cosine (the loop itself is exact).
+- Keyframe `repeat` exists in the schema but nothing evaluates it, so loops are written out
+  in whole periods up to the 128-key limit per track (about 24 loops on the busiest track;
+  raise `loop` for very long scenes).
+
+## 19. M8 delivery notes
+
+What landed: `DeviceFrame`, `TouchPoint`, `BeforeAfter`, `Selection`, `CardStack`
+(§7.17–7.21), unit tests for each, the components in `ids.test.ts` and the tree-shake table,
+and `m8.render.test.ts` (device content in points fills exactly the screen; a touch leaves
+nothing before its lead-in or after its lift; each side of the split shows only on its side,
+static and moving; a selection draws only once its drag starts; a full card cycle returns to
+its first frame).
+
+How they are built:
+
+- **DeviceFrame** scales a content box authored in points into the screen (`scale`, anchored
+  top-left); the status bar and island sit in a second points-space box over it, drawn from
+  boxes and paths. `tilt` is box perspective. **AppFrame's `tilt`**, declared since M1 but
+  never applied, now works the same way.
+- **TouchPoint** has its own small planner (`planTouches`): fingers lift between touches, so
+  there is no travel to plan and the pointer planner isn't reused. Each touch is one disc
+  (plus ripples and swipe ghosts).
+- **BeforeAfter** clips the `before` side with an animated-width box over a full-size
+  `after`; the divider, grip and label fades are keyed from the same split keys.
+- **Selection** follows `pointer.positionAt()` frame by frame: the line under the pointer,
+  then the nearest glyph boundary. Text measurement is shared with targets
+  (`textLayout`, now exported from `core/targets.ts`).
+- **CardStack**: the renderer has no animated z-order (`zIndex` is schema and lint only), so
+  in `cycle` each card sits in a clip that shows only the strip above the card in front of
+  it. Draw order then never matters at rest, and the leaving card flies sideways, clear of
+  the stack. `deal` needs no clip: the newest card is last in the tree.
+
+Engine fix (`webgpu-renderers` + `node-compositor`): `overflow: hidden` clipped a container's
+children but not its grandchildren, because a nested container's scissor replaced its
+parent's instead of intersecting it. Containers now push `pushScissorIntersect`. This was
+needed for BeforeAfter, and it also stops nested content leaking out of AppFrame and
+DeviceFrame screens. There's a regression test in `overflow-clip.test.ts`.
+
+Deviations from §7.17–7.21:
+
+- DeviceFrame is a 2D body under a perspective tilt, not a `Layer3D` mesh.
+- CardStack uses eased keys, not physics; at the corners of the front card's rounded top a
+  card behind is clipped straight across (a sliver of background shows there).
+- Selection doesn't recolour selected glyphs; the highlight sits under the text when the
+  Selection is placed before the text layer.

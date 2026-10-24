@@ -56,6 +56,31 @@ describe("Captions", () => {
 		);
 	});
 
+	it("pulses the active word with the voice level", () => {
+		// Level = frame / 100: easy to read back.
+		const level = Array.from({ length: 200 }, (_, f) => f / 100);
+		const pulse = { fps: 30, frames: 200, bands: [], level, beats: [] };
+		const c = make()({ id: "c", words, pulse, pulseAmount: 0.2 });
+		const animator = find(c, "c-phrase-0")?.animators?.find(
+			(a) => a.name === "pulse",
+		);
+		expect(animator?.props.scale).toBeCloseTo(1.2, 6);
+		const expr = animator?.selectors[0]?.expression ?? "";
+		const phraseStart = c.cues.phrases[0]?.frame ?? 0;
+		const word = c.cues.words[1] as { frame: number };
+		const local = word.frame - phraseStart + 2;
+		// The active word reads the level of its component frame; others are 0.
+		expect(
+			evaluateGlyphExpression(expr, { frame: local, wordIndex: 1 }),
+		).toBeCloseTo((word.frame + 2) / 100, 6);
+		expect(evaluateGlyphExpression(expr, { frame: local, wordIndex: 3 })).toBe(
+			0,
+		);
+		expect(() => make()({ words, pulse, fps: 24 })).toThrow(
+			/analysed at 30 fps/,
+		);
+	});
+
 	it("keeps every line inside the safe area at the auto-fitted size", () => {
 		const long =
 			"a fairly long caption sentence that keeps going on and on for several lines of text"

@@ -2683,7 +2683,8 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					(typeof target?.deflicker !== "object" || !target?.deflicker)
 				) {
 					if (scissorRect) {
-						ctx.renderer.pushScissor(scissorRect);
+						// Nested containers clip inside their parents' clip.
+						ctx.renderer.pushScissorIntersect(scissorRect);
 					}
 					const res = await renderNodeTree(
 						nodeVM.children ?? [],
@@ -2756,7 +2757,8 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				let activeGroupView = groupView;
 				if (nodeVM.children && nodeVM.children.length > 0) {
 					if (scissorRect) {
-						ctx.renderer.pushScissor(scissorRect);
+						// Nested containers clip inside their parents' clip.
+						ctx.renderer.pushScissorIntersect(scissorRect);
 					}
 					const res = await renderNodeTree(
 						nodeVM.children,

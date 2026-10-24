@@ -545,11 +545,9 @@ const animationInvariants = (
 	ctx: z.RefinementCtx,
 ) => {
 	if (!anim?.tracks) return;
-	let totalKeyframes = 0;
 	for (let tIdx = 0; tIdx < anim.tracks.length; tIdx++) {
 		const track = anim.tracks[tIdx];
 		const keyframes = track.keyframes ?? [];
-		totalKeyframes += keyframes.length;
 
 		const isKeyframeSource = !track.source || track.source.type === "keyframe";
 		if (isKeyframeSource && keyframes.length < 1) {
@@ -625,13 +623,6 @@ const animationInvariants = (
 			}
 		}
 	}
-	if (totalKeyframes > 128) {
-		ctx.addIssue({
-			code: z.ZodIssueCode.custom,
-			message: `Total keyframes across all tracks (${totalKeyframes}) exceeds the limit of 128.`,
-			path: ["tracks"],
-		});
-	}
 };
 
 export const AnimationTrackSchema = z
@@ -704,6 +695,8 @@ const BaseNodeFields = {
 	effects: z.array(EffectSpecSchema).optional(),
 	rotation: z.number().default(0),
 	scale: z.number().min(0).default(1),
+	scaleX: z.number().default(1),
+	scaleY: z.number().default(1),
 	/** Transform pivot, 0–1 fraction of the node box (0.5 = center). */
 	anchorX: z.number().min(0).max(1).default(0.5),
 	anchorY: z.number().min(0).max(1).default(0.5),
@@ -809,6 +802,8 @@ export interface CompositionNodeBase {
 	blendMode?: string;
 	rotation?: number;
 	scale?: number;
+	scaleX?: number;
+	scaleY?: number;
 	anchorX?: number;
 	anchorY?: number;
 	rotateX?: number;
@@ -1750,8 +1745,15 @@ export const Model3DNodeSchema: z.ZodType<Model3DNode> = z
 	})
 	.strict() as unknown as z.ZodType<Model3DNode>;
 
+/**
+ * Dispatch on `kind`, not a plain union: a plain union tries every member,
+ * and each member parses `children` before failing, so parse time grows
+ * ~3x per nesting level (a depth-14 tree took minutes). The node schemas
+ * are typed `ZodType<…>` for their recursive types, but each is a strict
+ * object with a `kind` literal, which is all `discriminatedUnion` reads.
+ */
 export const LayoutNodeSchema = z.lazy(() =>
-	z.union([
+	z.discriminatedUnion("kind", [
 		FlexNodeSchema,
 		BlockNodeSchema,
 		BoxNodeSchema,
@@ -1761,7 +1763,7 @@ export const LayoutNodeSchema = z.lazy(() =>
 		CameraNodeSchema,
 		LightNodeSchema,
 		Model3DNodeSchema,
-	]),
+	] as unknown as [z.ZodObject, ...z.ZodObject[]]),
 ) as unknown as z.ZodType<LayoutNode>;
 
 // ── the program document ──────────────────────────────────────────────

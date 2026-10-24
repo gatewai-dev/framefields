@@ -26,6 +26,14 @@ export interface FromToOptions {
 	toFrame?: number;
 	durationFrames?: number;
 	ease?: string | EaseRef;
+	repeat?: number;
+	yoyo?: boolean;
+}
+
+export interface TrackKeyOptions {
+	repeat?: number;
+	yoyo?: boolean;
+	durationFrames?: number;
 }
 
 export interface Tilt3DOptions {
@@ -280,6 +288,8 @@ export class LayerAnimation<TProp extends AnimatableProp = AnimatableProp>
 	public tracks: AnimationTrack<TProp>[] = [];
 	/** Hold each value for this many frames (see {@link LayerAnimation.stepped}). */
 	public frameStep?: number;
+	public defaultRepeat?: number;
+	public defaultYoyo?: boolean;
 
 	constructor(tracks: AnimationTrack<TProp>[] = []) {
 		this.tracks = [...tracks];
@@ -291,12 +301,6 @@ export class LayerAnimation<TProp extends AnimatableProp = AnimatableProp>
 		return new LayerAnimation<P>();
 	}
 
-	/**
-	 * Stepped timing for the whole layer: every animated value is held for
-	 * `frames` frames ("on twos" = 2, "on threes" = 3), the choppy, hand-made
-	 * look of stop motion and cel animation. Applies to all of the layer's
-	 * tracks, including ones added by other `.animate()` calls.
-	 */
 	public static stepped<P extends AnimatableProp = AnimatableProp>(
 		frames = 2,
 	): LayerAnimation<P> {
@@ -322,8 +326,9 @@ export class LayerAnimation<TProp extends AnimatableProp = AnimatableProp>
 	public static keys<P extends AnimatableProp = AnimatableProp>(
 		prop: P,
 		keyframes: readonly KeyframeTuple[],
+		options?: TrackKeyOptions,
 	): LayerAnimation<P> {
-		return new LayerAnimation<P>().keys(prop, keyframes);
+		return new LayerAnimation<P>().keys(prop, keyframes, options);
 	}
 
 	public static signal<P extends AnimatableProp = AnimatableProp>(
@@ -449,8 +454,72 @@ export class LayerAnimation<TProp extends AnimatableProp = AnimatableProp>
 		return new LayerAnimation().fromTo("rotation", fromAngle, toAngle, options);
 	}
 
+	public static scale(
+		fromScale: number,
+		toScale: number,
+		options: FromToOptions = {},
+	): LayerAnimation {
+		return new LayerAnimation().fromTo("scale", fromScale, toScale, options);
+	}
+
+	public static scaleX(
+		fromScale: number,
+		toScale: number,
+		options: FromToOptions = {},
+	): LayerAnimation {
+		return new LayerAnimation().fromTo("scaleX", fromScale, toScale, options);
+	}
+
+	public static scaleY(
+		fromScale: number,
+		toScale: number,
+		options: FromToOptions = {},
+	): LayerAnimation {
+		return new LayerAnimation().fromTo("scaleY", fromScale, toScale, options);
+	}
+
 	public addTrack(track: AnimationTrack<TProp>): this {
 		this.tracks.push(track);
+		return this;
+	}
+
+	/**
+	 * Configures repeat count on all tracks, or on a specific prop's track:
+	 * - `-1`: loops indefinitely.
+	 * - `N`: repeats N times after the initial iteration (total N + 1 iterations).
+	 */
+	public repeat(count = -1, prop?: AnimatableProp): this {
+		this.defaultRepeat = count;
+		for (const track of this.tracks) {
+			if (!prop || track.prop === prop) {
+				track.repeat = count;
+			}
+		}
+		return this;
+	}
+
+	/**
+	 * Enables or disables yoyo (alternate playback direction on each repeat iteration).
+	 */
+	public yoyo(enable = true, prop?: AnimatableProp): this {
+		this.defaultYoyo = enable;
+		for (const track of this.tracks) {
+			if (!prop || track.prop === prop) {
+				track.yoyo = enable;
+			}
+		}
+		return this;
+	}
+
+	/**
+	 * Shorthand to loop keyframed animation continuously (infinite repeat).
+	 * If `options.yoyo` is true, oscillates back and forth.
+	 */
+	public loop(options: { yoyo?: boolean } = {}, prop?: AnimatableProp): this {
+		this.repeat(-1, prop);
+		if (options.yoyo) {
+			this.yoyo(true, prop);
+		}
 		return this;
 	}
 
@@ -481,10 +550,17 @@ export class LayerAnimation<TProp extends AnimatableProp = AnimatableProp>
 				id: `${prop}_fromTo_${this.tracks.length}`,
 				prop: prop as TProp,
 				keyframes: [],
+				...(this.defaultRepeat !== undefined && { repeat: this.defaultRepeat }),
+				...(this.defaultYoyo !== undefined && { yoyo: this.defaultYoyo }),
 			};
 			this.tracks.push(newTrack);
 			track = newTrack;
 		}
+
+		if (options.repeat !== undefined) track.repeat = options.repeat;
+		if (options.yoyo !== undefined) track.yoyo = options.yoyo;
+		if (options.durationFrames !== undefined)
+			track.durationFrames = options.durationFrames;
 
 		const id = track.id;
 
@@ -539,6 +615,8 @@ export class LayerAnimation<TProp extends AnimatableProp = AnimatableProp>
 				id: `${prop}_track_${this.tracks.length}`,
 				prop: prop as TProp,
 				keyframes: [],
+				...(this.defaultRepeat !== undefined && { repeat: this.defaultRepeat }),
+				...(this.defaultYoyo !== undefined && { yoyo: this.defaultYoyo }),
 			};
 			this.tracks.push(newTrack);
 			track = newTrack;
@@ -566,9 +644,24 @@ export class LayerAnimation<TProp extends AnimatableProp = AnimatableProp>
 	 * `.keys("scale", [[0, 0], [12, 1.1, "back.out"], [20, 1]])`.
 	 * Frames are rounded to whole frames, so beat math can be passed straight in.
 	 */
-	public keys(prop: AnimatableProp, keyframes: readonly KeyframeTuple[]): this {
+	public keys(
+		prop: AnimatableProp,
+		keyframes: readonly KeyframeTuple[],
+		options?: TrackKeyOptions,
+	): this {
 		for (const [frame, value, ease] of keyframes) {
 			this.keyframe(prop, Math.round(frame), value, ease);
+		}
+		if (options) {
+			const track = this.tracks.find(
+				(t) => t.prop === prop && (!t.source || t.source.type === "keyframe"),
+			);
+			if (track) {
+				if (options.repeat !== undefined) track.repeat = options.repeat;
+				if (options.yoyo !== undefined) track.yoyo = options.yoyo;
+				if (options.durationFrames !== undefined)
+					track.durationFrames = options.durationFrames;
+			}
 		}
 		return this;
 	}
@@ -751,6 +844,39 @@ export class LayerAnimation<TProp extends AnimatableProp = AnimatableProp>
 		options: FromToOptions = {},
 	): this {
 		return this.fromTo("rotateZ", fromAngle, toAngle, options);
+	}
+
+	/**
+	 * Animate scale along the X axis.
+	 */
+	public scaleX(
+		fromScale: number,
+		toScale: number,
+		options: FromToOptions = {},
+	): this {
+		return this.fromTo("scaleX", fromScale, toScale, options);
+	}
+
+	/**
+	 * Animate scale along the Y axis.
+	 */
+	public scaleY(
+		fromScale: number,
+		toScale: number,
+		options: FromToOptions = {},
+	): this {
+		return this.fromTo("scaleY", fromScale, toScale, options);
+	}
+
+	/**
+	 * Animate uniform scale.
+	 */
+	public scale(
+		fromScale: number,
+		toScale: number,
+		options: FromToOptions = {},
+	): this {
+		return this.fromTo("scale", fromScale, toScale, options);
 	}
 
 	/**

@@ -16,9 +16,11 @@ import {
 	type VirtualMediaData,
 } from "@framefields/core";
 import {
+	type NodeRenderProps,
 	resolveFrameNumber,
 	solveHomography,
 	type WebGPUNodeRenderer,
+	type WebGPUNodeRendererArgs,
 } from "@framefields/node-sdk";
 import {
 	createFullscreenPipeline,
@@ -70,7 +72,11 @@ import {
 import { compileTimeline, seekTimeline } from "../shared/compiler.js";
 import type { CompositorOperation } from "../shared/config.js";
 import { shouldPaintContainerBackground } from "./container-bg.js";
-import { buildLayerMatrix, toDOMMatrix } from "./transform.js";
+import {
+	buildLayerMatrix,
+	resolveLayer2DPosition,
+	toDOMMatrix,
+} from "./transform.js";
 import { has3DTransform, type Quad2D, Transform3DMath } from "./transform3d.js";
 
 // Layout depends on the document tree (whose `children` array keeps its
@@ -539,6 +545,119 @@ function computeContainerScissor(
 		width: Math.max(0, Math.round(maxX - minX)),
 		height: Math.max(0, Math.round(maxY - minY)),
 	};
+}
+
+async function applyLayerEffects(
+	effects: unknown[],
+	sourceTex: GPUTexture,
+	width: number,
+	height: number,
+	ctx: RenderContextValue,
+	encoder: GPUCommandEncoder,
+	props: NodeRenderProps,
+	drawChild: WebGPUNodeRendererArgs["drawChild"],
+	excludes: GPUTexture[],
+	shiftedFrame: number,
+	compositionFrame: number,
+	fps: number,
+	isVideoMode: boolean,
+	layerId: string,
+): Promise<{ texture: GPUTexture; view: GPUTextureView }> {
+	const remainingEffects = effects.filter((e: unknown) => {
+		if (!e || typeof e !== "object") return false;
+		const op = (e as { op?: string })?.op;
+		const name = (e as { constructor?: { name?: string } })?.constructor?.name;
+		if (
+			op === "TemporalDeflicker" ||
+			op === "Deflicker" ||
+			op === "Relight3D" ||
+			name === "TemporalDeflicker" ||
+			name === "Relight3D"
+		) {
+			return false;
+		}
+		return true;
+	});
+
+	if (remainingEffects.length === 0) {
+		return { texture: sourceTex, view: sourceTex.createView() };
+	}
+
+	let currentMedia: VirtualMediaData = {
+		metadata: { width, height },
+		operation: {
+			op: "TextureSource",
+			sourceTexture: sourceTex,
+			dataType: "Image",
+		} as unknown as VirtualMediaData["operation"],
+		children: [],
+	};
+
+	for (let i = 0; i < remainingEffects.length; i++) {
+		const eff = remainingEffects[i];
+		const effOp =
+			eff &&
+			typeof (eff as { toOperation?: unknown }).toOperation === "function"
+				? (eff as { toOperation: () => Record<string, unknown> }).toOperation()
+				: (eff as Record<string, unknown>);
+		const opName = String(effOp.op ?? "effect");
+		currentMedia = {
+			metadata: { width, height },
+			operation: {
+				op: opName,
+				id: `${layerId}-${opName}_${i}`,
+				effect: eff,
+				...effOp,
+				dataType: "Image",
+			} as unknown as VirtualMediaData["operation"],
+			children: [currentMedia],
+		};
+	}
+
+	const outTex = ctx.renderer.getTemporaryTexture(width, height, [
+		sourceTex,
+		...excludes,
+	]);
+	const outView = outTex.createView();
+
+	const clearPass = ctx.renderer.beginFrame(
+		encoder,
+		outView,
+		{ r: 0, g: 0, b: 0, a: 0 },
+		width,
+		height,
+		"clear",
+	);
+	clearPass.end();
+
+	ctx.renderer.pushScissor({ x: 0, y: 0, width, height });
+	ctx.renderer.pushIdentity();
+	try {
+		await drawChild(
+			currentMedia,
+			{
+				...props,
+				containerWidth: width,
+				containerHeight: height,
+				renderId: `${props.renderId}-${layerId}-fx`,
+				frame: shiftedFrame,
+				compositionFrame,
+				fps,
+				isVideoMode,
+				signals: props.signals,
+				excludeTextures: [sourceTex, outTex, ...excludes],
+			},
+			outView,
+			outTex,
+			width,
+			height,
+		);
+	} finally {
+		ctx.renderer.popTransform();
+		ctx.renderer.popScissor();
+	}
+
+	return { texture: outTex, view: outView };
 }
 
 export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
@@ -1595,9 +1714,30 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 
 				if (!model || model.meshes.length === 0) return;
 
-				const posX = target?.x ?? lop.x ?? 0;
-				const posY = target?.y ?? lop.y ?? 0;
+				const baseX = lop.x ?? 0;
+				const baseY = lop.y ?? 0;
+				const sampledX = target?.x ?? baseX;
+				const sampledY = target?.y ?? baseY;
 				const posZ = target?.z ?? lop.z ?? 0;
+
+				let posX = sampledX;
+				let posY = sampledY;
+
+				if (!parent3DMatrix) {
+					// Models are not laid out by x / y (they sit in flow), so their
+					// own x / y are parent-local: map them through the parent.
+					const pos = resolveLayer2DPosition({
+						rect: null,
+						parentRect: null,
+						baseX,
+						baseY,
+						sampledX,
+						sampledY,
+						parentMatrix,
+					});
+					posX = pos.x;
+					posY = pos.y;
+				}
 
 				const rotX = target?.rotateX ?? lop.rotateX ?? 0;
 				const rotY = target?.rotateY ?? lop.rotateY ?? 0;
@@ -2024,6 +2164,8 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 			}
 
 			const scale = target?.scale ?? lop.scale ?? 1;
+			const scaleX = target?.scaleX ?? lop.scaleX ?? 1;
+			const scaleY = target?.scaleY ?? lop.scaleY ?? 1;
 			const rotation = target?.rotation ?? lop.rotation ?? 0;
 			const layerOpacity =
 				(target?.opacity ?? lop.opacity ?? 1) * accumulatedOpacity;
@@ -2107,6 +2249,8 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					height: layerH,
 					rotation,
 					scale,
+					scaleX,
+					scaleY,
 					anchorX: isPathText ? (anchorX * rect.width) / layerW : anchorX,
 					anchorY: isPathText ? (anchorY * rect.height) / layerH : anchorY,
 				}),
@@ -2146,8 +2290,8 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					rotateXDeg: rotateX,
 					rotateYDeg: rotateY,
 					rotateZDeg: rotateZ !== 0 ? rotateZ : rotation,
-					scaleX: scale,
-					scaleY: scale,
+					scaleX: scaleX * scale,
+					scaleY: scaleY * scale,
 					perspectivePx: perspective,
 					originXRatio: perspectiveOriginX,
 					originYRatio: perspectiveOriginY,
@@ -2396,8 +2540,8 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 						if (rxRad !== 0)
 							localM = Matrix4Math.multiply(localM, Matrix4Math.rotateX(rxRad));
 
-						const sx = layerW * scale;
-						const sy = layerH * scale;
+						const sx = layerW * scale * scaleX;
+						const sy = layerH * scale * scaleY;
 						const sz = target?.scaleZ ?? lop.scaleZ ?? 1;
 						localM = Matrix4Math.multiply(
 							localM,
@@ -2437,7 +2581,11 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 								? (target?.rotateZ ?? lop.rotateZ ?? 0)
 								: rotation,
 						],
-						scale: [scale, scale, target?.scaleZ ?? lop.scaleZ ?? 1],
+						scale: [
+							scale * scaleX,
+							scale * scaleY,
+							target?.scaleZ ?? lop.scaleZ ?? 1,
+						],
 						anchor: [lop.anchorX ?? 0.5, lop.anchorY ?? 0.5],
 						borderRadius: br,
 						borderWidth: lop.borderWidth,
@@ -2669,6 +2817,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				// group-texture path below).
 				if (
 					(kind === "flex" || kind === "block") &&
+					(!Array.isArray(lop.effects) || lop.effects.length === 0) &&
 					clipRadius <= 0 &&
 					!shouldPaintContainerBackground(kind, lop.background) &&
 					layerOpacity === 1 &&
@@ -2683,7 +2832,8 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					(typeof target?.deflicker !== "object" || !target?.deflicker)
 				) {
 					if (scissorRect) {
-						ctx.renderer.pushScissor(scissorRect);
+						// Nested containers clip inside their parents' clip.
+						ctx.renderer.pushScissorIntersect(scissorRect);
 					}
 					const res = await renderNodeTree(
 						nodeVM.children ?? [],
@@ -2756,7 +2906,8 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				let activeGroupView = groupView;
 				if (nodeVM.children && nodeVM.children.length > 0) {
 					if (scissorRect) {
-						ctx.renderer.pushScissor(scissorRect);
+						// Nested containers clip inside their parents' clip.
+						ctx.renderer.pushScissorIntersect(scissorRect);
 					}
 					const res = await renderNodeTree(
 						nodeVM.children,
@@ -3019,6 +3170,27 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 
 					activeGroupTex = relitTex;
 					activeGroupView = relitView;
+				}
+
+				if (Array.isArray(lop.effects) && lop.effects.length > 0) {
+					const postEffects = await applyLayerEffects(
+						lop.effects,
+						activeGroupTex,
+						targetW,
+						targetH,
+						ctx,
+						encoder,
+						props,
+						drawChild,
+						[activeTex, targetTexture, ...excludes],
+						shiftedFrame,
+						compositionFrame,
+						fps ?? 24,
+						isVideoMode,
+						lop.id ?? `container_${i}`,
+					);
+					activeGroupTex = postEffects.texture;
+					activeGroupView = postEffects.view;
 				}
 
 				// Always composite container groups using the composite shader
@@ -3520,10 +3692,14 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 
 			// Effects work on the layer's pixels: glyphs held back for the 3D
 			// pass are drawn into its texture after all.
+			const hasEffects =
+				kind !== "media" &&
+				Array.isArray(lop.effects) &&
+				lop.effects.length > 0;
 			if (
 				glyphBatches &&
 				glyphBatches.length > 0 &&
-				(deflickerOpts || relightOpts || shutterAngle > 0)
+				(deflickerOpts || relightOpts || shutterAngle > 0 || hasEffects)
 			) {
 				const glyphPass = ctx.renderer.beginFrame(
 					encoder,
@@ -3747,6 +3923,30 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				}
 			}
 
+			if (
+				kind !== "media" &&
+				Array.isArray(lop.effects) &&
+				lop.effects.length > 0
+			) {
+				const postEffects = await applyLayerEffects(
+					lop.effects,
+					finalTex,
+					texW,
+					texH,
+					ctx,
+					encoder,
+					props,
+					drawChild,
+					[localTex, activeTex, targetTexture, ...excludes],
+					shiftedFrame,
+					compositionFrame,
+					fps ?? 24,
+					isVideoMode,
+					lop.id ?? `leaf_${i}`,
+				);
+				finalTex = postEffects.texture;
+			}
+
 			const borderExcludes = [
 				localTex,
 				finalTex,
@@ -3823,8 +4023,8 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					if (rxRad !== 0)
 						localM = Matrix4Math.multiply(localM, Matrix4Math.rotateX(rxRad));
 
-					const sx = layerW * scale;
-					const sy = layerH * scale;
+					const sx = layerW * scale * scaleX;
+					const sy = layerH * scale * scaleY;
 					const sz = target?.scaleZ ?? lop.scaleZ ?? 1;
 					localM = Matrix4Math.multiply(localM, Matrix4Math.scale(sx, sy, sz));
 
@@ -3858,7 +4058,11 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 							? (target?.rotateZ ?? lop.rotateZ ?? 0)
 							: rotation,
 					],
-					scale: [scale, scale, target?.scaleZ ?? lop.scaleZ ?? 1],
+					scale: [
+						scale * scaleX,
+						scale * scaleY,
+						target?.scaleZ ?? lop.scaleZ ?? 1,
+					],
 					anchor: [lop.anchorX ?? 0.5, lop.anchorY ?? 0.5],
 					borderRadius: br,
 					borderWidth: lop.borderWidth,

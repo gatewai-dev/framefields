@@ -2689,16 +2689,18 @@ export const Layer = {
 			/** Alias of `fillColor`: a color or a CSS gradient string. */
 			fill?: string;
 		} = {},
-	): AnimatableNode<ShapeNode> =>
-		withAnimation({
-			id: options.id ?? autoId("shape"),
+	): AnimatableNode<ShapeNode> => {
+		// `fill` and `fillColor` are the same thing; either may hold a
+		// color or a CSS gradient. Only `fillColor` reaches the node.
+		const { fill, ...rest } = options;
+		return withAnimation({
+			id: rest.id ?? autoId("shape"),
 			kind: "shape",
-			shapeType: options.shapeType ?? shapeType,
-			...options,
-			// `fill` and `fillColor` are the same thing; either may hold a
-			// color or a CSS gradient.
-			fillColor: options.fillColor ?? options.fill ?? "#3b82f6",
-		}),
+			shapeType: rest.shapeType ?? shapeType,
+			...rest,
+			fillColor: rest.fillColor ?? fill ?? "#3b82f6",
+		});
+	},
 	flex: (options: Partial<FlexNode> = {}): AnimatableNode<FlexNode> =>
 		withAnimation({
 			id: options.id ?? autoId("flex"),
@@ -3380,3 +3382,26 @@ export const Effect = Object.assign(CoreEffect, effectFactories, {
 
 export type Effect<TConfig extends object = Record<string, unknown>> =
 	CoreEffect<TConfig>;
+
+// Components: `npx framefields add <name>` copies a component's source into
+// the project. The root carries what users touch around them; the authoring
+// toolkit (timing, paths, strokes, baking) lives at `framefields/components`.
+export {
+	type Anchor,
+	type AudioLevels,
+	type BaseProps,
+	type Cue,
+	type Cues,
+	defineTheme,
+	type MotionPreset,
+	pulseKeys,
+	type Target,
+	type Theme,
+	type ThemeInput,
+	themes,
+} from "@framefields/components/toolkit";
+export {
+	analyzeAudio,
+	bindComponent,
+	type ComponentNode,
+} from "./components/index.js";

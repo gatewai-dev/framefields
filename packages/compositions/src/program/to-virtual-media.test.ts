@@ -277,4 +277,48 @@ describe("compositorToProgram", () => {
 		expect((layer2.children![0].operation as any).dataType).toBe("Lottie");
 		expect((layer2.children![0].operation as any).url).toBe("animation.lottie");
 	});
+
+	it("preserves effects on non-media layers as CompositorLayer lop.effects", () => {
+		const docWithEffects = {
+			width: 1920,
+			height: 1080,
+			fps: 30,
+			mode: "Video" as const,
+			layout: [
+				{
+					id: "box-fx",
+					kind: "box" as const,
+					width: 200,
+					height: 200,
+					background: "#ff0000",
+					effects: [{ op: "Blur", radius: 10 }],
+				},
+				{
+					id: "text-fx",
+					kind: "text" as const,
+					text: "Hello World",
+					fontSize: 48,
+					effects: [{ op: "FilmGrain", strength: 0.1 }],
+				},
+			],
+		};
+
+		const vm = compositorToProgram(docWithEffects, {
+			isVideoMode: true,
+			fps: 30,
+		});
+		expect(vm.children).toHaveLength(2);
+
+		const boxLayer = vm.children?.[0];
+		const boxOp = boxLayer?.operation as Record<string, unknown> | undefined;
+		expect(boxOp?.op).toBe("CompositorLayer");
+		expect(boxOp?.kind).toBe("box");
+		expect(boxOp?.effects).toEqual([{ op: "Blur", radius: 10 }]);
+
+		const textLayer = vm.children?.[1];
+		const textOp = textLayer?.operation as Record<string, unknown> | undefined;
+		expect(textOp?.op).toBe("CompositorLayer");
+		expect(textOp?.kind).toBe("text");
+		expect(textOp?.effects).toEqual([{ op: "FilmGrain", strength: 0.1 }]);
+	});
 });

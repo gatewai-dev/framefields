@@ -25,6 +25,13 @@ const COLOR_PROPS = [
 	"color",
 ] as const;
 
+/**
+ * Keyframes on one layer past which an animation is probably keyed every
+ * frame by mistake. There is no hard limit: evaluation and playback handle
+ * any count, but programs this size are slow to send, read and edit.
+ */
+export const LARGE_ANIMATION_KEYFRAMES = 2000;
+
 /** Contrast below this makes text hard to read (WCAG large-text minimum). */
 const MIN_TEXT_CONTRAST = 3;
 
@@ -198,6 +205,8 @@ export function lintComposition(
 				"translateX",
 				"translateY",
 				"scale",
+				"scaleX",
+				"scaleY",
 				"rotation",
 			])
 		) {
@@ -210,6 +219,19 @@ export function lintComposition(
 					id,
 				);
 			}
+		}
+
+		const keyframeCount = tracksOf(node).reduce(
+			(n, t) => n + (t.keyframes?.length ?? 0),
+			0,
+		);
+		if (keyframeCount > LARGE_ANIMATION_KEYFRAMES) {
+			push(
+				"warning",
+				"large_animation",
+				`'${id}' has ${keyframeCount} keyframes across its tracks (over ${LARGE_ANIMATION_KEYFRAMES}). Keying every frame is rarely needed: key the turning points and let eases fill in, or drive the prop from a signal.`,
+				id,
+			);
 		}
 
 		for (const t of tracksOf(node)) {

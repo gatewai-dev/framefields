@@ -477,6 +477,31 @@ export class Renderer2D {
 		this.clipStack.pushScissor(rect, this.surfaceWidth, this.surfaceHeight);
 	}
 
+	/**
+	 * Push `rect` (surface px) intersected with the current scissor, so a
+	 * nested container never draws outside an outer one's clip.
+	 */
+	pushScissorIntersect(rect: Rect): void {
+		const current = this.clipStack.getCurrentScissor(
+			this.surfaceWidth,
+			this.surfaceHeight,
+		);
+		if (!current) {
+			this.pushScissor(rect);
+			return;
+		}
+		const x = Math.max(rect.x, current.x);
+		const y = Math.max(rect.y, current.y);
+		const x2 = Math.min(rect.x + rect.width, current.x + current.width);
+		const y2 = Math.min(rect.y + rect.height, current.y + current.height);
+		this.pushScissor({
+			x,
+			y,
+			width: Math.max(0, x2 - x),
+			height: Math.max(0, y2 - y),
+		});
+	}
+
 	pushScissorLocal(rect: Rect): void {
 		const m = this.transformStack.getCurrent();
 		const points = [

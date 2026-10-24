@@ -257,6 +257,28 @@ export async function drawCompositionTree(
 		op.effect.notifyFrame(frameCtx);
 	}
 
+	if (op.op === "TextureSource") {
+		const sourceTexture = op.sourceTexture as GPUTexture | undefined;
+		if (sourceTexture) {
+			const pass = ctx.renderer.beginFrame(
+				encoder,
+				targetView,
+				{ r: 0, g: 0, b: 0, a: 0 },
+				targetWidth,
+				targetHeight,
+				"load",
+			);
+			ctx.renderer.drawTexture(
+				pass,
+				sourceTexture,
+				{ x: 0, y: 0, width: targetWidth, height: targetHeight },
+				{ opacity: Number(op.opacity ?? 1) },
+			);
+			pass.end();
+		}
+		return;
+	}
+
 	const CustomRenderer = webgpuRegistry.get(op.op);
 
 	if (CustomRenderer) {

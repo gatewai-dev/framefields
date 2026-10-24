@@ -1,6 +1,6 @@
 ---
 name: framefields
-description: Start a new framefields video project, or add framefields to an existing Node.js project. Use when the user wants to make a video with framefields and the project has no framefields setup yet, or asks how to install framefields, scaffold a composition and render script, get from an empty folder to a first MP4, or generate images, video, music or voice for a film with AI models (`ai` from framefields, the framefields AI gateway, FRAMEFIELDS_API_KEY). Hands off to framefields-compose, framefields-effects, and framefields-render for the details.
+description: Start a new framefields video project, or add framefields to an existing Node.js project. Use when the user wants to make a video with framefields and the project has no framefields setup yet, or asks how to install framefields, scaffold a composition and render script, get from an empty folder to a first MP4, generate images, video, music or voice for a film with AI models (`ai` from framefields, the framefields AI gateway), or add ready-made components (pointers, captions, title cards, device frames …) with `npx framefields add`. Hands off to framefields-compose, framefields-effects, and framefields-render for the details.
 ---
 
 # framefields
@@ -15,6 +15,7 @@ This skill takes a project from nothing to a verified first render. For anything
 | Scenes, layout, typography, animation, beat grids, film structure | `framefields-compose` |
 | Post-processing, color grading, VFX, on-device vision (tracking, cutouts, pose) | `framefields-effects` |
 | Frame inspection, frame grids, pixel tests, video export and QA | `framefields-render` |
+| Ready-made components (`npx framefields add`) | this skill, section 8 |
 | Generating images, video, music, voice with AI models (`ai`) | this skill, section 6 |
 | Autonomous agent payments & runway checks | this skill, section 7 |
 | Reporting bugs or engine defects to GitHub | this skill, section 9 |
@@ -294,15 +295,17 @@ const { data, requestId } = await ai.subscribe<{ images: { url: string }[] }>("f
 console.log(data.images[0].url);
 ```
 
-**The key.** Requests authenticate with `FRAMEFIELDS_API_KEY` (an `ff_live_…` key from https://framefields.dev/dashboard/keys). Put it in the project's `.env` (gitignored) and load it with `tsx --env-file=.env`, or call `ai.config({ apiKey })`. Never write the key into source, and never ask the user to paste it into chat: ask them to add it to `.env` themselves. Without a key, every call throws before any request is sent. Failures throw `ApiError` with the gateway's `type`: on `insufficient_credits` (status `402`) tell the user to top up at https://framefields.dev/dashboard/billing rather than retrying; `key_limit_reached` means the key's monthly cap; `rate_limited` and `too_many_inflight_requests` mean wait and retry. A `ValidationError` (`422`) lists the bad input fields in `fieldErrors`.
+**The key.** Requests authenticate with an `ff_live_…` key from https://framefields.dev/dashboard/keys. Take the value as `${user_config.framefields_api_key}` that the user chose to share via the plugin's `userConfig` option (`sensitive: true`), instead of reading credentials from the user's environment or files. Configure it with `ai.config({ apiKey: "${user_config.framefields_api_key}" })`. Never read credentials from the user's machine or environment files without authorization, never write the key into source files, and never ask the user to paste keys into chat. Without a key, every call throws before any request is sent. Failures throw `ApiError` with the gateway's `type`: on `insufficient_credits` (status `402`) tell the user to top up at https://framefields.dev/dashboard/billing rather than retrying; `key_limit_reached` means the key's monthly cap; `rate_limited` and `too_many_inflight_requests` mean wait and retry. A `ValidationError` (`422`) lists the bad input fields in `fieldErrors`.
 
 **Generate once, into `assets/`, in its own script.** Generation costs money and is not deterministic, so it never runs inside `buildFilm()`, the preview, tests or the render worker. Write `src/generate.ts`, run it on purpose, download every output into `assets/generated/` (tracked in Git LFS, as above), and reference the local file from the film. Generated output URLs expire, and the worker renders from the repository.
 
 ```typescript
-// src/generate.ts — run with: tsx --env-file=.env src/generate.ts
+// src/generate.ts
 import fs from "node:fs/promises";
 import path from "node:path";
 import { ai } from "framefields";
+
+ai.config({ apiKey: "${user_config.framefields_api_key}" });
 
 const OUT = path.resolve(import.meta.dirname, "../assets/generated");
 await fs.mkdir(OUT, { recursive: true });
@@ -343,7 +346,7 @@ Then `Layer.image("assets/generated/street.jpg")` / `Layer.video("assets/generat
 Coding agents interacting with the AI gateway can discover endpoints, inspect credit runway, and handle top-ups programmatically:
 
 - **Manifest discovery:** Read `GET https://framefields.dev/.well-known/agent-payment.json` for live auth schemes, pack amounts, and endpoint paths.
-- **Runway check:** `GET https://framefields.dev/api/v1/agent/balance` with `Authorization: Bearer <FRAMEFIELDS_API_KEY>` returns `{ balance_usd, held_usd, available_usd }`. Query this before expensive generation batches.
+- **Runway check:** `GET https://framefields.dev/api/v1/agent/balance` with `Authorization: Bearer ${user_config.framefields_api_key}` returns `{ balance_usd, held_usd, available_usd }`. Query this before expensive generation batches.
 - **Autonomous 402 flow:** When credits are exhausted, the gateway returns HTTP `402 Payment Required` with a dynamic Dodo checkout link:
   ```json
   {
@@ -361,6 +364,34 @@ Coding agents interacting with the AI gateway can discover endpoints, inspect cr
 ## 8. Grow the film
 
 Once the first render works, move to the specialist skills: `framefields-compose` for splitting the film into scene modules on a beat grid, `framefields-effects` for grading, grain, and vision-driven effects, and `framefields-render` for tests and delivery checks. Keep `theme.ts` as the single source of sizes, colors, fonts, and timing as the project grows.
+
+### Ready-made components
+
+framefields has a registry of parametric motion components: a mouse pointer with clicks and drags, a camera that zooms to clicks, window and device frames, word-timed captions, text reveals, counters, annotations, a terminal, code blocks, title cards, lower thirds, meters, chat threads, toasts, callouts, spotlights, confetti, logo reveals, backdrops, audio waveforms, word cycles, touches, before/after splits, selections and card stacks. They are not in the npm package: `framefields add` copies their source into the project, where it is ordinary project code to read and change.
+
+```bash
+npx framefields list                            # every component, one line each
+npx framefields add mouse-pointer focus-zoom    # writes src/components/<name>/
+```
+
+```typescript
+import { MousePointer } from "./components/mouse-pointer/index.js";
+
+const pointer = MousePointer({
+  path: [
+    { to: [400, 300], at: 0 },
+    { to: [960, 540], at: 30, click: true },
+  ],
+});
+film.add(pointer);
+// pointer.cues.clicks[0].frame: key a button press or a sound to the click.
+```
+
+- **Before writing a common motion piece by hand, run `npx framefields list`.** A component already handles timing, theme, cues and edge cases, and the copy is the project's to adjust.
+- Files go to `src/components` (or `components` when there is no `src`); the folder is saved in `framefields.json`, and `--dir` changes it on first use. Components that build on others bring them along (`terminal` adds `app-frame` and `counter`).
+- Installed code imports only `framefields` and `framefields/components` (the shared toolkit), so it always matches the installed framefields version. After upgrading framefields, `npx framefields add <name> --overwrite` refreshes a component; without the flag, files you changed are left alone and reported as `skipped`.
+- Every component takes the base props (`x`, `y`, `width`, `height`, `at`, `duration`, `hold`, `theme`, `enter`, `exit`, `seed`) and returns a normal box layer with `cues` (frames of its events), `span` and `parts` (inner layers to animate or style). Time is in frames.
+- Each installed `index.ts` documents what the component does at the top and defines its props in its schema; `npx framefields list` gives one-line summaries. Props are validated when the component is built, and a wrong one throws with the reason.
 
 ## 9. Report engine issues
 

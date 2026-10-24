@@ -63,6 +63,38 @@ describe("Layer3D mesh primitives", () => {
 		expect(img.at(20, 20).r).toBeLessThan(10);
 	});
 
+	it("inherits 2D parent translation when nested inside a 2D container", async () => {
+		const comp = stage();
+		// Parent container positioned at (200, 150)
+		comp.add(
+			Layer.box({
+				id: "card",
+				x: 200,
+				y: 150,
+				width: 400,
+				height: 300,
+				children: [
+					Layer3D.roundedBox({
+						id: "slab-nested",
+						width: 300,
+						height: 40,
+						depth: 300,
+						radius: 12,
+						x: 200,
+						y: 150,
+						color: "#ff3030",
+					}),
+				],
+			}),
+		);
+		const img = await decode(await comp.renderFrame({ frame: 0 }));
+		// World position: (200 + 200, 150 + 150) = (400, 300)
+		const top = img.at(400, 300);
+		expect(top.r).toBeGreaterThan(150);
+		expect(top.g).toBeLessThan(top.r / 2);
+		expect(img.at(20, 20).r).toBeLessThan(10);
+	});
+
 	it("tints by the animated `color` prop", async () => {
 		const comp = stage();
 		comp.add(

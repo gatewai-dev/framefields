@@ -79,7 +79,9 @@ export function buildLayerMatrix(params: {
 	width: number;
 	height: number;
 	rotation: number;
-	scale: number;
+	scale?: number;
+	scaleX?: number;
+	scaleY?: number;
 	anchorX?: number;
 	anchorY?: number;
 }): Matrix2D {
@@ -87,6 +89,9 @@ export function buildLayerMatrix(params: {
 	const ay = params.anchorY ?? 0.5;
 	const px = ax * params.width;
 	const py = ay * params.height;
+	const uniformScale = params.scale ?? 1;
+	const sx = (params.scaleX ?? 1) * uniformScale;
+	const sy = (params.scaleY ?? 1) * uniformScale;
 
 	return multiply(
 		translate(params.x, params.y),
@@ -94,8 +99,54 @@ export function buildLayerMatrix(params: {
 			translate(px, py),
 			multiply(
 				rotate(params.rotation),
-				multiply(scale(params.scale), translate(-px, -py)),
+				multiply(scale(sx, sy), translate(-px, -py)),
 			),
 		),
 	);
+}
+
+/**
+ * Resolves a layer's 2D world position on the canvas.
+ *
+ * For top-level layers, this is the layout position + animated translation delta.
+ * For children inside a 2D parent container, this inherits the parent container's
+ * 2D translation and transformation (parentMatrix).
+ */
+export function resolveLayer2DPosition(params: {
+	rect?: { x: number; y: number } | null;
+	parentRect?: { x: number; y: number } | null;
+	baseX?: number;
+	baseY?: number;
+	sampledX?: number;
+	sampledY?: number;
+	parentMatrix?: Matrix2D | DOMMatrix | null;
+}): { x: number; y: number } {
+	const baseX = params.baseX ?? 0;
+	const baseY = params.baseY ?? 0;
+	const sampledX = params.sampledX ?? baseX;
+	const sampledY = params.sampledY ?? baseY;
+
+	let localX = 0;
+	let localY = 0;
+	if (params.rect && params.parentRect) {
+		localX = params.rect.x - params.parentRect.x + (sampledX - baseX);
+		localY = params.rect.y - params.parentRect.y + (sampledY - baseY);
+	} else if (params.rect) {
+		localX = params.rect.x + (sampledX - baseX);
+		localY = params.rect.y + (sampledY - baseY);
+	} else {
+		localX = sampledX;
+		localY = sampledY;
+	}
+
+	const pm = params.parentMatrix;
+	if (!pm) {
+		return { x: localX, y: localY };
+	}
+
+	if ("isIdentity" in pm && pm.isIdentity) {
+		return { x: localX, y: localY };
+	}
+
+	return transformPoint(pm as Matrix2D, localX, localY);
 }

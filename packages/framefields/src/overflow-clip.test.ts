@@ -15,7 +15,13 @@ async function pixel(png: Buffer, x: number, y: number) {
 }
 
 function clipped(radius: number, animated: boolean) {
-	const comp = new Composition({ width: 400, height: 400, fps: 30, durationFrames: 30, backgroundColor: "#000000" });
+	const comp = new Composition({
+		width: 400,
+		height: 400,
+		fps: 30,
+		durationFrames: 30,
+		backgroundColor: "#000000",
+	});
 	const box = Layer.box({
 		id: "clip",
 		position: "absolute",
@@ -25,9 +31,28 @@ function clipped(radius: number, animated: boolean) {
 		height: 200,
 		overflow: "hidden",
 		borderRadius: animated ? 0 : radius,
-		children: [Layer.box({ id: "fill", position: "absolute", x: 0, y: 0, width: 200, height: 200, background: "#ffffff" })],
+		children: [
+			Layer.box({
+				id: "fill",
+				position: "absolute",
+				x: 0,
+				y: 0,
+				width: 200,
+				height: 200,
+				background: "#ffffff",
+			}),
+		],
 	});
-	comp.add(animated ? box.animate(LayerAnimation.create().fromTo("borderRadius", 0, radius, { start: 0, end: 10 })) : box);
+	comp.add(
+		animated
+			? box.animate(
+					LayerAnimation.create().fromTo("borderRadius", 0, radius, {
+						start: 0,
+						end: 10,
+					}),
+				)
+			: box,
+	);
 	return comp;
 }
 
@@ -40,7 +65,56 @@ describe("overflow clipping", () => {
 
 	it("clips children to an animated border radius", async () => {
 		const comp = clipped(100, true);
-		expect(await pixel(await comp.renderFrame({ frame: 0 }), 104, 104)).toEqual([255, 255, 255]);
-		expect(await pixel(await comp.renderFrame({ frame: 20 }), 104, 104)).toEqual([0, 0, 0]);
+		expect(await pixel(await comp.renderFrame({ frame: 0 }), 104, 104)).toEqual(
+			[255, 255, 255],
+		);
+		expect(
+			await pixel(await comp.renderFrame({ frame: 20 }), 104, 104),
+		).toEqual([0, 0, 0]);
+	});
+
+	it("clips grandchildren to an outer container, not just children", async () => {
+		const comp = new Composition({
+			width: 400,
+			height: 200,
+			fps: 30,
+			durationFrames: 10,
+			backgroundColor: "#000000",
+		});
+		comp.add(
+			Layer.box({
+				id: "outer",
+				position: "absolute",
+				x: 0,
+				y: 0,
+				width: 100,
+				height: 200,
+				overflow: "hidden",
+				children: [
+					Layer.box({
+						id: "inner",
+						position: "absolute",
+						x: 0,
+						y: 0,
+						width: 400,
+						height: 200,
+						children: [
+							Layer.box({
+								id: "fill",
+								position: "absolute",
+								x: 0,
+								y: 0,
+								width: 400,
+								height: 200,
+								background: "#ffffff",
+							}),
+						],
+					}),
+				],
+			}),
+		);
+		const png = await comp.renderFrame({ frame: 0 });
+		expect(await pixel(png, 50, 100)).toEqual([255, 255, 255]);
+		expect(await pixel(png, 300, 100)).toEqual([0, 0, 0]);
 	});
 });

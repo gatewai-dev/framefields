@@ -157,6 +157,31 @@ process.exit(0);
 
 ---
 
+## Components
+
+Ready-made motion pieces you own: a mouse pointer with clicks and drags, a camera that zooms to them, window and device frames, word-timed captions, text reveals, counters, terminals, code blocks, title cards, lower thirds, logo reveals, backdrops, audio waveforms and more. Like a shadcn registry, `framefields add` copies a component's source into your project instead of hiding it in the package, so you can change any curve, glyph or layout.
+
+```bash
+npx framefields list                           # every component, one line each
+npx framefields add mouse-pointer focus-zoom   # writes src/components/<name>/
+```
+
+```typescript
+import { MousePointer } from "./components/mouse-pointer/index.js";
+
+const pointer = MousePointer({
+  path: [{ to: [400, 300] }, { to: [960, 540], click: true }],
+});
+comp.add(pointer);
+
+// Every event is a cue: key a button press or a click sound to it.
+const clickAt = pointer.cues.clicks[0].frame;
+```
+
+Installed components import only `framefields` and the shared toolkit in `framefields/components`, and bring along any component they build on. Files you've edited are never overwritten unless you pass `--overwrite`.
+
+---
+
 ## AI Gateway
 
 Framefields provides built-in access to the [**AI Gateway**](https://framefields.dev/models), allowing agents and developers to generate cinematic video, images, music, and voiceovers directly from code using hundreds of hosted models. Explore the full model catalog in the [**AI Gateway**](https://framefields.dev/models) or read the integration guide in the [**documentation**](https://framefields.dev/docs/guides/ai/).

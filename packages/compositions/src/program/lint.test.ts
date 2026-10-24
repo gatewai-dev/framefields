@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { lintComposition } from "./lint.js";
+import { LARGE_ANIMATION_KEYFRAMES, lintComposition } from "./lint.js";
 
 const base = { width: 1920, height: 1080, backgroundColor: "#000000" };
 const codes = (layout: unknown[], extra = {}) =>
@@ -106,6 +106,30 @@ describe("lintComposition", () => {
 				{ id: "m", kind: "model3d", metallic: 1 },
 			]),
 		).toEqual([]);
+	});
+
+	it("warns about very large animations, without a hard limit", () => {
+		const keyed = (n: number) => [
+			{
+				id: "busy",
+				kind: "box",
+				animation: {
+					tracks: [
+						{
+							prop: "x",
+							keyframes: Array.from({ length: n }, (_, f) => ({
+								frame: f,
+								value: f,
+							})),
+						},
+					],
+				},
+			},
+		];
+		expect(codes(keyed(LARGE_ANIMATION_KEYFRAMES))).toEqual([]);
+		expect(codes(keyed(LARGE_ANIMATION_KEYFRAMES + 1))).toEqual([
+			"large_animation",
+		]);
 	});
 
 	it("flags tracks whose keyframes never change", () => {

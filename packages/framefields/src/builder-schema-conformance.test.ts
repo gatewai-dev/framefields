@@ -20,6 +20,12 @@ const builders = {
 	text: () => Layer.text("Hello", { align: "start" }),
 	richText: () => Layer.text(["Hello ", { text: "world", fontWeight: 700 }]),
 	shape: () => Layer.shape("circle", { width: 100, height: 100 }),
+	shapeFillAlias: () =>
+		Layer.shape("rect", {
+			width: 100,
+			height: 100,
+			fill: "linear-gradient(180deg, #3ecf8e55, #3ecf8e00)",
+		}),
 	flex: () => Layer.flex({ children: [Layer.text("a")] }),
 	box: () => Layer.box({ width: 100, height: 100 }),
 	camera: () => Layer.camera({ z: -800 }),

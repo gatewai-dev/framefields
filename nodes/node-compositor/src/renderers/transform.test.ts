@@ -3,6 +3,7 @@ import {
 	buildLayerMatrix,
 	type Matrix2D,
 	multiply,
+	resolveLayer2DPosition,
 	rotate,
 	scale,
 	transformPoint,
@@ -116,5 +117,190 @@ describe("buildLayerMatrix — anchor-aware pivot (review H2)", () => {
 			y: m.b * 100 + m.d * 50 + m.f,
 		};
 		expectPoint(mapped, { x: 110, y: 70 });
+	});
+
+	it("scales independently on X and Y with non-uniform scaleX and scaleY", () => {
+		// box: x=10, y=20, width=200, height=100
+		// default center anchor: px = 100, py = 50. Screen pivot: (110, 70)
+		const m = buildLayerMatrix({
+			...box,
+			rotation: 0,
+			scaleX: 2,
+			scaleY: 0.5,
+		});
+
+		// Center anchor stays invariant:
+		expectPoint(transformPoint(m, 100, 50), { x: 110, y: 70 });
+
+		// Width doubled around center: left edge x=0 maps to 110 - 100*2 = -90
+		// Height halved around center: top edge y=0 maps to 70 - 50*0.5 = 45
+		expectPoint(transformPoint(m, 0, 0), { x: -90, y: 45 });
+
+		// Right edge x=200 maps to 110 + 100*2 = 310
+		// Bottom edge y=100 maps to 70 + 50*0.5 = 95
+		expectPoint(transformPoint(m, 200, 100), { x: 310, y: 95 });
+	});
+
+	it("stretches bars upward with bottom anchor (anchorY: 1)", () => {
+		// Bar positioned at x=50, y=100 with width=20, height=200
+		const bar = { x: 50, y: 100, width: 20, height: 200 };
+		const m = buildLayerMatrix({
+			...bar,
+			rotation: 0,
+			scaleX: 1,
+			scaleY: 2.5,
+			anchorX: 0.5,
+			anchorY: 1, // grounded at the bottom
+		});
+
+		// Bottom-center pivot (10, 200) -> screen (50 + 10, 100 + 200) = (60, 300)
+		expectPoint(transformPoint(m, 10, 200), { x: 60, y: 300 });
+
+		// Bottom edge is invariant
+		expectPoint(transformPoint(m, 0, 200), { x: 50, y: 300 });
+		expectPoint(transformPoint(m, 20, 200), { x: 70, y: 300 });
+
+		// Top edge (y=0) stretches upward by 2.5x: height goes from 200 to 500
+		// Screen y: 300 - 500 = -200
+		expectPoint(transformPoint(m, 10, 0), { x: 60, y: -200 });
+	});
+
+	it("combines uniform scale with scaleX and scaleY", () => {
+		const m = buildLayerMatrix({
+			...box,
+			rotation: 0,
+			scale: 2,
+			scaleX: 1.5, // effective sx = 3
+			scaleY: 0.5, // effective sy = 1
+			anchorX: 0,
+			anchorY: 0, // top-left anchor
+		});
+
+		// Top-left corner invariant
+		expectPoint(transformPoint(m, 0, 0), { x: 10, y: 20 });
+		// x scales by 3: 200 * 3 = 600 -> screen 610
+		// y scales by 1: 100 * 1 = 100 -> screen 120
+		expectPoint(transformPoint(m, 200, 100), { x: 610, y: 120 });
+	});
+});
+
+describe("resolveLayer2DPosition (2D parent translation inheritance)", () => {
+	it("returns base/sampled position for top-level layers (no parent)", () => {
+		const pos = resolveLayer2DPosition({
+			rect: { x: 100, y: 200 },
+			baseX: 100,
+			baseY: 200,
+			sampledX: 100,
+			sampledY: 200,
+			parentRect: null,
+			parentMatrix: null,
+		});
+		expect(pos).toEqual({ x: 100, y: 200 });
+	});
+
+	it("applies keyframe delta for animated top-level layers", () => {
+		const pos = resolveLayer2DPosition({
+			rect: { x: 100, y: 200 },
+			baseX: 100,
+			baseY: 200,
+			sampledX: 140,
+			sampledY: 230,
+			parentRect: null,
+			parentMatrix: null,
+		});
+		expect(pos).toEqual({ x: 140, y: 230 });
+	});
+
+	it("inherits 2D parent translation inside a container", () => {
+		// Parent container at (300, 200)
+		const parentMatrix = translate(300, 200);
+		const parentRect = { x: 300, y: 200 };
+		// Child placed at (50, 40) within parent: layout rect is (350, 240)
+		const childRect = { x: 350, y: 240 };
+
+		const pos = resolveLayer2DPosition({
+			rect: childRect,
+			parentRect,
+			baseX: 50,
+			baseY: 40,
+			sampledX: 50,
+			sampledY: 40,
+			parentMatrix,
+		});
+		expect(pos).toEqual({ x: 350, y: 240 });
+	});
+
+	it("inherits cumulative translation through nested containers (components inside components)", () => {
+		// Grandparent at (100, 100), Parent at (200, 150) -> cumulative parentMatrix translates by (300, 250)
+		const parentMatrix = multiply(translate(100, 100), translate(200, 150));
+		const parentRect = { x: 300, y: 250 };
+		// Child placed at (25, 35) inside component -> layout rect (325, 285)
+		const childRect = { x: 325, y: 285 };
+
+		const pos = resolveLayer2DPosition({
+			rect: childRect,
+			parentRect,
+			baseX: 25,
+			baseY: 35,
+			sampledX: 25,
+			sampledY: 35,
+			parentMatrix,
+		});
+		expect(pos).toEqual({ x: 325, y: 285 });
+	});
+
+	it("combines parent container animation with child layer animation", () => {
+		// Parent animated to (350, 220)
+		const parentMatrix = translate(350, 220);
+		const parentRect = { x: 300, y: 200 };
+		// Child layout rect (350, 240), but animated locally from baseX=50 to sampledX=80
+		const childRect = { x: 350, y: 240 };
+
+		const pos = resolveLayer2DPosition({
+			rect: childRect,
+			parentRect,
+			baseX: 50,
+			baseY: 40,
+			sampledX: 80,
+			sampledY: 40,
+			parentMatrix,
+		});
+		// localX = (350 - 300) + (80 - 50) = 50 + 30 = 80
+		// worldX = 350 + 80 = 430
+		// worldY = 220 + 40 = 260
+		expect(pos).toEqual({ x: 430, y: 260 });
+	});
+
+	it("transforms child position when parent container has 2D rotation", () => {
+		// Parent container rotated 90 degrees around (100, 100)
+		// Screen space: 90 deg clockwise maps (dx, dy) -> (-dy, dx)
+		const parentMatrix = multiply(translate(100, 100), rotate(90));
+		const parentRect = { x: 100, y: 100 };
+		const childRect = { x: 150, y: 100 }; // local dx = 50, dy = 0
+
+		const pos = resolveLayer2DPosition({
+			rect: childRect,
+			parentRect,
+			baseX: 50,
+			baseY: 0,
+			sampledX: 50,
+			sampledY: 0,
+			parentMatrix,
+		});
+		// (50, 0) rotated 90 deg -> (0, 50). Translated by (100, 100) -> (100, 150)
+		closeTo(pos.x, 100);
+		closeTo(pos.y, 150);
+	});
+
+	it("falls back gracefully when rect is missing but parent translation exists", () => {
+		const parentMatrix = translate(400, 300);
+		const pos = resolveLayer2DPosition({
+			baseX: 20,
+			baseY: 30,
+			sampledX: 20,
+			sampledY: 30,
+			parentMatrix,
+		});
+		expect(pos).toEqual({ x: 420, y: 330 });
 	});
 });

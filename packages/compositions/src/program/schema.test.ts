@@ -117,6 +117,30 @@ describe("CompositorProgramSchema (document v2)", () => {
 		);
 	});
 
+	it("has no keyframe cap: baked motion with hundreds of keys parses", () => {
+		const keyframes = Array.from({ length: 500 }, (_, f) => ({
+			id: `k${f}`,
+			frame: f,
+			value: f,
+		}));
+		const parsed = CompositorProgramSchema.safeParse({
+			...heroConfig,
+			layout: [
+				{
+					id: "baked",
+					kind: "box",
+					animation: {
+						tracks: [
+							{ id: "x", prop: "x", keyframes },
+							{ id: "y", prop: "y", keyframes },
+						],
+					},
+				},
+			],
+		});
+		expect(parsed.success, JSON.stringify(parsed.error?.issues[0])).toBe(true);
+	});
+
 	it("recursive children parse at any depth (lazy recursion works)", () => {
 		const deepNode = (depth: number): LayoutNode => {
 			if (depth === 0) {
@@ -185,6 +209,54 @@ describe("CompositorProgramSchema (document v2)", () => {
 		};
 		const parsedBad = CompositorProgramSchema.safeParse(badVolumeConfig);
 		expect(parsedBad.success).toBe(false);
+	});
+
+	// A plain union over the node kinds re-parsed every subtree once per
+	// member, so cost grew ~3x per nesting level; a depth-14 product demo
+	// (~100 KB) never finished. Both outcomes must stay linear.
+	describe("deep layout trees", () => {
+		const deepTree = (depth: number, leaf: LayoutNode): LayoutNode =>
+			depth === 0
+				? leaf
+				: ({
+						id: `box-${depth}`,
+						kind: "box",
+						children: [
+							deepTree(depth - 1, leaf),
+							{ id: `label-${depth}`, kind: "text", text: "label" },
+							{ id: `mark-${depth}`, kind: "shape", shapeType: "rect" },
+						],
+					} as LayoutNode);
+		const program = (leaf: LayoutNode) => ({
+			width: 1920,
+			height: 1080,
+			backgroundColor: "#000000",
+			layout: [deepTree(16, leaf)],
+		});
+		const timed = (config: unknown) => {
+			const start = performance.now();
+			const result = CompositorProgramSchema.safeParse(config);
+			return { result, ms: performance.now() - start };
+		};
+
+		it("parses a 16-deep tree quickly", () => {
+			const { result, ms } = timed(
+				program({ id: "leaf", kind: "text", text: "deep" } as LayoutNode),
+			);
+			expect(result.success).toBe(true);
+			expect(ms).toBeLessThan(1000);
+		});
+
+		it("rejects a bad leaf in a 16-deep tree quickly, with its path", () => {
+			const { result, ms } = timed(
+				program({ id: "leaf", kind: "shape", fill: "#fff" } as LayoutNode),
+			);
+			expect(result.success).toBe(false);
+			expect(ms).toBeLessThan(1000);
+			const issue = result.error?.issues[0];
+			expect(issue?.code).toBe("unrecognized_keys");
+			expect(issue?.path.filter((k) => k === "children")).toHaveLength(16);
+		});
 	});
 });
 

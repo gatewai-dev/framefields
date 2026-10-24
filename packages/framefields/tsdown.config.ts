@@ -1,4 +1,6 @@
+import { cpSync, existsSync } from "node:fs";
 import { defineConfig } from "tsdown";
+import { fixDtsAliases } from "./scripts/fix-dts-aliases.mjs";
 import { buildEngine } from "./src/preview/bundle.ts";
 
 export default defineConfig({
@@ -10,11 +12,23 @@ export default defineConfig({
 		"src/renderer/index.ts",
 		"src/fonts/index.ts",
 		"src/preview/index.ts",
+		"src/components/index.ts",
+		"src/cli.ts",
 	],
 	format: ["esm"],
 	clean: true,
-	// The live preview's browser engine, shipped prebuilt in dist/preview-engine.
-	onSuccess: () => buildEngine("dist/preview-engine"),
+	onSuccess: async () => {
+		// The live preview's browser engine, shipped prebuilt in dist/preview-engine.
+		await buildEngine("dist/preview-engine");
+		// The component registry `framefields add` installs from.
+		const registry = "../components/dist/registry";
+		if (!existsSync(registry))
+			throw new Error(
+				`${registry} is missing: build @framefields/components first`,
+			);
+		cpSync(registry, "dist/registry", { recursive: true });
+		fixDtsAliases("dist");
+	},
 	dts: { resolve: [/^@framefields\//] },
 	target: "es2022",
 	noExternal: [/^@framefields\//],

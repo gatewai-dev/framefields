@@ -1,5 +1,14 @@
 # framefields
 
+## 2.5.1
+
+### Patch Changes
+
+- Browser preview fixes:
+  - Installed components (`npx framefields add`) run on the preview engine's own toolkit through a new `framefields/components` engine entry, instead of bundling a second engine.
+  - Fonts registered with `FontManager.register` (bytes or URL) load from that source; the preview no longer looks them up at `assets/fonts/<Family>.ttf`, which marked them failed and stopped their text drawing.
+  - Every player on a page shares one GPU device, and `startPlayer` disposes the player it replaces, frame cache included.
+
 ## 2.5.0
 
 ### Minor Changes

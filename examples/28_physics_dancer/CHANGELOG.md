@@ -1,5 +1,7 @@
 # @framefields/example-28-physics-dancer
 
+## 2.5.1
+
 ## 2.5.0
 
 ## 2.4.3

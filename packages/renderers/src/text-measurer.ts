@@ -1,6 +1,6 @@
-import { GetFontAssetUrl } from "@framefields/client-utils";
 import type { TextSpan } from "@framefields/core";
 import { SlugFontCache, SlugGeometry } from "@framefields/webgpu-renderers";
+import { fontUrl } from "./font-source.js";
 
 export interface TextMeasureStyle {
 	fontFamily?: string;
@@ -69,8 +69,11 @@ export function measureText(
 	if (!slugFont) {
 		// Trigger preload for future calls if it hasn't failed yet
 		if (!SlugFontCache.isFailed(fontFamily)) {
-			const fontUrl = GetFontAssetUrl(fontFamily);
-			SlugFontCache.preloadSlugFont(null, fontFamily, fontUrl).catch(() => {});
+			SlugFontCache.preloadSlugFont(
+				null,
+				fontFamily,
+				fontUrl(fontFamily),
+			).catch(() => {});
 		}
 
 		// Fallback estimation with word wrap support
@@ -149,9 +152,7 @@ export function measureTextAsync(
 		return Promise.resolve(measureText(text, style));
 	}
 
-	const fontUrl = GetFontAssetUrl(fontFamily);
-
-	return SlugFontCache.preloadSlugFont(null, fontFamily, fontUrl)
+	return SlugFontCache.preloadSlugFont(null, fontFamily, fontUrl(fontFamily))
 		.then(() => measureText(text, style))
 		.catch(() => measureText(text, style));
 }

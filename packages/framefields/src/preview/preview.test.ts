@@ -3,11 +3,29 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { afterEach, describe, expect, it } from "vitest";
-import { buildEngine, prebuiltEngineDir } from "./bundle.js";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import {
+	buildRegistry,
+	writeRegistry,
+} from "../../../components/scripts/build-registry.js";
+import { add } from "../cli/add.js";
+import { openRegistry } from "../cli/registry.js";
+import {
+	buildEngine,
+	bundleProject,
+	ENGINE_URL,
+	prebuiltEngineDir,
+} from "./bundle.js";
 import { type PreviewSession, startPreview } from "./index.js";
 
 const entry = new URL("./fixtures/comp.ts", import.meta.url);
+// Fonts are kept on disk, not in git (see font-manager.test.ts).
+const INTER = path.resolve(
+	import.meta.dirname,
+	"../../../..",
+	"assets/fonts/Inter.ttf",
+);
+const hasInter = fs.existsSync(INTER);
 
 describe("startPreview", () => {
 	const sessions: PreviewSession[] = [];
@@ -311,25 +329,119 @@ describe("startPreview", () => {
 });
 
 describe("browser engine", () => {
-	it("loads every entry, with no Node built-ins left unshimmed", async () => {
-		const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "gf-engine-"));
-		try {
-			await buildEngine(dir);
-			for (const name of [
-				"framefields",
-				"effects",
-				"audio",
-				"signals",
-				"fonts",
-				"player",
-			]) {
-				// Importing runs the module's top-level code, as a browser would.
-				await import(pathToFileURL(path.join(dir, `${name}.mjs`)).href);
-			}
-		} finally {
-			await fs.promises.rm(dir, { recursive: true, force: true });
-		}
+	let dir: string;
+	beforeAll(async () => {
+		dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "gf-engine-"));
+		await buildEngine(dir);
 	}, 120_000);
+	afterAll(async () => {
+		await fs.promises.rm(dir, { recursive: true, force: true });
+	});
+
+	it("loads every entry, with no Node built-ins left unshimmed", async () => {
+		for (const name of [
+			"framefields",
+			"effects",
+			"audio",
+			"signals",
+			"fonts",
+			"components",
+			"player",
+		]) {
+			// Importing runs the module's top-level code, as a browser would.
+			await import(pathToFileURL(path.join(dir, `${name}.mjs`)).href);
+		}
+	});
+
+	it.skipIf(!hasInter)(
+		"runs installed components on the engine's own toolkit and fonts",
+		async () => {
+			const project = await fs.promises.mkdtemp(
+				path.join(os.tmpdir(), "gf-components-"),
+			);
+			try {
+				// Installed as `npx framefields add text-reveal` writes it.
+				const registryDir = path.join(project, "registry");
+				writeRegistry(await buildRegistry(), registryDir);
+				await fs.promises.mkdir(path.join(project, "src"));
+				await add(["text-reveal"], {
+					cwd: project,
+					registry: openRegistry(registryDir),
+				});
+				const entry = path.join(project, "src", "film.ts");
+				await fs.promises.writeFile(
+					entry,
+					[
+						'import { FontManager } from "framefields/fonts";',
+						'import { TextReveal } from "./components/text-reveal/index.js";',
+						"export async function check(bytes: Uint8Array) {",
+						'\tawait FontManager.register({ family: "Brand", source: bytes });',
+						'\tconst text = { text: "Hello", fontSize: 40 };',
+						'\tconst node = TextReveal({ ...text, fontFamily: "Brand" });',
+						'\tlet unregistered = "";',
+						"\ttry {",
+						'\t\tTextReveal({ ...text, fontFamily: "Nope" });',
+						"\t} catch (err) {",
+						"\t\tunregistered = (err as Error).message;",
+						"\t}",
+						"\treturn {",
+						"\t\twidth: node.width,",
+						'\t\tmeasured: FontManager.measure("Hello", { ...text, fontFamily: "Brand" }).width,',
+						"\t\tunregistered,",
+						"\t};",
+						"}",
+					].join("\n"),
+				);
+
+				const { code } = await bundleProject({
+					entry,
+					exportName: "check",
+					modelsDir: "",
+					ortBase: "",
+				});
+				// The toolkit comes from the engine, not bundled in again.
+				expect(code).toContain(`${ENGINE_URL}/components.mjs`);
+				expect(code).not.toContain("is not registered. Call");
+				expect(code.length).toBeLessThan(400_000);
+
+				// Run it on the built engine, with the player swapped for a stub
+				// that hands over the module.
+				const engine = pathToFileURL(dir).href;
+				await fs.promises.writeFile(
+					path.join(dir, "player-stub.mjs"),
+					"export function startPlayer(mod) { globalThis.__previewModule = mod; }",
+				);
+				await fs.promises.writeFile(
+					path.join(dir, "project.mjs"),
+					code
+						.replaceAll(`${ENGINE_URL}/player.mjs`, `${engine}/player-stub.mjs`)
+						.replaceAll(ENGINE_URL, engine),
+				);
+				await import(pathToFileURL(path.join(dir, "project.mjs")).href);
+				const mod = (
+					globalThis as { __previewModule?: Record<string, unknown> }
+				).__previewModule as {
+					check(bytes: Uint8Array): Promise<{
+						width: number;
+						measured: number;
+						unregistered: string;
+					}>;
+				};
+				const result = await mod.check(
+					new Uint8Array(await fs.promises.readFile(INTER)),
+				);
+
+				// One FontManager: the component sees the font the project registered…
+				expect(result.unregistered).toMatch(/Registered: Brand\b/);
+				// …and lays its text out with it.
+				expect(result.width).toBeCloseTo(result.measured, 3);
+				expect(result.width).toBeGreaterThan(0);
+			} finally {
+				await fs.promises.rm(project, { recursive: true, force: true });
+			}
+		},
+		60_000,
+	);
 });
 
 describe("prebuiltEngineDir", () => {

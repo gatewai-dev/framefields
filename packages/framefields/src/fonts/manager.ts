@@ -4,6 +4,7 @@ import {
 	registerHeadlessFont,
 	SlugFontCache,
 	SlugGeometry,
+	setRegisteredFontSource,
 } from "@framefields/webgpu-renderers";
 import * as fontkit from "fontkit";
 
@@ -456,6 +457,7 @@ export class FontManager {
 
 		this.fonts.set(resolvedFamily, registered);
 
+		setRegisteredFontSource(resolvedFamily, filePath ?? rawSource);
 		// Populate headless font registries
 		if (filePath) {
 			await registerHeadlessFont(resolvedFamily, filePath);

@@ -152,6 +152,33 @@ export function getHeadlessFontPath(family: string): string | undefined {
 	return fontPaths.get(family);
 }
 
+// Shared by every copy of the engine on a page, as SlugFontCache's maps are.
+const FONT_SOURCES_KEY = Symbol.for("framefields.fontSources");
+const sharedGlobals = globalThis as Record<symbol, unknown>;
+sharedGlobals[FONT_SOURCES_KEY] ??= new Map();
+const fontSources = sharedGlobals[FONT_SOURCES_KEY] as Map<
+	string,
+	string | Uint8Array
+>;
+
+/**
+ * Records where a registered family's font came from (its path or URL, or
+ * its bytes), so loaders use it instead of guessing a file by family name.
+ */
+export function setRegisteredFontSource(
+	family: string,
+	source: string | Uint8Array,
+): void {
+	fontSources.set(family, source);
+}
+
+/** The path, URL or bytes a family was registered from, if it was. */
+export function getRegisteredFontSource(
+	family: string,
+): string | Uint8Array | undefined {
+	return fontSources.get(family);
+}
+
 export async function getHeadlessFontData(
 	family: string,
 ): Promise<Uint8Array | undefined> {

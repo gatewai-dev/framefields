@@ -24,8 +24,8 @@ import {
 	WebGPUProvider,
 } from "@framefields/vision/web";
 import {
-	acquireDevice,
 	BrowserSurfaceProvider,
+	ensureDevice,
 	getRenderer2D,
 	lutStore,
 	type RenderContextValue,
@@ -67,6 +67,13 @@ export interface PreviewPlayer {
 	warm(frame: number): Promise<boolean>;
 	/** A frame at full size as an image, e.g. to attach to a note. */
 	snapshot(frame: number): Promise<ImageBitmap>;
+	/**
+	 * Stops drawing and frees the player's textures (its frame cache among
+	 * them). The GPU device stays: players share one, as the text, shader and
+	 * LUT caches they draw with are tied to it. `startPlayer` disposes the
+	 * player it replaces.
+	 */
+	dispose(): Promise<void>;
 }
 
 type Renderable = {
@@ -88,6 +95,11 @@ export interface PlayerSettings {
 	ortBase: string;
 }
 
+/**
+ * Builds the module's composition and makes it the page's player
+ * (`window.framefieldsPlayer`). Called again, e.g. with new props, it
+ * replaces the player on the same canvas and GPU device.
+ */
 export function startPlayer(
 	mod: Record<string, unknown>,
 	exportName: string,
@@ -111,11 +123,14 @@ export function startPlayer(
 				},
 			}),
 	);
-	window.framefieldsPlayer = createPlayer(
-		mod,
-		exportName,
-		BUILTIN_NODE_RENDERERS,
-	);
+	const previous = window.framefieldsPlayer;
+	window.framefieldsPlayer = (async () => {
+		await previous?.then(
+			(p) => p.dispose(),
+			() => {},
+		);
+		return createPlayer(mod, exportName, BUILTIN_NODE_RENDERERS);
+	})();
 	// The page listens for this; a failure is shown there.
 	window.dispatchEvent(new Event("framefields:player"));
 }
@@ -161,7 +176,9 @@ async function createPlayer(
 	// As the export decides it, so text entrances play the same.
 	const isVideoMode = vm.operation?.dataType === "Video";
 
-	const device = await acquireDevice();
+	// One device for every player on the page: glyph, shader and LUT caches
+	// are global and keep the GPU objects of the device that made them.
+	const device = await ensureDevice();
 	const canvas =
 		(document.getElementById("canvas") as HTMLCanvasElement | null) ??
 		document.createElement("canvas");
@@ -176,6 +193,7 @@ async function createPlayer(
 	let wanted: number | null = null;
 	let wantedCached = true;
 	let waiters: Array<(f: number) => void> = [];
+	let disposed = false;
 
 	let offscreen: GPUTexture | undefined;
 
@@ -336,7 +354,7 @@ async function createPlayer(
 	// One frame at a time. Requests made while a frame draws collapse to the
 	// latest; warm-ups only run when nothing else is drawing.
 	function pump(): void {
-		if (drawing || wanted === null) return;
+		if (disposed || drawing || wanted === null) return;
 		// `drawing` is set before the loop runs: a frame from the cache is drawn
 		// without awaiting, so the loop can finish (and clear it) synchronously.
 		let finished!: () => void;
@@ -380,6 +398,7 @@ async function createPlayer(
 		lastRenderMs: 0,
 		hasVision,
 		render(frame, options) {
+			if (disposed) return Promise.resolve(frame);
 			wanted = frame;
 			wantedCached = options?.cache ?? true;
 			const done = new Promise<number>((resolve) => waiters.push(resolve));
@@ -387,7 +406,7 @@ async function createPlayer(
 			return done;
 		},
 		async warm(frame) {
-			if (drawing || wanted !== null) return false;
+			if (disposed || drawing || wanted !== null) return false;
 			drawing = draw(frame, false).catch((err: unknown) =>
 				console.warn("[framefields] warm-up of frame", frame, err),
 			);
@@ -397,6 +416,7 @@ async function createPlayer(
 			return true;
 		},
 		async snapshot(frame) {
+			if (disposed) throw new Error("the player was disposed");
 			while (drawing) await drawing;
 			const done = (async () => {
 				await draw(frame, false);
@@ -413,6 +433,17 @@ async function createPlayer(
 				drawing = null;
 				pump();
 			}
+		},
+		async dispose() {
+			if (disposed) return;
+			disposed = true;
+			wanted = null;
+			while (drawing) await drawing;
+			for (const { tex } of renderCache.values()) tex.destroy();
+			renderCache.clear();
+			offscreen?.destroy();
+			offscreen = undefined;
+			surface.destroy();
 		},
 	};
 	return player;

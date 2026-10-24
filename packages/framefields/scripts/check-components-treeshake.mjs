@@ -25,6 +25,27 @@ const ANNOTATE = "Moving targets arrive with Callout";
 const GLYPHS = "L[k+1]-L[k]";
 const CAPTIONS = "give `words` or a `transcript`";
 const SHELL = "spinner-";
+const CODE = "satisfies keyof declare";
+const TITLE = "kicker";
+const LOWER = "role-plate";
+const METER = "Meter: give `value`";
+
+/** Each component: a string only its module has, and what it may compose. */
+const COMPONENTS = {
+	MousePointer: { own: POINTER, uses: [], budget: 60_000 },
+	AppFrame: { own: FRAME, uses: [], budget: 45_000 },
+	FocusZoom: { own: CAMERA, uses: [], budget: 40_000 },
+	TextReveal: { own: REVEAL, uses: [GLYPHS], budget: 55_000 },
+	Counter: { own: COUNTER, uses: [], budget: 45_000 },
+	Annotate: { own: ANNOTATE, uses: [], budget: 50_000 },
+	Captions: { own: CAPTIONS, uses: [GLYPHS], budget: 55_000 },
+	Terminal: { own: SHELL, uses: [FRAME, COUNTER], budget: 80_000 },
+	CodeBlock: { own: CODE, uses: [FRAME], budget: 70_000 },
+	TitleCard: { own: TITLE, uses: [REVEAL, GLYPHS], budget: 70_000 },
+	LowerThird: { own: LOWER, uses: [], budget: 45_000 },
+	Meter: { own: METER, uses: [COUNTER], budget: 55_000 },
+};
+const OWN = Object.values(COMPONENTS).map((c) => c.own);
 
 /** [names imported, markers that must not survive, max added bytes]. */
 const cases = [
@@ -32,44 +53,12 @@ const cases = [
 	[["boxPath", "ellipsePath"], [CONTRACT, TARGETS, MOTION], 6_000],
 	[["resolveTarget", "targetPoint"], [CONTRACT, STROKES, MOTION], 10_000],
 	[["staggerOffsets", "toFrames"], [CONTRACT, STROKES, TARGETS, MOTION], 3_000],
-	// Each component alone: none of the others.
-	[
-		["MousePointer"],
-		[FRAME, CAMERA, REVEAL, COUNTER, ANNOTATE, GLYPHS, CAPTIONS, SHELL],
-		60_000,
-	],
-	[
-		["AppFrame"],
-		[POINTER, CAMERA, REVEAL, COUNTER, ANNOTATE, GLYPHS, CAPTIONS, SHELL],
-		45_000,
-	],
-	[
-		["FocusZoom"],
-		[POINTER, FRAME, REVEAL, COUNTER, ANNOTATE, GLYPHS, CAPTIONS, SHELL],
-		40_000,
-	],
-	[
-		["TextReveal"],
-		[POINTER, FRAME, CAMERA, COUNTER, ANNOTATE, CAPTIONS, SHELL],
-		55_000,
-	],
-	[
-		["Counter"],
-		[POINTER, FRAME, CAMERA, REVEAL, ANNOTATE, GLYPHS, CAPTIONS, SHELL],
-		45_000,
-	],
-	[
-		["Annotate"],
-		[POINTER, FRAME, CAMERA, REVEAL, COUNTER, GLYPHS, CAPTIONS, SHELL],
-		50_000,
-	],
-	[
-		["Captions"],
-		[POINTER, FRAME, CAMERA, REVEAL, COUNTER, ANNOTATE, SHELL],
-		55_000,
-	],
-	// Terminal composes AppFrame and Counter on purpose.
-	[["Terminal"], [POINTER, CAMERA, REVEAL, ANNOTATE, GLYPHS, CAPTIONS], 80_000],
+	// Each component alone: none of the others, except what it composes.
+	...Object.entries(COMPONENTS).map(([name, c]) => [
+		[name],
+		[...OWN, GLYPHS].filter((m) => m !== c.own && !c.uses.includes(m)),
+		c.budget,
+	]),
 ];
 
 async function bundle(contents) {
@@ -91,20 +80,7 @@ const base = await bundle(baseline);
 const failures = [];
 // Using framefields without components must carry none of them: component
 // modules may not build anything (schemas, glyphs) at import time.
-for (const marker of [
-	CONTRACT,
-	STROKES,
-	TARGETS,
-	POINTER,
-	FRAME,
-	CAMERA,
-	REVEAL,
-	COUNTER,
-	ANNOTATE,
-	GLYPHS,
-	CAPTIONS,
-	SHELL,
-]) {
+for (const marker of [CONTRACT, STROKES, TARGETS, GLYPHS, ...OWN]) {
 	if (base.includes(marker))
 		failures.push(`import { Layer } alone kept component code ("${marker}")`);
 }

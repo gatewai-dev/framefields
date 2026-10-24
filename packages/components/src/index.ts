@@ -24,6 +24,15 @@ export {
 	type Word,
 } from "./captions/index.js";
 export {
+	CODE_LANGS,
+	type CodeBlockCues,
+	type CodeLang,
+	codeBlock,
+	type Token,
+	type TokenKind,
+} from "./code-block/index.js";
+export { tokenize } from "./code-block/tokenize.js";
+export {
 	type BakedKey,
 	type BakeOptions,
 	bakeFunction,
@@ -165,6 +174,18 @@ export {
 	focusZoom,
 } from "./focus-zoom/index.js";
 export {
+	LOWER_THIRD_LAYOUTS,
+	type LowerThirdCues,
+	type LowerThirdLayout,
+	lowerThird,
+} from "./lower-third/index.js";
+export {
+	METER_KINDS,
+	type MeterCues,
+	type MeterKind,
+	meter,
+} from "./meter/index.js";
+export {
 	CURSOR_STYLES,
 	type CursorStyle,
 	type MousePointerApi,
@@ -186,3 +207,9 @@ export {
 	type TextRevealCues,
 	textReveal,
 } from "./text-reveal/index.js";
+export {
+	TITLE_LAYOUTS,
+	type TitleCardCues,
+	type TitleLayout,
+	titleCard,
+} from "./title-card/index.js";

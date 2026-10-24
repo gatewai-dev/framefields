@@ -17,11 +17,15 @@ import {
 	type ComponentExtras,
 	type Cues,
 	captions,
+	codeBlock,
 	counter,
 	focusZoom,
+	lowerThird,
+	meter,
 	mousePointer,
 	terminal,
 	textReveal,
+	titleCard,
 } from "@framefields/components";
 import type { BoxNode } from "@framefields/compositions/program";
 import type { z } from "zod";
@@ -70,6 +74,18 @@ export const Captions = /* @__PURE__ */ bindComponent(captions);
 /** A scripted shell session: typed commands, streaming output, spinners, progress and scrolling. */
 export const Terminal = /* @__PURE__ */ bindComponent(terminal);
 
+/** Code on screen: syntax colours, typing, a focus band and diffs where kept lines glide. */
+export const CodeBlock = /* @__PURE__ */ bindComponent(codeBlock);
+
+/** Kicker, headline, rule and sub-line in designed layouts, on one timeline. */
+export const TitleCard = /* @__PURE__ */ bindComponent(titleCard);
+
+/** A name-and-role bar for interviews and talks that slides in and leaves on its own. */
+export const LowerThird = /* @__PURE__ */ bindComponent(lowerThird);
+
+/** Progress and scores: ring, arc, bar, segments or stars, filling with its counter. */
+export const Meter = /* @__PURE__ */ bindComponent(meter);
+
 export {
 	type Anchor,
 	type AnnotateCues,
@@ -97,6 +113,9 @@ export {
 	CAPTION_STYLES,
 	type CaptionStyle,
 	type CaptionsCues,
+	CODE_LANGS,
+	type CodeBlockCues,
+	type CodeLang,
 	type ComponentDefaults,
 	type ComponentDefinition,
 	type ComponentExtras,
@@ -141,12 +160,18 @@ export {
 	type HandOptions,
 	hashRng,
 	hashString,
+	LOWER_THIRD_LAYOUTS,
+	type LowerThirdCues,
+	type LowerThirdLayout,
 	lerp2,
 	linePath,
 	lineShift,
 	MARKS,
 	type Mark,
+	METER_KINDS,
 	type MeasureOptions,
+	type MeterCues,
+	type MeterKind,
 	type Metrics,
 	MOTION_PRESETS,
 	type MotionOptions,
@@ -189,10 +214,16 @@ export {
 	type Theme,
 	type ThemeInput,
 	type ThemeName,
+	TITLE_LAYOUTS,
+	type TitleCardCues,
+	type TitleLayout,
+	type Token,
+	type TokenKind,
 	targetPoint,
 	themeFrames,
 	themes,
 	toFrames,
+	tokenize,
 	toPathData,
 	toSeconds,
 	typingFrames,

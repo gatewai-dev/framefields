@@ -864,6 +864,161 @@ command), `outputs` (`{ start, end, step }`), `done`.
 
 ---
 
+### 7.9 `CodeBlock`
+
+Code on screen that reads like an editor and moves like an explanation: syntax colours,
+typing, a focus band that walks the lines being discussed, and diffs where unchanged
+lines glide to their new places while removed lines fold away and new ones arrive.
+
+```ts
+CodeBlock({
+  code: before,
+  lang: "ts",
+  typing: { cps: 30 },
+  focus: [{ at: 90, lines: { from: 3, to: 5 } }, { at: 150, lines: [8] }],
+  diff: { to: after, at: 210 },
+  frame: { title: "render.ts" },
+});
+```
+
+**Props**
+
+| Prop | Type | Default | Notes |
+|---|---|---|---|
+| `code` | `string` | required | Tabs expand to `tabSize` spaces. |
+| `lang` | `"ts" \| "js" \| "json" \| "bash" \| "python" \| "css" \| "plain"` | `"ts"` | Built-in tokenizer. |
+| `tokens` | `Array<Array<{ text; kind?; color? }>>` | — | One array per line: bring your own highlighter (shiki, prism …). Overrides `lang`. |
+| `typing` | `boolean \| { cps?, at? }` | `false` | Types the code line by line, seeded rhythm, caret. |
+| `focus` | `{ at; lines: number[] \| { from, to } }[]` | `[]` | 1-based lines. Other lines dim; a band glides to the focused lines. `lines: []` clears. |
+| `diff` | `{ to: string; at: number; duration? }` | — | Line diff (LCS): kept lines move, removed lines fade with a red wash, added lines slide in with a green wash. |
+| `lineNumbers` | `boolean` | `true` | Renumbered across a diff. |
+| `tabSize` | `number` | `2` | |
+| `frame` | `boolean \| { title? }` | `false` | `true` wraps it in an `AppFrame` window; otherwise a rounded surface plate. |
+| text props | `fontFamily`, `fontSize` | theme `mono`, 24 × scale | Line height 1.5. |
+
+**Token colours** come from the theme: keyword `accent2`, string `positive`, number
+`highlight`, comment `muted`, function `accent`, type a cyan, punctuation and operators a
+dimmed ink, everything else `ink`.
+
+**Implementation notes**
+
+- One text node per line with coloured spans; line numbers are their own right-aligned
+  nodes. The block's size is fixed up front from the longest line and the larger line count
+  (before and after a diff), so nothing reflows.
+- Typing keys each line's reveal count with `core/typing.ts` rhythm; a line appears when
+  its first key lands.
+- Focus dims with per-line opacity keys; the band is a box keyed between line spans.
+- Diff matching is a longest common subsequence on trimmed line text, so re-indented
+  lines count as kept and glide (their text swaps in the same frame they start moving).
+
+**Cues:** `keystrokes` (`{ frame, line }`), `lines` (each line's first frame), `focus`
+(`{ frame, lines }`), `diff` (`{ frame, end }`).
+
+**Acceptance**
+
+- Every token of the built-in tokenizer fixtures gets the expected kind (unit tests per lang).
+- After a diff settles, the frame equals a `CodeBlock` of `to` with no diff (render test).
+- Kept lines are on screen in every frame of the diff (they move, never blink).
+
+---
+
+### 7.10 `TitleCard`
+
+Kicker, headline, rule and sub-line in layouts that are designed, not assembled: the
+headline reveals with `TextReveal`, the kicker tracks in, the rule draws, the sub-line
+rises, on one shared timeline.
+
+**Props**
+
+| Prop | Type | Default | Notes |
+|---|---|---|---|
+| `title` | `string` | required | `\n` for a forced break. |
+| `kicker`, `subtitle` | `string` | — | Kicker is upper-case, tracked, accent coloured. |
+| `layout` | `"center" \| "left" \| "stack" \| "split"` | `"center"` | `stack`: left-aligned with a vertical accent bar. `split`: headline left, kicker and sub-line right of a vertical rule. |
+| `reveal` | `RevealStyle` | `"rise"` | Headline style (any `TextReveal` style). |
+| `emphasis` | `(string \| RegExp)[]` | `[]` | Headline words in the accent colour. |
+| `rule` | `boolean` | `true` | |
+| `exitStyle` | `ExitStyle \| false` | `false` | Headline exit; kicker, rule and sub-line fade with it. |
+| `width` | `number` | `1600 × scale` | Headline wraps inside it. |
+| `titleSize`, `fontFamily` | | `120 × scale`, theme `display` | Kicker and sub-line scale from `titleSize`. |
+
+**Cues:** `revealed` (headline at rest), `settled` (every part at rest), `exitStart`.
+
+**Acceptance**
+
+- The settled frame is identical in any render order; each layout keeps every part inside
+  `width` (unit test on the measured geometry).
+
+---
+
+### 7.11 `LowerThird`
+
+The name-and-role bar of interviews and talks. Safe-area aware, measured to its text, and
+it leaves on its own after `hold`.
+
+**Props**
+
+| Prop | Type | Default | Notes |
+|---|---|---|---|
+| `name` | `string` | required | |
+| `role` | `string` | — | |
+| `layout` | `"bar" \| "stacked" \| "tag" \| "line"` | `"bar"` | `bar`: plate with an accent edge; `stacked`: name plate over a smaller accent role plate; `tag`: one pill, name · role; `line`: no plate, an accent line draws up beside the text. |
+| `side` | `"left" \| "right"` | `"left"` | |
+| `safeArea` | `"landscape" \| "portrait" \| Rect` | from the frame's aspect | Placed at the safe area's bottom corner. |
+| `stay` | `boolean` | `false` | Stay on screen instead of leaving after `hold`. |
+| `accent`, `plate` | colours | theme `accent`, `surface` | |
+| `nameSize` | `number` | `44 × scale` | Role is 0.62 × that. |
+
+Root covers the frame (`width` / `height`, default 1920 × 1080 × scale) from 0, 0.
+Default `hold`: 3 seconds.
+
+**Cues:** `in` (fully on screen), `out` (starts leaving; empty with `stay`).
+
+**Acceptance**
+
+- The plate is exactly the measured text width plus padding for any name (unit test).
+- With `side: "right"`, the plate's right edge sits on the safe area's right edge.
+
+---
+
+### 7.12 `Meter`
+
+Progress and scores: a ring, an arc gauge, a bar, lit segments or a star rating, filling
+on the same value timeline as an optional `Counter`.
+
+**Props**
+
+| Prop | Type | Default | Notes |
+|---|---|---|---|
+| `value` / `values` | `number` / `[frame, value, ease?][]` | required | Like `Counter`. |
+| `from`, `max` | `number` | `0`, `100` (`5` for stars) | |
+| `kind` | `"ring" \| "arc" \| "bar" \| "segments" \| "stars"` | `"ring"` | |
+| `segments` | `number` | `10` (stars: `max`) | Cells for `segments`, stars for `stars`. |
+| `size` | `number` | ring / arc 260, bar 640, segments 640, stars 300 (× scale) | Width (bar, segments, stars) or diameter. |
+| `thickness` | `number` | per kind | |
+| `counter` | `boolean` | `true` (not for stars) | A `Counter` in the middle (ring, arc) or beside (bar, segments). |
+| `format`, `suffix` | as `Counter` | `",d"`, `"%"` when `max` is 100 | |
+| `label` | `string` | — | Small caption under (ring, arc) or above (bar). |
+| `color`, `track` | colours | theme `accent`, `line` | |
+| `countDuration`, `ease` | | as `Counter` | Fill and number share them exactly. |
+
+**Implementation notes**
+
+- Ring and arc fills are stroked arc paths with `trimEnd` keyed on the value timeline;
+  the arc spans 240° with round caps. Bars key their fill width.
+- Segments light up (colour and a small pop) on the frame the value crosses each cell.
+- Stars are clipped boxes over filled star shapes, so fractional ratings fill a star partway.
+
+**Cues:** `settled`, `crossings` (`{ frame, segment }` for segments and stars).
+
+**Acceptance**
+
+- The fill fraction equals `(value − from) / (max − from)` at every key frame (unit test on
+  the keys), and the counter shows the same value on those frames.
+- 3.5 stars fill exactly three stars and half of the fourth (render test).
+
+---
+
 ## 8. Waves 2 and 3
 
 Specified at summary level now; each gets a full section (like §7) before its milestone
@@ -873,14 +1028,14 @@ starts.
 
 | Component | Summary | Key props | Notable framefields use |
 |---|---|---|---|
-| `CodeBlock` | Syntax-highlighted code with line focus, typing, and diffs that move unchanged lines to their new places. | `code`, `lang`, `tokens?` (bring your own highlighter), `focus: [lines]`, `diff: { to, at }`, `typing` | Measured mono layout; lines keyed between positions so diffs read as motion. Ships a small built-in tokenizer for ts/js/json/bash/python/css; anything else via `tokens`. |
+| `CodeBlock` | Specified in §7.9 (M4). | | |
 | `ChatThread` | A messaging conversation: bubbles from either side, typing indicator, reactions, timestamps, auto-scroll. | `messages: { from, text \| media, at? }[]`, `participants`, `appearance` | Bubble sizes from measured text; spring entries baked; typing dots between messages. |
 | `Callout` | A label with a leader line pinned to a point or a moving tracked object; stays inside the frame. | `target`, `text`, `side: "auto" \| …`, `elbow` | Dynamic targets bind to vision `track` signals; auto side picks the free quadrant per frame. |
 | `Spotlight` | Dims the frame except a feathered region that glides between targets. | `targets: { at, target }[]`, `dim`, `feather`, `shape` | Inverted alpha matte + blur; region keyed between target rects. |
 | `Confetti` | Celebration bursts with paper, ribbons and sparkles that fall and settle. | `bursts: { at, origin, count }[]`, `palette`, `gravity`, `floor` | GPU particles; optional physics floor; bursts can come straight from `cues`. |
-| `Meter` | Progress and score visuals: ring, bar, arc gauge, star rating, each with an optional `Counter`. | `value`, `max`, `kind`, `segments`, `label` | Conic gradients, `trimEnd` arcs, fractional star fill via matte. |
-| `TitleCard` | Kicker, headline, rule and sub-line in tested layouts (`center`, `left`, `split`, `stack`). | `kicker`, `title`, `subtitle`, `layout` | Built from `TextReveal` + `Annotate` (rule) for consistent motion. |
-| `LowerThird` | Name and role bar for interviews and talks, several layouts, safe-area aware. | `name`, `role`, `layout`, `side` | Measured plate width; enter/exit presets. |
+| `Meter` | Specified in §7.12 (M4). | | |
+| `TitleCard` | Specified in §7.10 (M4). | | |
+| `LowerThird` | Specified in §7.11 (M4). | | |
 | `Toasts` | Notifications arriving into a stack that pushes down and compresses as it grows. | `items: { at, title, body, icon? }[]`, `max`, `corner` | Stack layout solved offline; spring settle baked. |
 
 ### 8.2 Wave 3 candidates
@@ -937,8 +1092,10 @@ root's own top-level code is outside this check), and for each case asserts:
   targets, motion …), and
 - the bytes added over the baseline stay inside a budget.
 
-Each new component adds a case importing only itself, with every other component's marker
-forbidden.
+Each component is a row in the script's `COMPONENTS` table: a marker string only its module
+has, and the components it composes (Terminal composes AppFrame and Counter, CodeBlock
+composes AppFrame, TitleCard composes TextReveal, Meter composes Counter). The check imports
+each component alone and forbids every other marker except those.
 
 ### 9.6 Budgets
 
@@ -952,6 +1109,10 @@ forbidden.
 | Annotate | 4 per line of target | 5 ms |
 | AppFrame | 14 + content | 5 ms |
 | Terminal | rows + 6 | 20 ms |
+| CodeBlock | 2 per line + 4 | 10 ms |
+| TitleCard | 8 | 10 ms |
+| LowerThird | 8 | 2 ms |
+| Meter | 6 (segments / stars: 3 per cell) | 5 ms |
 
 ### 9.7 Docs and skills
 
@@ -974,7 +1135,7 @@ Each milestone ends with a changeset for `framefields` (minor), docs, and its ex
 | **M1 · Pointer & camera** ✅ | `MousePointer` (rebuilt to the existing changeset design plus the Wave 1 additions), `FocusZoom`, `AppFrame`. | Example `30_product_demo`: a screen recording in a browser frame, pointer with clicks and auto-zoom, click SFX placed from cues. |
 | **M2 · Type** ✅ | `TextReveal`, `Counter`, `Annotate`. | All §7.4–7.6 acceptance tests green (§14). No example film for M2 or later milestones: examples stop at `30_product_demo`. |
 | **M3 · Speech & shell** ✅ | `Captions` (incl. transcript parsers and `behind`), `Terminal`. | §7.3 / §7.8 acceptance tests green (§15); no example film. |
-| **M4 · Wave 2a** | `CodeBlock`, `TitleCard`, `LowerThird`, `Meter`. | Full specs written first (§8 → §7 format). |
+| **M4 · Wave 2a** ✅ | `CodeBlock`, `TitleCard`, `LowerThird`, `Meter`. | Specs in §7.9–7.12; acceptance tests green (§16); no example film. |
 | **M5 · Wave 2b** | `ChatThread`, `Callout`, `Spotlight`, `Confetti`, `Toasts`. | As above. |
 | **M6 · Re-score** | Rank Wave 3 against usage and requests. | Updated §8.2. |
 
@@ -1131,3 +1292,42 @@ Deviations from §7.3 / §7.8:
   mono fonts (the bundled JetBrains Mono included) lack `❯`, `✔` and braille. A done line's
   leading `✔` / `✓` is replaced by the drawn check. The monospace check (warn when not
   mono) is not implemented.
+
+## 16. M4 delivery notes
+
+What landed: `CodeBlock`, `TitleCard`, `LowerThird`, `Meter` (§7.9–7.12), unit tests for
+each, a cross-cutting **unique node id** test over every component (`src/ids.test.ts`), and
+`m4.render.test.ts` (a settled diff renders exactly like the new code; 3.5 stars fill three
+and a half; title cards render identically in any frame order).
+
+How it is built:
+
+- **CodeBlock:** a small regex tokenizer per language (keyword sets built on first use),
+  one text node per line with coloured spans, line numbers as separate nodes. All opacity
+  changes per node (typing, focus, diff) go through one `Track`, so they merge into a single
+  ascending keyframe track. Diffs use an LCS on trimmed lines; removed lines finish leaving
+  before added lines on the same row arrive.
+- **TitleCard:** kicker, headline and sub-line are composed `TextReveal`s; the rule and the
+  `stack` accent bar are keyed boxes (crisper than a stroked mark for a straight rule, so not
+  `Annotate`). With `exitStyle` the headline is built with its hold lined up to the card's,
+  and the other parts fade with it.
+- **LowerThird:** each plate is a clipping box whose background slides in from the side
+  and whose text rises a beat later; leaving reverses it. Keys are merged per node and prop.
+  `tag` is one text node with spans (name bold, role a size down).
+- **Meter:** ring / arc fills are stroked arc paths with `trimEnd` keyed on exactly the
+  value's keyframes and eases, so the composed `Counter` and the fill agree on every key
+  frame. Segments light (with a pop) on the frame the value crosses them; stars fill through
+  widening clip boxes.
+
+Found on the way:
+
+- **Duplicate ids share geometry and keyframes in the renderer.** CodeBlock's diff washes
+  had the same ids as the added lines and took their layout. Ids are now unique, and
+  `ids.test.ts` guards every component.
+
+Deviations from §7.9–7.12:
+
+- CodeBlock line numbers use the muted colour (no extra opacity), and `focus.lines` takes
+  a list or `{ from, to }` (a two-number list was ambiguous).
+- TitleCard's rule is a box, not an `Annotate` mark.
+- LowerThird has no logo slot yet.

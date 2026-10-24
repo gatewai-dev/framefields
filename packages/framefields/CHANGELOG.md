@@ -1,5 +1,11 @@
 # framefields
 
+## 2.5.0
+
+### Minor Changes
+
+- 0695665: Initialize components
+
 ## 2.4.3
 
 ### Patch Changes

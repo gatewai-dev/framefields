@@ -1,5 +1,7 @@
 # @framefields/tensor-webgpu
 
+## 2.5.0
+
 ## 2.4.3
 
 ### Patch Changes

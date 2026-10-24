@@ -1,5 +1,7 @@
 # @framefields/node-refine-edge
 
+## 2.5.0
+
 ## 2.4.3
 
 ## 2.4.2

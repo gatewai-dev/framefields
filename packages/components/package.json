@@ -1,6 +1,6 @@
 {
 	"name": "@framefields/components",
-	"version": "2.4.3",
+	"version": "2.5.0",
 	"private": true,
 	"description": "Parametric motion components for framefields. Internal: the toolkit ships in `framefields/components`; components ship as a registry that `framefields add` copies into projects.",
 	"type": "module",

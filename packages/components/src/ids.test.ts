@@ -1,18 +1,23 @@
 import { describe, expect, it } from "vitest";
 import { annotate } from "./annotate/index.js";
 import { appFrame } from "./app-frame/index.js";
+import { callout } from "./callout/index.js";
 import { captions } from "./captions/index.js";
+import { chatThread } from "./chat-thread/index.js";
 import { codeBlock } from "./code-block/index.js";
+import { confetti } from "./confetti/index.js";
 import { bind } from "./core/contract.js";
 import { counter } from "./counter/index.js";
 import { focusZoom } from "./focus-zoom/index.js";
 import { lowerThird } from "./lower-third/index.js";
 import { meter } from "./meter/index.js";
 import { mousePointer } from "./mouse-pointer/index.js";
+import { spotlight } from "./spotlight/index.js";
 import { terminal } from "./terminal/index.js";
 import { fakeHost } from "./test/fake-host.js";
 import { textReveal } from "./text-reveal/index.js";
 import { titleCard } from "./title-card/index.js";
+import { toasts } from "./toasts/index.js";
 
 /**
  * The renderer keys layout and motion by node id: two nodes with one id
@@ -211,6 +216,65 @@ const cases: Array<[string, () => unknown]> = [
 					)({ value: kind === "stars" ? 3.5 : 60, kind, label: "L" }),
 			] as [string, () => unknown],
 	),
+	[
+		"ChatThread",
+		() =>
+			bind(
+				fakeHost(),
+				chatThread,
+			)({
+				messages: [
+					{ from: "me", text: "a", reaction: "❤️" },
+					{ from: "b", text: "c", time: "1:00" },
+					{ from: "c", image: "x.png" },
+				],
+			}),
+	],
+	[
+		"Toasts",
+		() =>
+			bind(
+				fakeHost(),
+				toasts,
+			)({
+				items: [
+					{ at: 0, title: "a", body: "b", kind: "success" },
+					{ at: 10, title: "c", kind: "error" },
+				],
+			}),
+	],
+	[
+		"Callout",
+		() =>
+			bind(fakeHost(), callout)({ target: [100, 100], title: "t", text: "x" }),
+	],
+	[
+		"Spotlight",
+		() =>
+			bind(
+				fakeHost(),
+				spotlight,
+			)({
+				targets: [
+					{ at: 0, target: [10, 10] },
+					{ at: 20, target: "full" },
+				],
+				shape: "ellipse",
+			}),
+	],
+	[
+		"Confetti",
+		() =>
+			bind(
+				fakeHost(),
+				confetti,
+			)({
+				bursts: [
+					{ at: 0, origin: [10, 10] },
+					{ at: 5, origin: [90, 10] },
+				],
+			}),
+	],
 ];
 
 describe("node ids", () => {

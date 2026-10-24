@@ -84,14 +84,65 @@ export interface Host {
 	style<T extends Animatable<LayoutNode>>(node: T, config: LayerStyleConfig): T;
 	/**
 	 * Mask `node` by `matte`'s alpha (a box: solid or CSS-gradient
-	 * background). The matte is laid out like a sibling of `node`; returns `node`.
+	 * background), or by its inverse (`"alpha-inverted"`: show `node`
+	 * everywhere the matte is not). The matte is laid out like a sibling of
+	 * `node`; returns `node`.
 	 */
-	matte<T extends Animatable<LayoutNode>>(node: T, matte: LayoutNode): T;
+	matte<T extends Animatable<LayoutNode>>(
+		node: T,
+		matte: LayoutNode,
+		mode?: "alpha" | "alpha-inverted",
+	): T;
 	/**
 	 * A video showing only its person / subject (vision segmentation), the
 	 * rest transparent: stacked over captions so text passes behind them.
 	 */
 	cutout(source: string, options: CutoutOptions): Animatable<LayoutNode>;
+	/** A GPU particle system layer. */
+	particles(options: ParticleOptions): Animatable<LayoutNode>;
+}
+
+/** A GPU particle system (framefields' `Layer.particles`), as plain data. */
+export interface ParticleOptions {
+	id?: string;
+	x: number;
+	y: number;
+	width: number;
+	height: number;
+	seed?: number;
+	/** Most particles alive at once. */
+	max?: number;
+	emitter: {
+		shape: "point";
+		x: number;
+		y: number;
+		/** Particles a second (0 for bursts only). */
+		rate: number;
+		bursts: Array<{ frame: number; count: number }>;
+	};
+	/** Seconds each particle lives. */
+	lifetime?: [number, number];
+	/** Launch speed, px/s. */
+	speed?: [number, number];
+	/** Degrees, 0 = right, -90 = up. */
+	direction?: number;
+	spread?: number;
+	/** px/s², down. */
+	gravity?: number;
+	drag?: number;
+	noise?: { strength: number; scale: number; speed: number };
+	/** A floor line (layer px) particles bounce on and settle. */
+	floor?: number;
+	bounce?: number;
+	/** px at birth → death. */
+	size?: [number, number];
+	sizeJitter?: number;
+	fade?: [number, number];
+	shape?: "circle" | "soft" | "square" | "spark";
+	stretch?: number;
+	blend?: "normal" | "add" | "screen";
+	color?: string | string[];
+	opacity?: number;
 }
 
 export interface CutoutOptions extends MediaOptions {

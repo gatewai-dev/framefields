@@ -29,6 +29,11 @@ const CODE = "satisfies keyof declare";
 const TITLE = "kicker";
 const LOWER = "role-plate";
 const METER = "Meter: give `value`";
+const CHAT = "A message needs `text` or `image`.";
+const TOAST = "bottom-center";
+const CALLOUT = "leader-2";
+const SPOT = "radial-gradient(closest-side, #ffffff ";
+const CONFETTI = "sparkles-";
 
 /** Each component: a string only its module has, and what it may compose. */
 const COMPONENTS = {
@@ -44,6 +49,11 @@ const COMPONENTS = {
 	TitleCard: { own: TITLE, uses: [REVEAL, GLYPHS], budget: 70_000 },
 	LowerThird: { own: LOWER, uses: [], budget: 45_000 },
 	Meter: { own: METER, uses: [COUNTER], budget: 55_000 },
+	ChatThread: { own: CHAT, uses: [], budget: 50_000 },
+	Toasts: { own: TOAST, uses: [], budget: 45_000 },
+	Callout: { own: CALLOUT, uses: [], budget: 50_000 },
+	Spotlight: { own: SPOT, uses: [], budget: 45_000 },
+	Confetti: { own: CONFETTI, uses: [], budget: 45_000 },
 };
 const OWN = Object.values(COMPONENTS).map((c) => c.own);
 

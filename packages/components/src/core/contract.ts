@@ -425,6 +425,7 @@ function assemble<S extends z.ZodRawShape, C extends Cues, E extends object>(
 		stage,
 	};
 	props.customize?.(parts);
+	holdFirstKeys(root);
 
 	const start = props.at ?? 0;
 	const cues = offsetCues(built.cues, start);
@@ -454,4 +455,36 @@ function assemble<S extends z.ZodRawShape, C extends Cues, E extends object>(
 		}
 	}
 	return root as ComponentNode<C> & E;
+}
+
+interface KeyedNode {
+	animation?: {
+		tracks?: Array<{
+			repeat?: number;
+			keyframes?: Array<{ id: string; frame: number; value: unknown }>;
+		}>;
+	};
+	children?: unknown[];
+	matte?: { node?: unknown };
+}
+
+/**
+ * Before a track's first keyframe the renderer shows the node's base value,
+ * not the first key's. Components always mean "hold the first key" (a
+ * bubble invisible until it lands, a stroke undrawn until it starts), so
+ * every track in the tree gets its first value pinned at frame 0.
+ */
+export function holdFirstKeys(node: unknown): void {
+	const n = node as KeyedNode;
+	for (const track of n.animation?.tracks ?? []) {
+		const first = track.keyframes?.[0];
+		if (!first || first.frame <= 0 || track.repeat) continue;
+		track.keyframes?.unshift({
+			id: `${first.id}-hold`,
+			frame: 0,
+			value: first.value,
+		});
+	}
+	for (const child of n.children ?? []) holdFirstKeys(child);
+	if (n.matte?.node) holdFirstKeys(n.matte.node);
 }

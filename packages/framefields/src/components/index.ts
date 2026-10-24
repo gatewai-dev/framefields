@@ -16,16 +16,21 @@ import {
 	type ComponentDefinition,
 	type ComponentExtras,
 	type Cues,
+	callout,
 	captions,
+	chatThread,
 	codeBlock,
+	confetti,
 	counter,
 	focusZoom,
 	lowerThird,
 	meter,
 	mousePointer,
+	spotlight,
 	terminal,
 	textReveal,
 	titleCard,
+	toasts,
 } from "@framefields/components";
 import type { BoxNode } from "@framefields/compositions/program";
 import type { z } from "zod";
@@ -86,6 +91,21 @@ export const LowerThird = /* @__PURE__ */ bindComponent(lowerThird);
 /** Progress and scores: ring, arc, bar, segments or stars, filling with its counter. */
 export const Meter = /* @__PURE__ */ bindComponent(meter);
 
+/** A messaging conversation: springy bubbles, typing dots, reactions and auto-scroll. */
+export const ChatThread = /* @__PURE__ */ bindComponent(chatThread);
+
+/** Notifications arriving into a corner stack that compresses as it grows. */
+export const Toasts = /* @__PURE__ */ bindComponent(toasts);
+
+/** A label with a leader line pinned to a point or a moving tracked object. */
+export const Callout = /* @__PURE__ */ bindComponent(callout);
+
+/** Dims the frame except a region that glides between targets. */
+export const Spotlight = /* @__PURE__ */ bindComponent(spotlight);
+
+/** GPU confetti bursts: paper, ribbons and sparkles that fall and can settle. */
+export const Confetti = /* @__PURE__ */ bindComponent(confetti);
+
 export {
 	type Anchor,
 	type AnnotateCues,
@@ -110,9 +130,13 @@ export {
 	boilKeys,
 	boundsOf,
 	boxPath,
+	CALLOUT_SIDES,
 	CAPTION_STYLES,
+	type CalloutCues,
+	type CalloutSide,
 	type CaptionStyle,
 	type CaptionsCues,
+	type ChatThreadCues,
 	CODE_LANGS,
 	type CodeBlockCues,
 	type CodeLang,
@@ -120,6 +144,7 @@ export {
 	type ComponentDefinition,
 	type ComponentExtras,
 	type ComponentMeta,
+	type ConfettiCues,
 	type CounterCues,
 	type CounterFormat,
 	CURSOR_STYLES,
@@ -181,6 +206,7 @@ export {
 	type MousePointerApi,
 	type MousePointerCues,
 	offsetCues,
+	type ParticleOptions,
 	type Placement,
 	type PropsOf,
 	type PulseOptions,
@@ -196,11 +222,14 @@ export {
 	resolveMotion,
 	resolveTarget,
 	rng,
+	type SpotlightCues,
 	type StaggerOrder,
 	scaleFrames,
 	scheduleExpression,
 	springAt,
+	springKeys,
 	springSettleFrames,
+	springTrack,
 	squigglePath,
 	staggerOffsets,
 	staggerRanks,
@@ -217,6 +246,11 @@ export {
 	TITLE_LAYOUTS,
 	type TitleCardCues,
 	type TitleLayout,
+	TOAST_CORNERS,
+	TOAST_KINDS,
+	type ToastCorner,
+	type ToastKind,
+	type ToastsCues,
 	type Token,
 	type TokenKind,
 	targetPoint,

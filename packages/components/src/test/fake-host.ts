@@ -123,8 +123,10 @@ export function fakeHost(): Host & { created: LayoutNode[] } {
 				cutout: o.mode ?? "person",
 				...o,
 			}) as never,
-		matte: (node, matte) => {
-			(node as unknown as { matte?: unknown }).matte = { node: matte };
+		particles: (o) =>
+			make({ kind: "particles", ...o, id: o.id ?? "particles" }) as never,
+		matte: (node, matte, mode = "alpha") => {
+			(node as unknown as { matte?: unknown }).matte = { node: matte, mode };
 			return node;
 		},
 		autoId: (prefix) => {

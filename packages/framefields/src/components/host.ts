@@ -54,8 +54,9 @@ export const host: Host = {
 			featherRadius: 0.04,
 			keyBackground: true,
 		}),
-	matte: (node, matte) => {
-		(node as unknown as AnimatableNode).withMatte(matte, "alpha");
+	particles: (options) => Layer.particles(options),
+	matte: (node, matte, mode = "alpha") => {
+		(node as unknown as AnimatableNode).withMatte(matte, mode);
 		return node;
 	},
 };

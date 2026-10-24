@@ -1136,7 +1136,7 @@ Each milestone ends with a changeset for `framefields` (minor), docs, and its ex
 | **M2 · Type** ✅ | `TextReveal`, `Counter`, `Annotate`. | All §7.4–7.6 acceptance tests green (§14). No example film for M2 or later milestones: examples stop at `30_product_demo`. |
 | **M3 · Speech & shell** ✅ | `Captions` (incl. transcript parsers and `behind`), `Terminal`. | §7.3 / §7.8 acceptance tests green (§15); no example film. |
 | **M4 · Wave 2a** ✅ | `CodeBlock`, `TitleCard`, `LowerThird`, `Meter`. | Specs in §7.9–7.12; acceptance tests green (§16); no example film. |
-| **M5 · Wave 2b** | `ChatThread`, `Callout`, `Spotlight`, `Confetti`, `Toasts`. | As above. |
+| **M5 · Wave 2b** ✅ | `ChatThread`, `Callout`, `Spotlight`, `Confetti`, `Toasts`. | Built from the §8.1 rows; behaviour and acceptance in §17; no example film. |
 | **M6 · Re-score** | Rank Wave 3 against usage and requests. | Updated §8.2. |
 
 Housekeeping (done in M1): the stale `.changeset/components-mouse-pointer.md` described a
@@ -1331,3 +1331,55 @@ Deviations from §7.9–7.12:
   a list or `{ from, to }` (a two-number list was ambiguous).
 - TitleCard's rule is a box, not an `Annotate` mark.
 - LowerThird has no logo slot yet.
+
+## 17. M5 delivery notes
+
+What landed: `ChatThread`, `Toasts`, `Callout`, `Spotlight`, `Confetti` (from the §8.1
+rows), unit tests for each, the components in `ids.test.ts`, and `m5.render.test.ts` (a
+reply is invisible until it lands; toasts are absent before they arrive; the spotlight's hole
+is lit and the rest dimmed; confetti frames identical in any render order).
+
+**A contract-wide fix.** Before a track's first keyframe the renderer draws the node's base
+value, not the first key's. Every component meant "hold the first key" (a bubble hidden until
+it lands, a second underline undrawn until its turn, a label waiting for its cue), so the
+contract now pins each track's first value at frame 0 for the whole built tree
+(`holdFirstKeys`, skipping repeating tracks). This fixed latent early-visibility in earlier
+components too; every M1–M4 test still passes unchanged.
+
+How they are built:
+
+- **ChatThread** (`messages`, `me`, `participants`, `names`, `typing`, `readCps`): timing
+  from reading speed, with typing dots (a bouncing wave) before the other side's replies.
+  Bubbles are measured (wrapping past 74 % of the width), spring in from their corner
+  (`core/bake.ts` `springKeys`), and the column scrolls to keep the newest in view. It also
+  supports names for group chats, timestamps, image messages and reactions; a heart reaction
+  is drawn, other reactions are text.
+- **Toasts** (`items`, `corner`, `max`): the stack is solved at every arrival and dismissal
+  (newest at the edge, older ones pushed away, each a little smaller, faded beyond `max`), and
+  every toast springs between its targets (`springTrack`: a retarget starts from the current
+  value). Kinds draw their own icon: success, info, warning, error.
+- **Callout** (`target`, `text`, `title`, `side`, `elbow`, `dot`, `length`): the leader is
+  one or two rotated boxes (keyed numbers, not a morphing path), the label hangs off its end,
+  is clamped inside the frame, and `auto` picks the open quadrant. Moving targets are followed
+  for `length` frames; the side decision eases, so a target crossing the middle swings its
+  label across instead of snapping.
+- **Spotlight** (`targets`, `dim`, `shape`, `feather`, `glide`, `follow`): a full-frame dim
+  layer masked by an **inverted** matte (`host.matte(…, "alpha-inverted")`) whose hole glides
+  between padded target rects; `"full"` lifts the dim. `ellipse` is a soft pool
+  (radial-gradient hole); `rect` is a crisp rounded rectangle.
+- **Confetti** (`bursts`, `palette`, `gravity`, `floor`, `ribbons`, `sparkles`): GPU particles
+  via `host.particles`, with one square-paper system per palette colour per origin (bursts
+  sharing an origin share systems), spark streaks for ribbons, and additive soft glints.
+  Curl noise reads as flutter, and a floor lets pieces bounce and settle. Each system is
+  seeded from `seed`.
+
+Deviations from the §8.1 rows:
+
+- ChatThread's `appearance` comes from the theme (no separate prop).
+- Callout binds dynamic targets as baked frames over `length`, not live vision signals, and
+  has no per-frame quadrant switching beyond the eased side choice.
+- Spotlight's `rect` shape has no feathered edge: one matte can't be both rounded-rect and
+  feathered. Use `ellipse` for a soft light.
+- Confetti paper doesn't flip in 3D: GPU particles have no per-particle rotation, so the
+  flutter comes from curl noise.
+- Emoji need an emoji-capable font; the default theme fonts have none.

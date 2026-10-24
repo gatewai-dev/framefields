@@ -115,3 +115,22 @@ export function springSettleFrames(
 	}
 	return Math.min(max, last + 1);
 }
+
+/**
+ * A spring from `from` to `to` starting at frame `start`, baked to linear
+ * keys (within `tolerance`, default 0.2 % of the distance).
+ */
+export function springKeys(
+	start: number,
+	from: number,
+	to: number,
+	fps: number,
+	options?: Parameters<typeof springAt>[1],
+	tolerance = Math.max(1e-4, Math.abs(to - from) * 0.002),
+): BakedKey[] {
+	const frames = springSettleFrames(fps, options);
+	const values = Array.from({ length: frames + 1 }, (_, f) =>
+		f === frames ? to : from + (to - from) * springAt(f / fps, options),
+	);
+	return bakeSamples(values, start, { tolerance });
+}

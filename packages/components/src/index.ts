@@ -17,12 +17,19 @@ export {
 	appFrame,
 } from "./app-frame/index.js";
 export {
+	CALLOUT_SIDES,
+	type CalloutCues,
+	type CalloutSide,
+	callout,
+} from "./callout/index.js";
+export {
 	CAPTION_STYLES,
 	type CaptionStyle,
 	type CaptionsCues,
 	captions,
 	type Word,
 } from "./captions/index.js";
+export { type ChatThreadCues, chatThread } from "./chat-thread/index.js";
 export {
 	CODE_LANGS,
 	type CodeBlockCues,
@@ -32,12 +39,14 @@ export {
 	type TokenKind,
 } from "./code-block/index.js";
 export { tokenize } from "./code-block/tokenize.js";
+export { type ConfettiCues, confetti } from "./confetti/index.js";
 export {
 	type BakedKey,
 	type BakeOptions,
 	bakeFunction,
 	bakeSamples,
 	springAt,
+	springKeys,
 	springSettleFrames,
 } from "./core/bake.js";
 export {
@@ -94,6 +103,7 @@ export type {
 	Host,
 	LayerStyleConfig,
 	MediaOptions,
+	ParticleOptions,
 } from "./core/host.js";
 export { type ComponentMeta, defineMeta } from "./core/meta.js";
 export {
@@ -193,6 +203,7 @@ export {
 	mousePointer,
 	type Waypoint,
 } from "./mouse-pointer/index.js";
+export { type SpotlightCues, spotlight } from "./spotlight/index.js";
 export {
 	type TerminalCues,
 	type TerminalStep,
@@ -213,3 +224,12 @@ export {
 	type TitleLayout,
 	titleCard,
 } from "./title-card/index.js";
+export {
+	springTrack,
+	TOAST_CORNERS,
+	TOAST_KINDS,
+	type ToastCorner,
+	type ToastKind,
+	type ToastsCues,
+	toasts,
+} from "./toasts/index.js";

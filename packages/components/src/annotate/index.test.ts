@@ -64,7 +64,8 @@ describe("Annotate", () => {
 		});
 		const [first, second] = strokes(a).map((n) => keys(n, "trimEnd"));
 		expect(first?.[0]?.frame).toBe(0);
-		expect(second?.[0]?.frame).toBe(first?.[1]?.frame);
+		// Key 0 is the hold from frame 0; the stroke starts drawing when the first ends.
+		expect(second?.[1]?.frame).toBe(first?.[1]?.frame);
 		expect(a.cues.drawn[0]?.frame).toBe(20);
 	});
 

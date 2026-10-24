@@ -1,3 +1,4 @@
+import { LayerAnimation } from "@framefields/compositions/program";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { fakeHost } from "../test/fake-host.js";
@@ -182,5 +183,48 @@ describe("component lifetimes", () => {
 		const tracks = c.children[0]?.animation.tracks ?? [];
 		expect(tracks.map((t) => t.prop)).toEqual(["y"]);
 		expect(tracks[0]?.keyframes[0]?.value).toBe(50);
+	});
+});
+
+describe("first keys", () => {
+	it("hold from frame 0 in every track of the tree (the renderer shows base values before them)", () => {
+		const late = defineComponent({
+			name: "Late",
+			props: () => ({ tag: z.string().optional() }),
+			build: (ctx) => {
+				const child = ctx.host.box({ id: ctx.partId("child") });
+				child.animate(
+					LayerAnimation.keys("opacity", [
+						[40, 0],
+						[44, 1],
+					]),
+				);
+				return {
+					children: [child],
+					width: 10,
+					height: 10,
+					duration: 50,
+					cues: {},
+				};
+			},
+		});
+		const node = bind(fakeHost(), late)({ id: "l" }) as unknown as {
+			children: Array<{
+				children: Array<{
+					animation: {
+						tracks: Array<{
+							keyframes: Array<{ frame: number; value: number }>;
+						}>;
+					};
+				}>;
+			}>;
+		};
+		const keys =
+			node.children[0]?.children[0]?.animation.tracks[0]?.keyframes ?? [];
+		expect(keys.map((k) => [k.frame, k.value])).toEqual([
+			[0, 0],
+			[40, 0],
+			[44, 1],
+		]);
 	});
 });

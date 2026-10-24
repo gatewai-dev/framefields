@@ -55,7 +55,7 @@ describe("CodeBlock", () => {
 		expect(c.cues.diff).toEqual([{ frame: 30, end: 50 }]);
 		// "c" moves from row 2 to row 0.
 		const ys = track(find(c, "c-line-2"), "y").map((k) => k.frame);
-		expect(ys).toEqual([30, 50]);
+		expect(ys).toEqual([0, 30, 50]);
 		expect(find(c, "c-added-1")).toBeDefined();
 		const gone = track(find(c, "c-line-0"), "opacity");
 		expect(gone[gone.length - 1]?.value).toBe(0);

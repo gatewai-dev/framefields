@@ -1,5 +1,11 @@
 # @framefields/example-29-capabilities-reel
 
+## 2.5.3
+
+### Patch Changes
+
+- docs-fixes
+
 ## 2.5.2
 
 ## 2.5.1

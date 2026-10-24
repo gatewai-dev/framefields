@@ -1,5 +1,11 @@
 # @framefields/example-27-rtl-text
 
+## 2.5.3
+
+### Patch Changes
+
+- docs-fixes
+
 ## 2.5.2
 
 ## 2.5.1

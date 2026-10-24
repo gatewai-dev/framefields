@@ -1,6 +1,6 @@
 {
 	"name": "@framefields/node-contour",
-	"version": "2.5.2",
+	"version": "2.5.3",
 	"private": false,
 	"framefields": {
 		"type": "Contour",

@@ -1038,19 +1038,57 @@ starts.
 | `LowerThird` | Specified in §7.11 (M4). | | |
 | `Toasts` | Notifications arriving into a stack that pushes down and compresses as it grows. | `items: { at, title, body, icon? }[]`, `max`, `corner` | Stack layout solved offline; spring settle baked. |
 
-### 8.2 Wave 3 candidates
+### 8.2 Wave 3 (re-scored in M6)
 
-`TouchPoint` (mobile taps, long-presses and swipes) · `Selection` (marquee and text
-selection driven by a `MousePointer`) · `WordCycle` (one slot in a sentence cycles through
-alternatives while the rest reflows) · `DeviceFrame` (phone, tablet, laptop bezels with a
-screen slot; 2D and 3D) · `Backdrop` (mesh gradient, grid, dot field, grain; loop-exact) ·
-`BeforeAfter` (split view with a draggable divider) · `CardStack` (depth-stacked cards that
-shuffle forward) · `LogoReveal` (extruded / glass / chrome wordmark reveal on `Layer3D`) ·
-`LayerDiagram` (exploded 3D plates with labels for architecture explainers) · `Avatars`
-(overlapping avatar group with count) · `SocialPost` (post / follow card mock-ups).
+**Evidence.** There is no usage telemetry or request log yet, so demand comes from what
+this repository's ten example films build by hand, read file by file
+(`examples/19`–`30`), plus common video formats. Leverage comes from engine features
+that already exist (`Layer3D` extrusion and materials, GPU particles and noise, film grain,
+`AudioSignal` extraction, vision mattes), and foundation from what Waves 1–2 built that a
+candidate would reuse or extend. The criteria are §6's, scored 1–3.
 
-Wave 3 is re-scored with the §6 criteria after Wave 2 ships, using what users actually
-ask for.
+What the films show:
+
+- **Logo lockups** close 5 of 10 films (19, 22, 25, 29, 30), each built by hand: extruded
+  in 3D (22), with a glint on the hit (25), as a mark-and-name lockup (29, 30).
+- **Backdrops** (gradients, grain, lens finish) sit behind 8 of 10.
+- **A cycling word** drives 22's type scene (one word cycling through every face).
+- **3D cards** carry 28 (glass word cards thrown in with physics).
+- **No phone, tablet or laptop frame** appears in any film; mobile demos are a common
+  format elsewhere, so demand is scored on format, not on our films.
+- **Audio** has a whole example (24); podcast and music clips (audiograms) are a common
+  social format, and nothing on the component side reads audio yet.
+
+| Candidate | Demand | Leverage | Foundation | Hard by hand | Total | Plan |
+|---|---|---|---|---|---|---|
+| `LogoReveal`: wordmark / mark reveal and lockup, flat or extruded (glass, chrome), with a glint | 3 (5/10 films) | 3 (`Layer3D` extrusion, materials, glint) | 2 (SVG / path import to shapes and extrusions; a lockup layout `TitleCard` can reuse) | 3 | **11** | 3a |
+| `Backdrop`: mesh gradient, grid, dot field, grain; loop-exact | 3 (8/10 films) | 3 (GPU noise, grain, loop-exact time) | 2 (periodic, loop-exact motion any ambient part can use) | 2 | **10** | 3a |
+| `Waveform` (new): audiogram bars, line or radial spectrum from a track | 2 (podcast and music clips; example 24) | 3 (`AudioSignal` extraction) | 3 (binding audio signals into components: also unblocks `Captions` `pulse` and signal-driven glyph selectors) | 2 | **10** | 3a |
+| `WordCycle`: one slot cycles through words while the sentence reflows | 2 (22; rotating-word headlines in launch films) | 3 (measured GPU text, glyph schedules) | 1 | 3 (every other word must glide to fit each new word's measured width) | **9** | 3a |
+| `DeviceFrame`: phone, tablet, laptop with a screen slot; 2D and 3D | 2 (format; none in our films) | 3 (`Layer3D` presentation, video in the slot) | 2 (screen slot and `at()` shared with `AppFrame`) | 2 | **9** | 3b |
+| `BeforeAfter`: split view with a moving divider | 2 | 3 (one clip with and without effects or grading, split by a matte: shows off the effects stack) | 1 | 2 | **8** | 3b |
+| `Selection`: marquee and text selection driven by a `MousePointer` drag | 2 | 2 (text range rects, pointer cues) | 1 | 3 (selection must track the drag glyph by glyph) | **8** | 3b |
+| `CardStack`: depth-stacked cards that shuffle forward | 2 (28) | 3 (3D, physics) | 1 | 2 | **8** | 3b |
+| `LayerDiagram`: exploded 3D plates with labels | 1 | 3 (3D) | 1 | 2 | 7 | backlog |
+| `TouchPoint`: mobile taps, long-presses, swipes | 2 (with devices) | 1 | 1 (reuses the pointer planner) | 2 | 6 | 3b, with `DeviceFrame` |
+| `SocialPost`: post / profile card mock-ups | 2 | 1 | 1 | 1 | 5 | backlog |
+| `Avatars`: overlapping avatar group with a count | 1 | 1 | 1 | 1 | 4 | dropped as a component |
+
+Decisions:
+
+- **Wave 3a (M7): `LogoReveal`, `Backdrop`, `Waveform`, `WordCycle`.** The first two are
+  what our own films rebuild most often; `Waveform` brings audio into the component layer
+  (and with it the deferred `Captions` `pulse`); `WordCycle` is the hardest common text
+  move left to do by hand.
+- **Wave 3b (M8): `DeviceFrame` + `TouchPoint`, `BeforeAfter`, `Selection`, `CardStack`.**
+  `TouchPoint` scores low alone but ships with `DeviceFrame`: a device without touches, or
+  touches without a device, is half a demo.
+- **Backlog:** `LayerDiagram` (no film needs it yet), `SocialPost` (low leverage; if built,
+  a generic card with no real platform's name, logo or styling).
+- **Dropped:** `Avatars` as a component. An avatar stack is a few boxes; it becomes a
+  helper used by `ChatThread` participants and any future `SocialPost`.
+- Re-score again when there is real demand data (issues, requests, generated-composition
+  logs), not only our own films.
 
 ---
 
@@ -1137,7 +1175,9 @@ Each milestone ends with a changeset for `framefields` (minor), docs, and its ex
 | **M3 · Speech & shell** ✅ | `Captions` (incl. transcript parsers and `behind`), `Terminal`. | §7.3 / §7.8 acceptance tests green (§15); no example film. |
 | **M4 · Wave 2a** ✅ | `CodeBlock`, `TitleCard`, `LowerThird`, `Meter`. | Specs in §7.9–7.12; acceptance tests green (§16); no example film. |
 | **M5 · Wave 2b** ✅ | `ChatThread`, `Callout`, `Spotlight`, `Confetti`, `Toasts`. | Built from the §8.1 rows; behaviour and acceptance in §17; no example film. |
-| **M6 · Re-score** | Rank Wave 3 against usage and requests. | Updated §8.2. |
+| **M6 · Re-score** ✅ | Rank Wave 3 against usage and requests. | Updated §8.2 (no telemetry yet: evidence from the example films and engine features). |
+| **M7 · Wave 3a** | `LogoReveal`, `Backdrop`, `Waveform`, `WordCycle` (+ `Captions` `pulse` via audio signals). | Full specs written first (§8.2 → §7 format). |
+| **M8 · Wave 3b** | `DeviceFrame` + `TouchPoint`, `BeforeAfter`, `Selection`, `CardStack`. | As above. |
 
 Housekeeping (done in M1): the stale `.changeset/components-mouse-pointer.md` described a
 standalone package that never shipped; it is replaced by `framefields` changesets per

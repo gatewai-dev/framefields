@@ -1,6 +1,6 @@
 ---
 name: framefields
-description: Start a new framefields video project, or add framefields to an existing Node.js project. Use when the user wants to make a video with framefields and the project has no framefields setup yet, or asks how to install framefields, scaffold a composition and render script, get from an empty folder to a first MP4, or generate images, video, music or voice for a film with AI models (`ai` from framefields, the framefields AI gateway). Hands off to framefields-compose, framefields-effects, and framefields-render for the details.
+description: Start a new framefields video project, or add framefields to an existing Node.js project. Use when the user wants to make a video with framefields and the project has no framefields setup yet, or asks how to install framefields, scaffold a composition and render script, get from an empty folder to a first MP4, generate images, video, music or voice for a film with AI models (`ai` from framefields, the framefields AI gateway), or add ready-made components (pointers, captions, title cards, device frames …) with `npx framefields add`. Hands off to framefields-compose, framefields-effects, and framefields-render for the details.
 ---
 
 # framefields
@@ -15,6 +15,7 @@ This skill takes a project from nothing to a verified first render. For anything
 | Scenes, layout, typography, animation, beat grids, film structure | `framefields-compose` |
 | Post-processing, color grading, VFX, on-device vision (tracking, cutouts, pose) | `framefields-effects` |
 | Frame inspection, frame grids, pixel tests, video export and QA | `framefields-render` |
+| Ready-made components (`npx framefields add`) | this skill, section 8 |
 | Generating images, video, music, voice with AI models (`ai`) | this skill, section 6 |
 | Autonomous agent payments & runway checks | this skill, section 7 |
 | Reporting bugs or engine defects to GitHub | this skill, section 9 |
@@ -363,6 +364,34 @@ Coding agents interacting with the AI gateway can discover endpoints, inspect cr
 ## 8. Grow the film
 
 Once the first render works, move to the specialist skills: `framefields-compose` for splitting the film into scene modules on a beat grid, `framefields-effects` for grading, grain, and vision-driven effects, and `framefields-render` for tests and delivery checks. Keep `theme.ts` as the single source of sizes, colors, fonts, and timing as the project grows.
+
+### Ready-made components
+
+framefields has a registry of parametric motion components: a mouse pointer with clicks and drags, a camera that zooms to clicks, window and device frames, word-timed captions, text reveals, counters, annotations, a terminal, code blocks, title cards, lower thirds, meters, chat threads, toasts, callouts, spotlights, confetti, logo reveals, backdrops, audio waveforms, word cycles, touches, before/after splits, selections and card stacks. They are not in the npm package: `framefields add` copies their source into the project, where it is ordinary project code to read and change.
+
+```bash
+npx framefields list                            # every component, one line each
+npx framefields add mouse-pointer focus-zoom    # writes src/components/<name>/
+```
+
+```typescript
+import { MousePointer } from "./components/mouse-pointer/index.js";
+
+const pointer = MousePointer({
+  path: [
+    { to: [400, 300], at: 0 },
+    { to: [960, 540], at: 30, click: true },
+  ],
+});
+film.add(pointer);
+// pointer.cues.clicks[0].frame: key a button press or a sound to the click.
+```
+
+- **Before writing a common motion piece by hand, run `npx framefields list`.** A component already handles timing, theme, cues and edge cases, and the copy is the project's to adjust.
+- Files go to `src/components` (or `components` when there is no `src`); the folder is saved in `framefields.json`, and `--dir` changes it on first use. Components that build on others bring them along (`terminal` adds `app-frame` and `counter`).
+- Installed code imports only `framefields` and `framefields/components` (the shared toolkit), so it always matches the installed framefields version. After upgrading framefields, `npx framefields add <name> --overwrite` refreshes a component; without the flag, files you changed are left alone and reported as `skipped`.
+- Every component takes the base props (`x`, `y`, `width`, `height`, `at`, `duration`, `hold`, `theme`, `enter`, `exit`, `seed`) and returns a normal box layer with `cues` (frames of its events), `span` and `parts` (inner layers to animate or style). Time is in frames.
+- Each installed `index.ts` documents what the component does at the top and defines its props in its schema; `npx framefields list` gives one-line summaries. Props are validated when the component is built, and a wrong one throws with the reason.
 
 ## 9. Report engine issues
 

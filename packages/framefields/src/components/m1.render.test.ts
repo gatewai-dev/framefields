@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Composition, Layer } from "../index.js";
 import { decodePngPixels, getPixel } from "../test-utils/pixels.js";
-import { AppFrame, FocusZoom, MousePointer } from "./index.js";
+import { AppFrame, FocusZoom, MousePointer } from "./testing.js";
 
 /**
  * Render tests for the M1 components (spec §7.1, §7.2, §7.7): what the

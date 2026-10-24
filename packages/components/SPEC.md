@@ -90,32 +90,41 @@ wire its timing to everything else. We go the other way:
 
 ### 3.1 Import story
 
-```ts
-// The default: straight from the SDK root.
-import { Composition, Layer, MousePointer, Captions } from "framefields";
+Components are **not in the package**. Like a shadcn registry, `framefields add` copies a
+component's source into the project, where it is the user's code to read and change:
 
-// Same exports from a dedicated subpath, for consumers that want an explicit boundary
-// (the browser preview engine, bundle-size-sensitive builds).
-import { MousePointer } from "framefields/components";
+```sh
+npx framefields add mouse-pointer focus-zoom   # writes src/components/<name>/…
+npx framefields list                           # what can be added
 ```
 
-Components are exported from both paths. The root exports only the user-facing pieces
-(the components, `themes`, `defineTheme`, `pulseKeys`, `bindComponent` and the `Target` /
-`Cue` / `ComponentNode` / `Theme` types). The subpath adds the authoring toolkit (timing,
-paths, strokes, targets, baking, motion presets, `defineComponent`), which would otherwise
-crowd the root namespace (`span`, for one, is already the rich-text helper there).
-There are **no** per-component subpaths for users:
-ESM named exports plus `sideEffects: false` let bundlers drop everything that isn't
-imported, and a CI check (§9.5) enforces that this stays true.
+```ts
+import { Composition, Layer } from "framefields";
+import { MousePointer } from "./components/mouse-pointer/index.js";
+```
+
+Installed source imports only two things: `framefields` (layers, animation) and
+`framefields/components`, the **toolkit** every component is built from (timing, paths,
+strokes, targets, baking, motion presets, themes, `defineComponent`, `bindComponent`, and
+framefields' own `z`, so schemas share its zod instance). A component that builds on
+another (Terminal on AppFrame and Counter) imports it relatively, and `add` installs it
+alongside. The root keeps the pieces users touch around components: `themes`,
+`defineTheme`, `pulseKeys`, `bindComponent`, `analyzeAudio` and the `Target` / `Cue` /
+`ComponentNode` / `Theme` / `AudioLevels` types.
+
+Why copy instead of export: motion components are where users most want to change the
+details (a curve, a glyph, a layout), and owning the file beats a growing props surface.
+The toolkit stays a dependency, so fixes to the shared math still arrive with upgrades.
 
 ### 3.2 Where the code lives
 
 ```
-packages/components/                 @framefields/components (internal, bundled into framefields)
+packages/components/                 @framefields/components (internal)
   SPEC.md                            this document
   package.json                       private, sideEffects: false
   src/
-    index.ts                         named re-exports only: no registries, no top-level calls
+    index.ts                         everything, for tests (named re-exports, no top-level calls)
+    toolkit.ts                       core/* only: what `framefields/components` re-exports
     core/
       contract.ts                    defineComponent, ComponentNode, BaseProps, cue helpers
       host.ts                        Host interface (what framefields injects, §3.3)
@@ -135,9 +144,13 @@ packages/components/                 @framefields/components (internal, bundled 
       meta.ts                        summary, tags, schema, example
       mouse-pointer.test.ts          planner unit tests against a fake host
     captions/ …                      same shape for every component
+  scripts/build-registry.ts          component folders → dist/registry (what `add` installs)
 packages/framefields/
-  src/components/index.ts            binds the host, re-exports every component
+  src/components/index.ts            the toolkit: re-exports toolkit.ts, binds the host
+  src/components/testing.ts          test-only: every component bound from source
   src/components/*.render.test.ts    frame-grid golden tests (real GPU)
+  src/cli.ts, src/cli/*              the `framefields` command (`add`, `list`)
+  dist/registry/                     copied from the components build; shipped
 ```
 
 ### 3.3 Layering: the host
@@ -167,22 +180,16 @@ with `Captions`. Each addition is one method here and one line in
 `packages/framefields/src/components/host.ts`, which reads `Layer` lazily inside each call
 so importing it has no effects.
 
-framefields binds it once per component, as pure top-level expressions that bundlers can
+Each installed component binds itself in its last line, a pure expression bundlers can
 drop:
 
 ```ts
-// packages/framefields/src/components/index.ts
+// src/components/mouse-pointer/index.ts (as `framefields add` writes it)
 export const MousePointer = /* @__PURE__ */ bindComponent(mousePointer);
-export const Captions = /* @__PURE__ */ bindComponent(captions);
-// …
 ```
 
-`bindComponent` (exported from both paths) is also how users bind components they write
-with `defineComponent`.
-
-The root `src/index.ts` adds `export * from "./components/index.js"`, `tsdown.config.ts`
-gains the `src/components/index.ts` entry, and `package.json` gains the `./components`
-export.
+`bindComponent` (from `framefields` or `framefields/components`) is also how users bind
+components they write with `defineComponent`.
 
 **Types without a type move.** The full `AnimatableNode` type depends on effect, vision and
 tensor types that live in framefields, so it can't move down cheaply. Instead the component
@@ -194,10 +201,21 @@ package types nodes structurally (`Animatable<T> = T & { animate(...): unknown }
 host. Anything that renders lives in `packages/framefields/src/components/` so there is no
 `framefields ↔ components` dependency cycle for turbo.
 
-### 3.4 Versioning
+### 3.4 Versioning and the registry
 
-`@framefields/components` is internal (`private: true`) and ships inside `framefields`, so
-there is one version to reason about. Changesets for component work target `framefields`.
+`@framefields/components` is internal (`private: true`). Its build writes
+`dist/registry/`: `index.json` (name, factory, summary, tags, example, dependencies) and one
+`<name>.json` per component with its files. The rewrite is import-only: `../core/*` and
+`zod` fold into one `framefields/components` import, `@framefields/compositions/program`
+becomes `framefields`, sibling components stay relative, and the folder's `index.ts` gains
+its bound factory. Tests and `meta.ts` stay behind; the meta travels as item fields.
+
+The framefields build copies that folder into its own `dist/registry`, so `npx framefields
+add` installs code written against exactly the installed toolkit: one version to reason
+about. `--registry <folder | url>` reads another registry of the same shape.
+`framefields.json` at the project root remembers where components go (default
+`src/components` when there is a `src`, else `components`). `add` never replaces a file the
+user changed unless given `--overwrite`.
 
 ---
 
@@ -1464,21 +1482,30 @@ asserts identical output. Each component with randomness renders twice with the 
 (`builder-schema-conformance` style), and `comp.lint()` reports nothing for the canonical
 example under every built-in theme.
 
-### 9.5 Tree-shaking
+### 9.5 Tree-shaking and installability
 
 `packages/framefields/scripts/check-components-treeshake.mjs` runs at the end of the
-framefields build. It bundles the built `dist` with esbuild the way a user's bundler would,
-on top of a baseline that already imports `Layer` (every project does; the framefields
-root's own top-level code is outside this check), and for each case asserts:
+framefields build. It bundles with esbuild the way a user's bundler would, on top of a
+baseline that already imports `Layer` (every project does; the framefields root's own
+top-level code is outside this check), and asserts:
 
-- no marker string survives from a module the import must not pull (contract, strokes,
-  targets, motion …), and
-- the bytes added over the baseline stay inside a budget.
+- no component's code is anywhere in the built `dist` (components ship only as registry
+  data);
+- each toolkit import carries no marker string from a module it must not pull (contract,
+  strokes, targets, motion …) and stays inside a byte budget;
+- each registry component, installed the way `add` writes it and bundled against the dist,
+  carries its own marker, none of the others except what it composes, and stays inside its
+  budget.
 
 Each component is a row in the script's `COMPONENTS` table: a marker string only its module
 has, and the components it composes (Terminal composes AppFrame and Counter, CodeBlock
-composes AppFrame, TitleCard composes TextReveal, Meter composes Counter). The check imports
-each component alone and forbids every other marker except those.
+composes AppFrame, TitleCard composes TextReveal, Meter composes Counter). A registry
+component without a row fails the check.
+
+`scripts/check-registry-types.mjs` then installs every component into a scratch project that
+links the package as `framefields` and typechecks it under NodeNext and bundler resolution,
+with `strict`, `noUncheckedIndexedAccess` and `verbatimModuleSyntax`: settings user projects
+commonly turn on, which the monorepo's own config does not.
 
 ### 9.6 Budgets
 
@@ -1532,6 +1559,7 @@ Each milestone ends with a changeset for `framefields` (minor), docs, and its ex
 | **M6 · Re-score** ✅ | Rank Wave 3 against usage and requests. | Updated §8.2 (no telemetry yet: evidence from the example films and engine features). |
 | **M7 · Wave 3a** ✅ | `LogoReveal`, `Backdrop`, `Waveform`, `WordCycle` (+ `Captions` `pulse` via audio levels). | Specs in §7.13–7.16; acceptance tests green (§18); no example film. |
 | **M8 · Wave 3b** ✅ | `DeviceFrame` + `TouchPoint`, `BeforeAfter`, `Selection`, `CardStack`. | Specs in §7.17–7.21; acceptance tests green (§19); no example film. |
+| **M9 · Registry** ✅ | Components leave the package: `npx framefields add` / `list` install source from a registry shipped in `dist/registry` (§3.1, §3.4). | Every component installs, typechecks under strict user settings and tree-shakes from its installed copy (§9.5); `30_product_demo` uses installed copies (§20). |
 
 Housekeeping (done in M1): the stale `.changeset/components-mouse-pointer.md` described a
 standalone package that never shipped; it is replaced by `framefields` changesets per
@@ -1543,13 +1571,13 @@ milestone (the components package is private and bundled).
 
 | # | Question | Status |
 |---|---|---|
-| Q1 | Root re-export or `framefields/components` only? | **Decided (M0):** components and user-facing types at the root, full toolkit at the subpath (§3.1). |
+| Q1 | Root re-export or `framefields/components` only? | **Superseded (M9):** components are installed with `framefields add`; the root keeps user-facing types and helpers, the subpath the full toolkit (§3.1). |
 | Q2 | Is text `content` keyframeable with hold interpolation? | **Corrected (M1):** the `text` track is a *reveal amount*, not a string: ≤ 1 is a fraction, > 1 a character count (so one character of n is keyed as `1 / n`). Typing (`AppFrame` URLs, `TextReveal` `type`) keys counts with `hold`. Changing strings per frame is not possible, so `Counter` uses digit reels for both styles and `stream` uses glyph animators. |
 | Q3 | Node targets inside flex layouts need resolved geometry at build time. | **Open:** `computeLayoutSync(yoga, …)` exists in `@framefields/compositions/program`, but no `host.layout` was needed for M1/M2: node targets still require absolute nodes and the error says so. `TextReveal.rects(match)` and `AppFrame.at(x, y)` cover the common cases. |
 | Q4 | PascalCase factories vs. a namespace? | **Decided:** PascalCase named exports. A namespace object defeats tree-shaking. |
 | Q5 | Should built-in themes ship fonts? | **Decided:** no. Fonts stay user-registered. |
 | Q6 | Seconds vs. frames for user-facing times. | **Decided:** frames everywhere; `fps` base prop for real-world inputs and theme speeds. |
-| Q7 | Per-component deep import paths for users? | **Decided:** no, unless the §9.5 check ever fails. |
+| Q7 | Per-component deep import paths for users? | **Moot (M9):** installed components are files in the project. |
 | Q8 | The framefields root chunk keeps ~1 MB of top-level code for any import. | Outside components; worth a separate pass over framefields' module-level side effects (schemas, registries) if browser bundle size starts to matter. |
 
 ## 12. M0 delivery notes
@@ -1875,3 +1903,37 @@ Follow-up engine fix: 3D models inside 2D containers ignored the containers' off
 are laid out in flow, so their layout rect never reflected their `x` / `y`). The compositor
 now maps a model's own `x` / `y` through its parent's matrix (`model-parent-offset.render.test.ts`),
 so LogoReveal's extruded names need no compensation and can sit anywhere in the tree.
+
+## 20. M9 delivery notes
+
+Components moved out of the package into a registry that `framefields add` installs from.
+
+- **Toolkit.** `@framefields/components/toolkit` re-exports `core/*`; `framefields/components`
+  re-exports it plus `bindComponent`, `analyzeAudio` and framefields' `z`. The toolkit names
+  installed code needed that weren't public before (`Host`, `TargetNode`, `Animatable`,
+  `targetSchema`, `transformPathData`, `rendererChars` …) are now public.
+- **Root.** The 26 factories and their component-specific types (`Waypoint`, `CursorStyle`,
+  `CAPTION_STYLES` …) left the root; they come with the installed files.
+- **CLI.** `framefields add <name…> [--all] [--dir] [--overwrite] [--registry]` and
+  `framefields list`, in `src/cli.ts` (bin `framefields`). Dependencies install first and
+  once; identical files report `unchanged`; files the user edited are `skipped` unless
+  `--overwrite`; unknown names fail before anything is written.
+- **Tests.** Render tests import `src/components/testing.ts`, which binds every component
+  from source (the installed copy differs only in import paths, which
+  `build-registry.test.ts` and `check-registry-types.mjs` cover).
+- **Example.** `30_product_demo` installed AppFrame, MousePointer and FocusZoom with the
+  command and imports them from `src/components`.
+
+Found by typechecking installed copies under user-style settings:
+
+- `noUncheckedIndexedAccess` errors in DeviceFrame (shadow table) and TextReveal
+  (`rects` range); fixed in source.
+- Inline type imports (`import("../core/host.js").Host`) needed rewriting too.
+- A type-bundler slip: when the short alias it picks for a chunk export equals a name the
+  chunk already declares (framefields' `Ai` interface), it emits `type fn as Ai`, and
+  consumers get "cannot be used as a value". Which export it hits shifts between builds,
+  so `scripts/fix-dts-aliases.mjs` (run after the build) drops `type` from any export the
+  chunk declares as a function, const, class or enum.
+
+Budgets: MousePointer 62 → 66 KB and TextReveal 55 → 58 KB. Installed copies are bundled
+from TypeScript source rather than the package's prebuilt output, which costs about 2 KB.

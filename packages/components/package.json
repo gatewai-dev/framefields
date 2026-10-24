@@ -2,7 +2,7 @@
 	"name": "@framefields/components",
 	"version": "2.4.3",
 	"private": true,
-	"description": "Parametric motion components for framefields. Internal: bundled into and exported from `framefields`.",
+	"description": "Parametric motion components for framefields. Internal: the toolkit ships in `framefields/components`; components ship as a registry that `framefields add` copies into projects.",
 	"type": "module",
 	"sideEffects": false,
 	"license": "Apache-2.0",
@@ -14,18 +14,25 @@
 			"development": "./src/index.ts",
 			"import": "./dist/index.mjs",
 			"default": "./dist/index.mjs"
+		},
+		"./toolkit": {
+			"types": "./dist/toolkit.d.mts",
+			"development": "./src/toolkit.ts",
+			"import": "./dist/toolkit.mjs",
+			"default": "./dist/toolkit.mjs"
 		}
 	},
 	"files": [
 		"dist/**"
 	],
 	"scripts": {
-		"build": "tsdown && tsx scripts/build-meta.ts",
+		"build": "tsdown && tsx scripts/build-meta.ts && tsx scripts/build-registry.ts",
 		"dev": "tsdown --watch",
 		"clean": "rm -rf .turbo && rm -rf node_modules && rm -rf dist",
 		"test": "vitest run",
 		"typecheck": "tsc --noEmit",
-		"meta": "tsx scripts/build-meta.ts"
+		"meta": "tsx scripts/build-meta.ts",
+		"registry": "tsx scripts/build-registry.ts"
 	},
 	"dependencies": {
 		"@framefields/compositions": "workspace:*",

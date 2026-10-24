@@ -29,6 +29,9 @@
 	"sideEffects": false,
 	"main": "./dist/index.mjs",
 	"types": "./dist/index.d.mts",
+	"bin": {
+		"framefields": "./dist/cli.mjs"
+	},
 	"exports": {
 		".": {
 			"types": "./dist/index.d.mts",
@@ -83,7 +86,7 @@
 		"dist/**"
 	],
 	"scripts": {
-		"build": "tsdown && node ../../scripts/sync-readme.mjs && node scripts/check-dts-bundle.mjs && node scripts/check-components-treeshake.mjs",
+		"build": "tsdown && node ../../scripts/sync-readme.mjs && node scripts/check-dts-bundle.mjs && node scripts/check-components-treeshake.mjs && node scripts/check-registry-types.mjs",
 		"dev": "tsdown --watch",
 		"clean": "rm -rf dist .turbo",
 		"prepack": "node ../../scripts/sync-readme.mjs",

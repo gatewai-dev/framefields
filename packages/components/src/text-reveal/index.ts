@@ -784,7 +784,7 @@ export const textReveal = /* @__PURE__ */ defineComponent({
 			parts,
 			api: (placement): TextRevealApi => ({
 				rects(match, nth = 0) {
-					const range =
+					const range: [number, number] | null =
 						match === undefined
 							? [0, text.length]
 							: findRange(text, match, nth);

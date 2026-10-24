@@ -7,7 +7,7 @@ import {
 	type AnalyzeOptions,
 	type AudioLevels,
 	analyzeChannels,
-} from "@framefields/components";
+} from "@framefields/components/toolkit";
 import { decodeAudioSource } from "@framefields/compositions";
 
 export async function analyzeAudio(

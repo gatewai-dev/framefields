@@ -1,9 +1,9 @@
 /**
- * The host framefields injects into `@framefields/components`: the `Layer`
+ * The host framefields injects into component builds: the `Layer`
  * factories, real font measurement and stable ids. `Layer` is read inside
  * each call, never at module load, so importing this file has no effects.
  */
-import type { Host, LayerStyleConfig } from "@framefields/components";
+import type { Host, LayerStyleConfig } from "@framefields/components/toolkit";
 import { frameArraySignal } from "@framefields/core";
 import { FilmGrain, LayerStyle } from "../effects/index.js";
 import { FontManager } from "../fonts/index.js";

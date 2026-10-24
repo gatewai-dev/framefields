@@ -1,4 +1,4 @@
-import { defineComponent } from "@framefields/components";
+import { defineComponent } from "@framefields/components/toolkit";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { Composition, CompositorProgramSchema, Layer } from "../index.js";

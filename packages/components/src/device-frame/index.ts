@@ -32,6 +32,14 @@ const POINTS: Record<Device, [number, number]> = {
 	laptop: [1440, 900],
 };
 
+/** Drop shadow per elevation: [opacity, distance, size] at scale 1. */
+const SHADOWS = [
+	[0, 0, 0],
+	[0.3, 10, 26],
+	[0.45, 26, 56],
+	[0.6, 46, 90],
+] as const;
+
 const FINISHES = {
 	graphite: { body: "#2c2e33", edge: "#55585f", button: "#3a3d43" },
 	silver: { body: "#d8dade", edge: "#f2f3f5", button: "#c4c7cd" },
@@ -165,13 +173,14 @@ export const deviceFrame = /* @__PURE__ */ defineComponent({
 				background: finish.body,
 				borderRadius: bodyR,
 			});
+			const [opacity, distance, size] = SHADOWS[e] ?? SHADOWS[0];
 			host.style(plate, {
 				dropShadow: {
 					color: "#000000",
-					opacity: [0, 0.3, 0.45, 0.6][e],
+					opacity,
 					angle: 90,
-					distance: [0, 10, 26, 46][e] * s,
-					size: [0, 26, 56, 90][e] * s,
+					distance: distance * s,
+					size: size * s,
 					spread: 0,
 				},
 			});

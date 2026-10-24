@@ -2,22 +2,25 @@
  * A 13-second product demo: the browser opens on a deploys dashboard, the
  * pointer ships a build and promotes it, and the camera follows every click.
  *
- * Three components carry it: AppFrame (the browser), MousePointer (the
+ * Three components carry it, added with `npx framefields add app-frame
+ * mouse-pointer focus-zoom`: AppFrame (the browser), MousePointer (the
  * hand), FocusZoom (the camera). Everything that reacts — button presses,
  * the new row, the toast — keys off the pointer's cues, so moving a
  * waypoint re-times the whole film.
  */
 import {
-	AppFrame,
 	Composition,
-	FocusZoom,
 	FontManager,
 	Layer,
 	LayerAnimation,
 	type LayoutNode,
+} from "framefields";
+import { AppFrame } from "./components/app-frame/index.js";
+import { FocusZoom } from "./components/focus-zoom/index.js";
+import {
 	MousePointer,
 	type Waypoint,
-} from "framefields";
+} from "./components/mouse-pointer/index.js";
 import {
 	ACCENT,
 	APP,

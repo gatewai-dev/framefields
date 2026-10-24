@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { FontManager } from "../fonts/index.js";
 import { Composition, Layer, themes } from "../index.js";
 import { computeMse, decodePngPixels, getPixel } from "../test-utils/pixels.js";
-import { Annotate, Counter, TextReveal } from "./index.js";
+import { Annotate, Counter, TextReveal } from "./testing.js";
 
 /**
  * Render tests for the M2 components (spec §7.4–7.6): reveals end on exactly

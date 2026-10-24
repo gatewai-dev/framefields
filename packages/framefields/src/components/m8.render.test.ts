@@ -8,7 +8,7 @@ import {
 	DeviceFrame,
 	Selection,
 	TouchPoint,
-} from "./index.js";
+} from "./testing.js";
 
 /**
  * Render tests for the M8 components: device content fills exactly the

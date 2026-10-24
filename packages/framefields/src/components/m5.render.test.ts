@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { FontManager } from "../fonts/index.js";
 import { Composition, Layer } from "../index.js";
 import { computeMse, decodePngPixels, getPixel } from "../test-utils/pixels.js";
-import { ChatThread, Confetti, Spotlight, Toasts } from "./index.js";
+import { ChatThread, Confetti, Spotlight, Toasts } from "./testing.js";
 
 /**
  * Render tests for the M5 components: nothing shows before its time (the

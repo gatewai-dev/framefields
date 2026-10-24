@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { FontManager } from "../fonts/index.js";
 import { Composition } from "../index.js";
 import { computeMse, decodePngPixels } from "../test-utils/pixels.js";
-import { Captions, Terminal } from "./index.js";
+import { Captions, Terminal } from "./testing.js";
 
 /**
  * Render tests for the M3 components (spec §7.3, §7.8): word colour changes

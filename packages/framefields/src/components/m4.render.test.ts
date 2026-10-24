@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { FontManager } from "../fonts/index.js";
 import { Composition } from "../index.js";
 import { computeMse, decodePngPixels, getPixel } from "../test-utils/pixels.js";
-import { CodeBlock, Meter, TitleCard } from "./index.js";
+import { CodeBlock, Meter, TitleCard } from "./testing.js";
 
 /**
  * Render tests for the M4 components (spec §7.9–7.12): a settled diff is the

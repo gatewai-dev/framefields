@@ -1,4 +1,4 @@
-import type { AudioLevels } from "@framefields/components";
+import type { AudioLevels } from "@framefields/components/toolkit";
 import { beforeAll, describe, expect, it } from "vitest";
 import { FontManager } from "../fonts/index.js";
 import { Composition } from "../index.js";
@@ -9,7 +9,7 @@ import {
 	LogoReveal,
 	Waveform,
 	WordCycle,
-} from "./index.js";
+} from "./testing.js";
 
 /**
  * Render tests for the M7 components: the lockup's name waits behind the

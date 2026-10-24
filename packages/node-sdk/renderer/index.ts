@@ -48,9 +48,23 @@ export interface NodeRenderProps<
 	) => unknown;
 }
 
+/**
+ * How far an effect draws past the pixels it is given, px, for one of its
+ * operations; `null` when it isn't local (it reads or writes pixels anywhere,
+ * like a mirror or a portal) or can't tell (a size driven by a signal).
+ */
+export type EffectReach = (operation: Record<string, unknown>) => number | null;
+
+/**
+ * A node's GPU renderer. An effect renderer may carry `reach`: a compositor
+ * then runs it over the layer's own region plus that margin instead of the
+ * whole target. Without it the effect always gets the whole target.
+ */
 export type WebGPUNodeRenderer<
 	TOperation extends MediaOperation = MediaOperation,
-> = (args: {
+> = WebGPUNodeRenderFn<TOperation> & { reach?: EffectReach };
+
+type WebGPUNodeRenderFn<TOperation extends MediaOperation> = (args: {
 	ctx: RenderContextValue;
 	encoder: GPUCommandEncoder;
 	pass: GPURenderPassEncoder;
@@ -334,6 +348,16 @@ export function registerWebGPURenderer(
 	renderer: WebGPUNodeRenderer,
 ): void {
 	webgpuRegistry.register(op, renderer);
+}
+
+/**
+ * How far an operation's effect draws past its pixels, from its registered
+ * renderer; `null` when unknown: no renderer, no `reach`, or no answer.
+ */
+export function effectReach(operation: Record<string, unknown>): number | null {
+	const op = operation.op;
+	if (typeof op !== "string") return null;
+	return webgpuRegistry.get(op)?.reach?.(operation) ?? null;
 }
 
 export type { WebGPUNodeRendererArgs } from "./gpu.js";

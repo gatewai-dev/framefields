@@ -7,7 +7,7 @@
 import { Canvas, loadImage } from "skia-canvas";
 import { describe, expect, it } from "vitest";
 import { LayerStyle } from "./effects/index.js";
-import { Composition, Layer } from "./index.js";
+import { Composition, Flip, Layer } from "./index.js";
 
 async function pixels(png: Buffer) {
 	const img = await loadImage(png);
@@ -100,5 +100,31 @@ describe("container fast paths", () => {
 		const below = at(200, 207);
 		expect(below[0]).toBeGreaterThan(120);
 		expect(below[1]).toBeLessThan(40);
+	});
+
+	it("an effect that declares no reach still runs over the whole target", async () => {
+		// Flip (a mirror) has no `reach`: on a container it mirrors across the
+		// whole canvas, so a box on the left lands on the right.
+		const box = Layer.box({
+			position: "absolute",
+			x: 40,
+			y: 150,
+			width: 100,
+			height: 100,
+			background: "#ffffff",
+			children: [
+				Layer.box({
+					position: "absolute",
+					x: 10,
+					y: 10,
+					width: 20,
+					height: 20,
+					background: "#ff0000",
+				}),
+			],
+		}).withEffect(new Flip({ horizontal: true }));
+		const at = await pixels(await scene(box).renderFrame({ frame: 0 }));
+		expect(at(90, 200)).toEqual([0, 0, 0]); // where it was laid out
+		expect(at(310, 200)).toEqual([255, 255, 255]); // mirrored across the canvas
 	});
 });

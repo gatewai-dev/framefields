@@ -16,6 +16,7 @@ import {
 	type VirtualMediaData,
 } from "@framefields/core";
 import {
+	effectReach,
 	type NodeRenderProps,
 	resolveFrameNumber,
 	solveHomography,
@@ -548,8 +549,9 @@ function computeContainerScissor(
 }
 
 /**
- * How far a layer's effects draw past its pixels, px, or null when an effect
- * is not known to stay local (it then runs over the whole target).
+ * How far a layer's effects draw past its pixels, px: the sum of what each
+ * effect's renderer declares (`reach`), or null as soon as one doesn't
+ * (it then runs over the whole target, as any effect may need to).
  */
 function effectsReach(effects: unknown[]): number | null {
 	let reach = 0;
@@ -559,35 +561,11 @@ function effectsReach(effects: unknown[]): number | null {
 				? (e as { toOperation: () => Record<string, unknown> }).toOperation()
 				: e
 		) as Record<string, unknown> | null;
-		if (op?.op !== "LayerStyle") return null;
-		reach += layerStyleReach(op);
+		const r = op ? effectReach(op) : null;
+		if (r === null) return null;
+		reach += r;
 	}
 	return reach;
-}
-
-type StyleEntry = {
-	enabled?: boolean;
-	distance?: number;
-	size?: number;
-	position?: string;
-};
-
-/** A LayerStyle's reach: shadow offset plus blur, glow and outer stroke (the shader caps their kernels at 24 px). */
-function layerStyleReach(op: Record<string, unknown>): number {
-	const kernel = (size?: number) => Math.min(Math.ceil(size ?? 0), 24);
-	// Each style may be a signal holding its value.
-	const entry = (v: unknown) =>
-		(v && typeof v === "object" && "_value" in v
-			? (v as { _value: unknown })._value
-			: v) as StyleEntry | undefined;
-	const ds = entry(op.dropShadow);
-	const og = entry(op.outerGlow);
-	const st = entry(op.stroke);
-	let r = 0;
-	if (ds?.enabled) r = Math.max(r, (ds.distance ?? 0) + kernel(ds.size));
-	if (og?.enabled) r = Math.max(r, kernel(og.size));
-	if (st?.enabled && st.position !== "inside") r = Math.max(r, kernel(st.size));
-	return Math.ceil(r) + 2;
 }
 
 function expandRect(r: Rect, by: number): Rect {

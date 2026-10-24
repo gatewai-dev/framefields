@@ -14,15 +14,23 @@ export interface ParsedGradientStop {
 	color: Rgba;
 }
 
+export type RadialExtent =
+	| "closest-side"
+	| "closest-corner"
+	| "farthest-side"
+	| "farthest-corner";
+
 export interface ParsedGradient {
 	type: GradientType;
 	/** Linear: CSS angle in degrees (0 = to top, 90 = to right, 180 = to bottom). */
 	angle: number;
 	/** Radial / conic center as a fraction of the box (0.5, 0.5 = middle). */
 	center: [number, number];
-	/** Radial: circle or ellipse sized to the farthest corner, or explicit px radii. */
+	/** Radial: circle or ellipse, sized by `extent` unless `radius` gives px radii. */
 	shape: "circle" | "ellipse";
 	radius?: [number, number];
+	/** Radial size keyword (CSS): where the last stop lands. Default farthest-corner. */
+	extent?: RadialExtent;
 	/** Conic: start angle in degrees (0 = top, clockwise). */
 	from: number;
 	stops: ParsedGradientStop[];
@@ -235,6 +243,10 @@ function parseUncached(input: string): ParsedGradient | null {
 			if (at >= 0) g.center = parsePosition(tokens.slice(at + 1));
 			if (type === "radial") {
 				if (before.includes("circle")) g.shape = "circle";
+				const extent = before.find((t) =>
+					/^(closest|farthest)-(side|corner)$/.test(t),
+				);
+				if (extent) g.extent = extent as RadialExtent;
 				const px = before
 					.filter((t) => /px$/.test(t))
 					.map((t) => parseFloat(t));

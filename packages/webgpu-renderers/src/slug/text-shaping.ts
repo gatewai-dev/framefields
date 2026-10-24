@@ -726,9 +726,10 @@ export function shapeLineFromFont(
 // ── Lines ────────────────────────────────────────────────────────────────
 
 /**
- * Greedy word wrap over clusters in logical order: breaks only between
- * whitespace and non-whitespace runs, drops whitespace at the start of each
- * line, and never splits a word.
+ * Greedy word wrap over one paragraph's clusters in logical order: breaks
+ * only between whitespace and non-whitespace runs and never splits a word.
+ * Whitespace a wrap leaves at the start of a line is dropped; the paragraph's
+ * own leading whitespace (an indent) is kept.
  */
 export function breakLines<S extends ShapeStyle>(
 	clusters: ShapedCluster<S>[],
@@ -751,7 +752,7 @@ export function breakLines<S extends ShapeStyle>(
 		i = j;
 
 		if (isSpace) {
-			if (line.length === 0) continue;
+			if (line.length === 0 && lines.length > 0) continue;
 			line.push(...token);
 			lineWidth += tokenWidth;
 			continue;
@@ -782,6 +783,9 @@ export interface PlacedLine<S extends ShapeStyle = ShapeStyle> {
 	/** Visible extent of the line (whitespace and outer letter spacing excluded). */
 	inkLeft: number;
 	inkRight: number;
+	/** The paragraph's indent (its leading whitespace), on the side it reads from. */
+	indentLeft: number;
+	indentRight: number;
 }
 
 /**
@@ -840,7 +844,18 @@ export function placeLine<S extends ShapeStyle>(
 		inkLeft = 0;
 		inkRight = 0;
 	}
-	return { clusters, inkLeft, inkRight };
+	// Leading whitespace (kept only on a paragraph's first line) is an indent:
+	// alignment keeps it, on the left for LTR paragraphs, the right for RTL.
+	let indent = 0;
+	for (let i = 0; i < n && line[i].isSpace; i++) indent += line[i].advance;
+	const rtl = (baseLevel & 1) === 1;
+	return {
+		clusters,
+		inkLeft,
+		inkRight,
+		indentLeft: rtl ? 0 : indent,
+		indentRight: rtl ? indent : 0,
+	};
 }
 
 /** Resolves `start`/`end` against a paragraph's direction. */
@@ -860,9 +875,11 @@ export function alignOffset(
 	align: "left" | "center" | "right",
 	width: number,
 ): number {
+	const left = line.inkLeft - line.indentLeft;
+	const right = line.inkRight + line.indentRight;
 	if (align === "center") {
-		return (width - (line.inkRight - line.inkLeft)) / 2 - line.inkLeft;
+		return (width - (right - left)) / 2 - left;
 	}
-	if (align === "right") return width - line.inkRight;
-	return -line.inkLeft;
+	if (align === "right") return width - right;
+	return -left;
 }

@@ -62,6 +62,16 @@ describe("parseCssGradient", () => {
 		expect(c?.from).toBe(90);
 		expect(c?.center).toEqual([0, 0]);
 		expect(c?.stops[1].offset).toBeCloseTo(0.5);
+		// The size keyword is kept: closest-side lands the last stop on the box's edge.
+		expect(
+			parseCssGradient("radial-gradient(closest-side, #fff 40%, transparent)")
+				?.extent,
+		).toBe("closest-side");
+		expect(
+			parseCssGradient(
+				"radial-gradient(circle farthest-side at 10% 10%, red, blue)",
+			),
+		).toMatchObject({ shape: "circle", extent: "farthest-side" });
 		// No config: the first part is a stop.
 		expect(parseCssGradient("radial-gradient(red, blue)")?.stops).toHaveLength(
 			2,

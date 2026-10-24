@@ -8,10 +8,7 @@ import {
 	fragmentBindGroupLayout,
 	PREMULTIPLIED_BLEND,
 } from "@framefields/node-sdk/gpu";
-import {
-	computeLayerStylePadding,
-	type LayerStyleNodeConfig,
-} from "../shared/config.js";
+import type { LayerStyleNodeConfig } from "../shared/config.js";
 
 interface LayerStyleOp extends LayerStyleNodeConfig {
 	op: "LayerStyle";
@@ -745,13 +742,11 @@ export const WebGPURenderer: WebGPUNodeRenderer = async (args) => {
 		return Math.max(clampMin, Math.min(clampMax, fallbackVal));
 	};
 
-	// 1. Render child media into temporary texture at its natural size and draw centered with padding
-	const padding = computeLayerStylePadding(op);
-	const padX = padding.padX;
-	const padY = padding.padY;
-
-	const childW = Math.max(1, width - padX * 2);
-	const childH = Math.max(1, height - padY * 2);
+	// 1. Render the child at the target's own size. Shrinking it to leave room
+	// for a shadow's offset squashed it (and, on a container's canvas-sized
+	// group, moved everything in it); a shadow past the edge is clipped.
+	const childW = width;
+	const childH = height;
 
 	const childTex = ctx.renderer.getTemporaryTexture(childW, childH, [
 		...(props.excludeTextures || []),
@@ -802,7 +797,7 @@ export const WebGPURenderer: WebGPUNodeRenderer = async (args) => {
 	ctx.renderer.drawTexture(
 		inputPass,
 		childTex,
-		{ x: padX, y: padY, width: childW, height: childH },
+		{ x: 0, y: 0, width: childW, height: childH },
 		{ opacity: 1 },
 	);
 	inputPass.end();

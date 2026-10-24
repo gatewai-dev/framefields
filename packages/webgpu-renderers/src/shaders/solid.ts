@@ -42,7 +42,13 @@ fn sdRoundedRect(p: vec2<f32>, b: vec2<f32>, r: f32) -> f32 {
     let radius = u.params.w;
     
     let d = sdRoundedRect(in.localPos - center, halfSize, radius);
-    let edgeAlpha = 1.0 - smoothstep(0.0, 1.0, d);
+    // Rounded shapes: one device pixel of coverage centred on the edge (the
+    // quad has room for its outer half). Square ones keep their exact edge.
+    let fw = max(fwidth(d), 1e-4);
+    var edgeAlpha = 1.0 - smoothstep(0.0, 1.0, d);
+    if (radius > 0.0) {
+        edgeAlpha = clamp(0.5 - d / fw, 0.0, 1.0);
+    }
     var fill = u.color;
     if (u.gradient.info.x > 0.5) {
         fill = evalGradient(u.gradient, in.localPos);

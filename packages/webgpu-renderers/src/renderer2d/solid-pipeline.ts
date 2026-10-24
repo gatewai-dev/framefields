@@ -100,14 +100,29 @@ export class SolidPipeline {
 			this.uniformData,
 		);
 
-		this.vertexData[0] = rect.x;
-		this.vertexData[1] = rect.y;
-		this.vertexData[2] = rect.x + rect.width;
-		this.vertexData[3] = rect.y;
-		this.vertexData[4] = rect.x;
-		this.vertexData[5] = rect.y + rect.height;
-		this.vertexData[6] = rect.x + rect.width;
-		this.vertexData[7] = rect.y + rect.height;
+		// A rounded shape's anti-aliased edge reaches half a device pixel past
+		// the rect; grow the quad by a couple of device pixels (in local units)
+		// so it isn't cut where the curve meets the rect's sides.
+		let grow = 0;
+		if (cornerRadius > 0) {
+			const m = opts?.transform
+				? transformStack.getCurrent().multiply(opts.transform)
+				: transformStack.getCurrent();
+			const scale = Math.min(Math.hypot(m.a, m.b), Math.hypot(m.c, m.d));
+			grow = 2 / Math.max(scale, 1e-3);
+		}
+		const x0 = rect.x - grow;
+		const y0 = rect.y - grow;
+		const x1 = rect.x + rect.width + grow;
+		const y1 = rect.y + rect.height + grow;
+		this.vertexData[0] = x0;
+		this.vertexData[1] = y0;
+		this.vertexData[2] = x1;
+		this.vertexData[3] = y0;
+		this.vertexData[4] = x0;
+		this.vertexData[5] = y1;
+		this.vertexData[6] = x1;
+		this.vertexData[7] = y1;
 
 		const vertexBuffer = this.vertexPool.getBuffer(
 			this.device,

@@ -1,9 +1,6 @@
-import { GetFontAssetUrl } from "@framefields/client-utils";
 import type { VirtualMediaData } from "@framefields/core";
-import {
-	getHeadlessFontPath,
-	SlugFontCache,
-} from "@framefields/webgpu-renderers";
+import { SlugFontCache } from "@framefields/webgpu-renderers";
+import { fontSource, fontUrl } from "./font-source.js";
 import { preloadFont } from "./utils.js";
 
 const EMOJI_REGEX = /\p{Extended_Pictographic}/gu;
@@ -48,12 +45,14 @@ export async function preloadCompositionFonts(
 
 	const tasks: Promise<unknown>[] = [];
 	for (const family of families) {
-		// Fonts registered through FontManager carry their real file path; the
-		// asset URL is only a naming convention and would miss e.g. "Foo-Regular.ttf".
-		const url = getHeadlessFontPath(family) ?? GetFontAssetUrl(family);
+		// A registered family loads from what it was registered with; a family
+		// SlugFontCache has parsed already never fetches `url`.
+		const source = fontSource(family);
+		const url = fontUrl(family);
+		const from = typeof source === "string" ? source : "its registered bytes";
 		tasks.push(
-			preloadFont(family, url).catch((err) =>
-				onError(err, `font "${family}" from ${url}`),
+			preloadFont(family, source).catch((err) =>
+				onError(err, `font "${family}" from ${from}`),
 			),
 		);
 		if (device) {

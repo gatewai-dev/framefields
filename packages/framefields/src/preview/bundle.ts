@@ -37,6 +37,8 @@ const ENTRIES: Record<string, string> = {
 	"framefields/audio": "audio/index.ts",
 	"framefields/signals": "signals/index.ts",
 	"framefields/fonts": "fonts/index.ts",
+	// Installed components import their toolkit from here (`framefields add`).
+	"framefields/components": "components/index.ts",
 };
 
 /** Node built-ins with a browser version (shim file names); others are stubbed. */

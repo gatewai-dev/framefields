@@ -68,6 +68,111 @@ function parseFontBuffer(bytes: Uint8Array): FontkitFont {
 	return font;
 }
 
+/**
+ * A font file's bytes: read from disk in Node (the URL as a path, then the
+ * font directories by family name), fetched elsewhere.
+ */
+async function loadFontBuffer(
+	fontFamily: string,
+	fontUrl: string,
+): Promise<ArrayBuffer> {
+	let buffer: ArrayBuffer;
+	const isNode =
+		!!(globalThis as Record<string, unknown>).__IS_HEADLESS_RENDERER__ ||
+		typeof window === "undefined" ||
+		typeof globalThis.document === "undefined";
+	const isHttp =
+		fontUrl.startsWith("http://") || fontUrl.startsWith("https://");
+
+	if (isNode && !isHttp) {
+		// Node.js local file environment
+		const fs = await import(/* webpackIgnore: true */ "node:fs/promises");
+		const path = await import(/* webpackIgnore: true */ "node:path");
+		const fontDirs: string[] = [];
+		if (process.env.FONTS_DIR) {
+			fontDirs.push(path.resolve(process.env.FONTS_DIR));
+		}
+		if (process.env.FRAMEFIELDS_FONTS_DIR) {
+			fontDirs.push(path.resolve(process.env.FRAMEFIELDS_FONTS_DIR));
+		}
+
+		// Upward traversal to locate assets/fonts in parent monorepo roots
+		let currentDir = process.cwd();
+		for (let i = 0; i < 5; i++) {
+			fontDirs.push(path.resolve(currentDir, "assets/fonts"));
+			const parent = path.dirname(currentDir);
+			if (parent === currentDir) break;
+			currentDir = parent;
+		}
+
+		const candidates: string[] = [];
+		const addCandidate = (candidatePath: string) => {
+			if (!candidates.includes(candidatePath)) {
+				candidates.push(candidatePath);
+			}
+		};
+
+		if (fontUrl && !fontUrl.startsWith("//api/")) {
+			let fontPath = fontUrl;
+			if (fontUrl.startsWith("file://")) {
+				try {
+					fontPath = new URL(fontUrl).pathname;
+				} catch {
+					fontPath = fontUrl.replace(/^file:\/\//, "");
+				}
+			}
+			addCandidate(fontPath);
+			addCandidate(path.resolve(process.cwd(), fontPath));
+			for (const dir of fontDirs) {
+				addCandidate(path.resolve(dir, path.basename(fontPath)));
+			}
+		}
+		const cleanFamily = fontFamily.replace(/['"]/g, "").trim();
+		const variations = [
+			cleanFamily,
+			cleanFamily.replace(/ /g, ""),
+			cleanFamily.replace(/ /g, "_"),
+		];
+		for (const dir of fontDirs) {
+			for (const v of variations) {
+				addCandidate(path.resolve(dir, `${v}.ttf`));
+				addCandidate(path.resolve(dir, `${v}.otf`));
+			}
+		}
+		for (const dir of fontDirs) {
+			addCandidate(path.resolve(dir, "Inter.ttf"));
+			addCandidate(path.resolve(dir, "Inter.otf"));
+		}
+
+		let nodeBuffer: Buffer | null = null;
+		for (const c of candidates) {
+			try {
+				nodeBuffer = await fs.readFile(c);
+				if (nodeBuffer && nodeBuffer.length > 0) break;
+			} catch {}
+		}
+		if (!nodeBuffer) {
+			throw new Error(
+				`Could not resolve font file for "${fontFamily}" (${fontUrl})`,
+			);
+		}
+		buffer = nodeBuffer.buffer.slice(
+			nodeBuffer.byteOffset,
+			nodeBuffer.byteOffset + nodeBuffer.byteLength,
+		) as ArrayBuffer;
+	} else {
+		// Browser/Web or remote URL environment
+		const response = await fetch(fontUrl);
+		if (!response.ok) {
+			throw new Error(
+				`Failed to fetch font from ${fontUrl}: ${response.statusText}`,
+			);
+		}
+		buffer = await response.arrayBuffer();
+	}
+	return buffer;
+}
+
 function recreateTextures(device: GPUDevice, slugFont: SlugFont): void {
 	if (slugFont.curvesTex) return;
 	uploadSlugTextures(device, slugFont);
@@ -95,6 +200,8 @@ export class SlugFontCache {
 	/** Register an already parsed font (e.g. by FontManager) under a family name. */
 	public static setParsed(fontFamily: string, font: FontkitFont): void {
 		SlugFontCache.parsedFontCache.set(fontFamily, font);
+		// A lookup that missed before the font was registered no longer counts.
+		SlugFontCache.failedFonts.delete(fontFamily);
 	}
 
 	public static getParsed(fontFamily: string): FontkitFont | null {
@@ -645,110 +752,14 @@ export class SlugFontCache {
 				} else {
 					activePromise = (async () => {
 						try {
-							let buffer: ArrayBuffer;
-							const isNode =
-								!!(globalThis as Record<string, unknown>)
-									.__IS_HEADLESS_RENDERER__ ||
-								typeof window === "undefined" ||
-								typeof globalThis.document === "undefined";
-							const isHttp =
-								fontUrl.startsWith("http://") || fontUrl.startsWith("https://");
-
-							if (isNode && !isHttp) {
-								// Node.js local file environment
-								const fs = await import(
-									/* webpackIgnore: true */ "node:fs/promises"
-								);
-								const path = await import(
-									/* webpackIgnore: true */ "node:path"
-								);
-								const fontDirs: string[] = [];
-								if (process.env.FONTS_DIR) {
-									fontDirs.push(path.resolve(process.env.FONTS_DIR));
-								}
-								if (process.env.FRAMEFIELDS_FONTS_DIR) {
-									fontDirs.push(
-										path.resolve(process.env.FRAMEFIELDS_FONTS_DIR),
-									);
-								}
-
-								// Upward traversal to locate assets/fonts in parent monorepo roots
-								let currentDir = process.cwd();
-								for (let i = 0; i < 5; i++) {
-									fontDirs.push(path.resolve(currentDir, "assets/fonts"));
-									const parent = path.dirname(currentDir);
-									if (parent === currentDir) break;
-									currentDir = parent;
-								}
-
-								const candidates: string[] = [];
-								const addCandidate = (candidatePath: string) => {
-									if (!candidates.includes(candidatePath)) {
-										candidates.push(candidatePath);
-									}
-								};
-
-								if (fontUrl && !fontUrl.startsWith("//api/")) {
-									let fontPath = fontUrl;
-									if (fontUrl.startsWith("file://")) {
-										try {
-											fontPath = new URL(fontUrl).pathname;
-										} catch {
-											fontPath = fontUrl.replace(/^file:\/\//, "");
-										}
-									}
-									addCandidate(fontPath);
-									addCandidate(path.resolve(process.cwd(), fontPath));
-									for (const dir of fontDirs) {
-										addCandidate(path.resolve(dir, path.basename(fontPath)));
-									}
-								}
-								const cleanFamily = fontFamily.replace(/['"]/g, "").trim();
-								const variations = [
-									cleanFamily,
-									cleanFamily.replace(/ /g, ""),
-									cleanFamily.replace(/ /g, "_"),
-								];
-								for (const dir of fontDirs) {
-									for (const v of variations) {
-										addCandidate(path.resolve(dir, `${v}.ttf`));
-										addCandidate(path.resolve(dir, `${v}.otf`));
-									}
-								}
-								for (const dir of fontDirs) {
-									addCandidate(path.resolve(dir, "Inter.ttf"));
-									addCandidate(path.resolve(dir, "Inter.otf"));
-								}
-
-								let nodeBuffer: Buffer | null = null;
-								for (const c of candidates) {
-									try {
-										nodeBuffer = await fs.readFile(c);
-										if (nodeBuffer && nodeBuffer.length > 0) break;
-									} catch {}
-								}
-								if (!nodeBuffer) {
-									throw new Error(
-										`Could not resolve font file for "${fontFamily}" (${fontUrl})`,
-									);
-								}
-								buffer = nodeBuffer.buffer.slice(
-									nodeBuffer.byteOffset,
-									nodeBuffer.byteOffset + nodeBuffer.byteLength,
-								) as ArrayBuffer;
-							} else {
-								// Browser/Web or remote URL environment
-								const response = await fetch(fontUrl);
-								if (!response.ok) {
-									throw new Error(
-										`Failed to fetch font from ${fontUrl}: ${response.statusText}`,
-									);
-								}
-								buffer = await response.arrayBuffer();
-							}
-
+							// A font registered with FontManager is parsed already: no file to find.
+							const registered = SlugFontCache.parsedFontCache.get(fontFamily);
 							const startTime = performance.now();
-							const font = parseFontBuffer(new Uint8Array(buffer));
+							const font =
+								registered ??
+								parseFontBuffer(
+									new Uint8Array(await loadFontBuffer(fontFamily, fontUrl)),
+								);
 							const parseTime = performance.now();
 
 							SlugFontCache.parsedFontCache.set(fontFamily, font);

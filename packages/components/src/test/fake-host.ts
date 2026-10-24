@@ -115,6 +115,14 @@ export function fakeHost(): Host & { created: LayoutNode[] } {
 			];
 			return node;
 		},
+		cutout: (source, o) =>
+			make({
+				kind: "media",
+				id: o.id ?? "cutout",
+				source,
+				cutout: o.mode ?? "person",
+				...o,
+			}) as never,
 		matte: (node, matte) => {
 			(node as unknown as { matte?: unknown }).matte = { node: matte };
 			return node;

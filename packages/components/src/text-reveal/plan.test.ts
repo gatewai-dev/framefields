@@ -1,13 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { rng } from "../core/rng.js";
+import { typingFrames } from "../core/typing.js";
 import { fakeMeasure } from "../test/fake-host.js";
-import {
-	burstStarts,
-	indexedStarts,
-	scrambleSet,
-	typingFrames,
-	unitsOf,
-} from "./plan.js";
+import { burstStarts, indexedStarts, scrambleSet, unitsOf } from "./plan.js";
 
 const m = (text: string, width?: number) =>
 	fakeMeasure(text, { fontFamily: "Inter", fontSize: 20, width });

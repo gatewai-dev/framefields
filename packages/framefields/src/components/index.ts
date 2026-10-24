@@ -16,9 +16,11 @@ import {
 	type ComponentDefinition,
 	type ComponentExtras,
 	type Cues,
+	captions,
 	counter,
 	focusZoom,
 	mousePointer,
+	terminal,
 	textReveal,
 } from "@framefields/components";
 import type { BoxNode } from "@framefields/compositions/program";
@@ -62,6 +64,12 @@ export const Counter = /* @__PURE__ */ bindComponent(counter);
 /** Marks that draw on to point at something: underline, circle, arrow, highlight … hand-drawn or clean. */
 export const Annotate = /* @__PURE__ */ bindComponent(annotate);
 
+/** Word-timed captions in published styles, each word on its exact frame, optionally behind the speaker. */
+export const Captions = /* @__PURE__ */ bindComponent(captions);
+
+/** A scripted shell session: typed commands, streaming output, spinners, progress and scrolling. */
+export const Terminal = /* @__PURE__ */ bindComponent(terminal);
+
 export {
 	type Anchor,
 	type AnnotateCues,
@@ -86,6 +94,9 @@ export {
 	boilKeys,
 	boundsOf,
 	boxPath,
+	CAPTION_STYLES,
+	type CaptionStyle,
+	type CaptionsCues,
 	type ComponentDefaults,
 	type ComponentDefinition,
 	type ComponentExtras,
@@ -97,6 +108,7 @@ export {
 	type Cues,
 	type CuesOf,
 	type CursorStyle,
+	type CutoutOptions,
 	catmullRom,
 	chain,
 	constantExpression,
@@ -167,8 +179,11 @@ export {
 	squigglePath,
 	staggerOffsets,
 	staggerRanks,
+	stepExpression,
 	type Target,
 	type TargetContext,
+	type TerminalCues,
+	type TerminalStep,
 	type TextRevealApi,
 	type TextRevealCues,
 	type Theme,
@@ -180,10 +195,13 @@ export {
 	toFrames,
 	toPathData,
 	toSeconds,
+	typingFrames,
 	type UnitSchedule,
 	type Vec2,
 	type Waypoint,
+	type Word,
 	type WordRange,
+	windowExpression,
 	within,
 	wobblePoints,
 	wordRanges,

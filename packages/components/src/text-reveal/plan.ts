@@ -1,8 +1,8 @@
 /**
  * TextReveal timing, kept pure: which characters form each unit, when each
- * unit starts, the typing rhythm and the streaming bursts.
+ * unit starts, the streaming bursts (typing rhythm lives in `core/typing.ts`).
  */
-import type { GlyphUnit } from "../core/glyphs.js";
+import { type GlyphUnit, rendererChars } from "../core/glyphs.js";
 import type { Rng } from "../core/rng.js";
 import { type Metrics, wordRanges } from "../core/text.js";
 import { type StaggerOrder, staggerRanks } from "../core/timing.js";
@@ -78,6 +78,7 @@ export function indexedStarts(
 	starts: readonly number[],
 ): number[] {
 	if (by !== "char") return [...starts];
+	// Built per string index, returned in the renderer's index order.
 	const out = new Array<number>(text.length).fill(0);
 	let next = starts[starts.length - 1] ?? 0;
 	for (let u = units.length - 1, i = text.length - 1; i >= 0; i--) {
@@ -88,36 +89,7 @@ export function indexedStarts(
 		}
 		out[i] = next;
 	}
-	return out;
-}
-
-/**
- * Keystroke frames for typing at `cps` characters a second: seeded ±30 %
- * jitter, a beat after spaces, a longer one after punctuation. Frame `k[i]`
- * is when character `i` appears.
- */
-export function typingFrames(
-	text: string,
-	cps: number,
-	fps: number,
-	r: Rng,
-	start = 0,
-): number[] {
-	const per = fps / cps;
-	const out: number[] = [];
-	let t = start;
-	for (let i = 0; i < text.length; i++) {
-		const prev = text[i - 1] ?? "";
-		let gap = i === 0 ? 0 : per * (1 + r.spread(0.3));
-		if (prev === " ") gap += per * 0.6;
-		if (/[.,!?;:]/.test(prev)) gap += per * 3;
-		t += gap;
-		out.push(Math.max(start, Math.round(t)));
-	}
-	// Two characters never land on one frame.
-	for (let i = 1; i < out.length; i++)
-		out[i] = Math.max(out[i] as number, (out[i - 1] as number) + 1);
-	return out;
+	return rendererChars(text, out);
 }
 
 /**

@@ -17,6 +17,13 @@ export {
 	appFrame,
 } from "./app-frame/index.js";
 export {
+	CAPTION_STYLES,
+	type CaptionStyle,
+	type CaptionsCues,
+	captions,
+	type Word,
+} from "./captions/index.js";
+export {
 	type BakedKey,
 	type BakeOptions,
 	bakeFunction,
@@ -67,11 +74,14 @@ export {
 	type GlyphUnit,
 	glyphAnimator,
 	scheduleExpression,
+	stepExpression,
 	type UnitSchedule,
+	windowExpression,
 } from "./core/glyphs.js";
 export type {
 	Animatable,
 	AnimatableMethods,
+	CutoutOptions,
 	Host,
 	LayerStyleConfig,
 	MediaOptions,
@@ -142,6 +152,7 @@ export {
 	toSeconds,
 	within,
 } from "./core/timing.js";
+export { typingFrames } from "./core/typing.js";
 export {
 	type CounterCues,
 	type CounterFormat,
@@ -161,6 +172,11 @@ export {
 	mousePointer,
 	type Waypoint,
 } from "./mouse-pointer/index.js";
+export {
+	type TerminalCues,
+	type TerminalStep,
+	terminal,
+} from "./terminal/index.js";
 export {
 	EXIT_STYLES,
 	type ExitStyle,

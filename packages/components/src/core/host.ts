@@ -87,4 +87,13 @@ export interface Host {
 	 * background). The matte is laid out like a sibling of `node`; returns `node`.
 	 */
 	matte<T extends Animatable<LayoutNode>>(node: T, matte: LayoutNode): T;
+	/**
+	 * A video showing only its person / subject (vision segmentation), the
+	 * rest transparent: stacked over captions so text passes behind them.
+	 */
+	cutout(source: string, options: CutoutOptions): Animatable<LayoutNode>;
+}
+
+export interface CutoutOptions extends MediaOptions {
+	mode?: "person" | "subject";
 }

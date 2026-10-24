@@ -22,6 +22,7 @@ import {
 	type GlyphProps,
 	type GlyphUnit,
 	glyphAnimator,
+	rendererChars,
 	scheduleExpression,
 	type UnitSchedule,
 } from "../core/glyphs.js";
@@ -35,11 +36,11 @@ import {
 } from "../core/text.js";
 import { type Theme, themeFrames } from "../core/theme.js";
 import { scaleFrames } from "../core/timing.js";
+import { typingFrames } from "../core/typing.js";
 import {
 	burstStarts,
 	indexedStarts,
 	scrambleSet,
-	typingFrames,
 	unitStarts,
 	unitsOf,
 } from "./plan.js";
@@ -304,9 +305,13 @@ export const textReveal = /* @__PURE__ */ defineComponent({
 		const emphasised = emphasisWeights(text, props.emphasis);
 		if (emphasised) {
 			animators.push(
-				glyphAnimator("emphasis", constantExpression("char", emphasised), {
-					fillColor: props.accent ?? theme.color.accent,
-				}),
+				glyphAnimator(
+					"emphasis",
+					constantExpression("char", rendererChars(text, emphasised)),
+					{
+						fillColor: props.accent ?? theme.color.accent,
+					},
+				),
 			);
 		}
 
@@ -437,7 +442,10 @@ export const textReveal = /* @__PURE__ */ defineComponent({
 				const sched = schedule(starts);
 				const per = (key: string) => {
 					const q = ctx.rng(key);
-					return Array.from({ length: text.length }, () => q.spread(1));
+					return rendererChars(
+						text,
+						Array.from({ length: text.length }, () => q.spread(1)),
+					);
 				};
 				const rx = per("scatter-x");
 				const ry = per("scatter-y");
@@ -597,7 +605,7 @@ export const textReveal = /* @__PURE__ */ defineComponent({
 				host.matte(textNode, w.matte);
 				parts.matte = w.matte;
 				// The front trails a little blur over the glyphs it is uncovering.
-				const xs = glyphCenters(text, m, measureOptions);
+				const xs = rendererChars(text, glyphCenters(text, m, measureOptions));
 				const front = Array.from({ length: duration + 1 }, (_, f) =>
 					w.front(
 						w.hidden + (w.shown - w.hidden) * evaluateEase(ease, f / duration),

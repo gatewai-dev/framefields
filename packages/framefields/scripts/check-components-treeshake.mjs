@@ -23,6 +23,8 @@ const REVEAL = "is not registered. Registered:";
 const COUNTER = "Counter: unsupported format";
 const ANNOTATE = "Moving targets arrive with Callout";
 const GLYPHS = "L[k+1]-L[k]";
+const CAPTIONS = "give `words` or a `transcript`";
+const SHELL = "spinner-";
 
 /** [names imported, markers that must not survive, max added bytes]. */
 const cases = [
@@ -33,14 +35,41 @@ const cases = [
 	// Each component alone: none of the others.
 	[
 		["MousePointer"],
-		[FRAME, CAMERA, REVEAL, COUNTER, ANNOTATE, GLYPHS],
+		[FRAME, CAMERA, REVEAL, COUNTER, ANNOTATE, GLYPHS, CAPTIONS, SHELL],
 		60_000,
 	],
-	[["AppFrame"], [POINTER, CAMERA, REVEAL, COUNTER, ANNOTATE, GLYPHS], 45_000],
-	[["FocusZoom"], [POINTER, FRAME, REVEAL, COUNTER, ANNOTATE, GLYPHS], 40_000],
-	[["TextReveal"], [POINTER, FRAME, CAMERA, COUNTER, ANNOTATE], 55_000],
-	[["Counter"], [POINTER, FRAME, CAMERA, REVEAL, ANNOTATE, GLYPHS], 45_000],
-	[["Annotate"], [POINTER, FRAME, CAMERA, REVEAL, COUNTER, GLYPHS], 50_000],
+	[
+		["AppFrame"],
+		[POINTER, CAMERA, REVEAL, COUNTER, ANNOTATE, GLYPHS, CAPTIONS, SHELL],
+		45_000,
+	],
+	[
+		["FocusZoom"],
+		[POINTER, FRAME, REVEAL, COUNTER, ANNOTATE, GLYPHS, CAPTIONS, SHELL],
+		40_000,
+	],
+	[
+		["TextReveal"],
+		[POINTER, FRAME, CAMERA, COUNTER, ANNOTATE, CAPTIONS, SHELL],
+		55_000,
+	],
+	[
+		["Counter"],
+		[POINTER, FRAME, CAMERA, REVEAL, ANNOTATE, GLYPHS, CAPTIONS, SHELL],
+		45_000,
+	],
+	[
+		["Annotate"],
+		[POINTER, FRAME, CAMERA, REVEAL, COUNTER, GLYPHS, CAPTIONS, SHELL],
+		50_000,
+	],
+	[
+		["Captions"],
+		[POINTER, FRAME, CAMERA, REVEAL, COUNTER, ANNOTATE, SHELL],
+		55_000,
+	],
+	// Terminal composes AppFrame and Counter on purpose.
+	[["Terminal"], [POINTER, CAMERA, REVEAL, ANNOTATE, GLYPHS, CAPTIONS], 80_000],
 ];
 
 async function bundle(contents) {
@@ -73,6 +102,8 @@ for (const marker of [
 	COUNTER,
 	ANNOTATE,
 	GLYPHS,
+	CAPTIONS,
+	SHELL,
 ]) {
 	if (base.includes(marker))
 		failures.push(`import { Layer } alone kept component code ("${marker}")`);

@@ -84,6 +84,39 @@ export function scheduleExpression(
 	].join("");
 }
 
+/**
+ * 1 while each unit is inside its window [start, end) (a word being spoken),
+ * else 0: a hard edge on exact frames. Indexed per unit; `factors` scale it.
+ */
+export function windowExpression(
+	unit: GlyphUnit,
+	starts: readonly number[],
+	ends: readonly number[],
+	factors?: readonly number[],
+): string {
+	const idx = UNIT_INDEX[unit];
+	const f = factors ? `*(${list(factors)}[${idx}]??0)` : "";
+	return `((S,E)=>{const s=S[${idx}];return s!==undefined&&frame>=s&&frame<E[${idx}]?1${f}:0;})(${list(starts)},${list(ends)})`;
+}
+
+/** 1 until each unit's start frame, then 0 (an exact step, no ease). */
+export function stepExpression(
+	unit: GlyphUnit,
+	starts: readonly number[],
+): string {
+	const idx = UNIT_INDEX[unit];
+	return `((S)=>frame<(S[${idx}]??S[S.length-1])?1:0)(${list(starts)})`;
+}
+
+/**
+ * A per-character array (one entry per string index) in the renderer's
+ * order: its `textIndex` skips line breaks, so every character after a
+ * `\n` sits one index earlier than in the string.
+ */
+export function rendererChars<T>(text: string, values: readonly T[]): T[] {
+	return values.filter((_, i) => text[i] !== "\n");
+}
+
 /** A fixed weight per unit (e.g. 1 for emphasised characters). */
 export function constantExpression(
 	unit: GlyphUnit,

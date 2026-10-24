@@ -973,7 +973,7 @@ Each milestone ends with a changeset for `framefields` (minor), docs, and its ex
 | **M0 · Foundations** ✅ | Package scaffold; host binding in framefields (`./components` export, root re-exports, tsdown entry, `bindComponent`); `core/*` modules (§5); test harness (fake host, GPU render test, determinism); tree-shake check; `components.json` collector. | Done: a test-only `Probe` component passes §9.1–9.5 (§12). |
 | **M1 · Pointer & camera** ✅ | `MousePointer` (rebuilt to the existing changeset design plus the Wave 1 additions), `FocusZoom`, `AppFrame`. | Example `30_product_demo`: a screen recording in a browser frame, pointer with clicks and auto-zoom, click SFX placed from cues. |
 | **M2 · Type** ✅ | `TextReveal`, `Counter`, `Annotate`. | All §7.4–7.6 acceptance tests green (§14). No example film for M2 or later milestones: examples stop at `30_product_demo`. |
-| **M3 · Speech & shell** | `Captions` (incl. transcript parsers and `behind`), `Terminal`. | Example `32_talking_head_social` (portrait, captions behind the speaker, audio pulse) and a terminal segment in a dev-tool launch cut. |
+| **M3 · Speech & shell** ✅ | `Captions` (incl. transcript parsers and `behind`), `Terminal`. | §7.3 / §7.8 acceptance tests green (§15); no example film. |
 | **M4 · Wave 2a** | `CodeBlock`, `TitleCard`, `LowerThird`, `Meter`. | Full specs written first (§8 → §7 format). |
 | **M5 · Wave 2b** | `ChatThread`, `Callout`, `Spotlight`, `Confetti`, `Toasts`. | As above. |
 | **M6 · Re-score** | Rank Wave 3 against usage and requests. | Updated §8.2. |
@@ -1090,3 +1090,44 @@ Deviations from §7.4–7.6:
 - **Annotate:** targets must be static (moving targets belong to `Callout`). `hand.wobble`
   is 0–1 (× 5 px at theme scale), `pencil` has no grain yet, and `highlight` multiplies on
   light themes and tints on dark ones instead of being inserted under the target.
+
+## 15. M3 delivery notes
+
+What landed: `Captions` (§7.3) with SRT / WebVTT / word-JSON parsers and the phrase
+builder, `Terminal` (§7.8), `core/typing.ts` (shared typing rhythm), `host.cutout`, unit tests
+and `m3.render.test.ts` (karaoke colour changes on `round(start × fps)` and not a frame
+earlier; captions and terminal frames identical in any render order; a finished terminal
+holds still).
+
+How it is built:
+
+- **Renderer indexing.** `textIndex` skips line breaks: after a `\n` every character sits
+  one index earlier than in the string, while `FontManager.measure` keeps string indices.
+  `rendererChars(text, values)` converts any per-character array before it reaches an
+  expression; TextReveal and Captions both use it.
+- **Captions:** one text node per phrase, lines broken by the phrase builder (measured
+  width, `maxChars`, `maxLines`, sentence ends, pauses ≥ `minGap`). Word colour, pops and
+  gradients are glyph animators with exact step / window expressions; `highlight` and `pill`
+  markers are keyed boxes that leave on the word's first frame and land a few frames in, and
+  the text on the marker flips colour as it lands. `outline` uses a layer-style stroke
+  outside the glyphs. Auto font size fits `maxChars` across the safe area, and lines are
+  checked by measured width. `behind` stacks `host.cutout(video)` (segmentation matte; `subject`
+  uses the larger model) over the phrases.
+- **Terminal:** `planTerminal` runs the script on a clock (typing, Enter beat, output pacing,
+  spinners, progress, clears) and the nodes are built from the plan. Lines are drawn only
+  while on screen (`startFrame` / `durationFrames`), so live text nodes stay within
+  `rows + 6`. Scrolling moves by whole lines; a scroll during a glide retargets it, and
+  `clear` snaps. Spinners and check marks are vector shapes, and the progress percentage is
+  a composed `Counter`; the window is a composed `AppFrame` (`frame: false` for the bare
+  screen).
+
+Deviations from §7.3 / §7.8:
+
+- **Captions:** `pulse` (voice-driven active-word scale) and `avoid` are deferred: glyph
+  signal selectors need a way to bind user signals into a text node. Phrase cues are
+  `{ frame, end, text }`. The default font is the theme's display face at weight 800 (body
+  weight for `clean`).
+- **Terminal:** the default prompt is `$ ` and spinners / checks are drawn, because common
+  mono fonts (the bundled JetBrains Mono included) lack `❯`, `✔` and braille. A done line's
+  leading `✔` / `✓` is replaced by the drawn check. The monospace check (warn when not
+  mono) is not implemented.

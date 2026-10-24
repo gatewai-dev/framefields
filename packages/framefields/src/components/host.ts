@@ -39,6 +39,21 @@ export const host: Host = {
 		(node as unknown as AnimatableNode).withEffect(layerStyle(config));
 		return node;
 	},
+	cutout: (source, { mode = "person", ...options }) =>
+		Layer.video(source, {
+			muted: true,
+			volume: 0,
+			fit: "cover",
+			...options,
+		}).withVision({
+			mode: "matte",
+			enableSegmentation: true,
+			// The larger model separates a subject (not just people) more cleanly.
+			variant: mode === "subject" ? "m" : "s",
+			confidence: 0.25,
+			featherRadius: 0.04,
+			keyBackground: true,
+		}),
 	matte: (node, matte) => {
 		(node as unknown as AnimatableNode).withMatte(matte, "alpha");
 		return node;

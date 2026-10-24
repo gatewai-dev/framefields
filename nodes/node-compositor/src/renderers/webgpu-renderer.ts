@@ -547,6 +547,159 @@ function computeContainerScissor(
 	};
 }
 
+/**
+ * How far a layer's effects draw past its pixels, px, or null when an effect
+ * is not known to stay local (it then runs over the whole target).
+ */
+function effectsReach(effects: unknown[]): number | null {
+	let reach = 0;
+	for (const e of effects) {
+		const op = (
+			e && typeof (e as { toOperation?: unknown }).toOperation === "function"
+				? (e as { toOperation: () => Record<string, unknown> }).toOperation()
+				: e
+		) as Record<string, unknown> | null;
+		if (op?.op !== "LayerStyle") return null;
+		reach += layerStyleReach(op);
+	}
+	return reach;
+}
+
+type StyleEntry = {
+	enabled?: boolean;
+	distance?: number;
+	size?: number;
+	position?: string;
+};
+
+/** A LayerStyle's reach: shadow offset plus blur, glow and outer stroke (the shader caps their kernels at 24 px). */
+function layerStyleReach(op: Record<string, unknown>): number {
+	const kernel = (size?: number) => Math.min(Math.ceil(size ?? 0), 24);
+	// Each style may be a signal holding its value.
+	const entry = (v: unknown) =>
+		(v && typeof v === "object" && "_value" in v
+			? (v as { _value: unknown })._value
+			: v) as StyleEntry | undefined;
+	const ds = entry(op.dropShadow);
+	const og = entry(op.outerGlow);
+	const st = entry(op.stroke);
+	let r = 0;
+	if (ds?.enabled) r = Math.max(r, (ds.distance ?? 0) + kernel(ds.size));
+	if (og?.enabled) r = Math.max(r, kernel(og.size));
+	if (st?.enabled && st.position !== "inside") r = Math.max(r, kernel(st.size));
+	return Math.ceil(r) + 2;
+}
+
+function expandRect(r: Rect, by: number): Rect {
+	return {
+		x: r.x - by,
+		y: r.y - by,
+		width: r.width + by * 2,
+		height: r.height + by * 2,
+	};
+}
+
+/** `r` within a `width` × `height` target, in whole pixels; null when nothing is left. */
+function clampRect(r: Rect, width: number, height: number): Rect | null {
+	const x0 = Math.max(0, Math.floor(r.x));
+	const y0 = Math.max(0, Math.floor(r.y));
+	const x1 = Math.min(width, Math.ceil(r.x + r.width));
+	const y1 = Math.min(height, Math.ceil(r.y + r.height));
+	return x1 > x0 && y1 > y0
+		? { x: x0, y: y0, width: x1 - x0, height: y1 - y0 }
+		: null;
+}
+
+/**
+ * `applyLayerEffects` over `region` of a full-target texture only: the
+ * region is cut out, its effects run at its size, and the result lands back
+ * at its place in a full-target texture. Without a region (or when it is
+ * most of the target) the effects run over the whole texture.
+ */
+async function applyLayerEffectsInRegion(
+	region: Rect | null,
+	effects: unknown[],
+	sourceTex: GPUTexture,
+	width: number,
+	height: number,
+	ctx: RenderContextValue,
+	encoder: GPUCommandEncoder,
+	props: NodeRenderProps,
+	drawChild: WebGPUNodeRendererArgs["drawChild"],
+	excludes: GPUTexture[],
+	shiftedFrame: number,
+	compositionFrame: number,
+	fps: number,
+	isVideoMode: boolean,
+	layerId: string,
+): Promise<{ texture: GPUTexture; view: GPUTextureView }> {
+	const run = (tex: GPUTexture, w: number, h: number, ex: GPUTexture[]) =>
+		applyLayerEffects(
+			effects,
+			tex,
+			w,
+			h,
+			ctx,
+			encoder,
+			props,
+			drawChild,
+			ex,
+			shiftedFrame,
+			compositionFrame,
+			fps,
+			isVideoMode,
+			layerId,
+		);
+	if (!region || region.width * region.height > width * height * 0.6) {
+		return run(sourceTex, width, height, excludes);
+	}
+	const blit = (
+		dest: GPUTexture,
+		w: number,
+		h: number,
+		src: GPUTexture,
+		at: Rect,
+	) => {
+		const pass = ctx.renderer.beginFrame(
+			encoder,
+			dest.createView(),
+			{ r: 0, g: 0, b: 0, a: 0 },
+			w,
+			h,
+			"clear",
+		);
+		ctx.renderer.pushScissor({ x: 0, y: 0, width: w, height: h });
+		ctx.renderer.pushIdentity();
+		ctx.renderer.drawTexture(pass, src, at, { opacity: 1 });
+		ctx.renderer.popTransform();
+		ctx.renderer.popScissor();
+		pass.end();
+	};
+	const cut = ctx.renderer.getTemporaryTexture(region.width, region.height, [
+		sourceTex,
+		...excludes,
+	]);
+	blit(cut, region.width, region.height, sourceTex, {
+		x: -region.x,
+		y: -region.y,
+		width,
+		height,
+	});
+	const fx = await run(cut, region.width, region.height, [
+		sourceTex,
+		cut,
+		...excludes,
+	]);
+	const out = ctx.renderer.getTemporaryTexture(width, height, [
+		fx.texture,
+		sourceTex,
+		cut,
+		...excludes,
+	]);
+	blit(out, width, height, fx.texture, region);
+	return { texture: out, view: out.createView() };
+}
+
 async function applyLayerEffects(
 	effects: unknown[],
 	sourceTex: GPUTexture,
@@ -1359,6 +1512,52 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 
 		// 5. Draw the node tree into the native texture (z-sorted per level).
 		let nodeIndex = 0;
+
+		/**
+		 * True when every child of a rounded box sits where the rounding can't
+		 * touch it (inside the inset at which the corner arcs meet 45°), as laid
+		 * out and moved this frame, untransformed and without effects of its own.
+		 */
+		const childrenClearOfCorners = (
+			children: VirtualMediaData[],
+			box: Rect,
+			radius: number,
+		): boolean => {
+			const k = radius * (1 - Math.SQRT1_2);
+			for (const child of children) {
+				const cop = child.operation as Record<string, any> | undefined;
+				if (!cop) return false;
+				const t = targetsById[cop.id || cop.inputHandleId] as
+					| Record<string, any>
+					| undefined;
+				if (t?.hidden || cop.hidden) continue;
+				const r = rects[cop.id];
+				if (!r) return false;
+				const v = (key: string, d: number) =>
+					(t?.[key] ?? cop[key] ?? d) as number;
+				if (
+					v("scale", 1) !== 1 ||
+					v("scaleX", 1) !== 1 ||
+					v("scaleY", 1) !== 1 ||
+					v("rotation", 0) !== 0 ||
+					v("rotateX", 0) !== 0 ||
+					v("rotateY", 0) !== 0
+				)
+					return false;
+				if (Array.isArray(cop.effects) && cop.effects.length > 0) return false;
+				if ((t?.animators ?? cop.animators)?.length) return false;
+				const x = r.x - box.x + (v("x", 0) - (cop.x ?? 0));
+				const y = r.y - box.y + (v("y", 0) - (cop.y ?? 0));
+				if (
+					x < k ||
+					y < k ||
+					x + r.width > box.width - k ||
+					y + r.height > box.height - k
+				)
+					return false;
+			}
+			return true;
+		};
 
 		const renderNodeTree = async (
 			vms: VirtualMediaData[],
@@ -2928,6 +3127,110 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					return { finalTex: activeTex, finalView: activeView };
 				}
 
+				// A container whose children need no isolation draws them straight
+				// onto the destination too: its own clip is a scissor, and a
+				// rounded corner only needs the mask pass when a child reaches into
+				// it. Opacity, blending, effects and transformed children keep the
+				// group texture.
+				if (
+					nodeVM.children &&
+					nodeVM.children.length > 0 &&
+					(!Array.isArray(lop.effects) || lop.effects.length === 0) &&
+					layerOpacity === 1 &&
+					blendMode === "normal" &&
+					!(target?.motionBlurShutter ?? lop.motionBlurShutter) &&
+					(typeof lop.relighting !== "object" || !lop.relighting) &&
+					(typeof lop.relight !== "object" || !lop.relight) &&
+					(typeof target?.relighting !== "object" || !target?.relighting) &&
+					(typeof target?.relight !== "object" || !target?.relight) &&
+					(typeof lop.deflicker !== "object" || !lop.deflicker) &&
+					(typeof target?.deflicker !== "object" || !target?.deflicker) &&
+					(clipRadius <= 0 ||
+						childrenClearOfCorners(nodeVM.children, rect, clipRadius))
+				) {
+					const br = Math.min(
+						target?.borderRadius ?? lop.borderRadius ?? lop.strokeRadius ?? 0,
+						layerW / 2,
+						layerH / 2,
+					);
+					if (shouldPaintContainerBackground(kind, lop.background)) {
+						const bgPass = ctx.renderer.beginFrame(
+							encoder,
+							activeView,
+							{ r: 0, g: 0, b: 0, a: 0 },
+							targetW,
+							targetH,
+							"load",
+						);
+						ctx.renderer.pushTransform(layerMatrix);
+						ctx.renderer.drawRect(
+							bgPass,
+							{ x: 0, y: 0, width: layerW, height: layerH },
+							lop.background,
+							br,
+							{ opacity: 1 },
+						);
+						ctx.renderer.popTransform();
+						bgPass.end();
+					}
+					if (scissorRect) ctx.renderer.pushScissorIntersect(scissorRect);
+					const res = await renderNodeTree(
+						nodeVM.children,
+						activeTex,
+						activeView,
+						excludes,
+						accumulatedOpacity,
+						layerMatrix,
+						rect,
+						targetW,
+						targetH,
+						null,
+						isRootScene,
+					);
+					if (scissorRect) ctx.renderer.popScissor();
+					activeTex = res.finalTex;
+					activeView = res.finalView;
+					const border =
+						lop.borderWidth !== undefined && lop.borderColor
+							? createBorderTexture(
+									ctx,
+									encoder,
+									layerW,
+									layerH,
+									br,
+									lop.borderWidth,
+									lop.borderColor,
+									lop.strokeAlign ?? "inside",
+									[activeTex, targetTexture, ...excludes],
+								)
+							: null;
+					if (border) {
+						const pass = ctx.renderer.beginFrame(
+							encoder,
+							activeView,
+							{ r: 0, g: 0, b: 0, a: 0 },
+							targetW,
+							targetH,
+							"load",
+						);
+						ctx.renderer.pushTransform(layerMatrix);
+						ctx.renderer.drawTexture(
+							pass,
+							border.borderTex,
+							{
+								x: border.ox,
+								y: border.oy,
+								width: border.ow,
+								height: border.oh,
+							},
+							{ opacity: 1 },
+						);
+						ctx.renderer.popTransform();
+						pass.end();
+					}
+					return { finalTex: activeTex, finalView: activeView };
+				}
+
 				// Otherwise, draw container background + children + border onto a temporary group texture,
 				// and composite/blend the group texture onto destTex.
 				const groupExcludes = [activeTex, targetTexture, ...excludes];
@@ -3247,7 +3550,22 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				}
 
 				if (Array.isArray(lop.effects) && lop.effects.length > 0) {
-					const postEffects = await applyLayerEffects(
+					// A clipped container's pixels lie inside its box, so its effects
+					// run over the box plus what they reach past it, not the canvas.
+					const reach = shouldClip ? effectsReach(lop.effects) : null;
+					const region =
+						reach === null
+							? null
+							: clampRect(
+									expandRect(
+										computeContainerScissor(layerMatrix, layerW, layerH),
+										reach,
+									),
+									targetW,
+									targetH,
+								);
+					const postEffects = await applyLayerEffectsInRegion(
+						region,
 						lop.effects,
 						activeGroupTex,
 						targetW,

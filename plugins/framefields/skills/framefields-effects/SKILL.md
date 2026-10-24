@@ -22,18 +22,26 @@ See [references/effects-catalog.md](references/effects-catalog.md) for the gener
 There are 4 main attachment modes in the engine:
 
 ### 1. Layer-Level Effect Pipeline
-Attach one or more effects to a media layer (video, image, SVG, Lottie). Box and text layers take only `TemporalDeflicker` and `Relight3D` directly; to treat a group or text as an image, render it into a media layer first.
-
+Attach one or more effects to any layer (`box`, `flex`, `shape`, `text`, `media`) directly via `.withEffect(effect)` or `.withEffects([...])`:
 
 ```typescript
-import { Layer, Curves, Vignette, Blur } from "framefields";
+import { Layer, Curves, Vignette, Blur, Pixelate } from "framefields";
 
+// Media layer with color grade and lens effects
 const videoLayer = Layer.video("assets/footage.mp4", { fit: "cover" })
   .withEffect(new Curves({
     master: [{ x: 0, y: 0.05 }, { x: 0.5, y: 0.52 }, { x: 1, y: 0.95 }]
   }))
   .withEffect(new Vignette({ strength: 0.4, radius: 0.85, softness: 0.6 }))
   .withEffect(new Blur({ strength: 8, blurType: "Gaussian" }));
+
+// Styled container box with blur
+const cardLayer = Layer.box({ width: 400, height: 300, background: "#1e1e24" })
+  .withEffect(new Blur({ radius: 12 }));
+
+// Kinetic text with pixelation
+const titleLayer = Layer.text("CYBERPUNK", { fontSize: 72 })
+  .withEffect(new Pixelate({ size: 8 }));
 ```
 
 ### 2. Whole-Composition Master Emulsion

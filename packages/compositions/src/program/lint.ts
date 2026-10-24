@@ -198,6 +198,8 @@ export function lintComposition(
 				"translateX",
 				"translateY",
 				"scale",
+				"scaleX",
+				"scaleY",
 				"rotation",
 			])
 		) {

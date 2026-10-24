@@ -704,6 +704,8 @@ const BaseNodeFields = {
 	effects: z.array(EffectSpecSchema).optional(),
 	rotation: z.number().default(0),
 	scale: z.number().min(0).default(1),
+	scaleX: z.number().default(1),
+	scaleY: z.number().default(1),
 	/** Transform pivot, 0–1 fraction of the node box (0.5 = center). */
 	anchorX: z.number().min(0).max(1).default(0.5),
 	anchorY: z.number().min(0).max(1).default(0.5),
@@ -809,6 +811,8 @@ export interface CompositionNodeBase {
 	blendMode?: string;
 	rotation?: number;
 	scale?: number;
+	scaleX?: number;
+	scaleY?: number;
 	anchorX?: number;
 	anchorY?: number;
 	rotateX?: number;

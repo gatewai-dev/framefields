@@ -1052,9 +1052,7 @@ itself on); the name is live text, flat or extruded in 3D.
 
 Extruded names (`depth > 0`) always swing in (rotate Y −70° → 0 on a spring) whatever the
 style, and skip the letter glint: glyph animators don't reach meshes. Lighting is the
-scene's: add lights to the composition for shaded extrusions. 3D nodes ignore their 2D
-parents' offsets, so the name is placed in the root's parent coordinates (the root's own
-`x` / `y` added): give a 3D lockup a top-level, absolute placement.
+scene's: add lights to the composition for shaded extrusions.
 
 **Cues:** `hit` (the mark lands), `revealed` (the lockup is complete), `glint`.
 
@@ -1810,9 +1808,8 @@ How they are built:
 - **WordCycle** splits the line into before / slot / after; spaces at the slot are measured
   (`"a a"` minus `"aa"`) rather than trusted to trailing whitespace. Words sit in a clip as
   wide as the slot.
-- **Contract:** `BuildContext.requested` now carries `duration`, `at`, `x` and `y`
-  (Backdrop keys its loops for the window; Waveform defaults `audioStart`; LogoReveal
-  places 3D names).
+- **Contract:** `BuildContext.requested` now carries `duration` and `at` (Backdrop keys
+  its loops for the window; Waveform defaults `audioStart`).
 - **Host:** `signal` (`frameArraySignal` itself: the `Signal` namespace would add ~7.6 KB
   to every component), `grain`, `extrudedText` (`Layer3D.extrudedText`), and `.svg` files
   in `media` (`Layer.svg`). Effects attach only to media layers, so `grain` is its own
@@ -1873,3 +1870,8 @@ Deviations from §7.17–7.21:
   card behind is clipped straight across (a sliver of background shows there).
 - Selection doesn't recolour selected glyphs; the highlight sits under the text when the
   Selection is placed before the text layer.
+
+Follow-up engine fix: 3D models inside 2D containers ignored the containers' offsets (models
+are laid out in flow, so their layout rect never reflected their `x` / `y`). The compositor
+now maps a model's own `x` / `y` through its parent's matrix (`model-parent-offset.render.test.ts`),
+so LogoReveal's extruded names need no compensation and can sit anywhere in the tree.

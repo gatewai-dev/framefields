@@ -311,9 +311,8 @@ export const logoReveal = /* @__PURE__ */ defineComponent({
 				const name = host.extrudedText({
 					id: ctx.partId("name"),
 					text: props.name,
-					// 3D nodes ignore 2D parents' offsets: place it in the root's parent.
-					x: ctx.requested.x + nameAt.x + nameM.width / 2,
-					y: ctx.requested.y + nameAt.y + nameM.height / 2,
+					x: nameAt.x + nameM.width / 2,
+					y: nameAt.y + nameM.height / 2,
 					depth: props.depth,
 					fontFamily,
 					fontSize: ns,

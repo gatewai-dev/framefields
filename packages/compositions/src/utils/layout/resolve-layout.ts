@@ -24,7 +24,6 @@
 import type { Yoga, Node as YogaNode } from "yoga-layout/load";
 export type { Yoga };
 
-import { assertNever } from "@framefields/core";
 import { loadYoga } from "yoga-layout/load";
 import type {
 	CompositionNodeBase,
@@ -180,9 +179,8 @@ function dirOf(node: LayoutNode): "row" | "column" | null {
 		case "camera":
 		case "light":
 		case "model3d":
-			return null;
 		default:
-			return assertNever(node);
+			return null;
 	}
 }
 

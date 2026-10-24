@@ -635,8 +635,51 @@ const COLOR_PROPS = new Set([
 	"color",
 ]);
 
+function computeRepeatFrame(
+	track: AnimationTrack,
+	localFrame: number,
+	startFrame: number,
+	lastFrame: number,
+): { frame: number } | { completedValue: number | boolean | string } {
+	const repeat = track.repeat ?? 0;
+	const cycleSpan = lastFrame - startFrame;
+	const cycleDuration =
+		track.durationFrames !== undefined && track.durationFrames > 0
+			? track.durationFrames
+			: cycleSpan;
+
+	if (repeat === 0 || cycleDuration <= 0) {
+		if (localFrame >= lastFrame) {
+			const kfs = track.keyframes ?? [];
+			return { completedValue: kfs[kfs.length - 1].value };
+		}
+		return { frame: localFrame };
+	}
+
+	const delta = localFrame - startFrame;
+	const cycleIndex = Math.floor(delta / cycleDuration);
+
+	if (repeat > 0 && cycleIndex >= 1 + repeat) {
+		const isFinalReverse = Boolean(track.yoyo) && repeat % 2 === 1;
+		const kfs = track.keyframes ?? [];
+		const finalVal = isFinalReverse ? kfs[0].value : kfs[kfs.length - 1].value;
+		return { completedValue: finalVal };
+	}
+
+	const cycleOffset = delta - cycleIndex * cycleDuration;
+	const isReverse = Boolean(track.yoyo) && cycleIndex % 2 === 1;
+
+	if (isReverse) {
+		const f = cycleOffset >= cycleSpan ? startFrame : lastFrame - cycleOffset;
+		return { frame: f };
+	}
+
+	const f = cycleOffset >= cycleSpan ? lastFrame : startFrame + cycleOffset;
+	return { frame: f };
+}
+
 /**
- * Standard keyframe track evaluation.
+ * Standard keyframe track evaluation with loop (repeat/yoyo) support.
  */
 export function evaluateKeyframes(
 	track: AnimationTrack,
@@ -651,20 +694,31 @@ export function evaluateKeyframes(
 	if (keyframes.length === 0) return 0;
 	if (keyframes.length === 1) return keyframes[0].value;
 
-	if (localFrame <= keyframes[0].frame) {
+	const startFrame = keyframes[0].frame;
+	if (localFrame <= startFrame) {
 		return keyframes[0].value;
 	}
-	if (localFrame >= keyframes[keyframes.length - 1].frame) {
-		return keyframes[keyframes.length - 1].value;
+
+	const lastFrame = keyframes[keyframes.length - 1].frame;
+	const repeatResolution = computeRepeatFrame(
+		track,
+		localFrame,
+		startFrame,
+		lastFrame,
+	);
+	if ("completedValue" in repeatResolution) {
+		return repeatResolution.completedValue;
 	}
+
+	const evalFrame = repeatResolution.frame;
 
 	for (let i = 0; i < keyframes.length - 1; i++) {
 		const kf0 = keyframes[i];
 		const kf1 = keyframes[i + 1];
 
-		if (localFrame >= kf0.frame && localFrame <= kf1.frame) {
+		if (evalFrame >= kf0.frame && evalFrame <= kf1.frame) {
 			const delta = kf1.frame - kf0.frame;
-			const linear = delta > 0 ? (localFrame - kf0.frame) / delta : 0;
+			const linear = delta > 0 ? (evalFrame - kf0.frame) / delta : 0;
 			const t = ease ? ease(kf1.ease ?? kf0.ease, delta, linear) : linear;
 
 			if (typeof kf0.value === "boolean") {

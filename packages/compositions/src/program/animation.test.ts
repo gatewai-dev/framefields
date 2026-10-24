@@ -206,3 +206,251 @@ describe("LayerAnimation track merging", () => {
 		expect(enter.tracks[0].keyframes).toHaveLength(2);
 	});
 });
+
+describe("LayerAnimation repeat & yoyo (looping)", () => {
+	it("repeats keyframes for a finite number of iterations", () => {
+		const anim = LayerAnimation.create().fromTo("opacity", 0, 1, {
+			start: 0,
+			end: 10,
+			repeat: 1, // 1 repeat after initial cycle = 2 total cycles (0..10 and 10..20)
+		});
+
+		expect(anim.tracks[0].repeat).toBe(1);
+
+		// Cycle 0: 0 -> 1
+		expect(evaluateAnimationAtFrame(anim, 0).opacity).toBe(0);
+		expect(evaluateAnimationAtFrame(anim, 5).opacity).toBe(0.5);
+		expect(evaluateAnimationAtFrame(anim, 10).opacity).toBe(0); // starts cycle 1
+
+		// Cycle 1: 0 -> 1
+		expect(evaluateAnimationAtFrame(anim, 15).opacity).toBe(0.5);
+
+		// Completed: rests at final value (1)
+		expect(evaluateAnimationAtFrame(anim, 20).opacity).toBe(1);
+		expect(evaluateAnimationAtFrame(anim, 50).opacity).toBe(1);
+	});
+
+	it("yoyos back and forth for finite repeats", () => {
+		const anim = LayerAnimation.create().fromTo("y", 0, 100, {
+			start: 0,
+			end: 10,
+			repeat: 1, // cycle 0 (forward), cycle 1 (reverse) -> rests at 0
+			yoyo: true,
+		});
+
+		expect(anim.tracks[0].yoyo).toBe(true);
+
+		// Cycle 0 (forward): 0 -> 100
+		expect(evaluateAnimationAtFrame(anim, 0).y).toBe(0);
+		expect(evaluateAnimationAtFrame(anim, 5).y).toBe(50);
+		expect(evaluateAnimationAtFrame(anim, 10).y).toBe(100);
+
+		// Cycle 1 (reverse): 100 -> 0
+		expect(evaluateAnimationAtFrame(anim, 15).y).toBe(50);
+
+		// Completed: rests at 0 because repeat was odd (cycle 1 was in reverse)
+		expect(evaluateAnimationAtFrame(anim, 20).y).toBe(0);
+		expect(evaluateAnimationAtFrame(anim, 30).y).toBe(0);
+	});
+
+	it("rests at end value when finite yoyo repeat is even", () => {
+		const anim = LayerAnimation.create().fromTo("scale", 1, 2, {
+			start: 0,
+			end: 10,
+			repeat: 2, // cycle 0 (fwd), cycle 1 (rev), cycle 2 (fwd) -> rests at 2
+			yoyo: true,
+		});
+
+		// Cycle 2 (forward) ends at frame 30
+		expect(evaluateAnimationAtFrame(anim, 25).scale).toBe(1.5);
+		expect(evaluateAnimationAtFrame(anim, 30).scale).toBe(2);
+		expect(evaluateAnimationAtFrame(anim, 50).scale).toBe(2);
+	});
+
+	it("loops infinitely with repeat: -1 and .loop({ yoyo: true })", () => {
+		const anim = LayerAnimation.create()
+			.fromTo("x", 0, 100, { start: 0, end: 10 })
+			.loop({ yoyo: true });
+
+		expect(anim.tracks[0].repeat).toBe(-1);
+		expect(anim.tracks[0].yoyo).toBe(true);
+
+		// Cycle 0 (0..10): forward
+		expect(evaluateAnimationAtFrame(anim, 0).x).toBe(0);
+		expect(evaluateAnimationAtFrame(anim, 5).x).toBe(50);
+		expect(evaluateAnimationAtFrame(anim, 10).x).toBe(100);
+
+		// Cycle 1 (10..20): reverse
+		expect(evaluateAnimationAtFrame(anim, 15).x).toBe(50);
+		expect(evaluateAnimationAtFrame(anim, 20).x).toBe(0);
+
+		// Cycle 2 (20..30): forward
+		expect(evaluateAnimationAtFrame(anim, 25).x).toBe(50);
+		expect(evaluateAnimationAtFrame(anim, 30).x).toBe(100);
+
+		// Far into the future (frame 105: cycle 10 forward at 50%)
+		expect(evaluateAnimationAtFrame(anim, 105).x).toBe(50);
+		// Frame 115: cycle 11 reverse at 50%
+		expect(evaluateAnimationAtFrame(anim, 115).x).toBe(50);
+	});
+
+	it("applies repeat and yoyo via fluent methods before or after track addition", () => {
+		// Before tracks
+		const animBefore = LayerAnimation.create()
+			.repeat(-1)
+			.yoyo(true)
+			.fromTo("opacity", 0, 1, { start: 0, end: 10 });
+		expect(animBefore.tracks[0].repeat).toBe(-1);
+		expect(animBefore.tracks[0].yoyo).toBe(true);
+
+		// Prop-targeted repeat
+		const animProp = LayerAnimation.create()
+			.fromTo("opacity", 0, 1, { start: 0, end: 10 })
+			.fromTo("scale", 1, 2, { start: 0, end: 10 })
+			.repeat(3, "opacity");
+		expect(animProp.tracks[0].repeat).toBe(3);
+		expect(animProp.tracks[1].repeat).toBeUndefined();
+	});
+
+	it("supports repeat and yoyo in LayerAnimation.keys()", () => {
+		const anim = LayerAnimation.keys(
+			"y",
+			[
+				[0, 10],
+				[10, 50],
+			],
+			{ repeat: -1, yoyo: true },
+		);
+
+		expect(anim.tracks[0].repeat).toBe(-1);
+		expect(anim.tracks[0].yoyo).toBe(true);
+
+		expect(evaluateAnimationAtFrame(anim, 5).y).toBe(30);
+		expect(evaluateAnimationAtFrame(anim, 15).y).toBe(30);
+	});
+
+	it("respects delayed startFrame with repeat and yoyo", () => {
+		const anim = LayerAnimation.create().fromTo("x", 100, 200, {
+			start: 20,
+			end: 40,
+			repeat: -1,
+			yoyo: true,
+		});
+
+		// Before startFrame (frame 0..20 holds fromValue)
+		expect(evaluateAnimationAtFrame(anim, 0).x).toBe(100);
+		expect(evaluateAnimationAtFrame(anim, 10).x).toBe(100);
+		expect(evaluateAnimationAtFrame(anim, 20).x).toBe(100);
+
+		// Cycle 0 (20..40): forward
+		expect(evaluateAnimationAtFrame(anim, 30).x).toBe(150);
+		expect(evaluateAnimationAtFrame(anim, 40).x).toBe(200);
+
+		// Cycle 1 (40..60): reverse
+		expect(evaluateAnimationAtFrame(anim, 50).x).toBe(150);
+		expect(evaluateAnimationAtFrame(anim, 60).x).toBe(100);
+	});
+
+	it("handles multi-keyframe tracks during reverse yoyo playback", () => {
+		const anim = LayerAnimation.keys(
+			"blur",
+			[
+				[0, 0],
+				[10, 50],
+				[20, 100],
+			],
+			{ repeat: 1, yoyo: true },
+		);
+
+		// Cycle 0: forward
+		expect(evaluateAnimationAtFrame(anim, 5).blur).toBe(25);
+		expect(evaluateAnimationAtFrame(anim, 10).blur).toBe(50);
+		expect(evaluateAnimationAtFrame(anim, 15).blur).toBe(75);
+		expect(evaluateAnimationAtFrame(anim, 20).blur).toBe(100);
+
+		// Cycle 1: reverse (duration 20 frames, from 20 to 40)
+		// At frame 25: 5 frames in reverse -> maps to frame 15 (75)
+		expect(evaluateAnimationAtFrame(anim, 25).blur).toBe(75);
+		// At frame 30: 10 frames in reverse -> maps to frame 10 (50)
+		expect(evaluateAnimationAtFrame(anim, 30).blur).toBe(50);
+		// At frame 35: 15 frames in reverse -> maps to frame 5 (25)
+		expect(evaluateAnimationAtFrame(anim, 35).blur).toBe(25);
+		// At frame 40: completed -> rests at 0
+		expect(evaluateAnimationAtFrame(anim, 40).blur).toBe(0);
+	});
+
+	it("supports custom cycle durationFrames with holding period", () => {
+		const anim = LayerAnimation.keys(
+			"scale",
+			[
+				[0, 1],
+				[10, 2],
+			],
+			{ durationFrames: 15, repeat: -1 }, // active 0..10, holds 10..15, then repeats
+		);
+
+		// Forward transition
+		expect(evaluateAnimationAtFrame(anim, 0).scale).toBe(1);
+		expect(evaluateAnimationAtFrame(anim, 5).scale).toBe(1.5);
+		expect(evaluateAnimationAtFrame(anim, 10).scale).toBe(2);
+
+		// Holding period (10..15)
+		expect(evaluateAnimationAtFrame(anim, 12).scale).toBe(2);
+		expect(evaluateAnimationAtFrame(anim, 14).scale).toBe(2);
+
+		// Next cycle starts at frame 15
+		expect(evaluateAnimationAtFrame(anim, 15).scale).toBe(1);
+		expect(evaluateAnimationAtFrame(anim, 20).scale).toBe(1.5);
+	});
+});
+
+describe("LayerAnimation scaleX & scaleY (single-axis stretching)", () => {
+	it("animates scaleX and scaleY via fluent methods and fromTo", () => {
+		const anim = LayerAnimation.create()
+			.scaleX(1, 3, { start: 0, end: 10 })
+			.scaleY(1, 0.5, { start: 0, end: 10 });
+
+		expect(anim.tracks).toHaveLength(2);
+		expect(anim.tracks[0].prop).toBe("scaleX");
+		expect(anim.tracks[1].prop).toBe("scaleY");
+
+		const f0 = evaluateAnimationAtFrame(anim, 0);
+		expect(f0.scaleX).toBe(1);
+		expect(f0.scaleY).toBe(1);
+
+		const f5 = evaluateAnimationAtFrame(anim, 5);
+		expect(f5.scaleX).toBe(2);
+		expect(f5.scaleY).toBe(0.75);
+
+		const f10 = evaluateAnimationAtFrame(anim, 10);
+		expect(f10.scaleX).toBe(3);
+		expect(f10.scaleY).toBe(0.5);
+	});
+
+	it("supports static LayerAnimation.scaleX and LayerAnimation.scaleY factories", () => {
+		const animX = LayerAnimation.scaleX(0.2, 1.8, { start: 5, end: 15 });
+		expect(animX.tracks[0].prop).toBe("scaleX");
+		expect(evaluateAnimationAtFrame(animX, 5).scaleX).toBe(0.2);
+		expect(evaluateAnimationAtFrame(animX, 15).scaleX).toBe(1.8);
+
+		const animY = LayerAnimation.scaleY(0, 2.5, { start: 0, end: 20 });
+		expect(animY.tracks[0].prop).toBe("scaleY");
+		expect(evaluateAnimationAtFrame(animY, 10).scaleY).toBe(1.25);
+	});
+
+	it("supports loop and yoyo on single-axis scale tracks (e.g. audio bar equalizer bounce)", () => {
+		const anim = LayerAnimation.create()
+			.scaleY(0.1, 1.0, { start: 0, end: 6 })
+			.loop({ yoyo: true });
+
+		expect(anim.tracks[0].repeat).toBe(-1);
+		expect(anim.tracks[0].yoyo).toBe(true);
+
+		// Cycle 0 forward: 0.1 -> 1.0
+		expect(evaluateAnimationAtFrame(anim, 0).scaleY).toBe(0.1);
+		expect(evaluateAnimationAtFrame(anim, 6).scaleY).toBe(1.0);
+
+		// Cycle 1 reverse: 1.0 -> 0.1
+		expect(evaluateAnimationAtFrame(anim, 12).scaleY).toBe(0.1);
+	});
+});

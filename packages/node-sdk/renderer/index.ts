@@ -336,6 +336,27 @@ export function registerWebGPURenderer(
 	webgpuRegistry.register(op, renderer);
 }
 
+export type { WebGPUNodeRendererArgs } from "./gpu.js";
+
+export interface TextureSourceOp {
+	op: "TextureSource";
+	sourceTexture: GPUTexture;
+	opacity?: number;
+	dataType?: "Image";
+}
+
+registerWebGPURenderer("TextureSource", (args) => {
+	const op = args.props.virtualMedia.operation as unknown as TextureSourceOp;
+	if (op?.sourceTexture) {
+		args.ctx.renderer.drawTexture(
+			args.pass,
+			op.sourceTexture,
+			{ x: 0, y: 0, width: args.targetWidth, height: args.targetHeight },
+			{ opacity: Number(op.opacity ?? 1) },
+		);
+	}
+});
+
 class AudioProcessorRegistry {
 	private processors = new Map<string, AudioProcessor>();
 

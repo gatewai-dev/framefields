@@ -1,6 +1,6 @@
 ---
 name: framefields
-description: Start a new framefields video project, or add framefields to an existing Node.js project. Use when the user wants to make a video with framefields and the project has no framefields setup yet, or asks how to install framefields, scaffold a composition and render script, get from an empty folder to a first MP4, or generate images, video, music or voice for a film with AI models (`ai` from framefields, the framefields AI gateway, FRAMEFIELDS_API_KEY). Hands off to framefields-compose, framefields-effects, and framefields-render for the details.
+description: Start a new framefields video project, or add framefields to an existing Node.js project. Use when the user wants to make a video with framefields and the project has no framefields setup yet, or asks how to install framefields, scaffold a composition and render script, get from an empty folder to a first MP4, or generate images, video, music or voice for a film with AI models (`ai` from framefields, the framefields AI gateway). Hands off to framefields-compose, framefields-effects, and framefields-render for the details.
 ---
 
 # framefields
@@ -294,15 +294,17 @@ const { data, requestId } = await ai.subscribe<{ images: { url: string }[] }>("f
 console.log(data.images[0].url);
 ```
 
-**The key.** Requests authenticate with `FRAMEFIELDS_API_KEY` (an `ff_live_…` key from https://framefields.dev/dashboard/keys). Put it in the project's `.env` (gitignored) and load it with `tsx --env-file=.env`, or call `ai.config({ apiKey })`. Never write the key into source, and never ask the user to paste it into chat: ask them to add it to `.env` themselves. Without a key, every call throws before any request is sent. Failures throw `ApiError` with the gateway's `type`: on `insufficient_credits` (status `402`) tell the user to top up at https://framefields.dev/dashboard/billing rather than retrying; `key_limit_reached` means the key's monthly cap; `rate_limited` and `too_many_inflight_requests` mean wait and retry. A `ValidationError` (`422`) lists the bad input fields in `fieldErrors`.
+**The key.** Requests authenticate with an `ff_live_…` key from https://framefields.dev/dashboard/keys. Take the value as `${user_config.framefields_api_key}` that the user chose to share via the plugin's `userConfig` option (`sensitive: true`), instead of reading credentials from the user's environment or files. Configure it with `ai.config({ apiKey: "${user_config.framefields_api_key}" })`. Never read credentials from the user's machine or environment files without authorization, never write the key into source files, and never ask the user to paste keys into chat. Without a key, every call throws before any request is sent. Failures throw `ApiError` with the gateway's `type`: on `insufficient_credits` (status `402`) tell the user to top up at https://framefields.dev/dashboard/billing rather than retrying; `key_limit_reached` means the key's monthly cap; `rate_limited` and `too_many_inflight_requests` mean wait and retry. A `ValidationError` (`422`) lists the bad input fields in `fieldErrors`.
 
 **Generate once, into `assets/`, in its own script.** Generation costs money and is not deterministic, so it never runs inside `buildFilm()`, the preview, tests or the render worker. Write `src/generate.ts`, run it on purpose, download every output into `assets/generated/` (tracked in Git LFS, as above), and reference the local file from the film. Generated output URLs expire, and the worker renders from the repository.
 
 ```typescript
-// src/generate.ts — run with: tsx --env-file=.env src/generate.ts
+// src/generate.ts
 import fs from "node:fs/promises";
 import path from "node:path";
 import { ai } from "framefields";
+
+ai.config({ apiKey: "${user_config.framefields_api_key}" });
 
 const OUT = path.resolve(import.meta.dirname, "../assets/generated");
 await fs.mkdir(OUT, { recursive: true });
@@ -343,7 +345,7 @@ Then `Layer.image("assets/generated/street.jpg")` / `Layer.video("assets/generat
 Coding agents interacting with the AI gateway can discover endpoints, inspect credit runway, and handle top-ups programmatically:
 
 - **Manifest discovery:** Read `GET https://framefields.dev/.well-known/agent-payment.json` for live auth schemes, pack amounts, and endpoint paths.
-- **Runway check:** `GET https://framefields.dev/api/v1/agent/balance` with `Authorization: Bearer <FRAMEFIELDS_API_KEY>` returns `{ balance_usd, held_usd, available_usd }`. Query this before expensive generation batches.
+- **Runway check:** `GET https://framefields.dev/api/v1/agent/balance` with `Authorization: Bearer ${user_config.framefields_api_key}` returns `{ balance_usd, held_usd, available_usd }`. Query this before expensive generation batches.
 - **Autonomous 402 flow:** When credits are exhausted, the gateway returns HTTP `402 Payment Required` with a dynamic Dodo checkout link:
   ```json
   {

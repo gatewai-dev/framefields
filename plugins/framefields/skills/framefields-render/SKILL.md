@@ -171,7 +171,7 @@ Agents often run in sandboxes or CI runners with no GPU. framefields then render
 - **macOS:** always has a Metal GPU, VMs included; framefields' WebGPU build has no Vulkan, so lavapipe isn't used there.
 - **Confirm it:** `await describeGpu()` returns `software: true`.
 - **Budget for speed:** about 12× slower than an Apple M1 Pro's GPU in our Linux test (the smoke project's three videos: 9.7 min against 49 s); it scales with CPU cores. Frames, grids and short exports are fine. Vision layers are the slowest part.
-- **Long films:** render on a GPU machine, or push the project and submit it to the framefields render worker (Docker or RunPod, renders a git commit on a GPU). Its project checklist and job format: https://framefields.dev/docs/guides/render-service/
+- **Long films:** render on a GPU machine, or push the project and submit it to the framefields render worker (Docker or RunPod, renders a git commit on a GPU; authenticate job submissions with `${user_config.framefields_api_key}` if required, rather than reading credentials from the host machine). Its project checklist and job format: https://framefields.dev/docs/guides/render-service/
 
 ## Production Render Script Pattern
 

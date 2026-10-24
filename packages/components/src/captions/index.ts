@@ -365,8 +365,11 @@ export const captions = /* @__PURE__ */ defineComponent({
 					);
 					marker.animate(markerKeys(rects, wStart, pad, glide));
 					plates.push(marker);
-					// Text on the marker reads in the background colour when ink wouldn't.
-					if ((contrastRatio(ink, accent) ?? 21) < 3)
+					// Text on the marker must read against it: every word in the
+					// background colour when ink wouldn't, else only the emphasised
+					// ones (accent on the accent marker), in ink.
+					const inkReads = (contrastRatio(ink, accent) ?? 21) >= 3;
+					if (!inkReads || emphasisWeights.some(Boolean))
 						animators.push(
 							glyphAnimator(
 								"on-marker",
@@ -375,8 +378,9 @@ export const captions = /* @__PURE__ */ defineComponent({
 									"word",
 									wStart.map((f) => f + Math.ceil(glide / 2)),
 									wEnd.map((f) => f + Math.ceil(glide / 2)),
+									inkReads ? emphasisWeights : undefined,
 								),
-								{ fillColor: theme.color.bg },
+								{ fillColor: inkReads ? ink : theme.color.bg },
 							),
 						);
 					break;

@@ -237,36 +237,6 @@ export type BevelEmbossStyle = z.infer<typeof BevelEmbossStyleSchema>;
 export type ColorOverlayStyle = z.infer<typeof ColorOverlayStyleSchema>;
 export type LayerStyleNodeConfig = z.infer<typeof LayerStyleNodeConfigSchema>;
 
-export function computeLayerStylePadding(config: LayerStyleNodeConfig): {
-	padX: number;
-	padY: number;
-} {
-	let padX = 0;
-	let padY = 0;
-
-	// Drop Shadow: offset distance expansion only (blur size does not increase metadata dimensions)
-	if (config.dropShadow?.enabled) {
-		const angleRad = ((config.dropShadow.angle ?? 120) * Math.PI) / 180;
-		const dist = config.dropShadow.distance ?? 0;
-		const dx = Math.ceil(Math.abs(Math.cos(angleRad)) * dist);
-		const dy = Math.ceil(Math.abs(Math.sin(angleRad)) * dist);
-		padX = Math.max(padX, dx);
-		padY = Math.max(padY, dy);
-	}
-
-	// Stroke expansion (outside / center)
-	if (config.stroke?.enabled && config.stroke.position !== "inside") {
-		const strokePad =
-			config.stroke.position === "outside"
-				? Math.ceil(config.stroke.size ?? 2)
-				: Math.ceil((config.stroke.size ?? 2) * 0.5);
-		padX = Math.max(padX, strokePad);
-		padY = Math.max(padY, strokePad);
-	}
-
-	return { padX, padY };
-}
-
 export interface ConfigHandleBinding {
 	configKey: string;
 	dataTypes: DataType[];

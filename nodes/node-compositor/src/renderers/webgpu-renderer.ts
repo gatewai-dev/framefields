@@ -2854,6 +2854,80 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					return res;
 				}
 
+				// A box with nothing inside (a fill, a bar, a card's backing) and
+				// nothing that needs it isolated draws straight onto the
+				// destination: a group texture would cost a full-canvas clear
+				// and composite for one rect.
+				if (
+					(!nodeVM.children || nodeVM.children.length === 0) &&
+					(!Array.isArray(lop.effects) || lop.effects.length === 0) &&
+					blendMode === "normal" &&
+					!(target?.motionBlurShutter ?? lop.motionBlurShutter) &&
+					(typeof lop.relighting !== "object" || !lop.relighting) &&
+					(typeof lop.relight !== "object" || !lop.relight) &&
+					(typeof target?.relighting !== "object" || !target?.relighting) &&
+					(typeof target?.relight !== "object" || !target?.relight) &&
+					(typeof lop.deflicker !== "object" || !lop.deflicker) &&
+					(typeof target?.deflicker !== "object" || !target?.deflicker)
+				) {
+					if (layerOpacity <= 0)
+						return { finalTex: activeTex, finalView: activeView };
+					const br = Math.min(
+						target?.borderRadius ?? lop.borderRadius ?? lop.strokeRadius ?? 0,
+						layerW / 2,
+						layerH / 2,
+					);
+					const paint = shouldPaintContainerBackground(kind, lop.background);
+					const border =
+						lop.borderWidth !== undefined && lop.borderColor
+							? createBorderTexture(
+									ctx,
+									encoder,
+									layerW,
+									layerH,
+									br,
+									lop.borderWidth,
+									lop.borderColor,
+									lop.strokeAlign ?? "inside",
+									[activeTex, targetTexture, ...excludes],
+								)
+							: null;
+					if (paint || border) {
+						const pass = ctx.renderer.beginFrame(
+							encoder,
+							activeView,
+							{ r: 0, g: 0, b: 0, a: 0 },
+							targetW,
+							targetH,
+							"load",
+						);
+						ctx.renderer.pushTransform(layerMatrix);
+						if (paint)
+							ctx.renderer.drawRect(
+								pass,
+								{ x: 0, y: 0, width: layerW, height: layerH },
+								lop.background,
+								br,
+								{ opacity: layerOpacity },
+							);
+						if (border)
+							ctx.renderer.drawTexture(
+								pass,
+								border.borderTex,
+								{
+									x: border.ox,
+									y: border.oy,
+									width: border.ow,
+									height: border.oh,
+								},
+								{ opacity: layerOpacity },
+							);
+						ctx.renderer.popTransform();
+						pass.end();
+					}
+					return { finalTex: activeTex, finalView: activeView };
+				}
+
 				// Otherwise, draw container background + children + border onto a temporary group texture,
 				// and composite/blend the group texture onto destTex.
 				const groupExcludes = [activeTex, targetTexture, ...excludes];
@@ -4350,6 +4424,9 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 	}
 };
 
+/** Pixels of room around a border texture for its anti-aliased edge. */
+const BORDER_AA_MARGIN = 2;
+
 function createBorderTexture(
 	ctx: RenderContextValue,
 	encoder: GPUCommandEncoder,
@@ -4411,8 +4488,12 @@ function createBorderTexture(
 		return null;
 	}
 
-	const borderTexW = Math.ceil(ow);
-	const borderTexH = Math.ceil(oh);
+	// A margin around the border's own box: its anti-aliased outer edge lies
+	// half a pixel outside it, and a rounded border touching the texture's
+	// edge would lose that fringe (flat spots, plain to see once scaled up).
+	const m = BORDER_AA_MARGIN;
+	const borderTexW = Math.ceil(ow + 2 * m);
+	const borderTexH = Math.ceil(oh + 2 * m);
 
 	const outerTex = ctx.renderer.getTemporaryTexture(
 		borderTexW,
@@ -4441,7 +4522,7 @@ function createBorderTexture(
 	);
 	ctx.renderer.drawRect(
 		outerDrawPass,
-		{ x: 0, y: 0, width: ow, height: oh },
+		{ x: m, y: m, width: ow, height: oh },
 		borderColor,
 		outerRadius,
 	);
@@ -4477,7 +4558,7 @@ function createBorderTexture(
 		);
 		ctx.renderer.drawRect(
 			innerDrawPass,
-			{ x: borderWidth, y: borderWidth, width: innerW, height: innerH },
+			{ x: m + borderWidth, y: m + borderWidth, width: innerW, height: innerH },
 			{ r: 1, g: 1, b: 1, a: 1 },
 			innerRadius,
 		);
@@ -4490,8 +4571,20 @@ function createBorderTexture(
 			"mask-out",
 			excludeTextures,
 		);
-		return { borderTex, ox, oy, ow, oh };
+		return {
+			borderTex,
+			ox: ox - m,
+			oy: oy - m,
+			ow: borderTexW,
+			oh: borderTexH,
+		};
 	}
 
-	return { borderTex: outerTex, ox, oy, ow, oh };
+	return {
+		borderTex: outerTex,
+		ox: ox - m,
+		oy: oy - m,
+		ow: borderTexW,
+		oh: borderTexH,
+	};
 }

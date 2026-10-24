@@ -18,6 +18,9 @@ import type { Animatable } from "../core/host.js";
 import { themeFrames } from "../core/theme.js";
 
 export const LOWER_THIRD_LAYOUTS = ["bar", "stacked", "tag", "line"] as const;
+
+/** Cap height as a share of the font size (Inter and most UI sans faces). */
+const CAP_HEIGHT = 0.72;
 export type LowerThirdLayout = (typeof LOWER_THIRD_LAYOUTS)[number];
 
 export interface LowerThirdCues {
@@ -331,6 +334,9 @@ export const lowerThird = /* @__PURE__ */ defineComponent({
 											fontSize: roleSize,
 											fontWeight: 500,
 											fill: theme.color.muted,
+											// Centred on the name's capitals, not on its baseline: one
+											// line in a pill reads as aligned when the caps share a middle.
+											baselineShift: -(nameSize - roleSize) * CAP_HEIGHT * 0.5,
 										},
 									]
 								: []),

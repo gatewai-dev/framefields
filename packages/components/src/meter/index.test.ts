@@ -31,6 +31,20 @@ const track = (n: Node | undefined, prop: string) =>
 	n?.animation?.tracks.find((t) => t.prop === prop)?.keyframes ?? [];
 
 describe("Meter", () => {
+	it("keeps a counter taller than its stars inside the root (nothing above the top)", () => {
+		const m = make()({ id: "m", kind: "stars", value: 2, counter: true });
+		const kids = (
+			m as unknown as { children: Array<{ y?: number; height?: number }> }
+		).children;
+		expect(Math.min(...kids.map((k) => k.y ?? 0))).toBe(0);
+		const counter = find(m, "m-counter") as
+			| { y?: number; height?: number }
+			| undefined;
+		expect((counter?.y ?? 0) + (counter?.height ?? 0)).toBeLessThanOrEqual(
+			(m as unknown as { height: number }).height,
+		);
+	});
+
 	it("fills to (value − from) / (max − from) on the value's own keys", () => {
 		const m = make()({
 			id: "m",

@@ -129,6 +129,15 @@ describe("RTL line layout", () => {
 		).toEqual(["אב גד", "הו זח"]);
 	});
 
+	it("keeps a paragraph's indent and drops the space a wrap leaves", () => {
+		const p = shapeParagraph([{ text: "  ab cd", style }]);
+		const lines = breakLines(p.clusters, 3);
+		expect(lines.map((l) => l.map((c) => c.text).join(""))).toEqual([
+			"  ab ",
+			"cd",
+		]);
+	});
+
 	it("aligns start to the right edge and keeps trailing spaces out of the ink", () => {
 		const result = SlugGeometry.layout(
 			"אב גד",

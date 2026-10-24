@@ -404,6 +404,20 @@ export const meter = /* @__PURE__ */ defineComponent({
 			}
 		}
 
+		// Centring the counter on a shorter row can put it above the top; the
+		// root box clips what's outside it, so move everything down instead.
+		const top = Math.min(
+			0,
+			...children.map((n) => (n as unknown as { y?: number }).y ?? 0),
+		);
+		if (top < 0) {
+			for (const n of children) {
+				const node = n as unknown as { y?: number };
+				node.y = (node.y ?? 0) - top;
+			}
+			H -= top;
+		}
+
 		const settled = Math.max(
 			last,
 			(

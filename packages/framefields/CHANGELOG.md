@@ -1,5 +1,14 @@
 # framefields
 
+## 2.5.2
+
+### Patch Changes
+
+- Fix preview components entry, registered font sources, and GPU device reuse:
+  - Browser engine preview adds `framefields/components` entry.
+  - Fonts registered with `FontManager` (bytes or URL) load from registered sources in Slug font cache and text measurer.
+  - Preview players share a single WebGPU device and clean up on disposal.
+
 ## 2.5.0
 
 ### Minor Changes

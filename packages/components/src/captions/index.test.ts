@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { bind } from "../core/contract.js";
 import { evaluateGlyphExpression, type GlyphAnimator } from "../core/glyphs.js";
+import { themes } from "../core/theme.js";
 import { fakeHost } from "../test/fake-host.js";
 import { captions } from "./index.js";
 
@@ -32,6 +33,31 @@ const words = "Ship it faster than ever before today"
 	}));
 
 describe("Captions", () => {
+	it("an emphasised word on the highlight marker reads in ink, not accent on accent", () => {
+		// Paper: ink reads on its accent, so only emphasised words switch.
+		const c = make()({
+			id: "c",
+			words,
+			style: "highlight",
+			emphasis: ["faster"],
+			theme: themes.paper,
+		});
+		const phrase = find(c, "c-phrase-0");
+		const onMarker = phrase?.animators?.find((a) => a.name === "on-marker");
+		expect(onMarker).toBeDefined();
+		const expr = onMarker?.selectors[0]?.expression ?? "";
+		const phraseStart = c.cues.phrases[0]?.frame ?? 0;
+		const local = (c.cues.words[2]?.frame ?? 0) - phraseStart + 3;
+		// "faster" (word 2) switches on the marker; plain words keep their ink.
+		expect(evaluateGlyphExpression(expr, { frame: local, wordIndex: 2 })).toBe(
+			1,
+		);
+		const plain = (c.cues.words[1]?.frame ?? 0) - phraseStart + 3;
+		expect(evaluateGlyphExpression(expr, { frame: plain, wordIndex: 1 })).toBe(
+			0,
+		);
+	});
+
 	it("cues every word on round(start × fps), in the parent's timeline", () => {
 		const c = make()({ id: "c", words, at: 10 });
 		expect(c.cues.words.map((w) => w.frame)).toEqual(

@@ -1,6 +1,6 @@
 {
 	"private": true,
-	"version": "2.5.0",
+	"version": "2.5.2",
 	"scripts": {
 		"build": "turbo run build",
 		"dev": "turbo run dev",

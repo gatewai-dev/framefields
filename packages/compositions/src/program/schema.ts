@@ -1754,8 +1754,15 @@ export const Model3DNodeSchema: z.ZodType<Model3DNode> = z
 	})
 	.strict() as unknown as z.ZodType<Model3DNode>;
 
+/**
+ * Dispatch on `kind`, not a plain union: a plain union tries every member,
+ * and each member parses `children` before failing, so parse time grows
+ * ~3x per nesting level (a depth-14 tree took minutes). The node schemas
+ * are typed `ZodType<…>` for their recursive types, but each is a strict
+ * object with a `kind` literal, which is all `discriminatedUnion` reads.
+ */
 export const LayoutNodeSchema = z.lazy(() =>
-	z.union([
+	z.discriminatedUnion("kind", [
 		FlexNodeSchema,
 		BlockNodeSchema,
 		BoxNodeSchema,
@@ -1765,7 +1772,7 @@ export const LayoutNodeSchema = z.lazy(() =>
 		CameraNodeSchema,
 		LightNodeSchema,
 		Model3DNodeSchema,
-	]),
+	] as unknown as [z.ZodObject, ...z.ZodObject[]]),
 ) as unknown as z.ZodType<LayoutNode>;
 
 // ── the program document ──────────────────────────────────────────────

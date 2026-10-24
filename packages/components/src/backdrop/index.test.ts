@@ -64,11 +64,14 @@ describe("loop keys", () => {
 		expect(keys.length).toBeLessThanOrEqual(120);
 	});
 
-	it("caps long spans under the key limit", () => {
-		expect(cosineKeys(0, 10, 2, 0.3, 30, 30 * 1000).length).toBeLessThanOrEqual(
-			121,
-		);
-		expect(slideKeys(0, 10, 30, 30 * 1000).length).toBeLessThanOrEqual(121);
+	it("loops through long scenes, with a bound on very long ones", () => {
+		// 300 loops of 30 frames: the old 120-key cap stopped after ~24.
+		const long = cosineKeys(0, 10, 2, 0.3, 30, 30 * 150);
+		expect(long.at(-1)?.[0]).toBe(30 * 150);
+		expect(
+			cosineKeys(0, 10, 2, 0.3, 30, 30 * 10_000).length,
+		).toBeLessThanOrEqual(961);
+		expect(slideKeys(0, 10, 30, 30 * 10_000).length).toBeLessThanOrEqual(961);
 	});
 
 	it("slides one cell a loop and snaps back on the loop frame", () => {

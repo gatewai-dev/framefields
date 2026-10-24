@@ -1112,8 +1112,8 @@ given, otherwise for 60 s, in whole loops.
 - Mesh blobs are large radial-gradient boxes on Lissajous orbits (x at 1, y at 2 cycles
   per loop, seeded phases); keys sit on each axis's extremes with `sine.inOut`, which is
   an exact cosine (the pieces at the loop seam are `sine.out` / `sine.in`, close but not
-  exact), so a loop costs 3–5 keys per axis and long scenes stay inside the 128-key
-  limit. x and y live on separate nodes, each with its own limit.
+  exact), so a loop costs 3–5 keys per axis and long scenes stay small. x and y live on
+  separate nodes.
 - The grid is one path and the dots one text node of `•` glyphs on the lattice (a path of
   hundreds of circles renders in seconds; glyphs in milliseconds), each a cell larger than
   the frame on every side, sliding one cell per loop and snapping back on the loop frame
@@ -1854,8 +1854,9 @@ Deviations from the specs as first written:
   as the new word lands.
 - Backdrop's loop seam is close to, not exactly, the cosine (the loop itself is exact).
 - Keyframe `repeat` exists in the schema but nothing evaluates it, so loops are written out
-  in whole periods up to the 128-key limit per track (about 24 loops on the busiest track;
-  raise `loop` for very long scenes).
+  in whole periods, up to 960 keys per track (about 190 loops on the busiest track; raise
+  `loop` for longer scenes). This was 120 while the program schema capped a layer at 128
+  keyframes; that cap is gone (§20).
 
 ## 19. M8 delivery notes
 
@@ -1937,3 +1938,14 @@ Found by typechecking installed copies under user-style settings:
 
 Budgets: MousePointer 62 → 66 KB and TextReveal 55 → 58 KB. Installed copies are bundled
 from TypeScript source rather than the package's prebuilt output, which costs about 2 KB.
+
+**Keyframe cap removed.** The program schema rejected any layer with more than 128
+keyframes across its tracks. Nothing needed that: tracks are evaluated on the CPU from plain
+arrays, and playback compiles them to GSAP tweens. It rejected legitimate baked motion,
+though. The product demo's FocusZoom camera and pointer carry 318 and 205 keys, so its
+program failed validation. The cap is now a lint warning, `large_animation`, for layers over
+2000 keyframes, to catch keying every frame by mistake. Three components that worked around
+the cap lift it:
+- Backdrop's loop bound goes from 120 to 960 keys per track.
+- WordCycle no longer throws past 120 keys.
+- Selection no longer thins its keys.

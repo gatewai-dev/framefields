@@ -117,6 +117,30 @@ describe("CompositorProgramSchema (document v2)", () => {
 		);
 	});
 
+	it("has no keyframe cap: baked motion with hundreds of keys parses", () => {
+		const keyframes = Array.from({ length: 500 }, (_, f) => ({
+			id: `k${f}`,
+			frame: f,
+			value: f,
+		}));
+		const parsed = CompositorProgramSchema.safeParse({
+			...heroConfig,
+			layout: [
+				{
+					id: "baked",
+					kind: "box",
+					animation: {
+						tracks: [
+							{ id: "x", prop: "x", keyframes },
+							{ id: "y", prop: "y", keyframes },
+						],
+					},
+				},
+			],
+		});
+		expect(parsed.success, JSON.stringify(parsed.error?.issues[0])).toBe(true);
+	});
+
 	it("recursive children parse at any depth (lazy recursion works)", () => {
 		const deepNode = (depth: number): LayoutNode => {
 			if (depth === 0) {

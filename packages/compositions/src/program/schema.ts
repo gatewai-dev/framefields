@@ -545,11 +545,9 @@ const animationInvariants = (
 	ctx: z.RefinementCtx,
 ) => {
 	if (!anim?.tracks) return;
-	let totalKeyframes = 0;
 	for (let tIdx = 0; tIdx < anim.tracks.length; tIdx++) {
 		const track = anim.tracks[tIdx];
 		const keyframes = track.keyframes ?? [];
-		totalKeyframes += keyframes.length;
 
 		const isKeyframeSource = !track.source || track.source.type === "keyframe";
 		if (isKeyframeSource && keyframes.length < 1) {
@@ -624,13 +622,6 @@ const animationInvariants = (
 				});
 			}
 		}
-	}
-	if (totalKeyframes > 128) {
-		ctx.addIssue({
-			code: z.ZodIssueCode.custom,
-			message: `Total keyframes across all tracks (${totalKeyframes}) exceeds the limit of 128.`,
-			path: ["tracks"],
-		});
 	}
 };
 

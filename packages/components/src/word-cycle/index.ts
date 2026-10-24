@@ -24,9 +24,6 @@ export interface WordCycleCues {
 	changes: ReadonlyArray<{ frame: number; index: number; word: string }>;
 }
 
-/** Keys per node stay under the program's 128-per-animation limit. */
-const MAX_KEYS = 120;
-
 export const wordCycle = /* @__PURE__ */ defineComponent({
 	name: "WordCycle",
 	props: () => ({
@@ -151,10 +148,6 @@ export const wordCycle = /* @__PURE__ */ defineComponent({
 				prev = c.index;
 			}
 		}
-		if (slotKeys.length > MAX_KEYS)
-			throw new Error(
-				`WordCycle: ${slotKeys.length} width keys exceed the ${MAX_KEYS}-key limit of one track. Use fewer \`cycles\` or shorter words.`,
-			);
 		const add = (keys: KeyframeTuple[], by: number): KeyframeTuple[] =>
 			keys.map(([f, v, e]) =>
 				e ? [f, round((v as number) + by), e] : [f, round((v as number) + by)],

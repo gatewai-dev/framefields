@@ -28,8 +28,12 @@ export interface BackdropCues {
 	loops: ReadonlyArray<{ frame: number }>;
 }
 
-/** Keys per track stay under the program's 128-per-animation limit. */
-const MAX_KEYS = 120;
+/**
+ * Keys per track, to bound program size on very long scenes (past it the
+ * last loop holds). A layer carries at most two looping tracks, so it stays
+ * under the `large_animation` lint threshold of 2000.
+ */
+const MAX_KEYS = 960;
 
 export const backdrop = /* @__PURE__ */ defineComponent({
 	name: "Backdrop",

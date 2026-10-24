@@ -189,7 +189,7 @@ export const selection = /* @__PURE__ */ defineComponent({
 					background: withAlpha(color, 0.32),
 					borderRadius: Math.max(1, 3 * s),
 				});
-				const anim = LayerAnimation.create().keys("width", thin(keys));
+				const anim = LayerAnimation.create().keys("width", keys);
 				if (clear !== undefined)
 					anim.keys("opacity", [
 						[clear, 1],
@@ -320,16 +320,6 @@ export const selection = /* @__PURE__ */ defineComponent({
 });
 
 const round = (v: number) => Math.round(v * 100) / 100;
-
-/** Drop repeated hold keys past the program's per-track key budget, keeping the last. */
-function thin(keys: KeyframeTuple[]): KeyframeTuple[] {
-	if (keys.length <= 120) return keys;
-	const step = Math.ceil(keys.length / 119);
-	return [
-		...keys.filter((_, i) => i % step === 0),
-		keys[keys.length - 1] as KeyframeTuple,
-	];
-}
 
 /** `#rrggbb` / `#rgb` at alpha `a`; other colours pass through. */
 function withAlpha(color: string, a: number): string {

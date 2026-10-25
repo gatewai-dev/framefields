@@ -59,6 +59,36 @@ describe("ChatThread", () => {
 		);
 	});
 
+	it("lasts until a reaction on the last message has popped", () => {
+		const node = make()({
+			id: "r",
+			messages: [
+				{ from: "me", text: "Shipped?" },
+				{ from: "sam", text: "Ship it", reaction: "🚀" },
+			],
+			exit: "fade",
+			hold: 0,
+		});
+		/** Latest keyframe anywhere in the tree (local frames; the root starts at 0). */
+		const last = (n: unknown): number => {
+			const x = n as {
+				animation?: {
+					tracks?: Array<{ keyframes?: Array<{ frame: number }> }>;
+				};
+				children?: unknown[];
+			};
+			const own = (x.animation?.tracks ?? []).flatMap((t) =>
+				(t.keyframes ?? []).map((k) => k.frame),
+			);
+			return Math.max(0, ...own, ...(x.children ?? []).map(last));
+		};
+		const landed = node.cues.messages[1]?.frame ?? 0;
+		expect(find(node, "r-reaction-1")).toBeDefined();
+		expect(last(node)).toBeLessThanOrEqual(node.span.duration);
+		// The pop is why: it starts 0.6 s after the bubble and springs for longer than 0.8 s.
+		expect(node.span.duration).toBeGreaterThan(landed + 24 + 16);
+	});
+
 	it("shows avatars for others once anyone has a picture, initials otherwise", () => {
 		const avatarMessages = [
 			{ from: "me", text: "Shipped?" },

@@ -42,3 +42,31 @@ describe("clearHeadlessFonts", () => {
 		expect(existsSync(path.dirname(file as string))).toBe(false);
 	});
 });
+
+describe("registerHeadlessFont", () => {
+	afterEach(async () => {
+		vi.unstubAllGlobals();
+		vi.restoreAllMocks();
+		await clearHeadlessFonts();
+	});
+
+	it("decodes file:// URLs, so paths with spaces resolve", async () => {
+		expect(
+			await registerHeadlessFont("Spaced", "file:///a/My%20Film/Inter.ttf"),
+		).toBe("/a/My Film/Inter.ttf");
+	});
+
+	it("does nothing in a browser page: no download, no warning", async () => {
+		vi.stubGlobal("window", globalThis);
+		vi.stubGlobal("document", {});
+		const fetch = vi.fn();
+		vi.stubGlobal("fetch", fetch);
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+		expect(
+			await registerHeadlessFont("Inter", "http://localhost/assets/Inter.ttf"),
+		).toBeUndefined();
+		expect(fetch).not.toHaveBeenCalled();
+		expect(warn).not.toHaveBeenCalled();
+		expect(getHeadlessFontPath("Inter")).toBeUndefined();
+	});
+});

@@ -70,6 +70,23 @@ describe("terminal plan", () => {
 		expect(p.checks[0]?.at).toBe(spin?.to);
 	});
 
+	it("drops a done line's check mark even when it's colored", () => {
+		const doneOf = (done: string) =>
+			plan([{ spinner: "x", for: 10, done }]).lines.find(
+				(l) => l.kind === "done",
+			)?.spans;
+		expect(doneOf("{green}✓{/} 2 components")).toEqual([
+			{ text: "2 components" },
+		]);
+		expect(doneOf("  ✓ {bold}ok{/}")?.map((s) => s.text)).toEqual(["ok"]);
+		// Only a leading mark: one later in the line is text.
+		expect(
+			doneOf("passed ✓")
+				?.map((s) => s.text)
+				.join(""),
+		).toBe("passed ✓");
+	});
+
 	it("clears the screen at once", () => {
 		const p = plan([{ output: "a" }, { clear: true }, { output: "b" }]);
 		const a = p.lines.find((l) => l.spans[0]?.text === "a");

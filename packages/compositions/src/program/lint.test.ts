@@ -211,6 +211,8 @@ describe("lintComposition", () => {
 				kind: "box",
 				children: [
 					text("plain", "Ship it"),
+					// Symbols the text font draws: no emoji font needed.
+					text("symbols", "✓ done · © 2026 Acme™ ★"),
 					text("rocket", "Ship it 🚀"),
 					text("span", "x", [{ text: "❤️" }]),
 				],

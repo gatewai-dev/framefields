@@ -7,6 +7,7 @@
  * Clusters stay in logical (reading) order until {@link placeLine}, so line
  * breaking, word/char indices and typewriter prefixes all follow the text.
  */
+import { emojiPresentation } from "@framefields/core";
 import bidiFactory from "bidi-js";
 import {
 	type FontkitFont,
@@ -66,20 +67,27 @@ interface ShapeOptions {
 	ligatures?: boolean;
 	/** Set emoji apart for bitmap drawing (default); false shapes them as glyphs. */
 	emoji?: boolean;
+	/**
+	 * A style for a grapheme the run's font has no glyph for (another
+	 * registered family that has it), or undefined to keep .notdef.
+	 */
+	fallback?: <T extends ShapeStyle>(
+		style: T,
+		codePoint: number,
+	) => T | undefined;
 }
 
-const EMOJI_REGEX =
-	/(\p{Extended_Pictographic}|\p{Emoji_Presentation}|[☀-➿])/u;
-
 /**
- * The emoji in `text`, one per grapheme, as layout draws them: "❤️" keeps
- * its variation selector, "👍🏽" its skin tone. Preloading uses these, so its
- * textures are the ones drawing looks up.
+ * The graphemes in `text` that may draw as emoji, as layout sees them: "❤️"
+ * keeps its variation selector, "👍🏽" its skin tone. Preloading uses these,
+ * so its textures are the ones drawing looks up. Text-default pictographs
+ * (❤ © ™ without VS16) are included, since layout falls back to the emoji
+ * font when the text font lacks them; plain symbols (✓ ★ ❯) are not.
  */
 export function emojiGraphemes(text: string): string[] {
 	return segmentGraphemes(text)
 		.map((g) => g.text)
-		.filter((g) => EMOJI_REGEX.test(g));
+		.filter((g) => emojiPresentation(g) !== "text");
 }
 
 /** Characters that make bidi analysis necessary (RTL letters and explicit RTL controls). */
@@ -224,6 +232,19 @@ function resolveShapingSource(font: SlugFont): FontkitFont | null {
 		Symbol.for("gatewai.slugFontCache.parsed")
 	] as Map<string, FontkitFont> | undefined;
 	return parsed?.get(font.fontFamily) ?? null;
+}
+
+/** Whether `font` has its own glyph for `codePoint` (not .notdef). */
+function fontHasCodePoint(font: SlugFont, codePoint: number): boolean {
+	if (font.codePoints.has(codePoint)) return true;
+	const source = resolveShapingSource(font);
+	if (typeof source?.hasGlyphForCodePoint === "function")
+		return source.hasGlyphForCodePoint(codePoint);
+	if (!source) return false;
+	const set = source.characterSet;
+	return Array.isArray(set)
+		? set.includes(codePoint)
+		: new Set(set).has(codePoint);
 }
 
 function notdef(font: SlugFont): SlugCodePoint | undefined {
@@ -525,9 +546,31 @@ export function shapeParagraph<S extends ShapeStyle>(
 		const { start, text: gt } = graphemes[g];
 		for (let k = 0; k < gt.length; k++) graphemeAt[start + k] = g;
 	}
-	const isEmojiGrapheme = graphemes.map(
-		(g) => options.emoji !== false && EMOJI_REGEX.test(g.text),
-	);
+	const isEmojiGrapheme = graphemes.map((g) => {
+		if (options.emoji === false) return false;
+		const presentation = emojiPresentation(g.text);
+		// Text-default pictographs use the text font's glyph when it has one.
+		return (
+			presentation === "emoji" ||
+			(presentation === "either" &&
+				!fontHasCodePoint(styleAt[g.start].font, g.text.codePointAt(0) ?? 0))
+		);
+	});
+
+	// A grapheme its font can't draw takes another family that can (✓ in a
+	// mono face without one), as browsers fall back; its run splits there.
+	if (options.fallback) {
+		for (let g = 0; g < graphemes.length; g++) {
+			if (isEmojiGrapheme[g]) continue;
+			const { start, text: gt } = graphemes[g];
+			const cp = gt.codePointAt(0) ?? 0;
+			if (isIgnorable(cp) || SPACE_REGEX.test(gt) || cp < 0x20) continue;
+			const style = styleAt[start];
+			if (fontHasCodePoint(style.font, cp)) continue;
+			const other = options.fallback(style, cp);
+			if (other) for (let k = 0; k < gt.length; k++) styleAt[start + k] = other;
+		}
+	}
 
 	// Glyphs per grapheme, and ligature merges (a glyph spanning graphemes).
 	const glyphsOf: RunGlyph[][] = graphemes.map(() => []);

@@ -55,6 +55,44 @@ export interface SlugGlyphLayout {
 	mark?: TextSpanMark;
 }
 
+/**
+ * Font fallback for shaping: the first other registered family with a glyph
+ * for `codePoint`, at the same weight and size. Fonts are per family, so a
+ * ✓ in a mono face that lacks one draws from, say, Inter.
+ */
+function fallbackFont(
+	base: SlugFont,
+	fontSize: number,
+	codePoint: number,
+): SlugFont | undefined {
+	for (const family of SlugFontCache.families()) {
+		if (family === base.fontFamily) continue;
+		if (!SlugFontCache.getParsed(family)?.hasGlyphForCodePoint?.(codePoint))
+			continue;
+		return SlugFontCache.getFont(
+			family,
+			base.weight,
+			null,
+			undefined,
+			fontSize,
+		);
+	}
+	return undefined;
+}
+
+/** `shapeParagraph`'s fallback: the style with a fallback font (and its scale). */
+const fallback = <T extends ShapeStyle>(style: T, codePoint: number) => {
+	const font = fallbackFont(style.font, style.fontSize, codePoint);
+	if (!font) return undefined;
+	return {
+		...style,
+		font,
+		...("fontScale" in style && {
+			fontScale: style.fontSize / font.unitsPerEm,
+		}),
+	} as T;
+};
+
 export interface SlugEmojiLayout {
 	char: string;
 	x: number;
@@ -241,6 +279,7 @@ export class SlugGeometry {
 			const shaped = shapeParagraph([{ text: paragraph, style }], {
 				direction,
 				ligatures,
+				fallback,
 			});
 			for (const clusters of breakLines(shaped.clusters, maxWidth)) {
 				lines.push({ clusters, baseLevel: shaped.baseLevel, textOffset });
@@ -304,6 +343,12 @@ export class SlugGeometry {
 						clusterAdvance: c.advance - c.spacing,
 						clusterX: x,
 						baseRtl: (baseLevel & 1) === 1,
+						// A glyph from a fallback family draws with that font.
+						...(c.style.font !== font && {
+							font: c.style.font,
+							fontFamily: c.style.font.fontFamily,
+							fontScale: fontSize / c.style.font.unitsPerEm,
+						}),
 					});
 				}
 			}
@@ -461,7 +506,11 @@ export class SlugGeometry {
 		}
 		const lines: Line[] = [];
 		for (const segments of paragraphs) {
-			const shaped = shapeParagraph(segments, { direction, ligatures });
+			const shaped = shapeParagraph(segments, {
+				direction,
+				ligatures,
+				fallback,
+			});
 			for (const clusters of breakLines(shaped.clusters, maxWidth)) {
 				lines.push({ clusters, baseLevel: shaped.baseLevel });
 			}

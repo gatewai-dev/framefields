@@ -13,12 +13,13 @@ const asset = (path: string) =>
 
 beforeAll(async () => {
 	await FontManager.register("assets/fonts/Inter.ttf");
+	await FontManager.register("assets/fonts/JetBrainsMono.ttf");
 	await FontManager.registerEmojiFont(
 		asset("packages/renderer/src/assets/NotoColorEmoji.ttf"),
 	);
 });
 
-async function render(text: string) {
+async function render(text: string, fontFamily = "Inter") {
 	const comp = new Composition({
 		width: 300,
 		height: 100,
@@ -36,7 +37,7 @@ async function render(text: string) {
 					position: "absolute",
 					x: 20,
 					y: 20,
-					fontFamily: "Inter",
+					fontFamily,
 					fontSize: 40,
 					fill: "#ffffff",
 				}),
@@ -48,6 +49,21 @@ async function render(text: string) {
 	const ctx = canvas.getContext("2d");
 	ctx.drawImage(img, 0, 0);
 	return ctx.getImageData(0, 0, img.width, img.height).data;
+}
+
+/** Pixels with any ink (not the black background). */
+function inked(data: Uint8ClampedArray): number {
+	let n = 0;
+	for (let i = 0; i < data.length; i += 4)
+		if (
+			Math.max(
+				data[i] as number,
+				data[i + 1] as number,
+				data[i + 2] as number,
+			) > 60
+		)
+			n++;
+	return n;
 }
 
 /** Pixels that are clearly coloured (not black, white or grey). */
@@ -67,5 +83,29 @@ describe("emoji", () => {
 		expect(colored(await render("ab"))).toBe(0);
 		expect(colored(await render("a 🚀"))).toBeGreaterThan(200);
 		expect(colored(await render("a ❤️"))).toBeGreaterThan(200);
+	});
+
+	it("draws symbols like ✓ and © from the text font, not as blank emoji", async () => {
+		for (const symbol of ["✓", "©", "★"]) {
+			const img = await render(`a ${symbol}`);
+			// White text ink, no color bitmap, and more ink than "a" alone.
+			expect(colored(img)).toBe(0);
+			expect(inked(img)).toBeGreaterThan(inked(await render("a")) + 30);
+		}
+	});
+
+	it("takes a glyph the font lacks from another registered family", async () => {
+		// JetBrains Mono has no ✓ or ★; Inter does.
+		for (const symbol of ["✓", "★"]) {
+			const img = await render(symbol, "JetBrains Mono");
+			expect(colored(img)).toBe(0);
+			expect(inked(img)).toBeGreaterThan(30);
+		}
+	});
+
+	it("keeps text-default pictographs as text when the font has them", async () => {
+		// Inter has ❤ (drawn white); ✈ it lacks, so that one is the color emoji.
+		expect(colored(await render("a ❤"))).toBe(0);
+		expect(colored(await render("a ✈"))).toBeGreaterThan(200);
 	});
 });

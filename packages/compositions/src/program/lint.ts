@@ -6,6 +6,7 @@
  */
 import {
 	Color,
+	emojiPresentation,
 	parseCssColor,
 	parseCssGradient,
 	type RenderDiagnostic,
@@ -32,12 +33,18 @@ const COLOR_PROPS = [
  */
 export const LARGE_ANIMATION_KEYFRAMES = 2000;
 
-/**
- * Characters layout draws from the color emoji font (the renderer's own
- * test, `emojiGraphemes` in webgpu-renderers).
- */
-const EMOJI =
-	/(\p{Extended_Pictographic}|\p{Emoji_Presentation}|[\u2600-\u27BF])/u;
+/** Whether `text` has a grapheme layout always draws from the color emoji font. */
+function hasEmoji(text: string): boolean {
+	for (const { segment } of graphemes().segment(text))
+		if (emojiPresentation(segment) === "emoji") return true;
+	return false;
+}
+
+let segmenter: Intl.Segmenter | undefined;
+function graphemes(): Intl.Segmenter {
+	segmenter ??= new Intl.Segmenter(undefined, { granularity: "grapheme" });
+	return segmenter;
+}
 
 /** The text a text node draws: its string and its spans'. */
 function textOf(node: AnyNode): string {
@@ -120,7 +127,7 @@ export function lintComposition(
 		if (
 			options.emojiFont === false &&
 			node.kind === "text" &&
-			EMOJI.test(textOf(node))
+			hasEmoji(textOf(node))
 		)
 			emojiText.push(id);
 

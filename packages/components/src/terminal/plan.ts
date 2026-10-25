@@ -130,6 +130,25 @@ export const SCROLL_GLIDE = 4;
 /** A check mark replaces these leading glyphs (fonts often lack them). */
 const DONE_MARK = /^\s*[✔✓√]\s*/;
 
+/**
+ * The spans without a leading check mark, found in the first span with
+ * visible text, so `{green}✓{/} done` loses it as `✓ done` does (the
+ * drawn check takes its place).
+ */
+export function withoutDoneMark(spans: Span[]): Span[] {
+	const first = spans.findIndex((sp) => sp.text.trim() !== "");
+	const span = spans[first];
+	if (!span || !DONE_MARK.test(span.text)) return spans;
+	const rest = [
+		{ ...span, text: span.text.replace(DONE_MARK, "") },
+		...spans.slice(first + 1),
+	];
+	// The mark's trailing space goes with it, even when it's in the next span.
+	while (rest[0] && rest[0].text.trimStart() === "") rest.shift();
+	if (rest[0]) rest[0] = { ...rest[0], text: rest[0].text.trimStart() };
+	return rest;
+}
+
 export function planTerminal(
 	script: readonly Step[],
 	o: PlanOptions,
@@ -231,10 +250,11 @@ export function planTerminal(
 			spinning.until = to;
 			plan.spinners.push({ row: spinning.row, from, to, step: s });
 			row--;
-			const doneText = (step.done ?? step.spinner).replace(DONE_MARK, "");
 			show({
 				appear: to,
-				spans: parseMarkup(doneText, o.markup),
+				spans: withoutDoneMark(
+					parseMarkup(step.done ?? step.spinner, o.markup),
+				),
 				indent: 2,
 				step: s,
 				kind: "done",

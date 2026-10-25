@@ -1,5 +1,5 @@
 /// <reference types="webgpu" />
-import type { WebGPUNodeRenderer } from "@framefields/node-sdk";
+import type { EffectReach, WebGPUNodeRenderer } from "@framefields/node-sdk";
 import {
 	createFullscreenPipeline,
 	drawFullscreenPass,
@@ -107,6 +107,9 @@ const STROKE_POS_MAP: Record<string, number> = {
 	center: 1,
 	inside: 2,
 };
+
+/** Blur, glow and stroke kernels in the shader stop at this radius, px. */
+const MAX_KERNEL = 24;
 
 const WGSL_LAYER_STYLE_SHADER = `
 struct LayerStyleUniforms {
@@ -321,7 +324,7 @@ fn compositeLayer(dst: vec4<f32>, src: vec4<f32>, blendMode: u32) -> vec4<f32> {
 		var shadowWeightSum = 0.0;
 
 		let sigma = max(0.5, size * 0.4);
-		let sampleRadius = min(i32(ceil(size)), 24);
+		let sampleRadius = min(i32(ceil(size)), ${MAX_KERNEL});
 
 		if (size <= 0.5) {
 			shadowAccum = sampleAlpha(shadowCenterUv);
@@ -361,7 +364,7 @@ fn compositeLayer(dst: vec4<f32>, src: vec4<f32>, blendMode: u32) -> vec4<f32> {
 		var glowAccum = 0.0;
 		var glowWeightSum = 0.0;
 		let sigma = max(0.5, size * 0.4);
-		let sampleRadius = min(i32(ceil(size)), 24);
+		let sampleRadius = min(i32(ceil(size)), ${MAX_KERNEL});
 
 		if (size <= 0.5) {
 			glowAccum = origA;
@@ -399,7 +402,7 @@ fn compositeLayer(dst: vec4<f32>, src: vec4<f32>, blendMode: u32) -> vec4<f32> {
 		let blendMode = u32(u.strokeParams2.x);
 
 		var maxAlpha = 0.0;
-		let sampleRadius = min(i32(ceil(size)), 24);
+		let sampleRadius = min(i32(ceil(size)), ${MAX_KERNEL});
 		let sizeSq = size * size;
 
 		for (var y = -sampleRadius; y <= sampleRadius; y++) {
@@ -557,7 +560,7 @@ fn compositeLayer(dst: vec4<f32>, src: vec4<f32>, blendMode: u32) -> vec4<f32> {
 			let blendMode = u32(u.strokeParams2.x);
 
 			var minAlpha = 1.0;
-			let sampleRadius = min(i32(ceil(size)), 24);
+			let sampleRadius = min(i32(ceil(size)), ${MAX_KERNEL});
 			let sizeSq = size * size;
 
 			for (var y = -sampleRadius; y <= sampleRadius; y++) {
@@ -592,7 +595,7 @@ fn compositeLayer(dst: vec4<f32>, src: vec4<f32>, blendMode: u32) -> vec4<f32> {
 		var maxAlpha = 0.0;
 		var minAlpha = 1.0;
 		let halfSize = max(0.5, size * 0.5);
-		let sampleRadius = min(i32(ceil(halfSize)), 24);
+		let sampleRadius = min(i32(ceil(halfSize)), ${MAX_KERNEL});
 		let halfSizeSq = halfSize * halfSize;
 
 		for (var y = -sampleRadius; y <= sampleRadius; y++) {
@@ -1096,3 +1099,48 @@ export const WebGPURenderer: WebGPUNodeRenderer = async (args) => {
 	// Blit to targetView
 	drawTextureToTarget(args, outTex, op.opacity ?? 1.0);
 };
+
+/**
+ * How far a LayerStyle draws past its layer: the drop shadow's offset plus
+ * its blur, the outer glow, an outside or centred stroke. Unknown (null)
+ * when one of those sizes is driven by a connected signal. Keep in step with
+ * the shader above: anything it draws farther out must count here, or a
+ * compositor running the style over the layer's region will clip it.
+ */
+export const layerStyleReach: EffectReach = (operation) => {
+	const op = operation as Record<string, unknown> & {
+		inputs?: Record<string, { connectionValid?: boolean } | undefined>;
+	};
+	const driven = (handle: unknown) =>
+		typeof handle === "string" && op.inputs?.[handle]?.connectionValid === true;
+	if (
+		driven(op.dropShadowDistanceHandleId) ||
+		driven(op.dropShadowSizeHandleId) ||
+		driven(op.outerGlowSizeHandleId) ||
+		driven(op.strokeSizeHandleId)
+	)
+		return null;
+	// A style may be a signal holding its value.
+	const style = (v: unknown) =>
+		(v && typeof v === "object" && "_value" in v
+			? (v as { _value: unknown })._value
+			: v) as
+			| {
+					enabled?: boolean;
+					distance?: number;
+					size?: number;
+					position?: string;
+			  }
+			| undefined;
+	const kernel = (size?: number) => Math.min(Math.ceil(size ?? 0), MAX_KERNEL);
+	const ds = style(op.dropShadow);
+	const og = style(op.outerGlow);
+	const st = style(op.stroke);
+	let r = 0;
+	if (ds?.enabled) r = Math.max(r, (ds.distance ?? 0) + kernel(ds.size));
+	if (og?.enabled) r = Math.max(r, kernel(og.size));
+	if (st?.enabled && st.position !== "inside") r = Math.max(r, kernel(st.size));
+	return Math.ceil(r) + 2;
+};
+
+WebGPURenderer.reach = layerStyleReach;

@@ -7,6 +7,7 @@ export * from "./signals/index.js";
 export * from "./types/index.js";
 export * from "./utils/assert.js";
 export * from "./utils/color.js";
+export * from "./utils/emoji.js";
 export * from "./utils/gradient.js";
 export * from "./utils/is-equal.js";
 export * from "./utils/result-cache.js";

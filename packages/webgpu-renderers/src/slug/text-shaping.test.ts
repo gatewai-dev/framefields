@@ -316,3 +316,54 @@ describe.skipIf(!sfArabic)("Arabic shaping (SF Arabic)", () => {
 		}
 	});
 });
+
+describe("emoji presentation and font fallback", () => {
+	// "✓" and "©" are in this font; "❤" and "★" are not.
+	const text = mockFont("ab ✓©");
+	const style = { font: text, fontSize: 10, letterSpacing: 0 };
+	const shapeOne = (s: string, options = {}) =>
+		shapeParagraph([{ text: s, style }], options).clusters;
+
+	it("draws plain symbols from the text font, not as emoji", () => {
+		const clusters = shapeOne("a ✓ ©");
+		expect(clusters.filter((c) => c.isEmoji)).toEqual([]);
+		const check = clusters.find((c) => c.text === "✓");
+		expect(check?.glyphs[0]?.cp.codePoint).toBe(0x2713);
+	});
+
+	it("keeps default-emoji and VS16 graphemes as emoji", () => {
+		const emoji = shapeOne("🚀 ❤️ ✅")
+			.filter((c) => c.isEmoji)
+			.map((c) => c.text);
+		expect(emoji).toEqual(["🚀", "❤️", "✅"]);
+	});
+
+	it("falls back to the emoji font for a text-default pictograph the font lacks", () => {
+		expect(shapeOne("❤").map((c) => c.isEmoji)).toEqual([true]);
+		// With the glyph, a text-default pictograph stays text.
+		expect(shapeOne("©").map((c) => c.isEmoji)).toEqual([false]);
+	});
+
+	it("takes a missing glyph from the fallback font, in its own style", () => {
+		const other = mockFont("★");
+		const seen: number[] = [];
+		const clusters = shapeOne("a★b", {
+			fallback: <T extends typeof style>(s: T, cp: number) => {
+				seen.push(cp);
+				return { ...s, font: other } as T;
+			},
+		});
+		expect(seen).toEqual([0x2605]);
+		expect(clusters.map((c) => [c.text, c.style.font === other])).toEqual([
+			["a", false],
+			["★", true],
+			["b", false],
+		]);
+		expect(clusters[1]?.glyphs[0]?.cp.codePoint).toBe(0x2605);
+	});
+
+	it("lists only graphemes that may draw as emoji for preloading", async () => {
+		const { emojiGraphemes } = await import("./text-shaping.js");
+		expect(emojiGraphemes("✓ done © ★ ❤ ❤️ 🚀")).toEqual(["©", "❤", "❤️", "🚀"]);
+	});
+});

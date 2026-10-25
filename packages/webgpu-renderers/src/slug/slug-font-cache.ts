@@ -208,6 +208,11 @@ export class SlugFontCache {
 		return SlugFontCache.parsedFontCache.get(fontFamily) || null;
 	}
 
+	/** Registered families, in registration order (font fallback tries them in turn). */
+	public static families(): string[] {
+		return [...SlugFontCache.parsedFontCache.keys()];
+	}
+
 	public static getAllParsed(): FontkitFont[] {
 		return Array.from(SlugFontCache.parsedFontCache.values());
 	}

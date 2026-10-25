@@ -32,6 +32,7 @@ export interface FontkitFont {
 	numGlyphs: number;
 	getGlyph?(id: number): FontkitGlyph;
 	glyphForCodePoint?(codePoint: number): FontkitGlyph;
+	hasGlyphForCodePoint?(codePoint: number): boolean;
 	characterSet: number[] | Iterable<number>;
 	ascent: number;
 	descent: number;

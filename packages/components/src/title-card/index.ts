@@ -89,7 +89,7 @@ export const titleCard = /* @__PURE__ */ defineComponent({
 			? host.measure(kickerText, {
 					fontFamily,
 					fontSize: kickerSize,
-					fontWeight: 600,
+					fontWeight: theme.weight.semibold,
 					letterSpacing: kickerSize * 0.16,
 				})
 			: null;
@@ -164,7 +164,7 @@ export const titleCard = /* @__PURE__ */ defineComponent({
 			align,
 			fontFamily,
 			fontSize: size,
-			fontWeight: 700,
+			fontWeight: theme.weight.bold,
 			emphasis: props.emphasis,
 			theme,
 			seed: ctx.seed,
@@ -183,7 +183,7 @@ export const titleCard = /* @__PURE__ */ defineComponent({
 				...place.kicker,
 				fontFamily,
 				fontSize: kickerSize,
-				fontWeight: 600,
+				fontWeight: theme.weight.semibold,
 				letterSpacing: kickerSize * 0.16,
 				fill: theme.color.accent,
 				theme,
@@ -291,7 +291,7 @@ export const titleCard = /* @__PURE__ */ defineComponent({
 				align,
 				fontFamily,
 				fontSize: size,
-				fontWeight: 700,
+				fontWeight: theme.weight.bold,
 				emphasis: props.emphasis,
 				theme,
 				seed: ctx.seed,

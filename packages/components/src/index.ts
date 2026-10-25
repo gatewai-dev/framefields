@@ -73,8 +73,21 @@ export {
 	springAt,
 	springKeys,
 	springSettleFrames,
+	springTrack,
 } from "./core/bake.js";
 export {
+	contrastRatio,
+	inkOn,
+	isLight,
+	luminance,
+	mix,
+	parseColor,
+	type Rgba,
+	transparent,
+	withAlpha,
+} from "./core/color.js";
+export {
+	after,
 	type BaseProps,
 	type BuildContext,
 	type BuildResult,
@@ -90,9 +103,11 @@ export {
 	defineComponent,
 	offsetCues,
 	type Placement,
+	type ProjectDefaults,
 	type PropsOf,
 	type PulseOptions,
 	pulseKeys,
+	withDefaults,
 } from "./core/contract.js";
 export {
 	type ArrowCurve,
@@ -132,7 +147,27 @@ export type {
 	MediaOptions,
 	ParticleOptions,
 } from "./core/host.js";
-export { type ComponentMeta, defineMeta } from "./core/meta.js";
+export {
+	ascending,
+	KeyBook,
+	last,
+	round,
+	supersede,
+	Track,
+	valueAt,
+} from "./core/keys.js";
+export {
+	type CanvasSize,
+	SAFE_INSETS,
+	type SafeInsets,
+	safeArea,
+} from "./core/layout.js";
+export {
+	type ComponentMeta,
+	defineMeta,
+	type FontNeed,
+	type FontRole,
+} from "./core/meta.js";
 export {
 	enterAnimation,
 	exitAnimation,
@@ -154,6 +189,12 @@ export {
 	type Vec2,
 } from "./core/path.js";
 export { hashRng, hashString, type Rng, rng } from "./core/rng.js";
+export {
+	type ElevationLevel,
+	elevate,
+	elevationStyle,
+	surfaceFill,
+} from "./core/surface.js";
 export {
 	type Anchor,
 	anchorPoint,
@@ -178,8 +219,10 @@ export {
 	wordRanges,
 } from "./core/text.js";
 export {
-	contrastRatio,
 	defineTheme,
+	type Elevation,
+	type Spring,
+	type SyntaxKind,
 	type Theme,
 	type ThemeInput,
 	type ThemeName,
@@ -275,7 +318,6 @@ export {
 	titleCard,
 } from "./title-card/index.js";
 export {
-	springTrack,
 	TOAST_CORNERS,
 	TOAST_KINDS,
 	type ToastCorner,

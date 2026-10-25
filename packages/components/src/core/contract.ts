@@ -12,6 +12,7 @@ import type {
 } from "@framefields/compositions/program";
 import { z } from "zod";
 import type { Animatable, Host } from "./host.js";
+import type { CanvasSize } from "./layout.js";
 import {
 	enterAnimation,
 	exitAnimation,
@@ -105,6 +106,7 @@ function motionPresetSchema() {
 			ease: z.string().optional(),
 			distance: z.number().optional(),
 			delay: z.number().int().min(0).optional(),
+			blur: z.union([z.boolean(), z.number().min(0).max(360)]).optional(),
 		}),
 	]);
 }
@@ -135,6 +137,10 @@ function buildBaseProps() {
 			.optional(),
 		seed: z.number().int().optional(),
 		fps: z.number().positive().optional(),
+		canvas: z
+			.object({ width: z.number().positive(), height: z.number().positive() })
+			.strict()
+			.optional(),
 		customize:
 			fn<(parts: Record<string, Animatable<LayoutNode>>) => void>().optional(),
 	});
@@ -164,6 +170,11 @@ export interface BaseProps {
 	seed?: number;
 	/** Composition frame rate: theme speeds and real-time inputs scale by it. Default 30. */
 	fps?: number;
+	/**
+	 * Composition size, for components that cover the frame (captions,
+	 * backdrops, spotlights …). Default 1920 × 1080 × `theme.scale`.
+	 */
+	canvas?: CanvasSize;
 	/** Receives every built part before the component returns. */
 	customize?: (parts: Record<string, Animatable<LayoutNode>>) => void;
 }
@@ -190,6 +201,8 @@ export interface BuildContext {
 	};
 	/** Frames the finished state holds (base `hold`, or the component's default). */
 	hold: number;
+	/** The composition size (base `canvas`, or 1920 × 1080 × theme scale). */
+	canvas: CanvasSize;
 }
 
 /** Where the root ended up: what a component's `api` can rely on. */
@@ -288,10 +301,57 @@ export interface ComponentExtras<C extends Cues> {
 	readonly span: { start: number; end: number; duration: number };
 	/** A named part (`root`, `stage`, and the component's own). */
 	part(name: string): Animatable<LayoutNode> | undefined;
+	/** Every name `part()` and `customize` answer to. */
+	readonly partNames: readonly string[];
 }
 
 export type ComponentNode<C extends Cues> = Animatable<BoxNode> &
 	ComponentExtras<C>;
+
+/** Base props a project usually sets once: see {@link withDefaults}. */
+export type ProjectDefaults = Pick<BaseProps, "fps" | "canvas" | "seed"> & {
+	theme?: ThemeInput | Theme;
+};
+
+/**
+ * Wrap component factories so every call starts from the project's frame
+ * rate, canvas, theme and seed. Props given at the call win; a call's
+ * partial `theme` merges over the default theme, not over `graphite`.
+ *
+ * ```ts
+ * const ui = withDefaults({ fps: 60, canvas: { width: 1080, height: 1920 }, theme: themes.paper });
+ * const Captions = ui(CaptionsBase);
+ * ```
+ */
+export function withDefaults(defaults: ProjectDefaults) {
+	const base = defaults.theme ? defineTheme(defaults.theme) : undefined;
+	return <P extends BaseProps, R>(factory: (props: P) => R) =>
+		(props: P): R =>
+			factory({
+				...defaults,
+				...props,
+				theme:
+					props.theme && base
+						? defineTheme(props.theme, base)
+						: (props.theme ?? base),
+			});
+}
+
+/**
+ * The frame `gap` frames after `node` ends: `at: after(title, 6)`. Throws
+ * for open-ended components, which have no end until given a `duration`.
+ */
+export function after(
+	node: { readonly span: { end: number } },
+	gap = 0,
+): number {
+	if (!Number.isFinite(node.span.end)) {
+		throw new Error(
+			"after(): this component is open-ended (it stays until its parent ends). Give it a `duration`, or use its cues.",
+		);
+	}
+	return node.span.end + gap;
+}
 
 const kebab = (name: string) =>
 	name.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
@@ -314,10 +374,22 @@ export function bind<
 		schema ??= basePropsSchema().extend(definition.props()).strict();
 		const parsed = schema.safeParse(input ?? {});
 		if (!parsed.success) {
+			const known = Object.keys(schema.shape);
 			const issues = parsed.error.issues
-				.map((i) => `  - ${i.path.join(".") || "(props)"}: ${i.message}`)
+				.map((i) => {
+					const where = i.path.join(".") || "(props)";
+					const hint =
+						i.code === "unrecognized_keys" && i.path.length === 0
+							? suggest(i.keys, known)
+							: "";
+					return `  - ${where}: ${i.message}${hint}`;
+				})
 				.join("\n");
-			throw new Error(`${definition.name}: invalid props\n${issues}`);
+			const who =
+				typeof input?.id === "string"
+					? `${definition.name}#${input.id}`
+					: definition.name;
+			throw new Error(`${who}: invalid props\n${issues}`);
 		}
 		return assemble(
 			host,
@@ -325,6 +397,35 @@ export function bind<
 			parsed.data as BaseProps & z.output<z.ZodObject<S>>,
 		);
 	};
+}
+
+/** ` (did you mean "label"?)` for keys one or two edits from a known prop. */
+function suggest(keys: readonly string[], known: readonly string[]): string {
+	const hints = keys.flatMap((key) => {
+		let best: string | undefined;
+		let bestD = 3;
+		for (const k of known) {
+			const d = editDistance(key.toLowerCase(), k.toLowerCase());
+			if (d < bestD) [best, bestD] = [k, d];
+		}
+		return best ? [`"${key}" → "${best}"`] : [];
+	});
+	return hints.length > 0 ? ` (did you mean ${hints.join(", ")}?)` : "";
+}
+
+function editDistance(a: string, b: string): number {
+	let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+	for (let i = 1; i <= a.length; i++) {
+		const row = [i];
+		for (let j = 1; j <= b.length; j++)
+			row[j] = Math.min(
+				(prev[j] as number) + 1,
+				(row[j - 1] as number) + 1,
+				(prev[j - 1] as number) + (a[i - 1] === b[j - 1] ? 0 : 1),
+			);
+		prev = row;
+	}
+	return prev[b.length] as number;
 }
 
 function assemble<S extends z.ZodRawShape, C extends Cues, E extends object>(
@@ -353,6 +454,10 @@ function assemble<S extends z.ZodRawShape, C extends Cues, E extends object>(
 			at: props.at ?? 0,
 		},
 		hold,
+		canvas: props.canvas ?? {
+			width: 1920 * theme.scale,
+			height: 1080 * theme.scale,
+		},
 	};
 
 	const built = definition.build(ctx, props);
@@ -390,6 +495,7 @@ function assemble<S extends z.ZodRawShape, C extends Cues, E extends object>(
 	const width = props.width ?? built.width;
 	const height = props.height ?? built.height;
 
+	const blur = Math.max(enter?.blur ?? 0, exit?.blur ?? 0);
 	const stage = host.box({
 		id: ctx.partId("stage"),
 		position: "absolute",
@@ -397,6 +503,7 @@ function assemble<S extends z.ZodRawShape, C extends Cues, E extends object>(
 		y: 0,
 		width,
 		height,
+		...(blur > 0 && { motionBlurShutter: blur }),
 		children: built.children,
 	});
 	const size = { width, height };
@@ -450,6 +557,7 @@ function assemble<S extends z.ZodRawShape, C extends Cues, E extends object>(
 			enumerable: false,
 		},
 		part: { value: (name: string) => parts[name], enumerable: false },
+		partNames: { value: Object.keys(parts), enumerable: false },
 	});
 	if (built.api) {
 		const api = built.api({

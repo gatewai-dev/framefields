@@ -5,7 +5,7 @@
  * lifted, so nothing travels: each touch is its own disc.
  *
  * Coordinates are the frame's: the root covers the video (default
- * 1920 × 1080 × theme scale, or the given width / height) from 0, 0.
+ * the composition `canvas`, or the given width / height) from 0, 0.
  */
 import {
 	type KeyframeTuple,
@@ -15,6 +15,7 @@ import {
 import { z } from "zod";
 import { defineComponent } from "../core/contract.js";
 import type { Animatable } from "../core/host.js";
+import { ascending } from "../core/keys.js";
 import { dist, type Vec2 } from "../core/path.js";
 import { targetSchema } from "../core/schemas.js";
 import { resolveTarget, type Target, targetPoint } from "../core/targets.js";
@@ -79,8 +80,8 @@ export const touchPoint = /* @__PURE__ */ defineComponent({
 	build(ctx, props) {
 		const { host, theme, fps } = ctx;
 		const s = theme.scale;
-		const W = ctx.requested.width ?? 1920 * s;
-		const H = ctx.requested.height ?? 1080 * s;
+		const W = ctx.requested.width ?? ctx.canvas.width;
+		const H = ctx.requested.height ?? ctx.canvas.height;
 		const size = props.size ?? 64 * s;
 		const f = (n: number) => scaleFrames(n, fps);
 		const pointOf = (t: Target, at: number) =>
@@ -344,13 +345,4 @@ export function planTouches(
 		free = lift + f(6) + (t.dwell ?? f(14)) + lead;
 		return out;
 	});
-}
-
-/** Later keys on a shared frame win; frames ascend. */
-function ascending(keys: KeyframeTuple[]): KeyframeTuple[] {
-	const byFrame = new Map<number, KeyframeTuple>();
-	for (const k of keys) byFrame.set(k[0] as number, k);
-	return [...byFrame.values()].sort(
-		(a, b) => (a[0] as number) - (b[0] as number),
-	);
 }

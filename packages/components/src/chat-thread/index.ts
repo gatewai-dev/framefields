@@ -13,6 +13,8 @@ import { z } from "zod";
 import { springKeys } from "../core/bake.js";
 import { defineComponent } from "../core/contract.js";
 import type { Animatable } from "../core/host.js";
+import { supersede } from "../core/keys.js";
+import { surfaceFill } from "../core/surface.js";
 import { rangeRects } from "../core/text.js";
 
 export interface ChatThreadCues {
@@ -37,7 +39,11 @@ function messageSchema() {
 				.default(4 / 3),
 			/** Frame it lands. Default: after the previous one has been read. */
 			at: z.number().int().min(0).optional(),
-			/** A reaction pinned to the bubble (an emoji or short text). */
+			/**
+			 * A reaction pinned to the bubble: an emoji or short text (`"heart"`
+			 * means ❤️). Emoji draw from the color emoji font `framefields add`
+			 * installs (`registerFonts()` in the generated `fonts.ts`).
+			 */
 			reaction: z.string().optional(),
 			/** A small timestamp under the bubble. */
 			time: z.string().optional(),
@@ -47,10 +53,6 @@ function messageSchema() {
 			message: "A message needs `text` or `image`.",
 		});
 }
-
-const SPRING = { stiffness: 260, damping: 20 };
-/** Livelier, for reactions. */
-const POP = { stiffness: 320, damping: 14 };
 
 export const chatThread = /* @__PURE__ */ defineComponent({
 	name: "ChatThread",
@@ -89,6 +91,8 @@ export const chatThread = /* @__PURE__ */ defineComponent({
 	defaults: { enter: false, exit: false },
 	build(ctx, props) {
 		const { host, theme, fps } = ctx;
+		// Bubbles overshoot a little; reactions bounce.
+		const { base: spring, pop } = theme.motion.spring;
 		const s = theme.scale;
 		const W = ctx.requested.width ?? 720 * s;
 		const H = ctx.requested.height ?? 960 * s;
@@ -304,7 +308,10 @@ export const chatThread = /* @__PURE__ */ defineComponent({
 				y: slot.y,
 				width: slot.width,
 				height: slot.height,
-				background: m.image && !m.text ? "rgba(0,0,0,0)" : colorOf(m.from),
+				background:
+					m.image && !m.text
+						? "rgba(0,0,0,0)"
+						: surfaceFill(colorOf(m.from), theme),
 				borderRadius: radius,
 				// Springs grow from the corner the bubble comes from.
 				anchorX: slot.right ? 1 : 0,
@@ -314,11 +321,11 @@ export const chatThread = /* @__PURE__ */ defineComponent({
 			if (morph)
 				bubble.animate(
 					LayerAnimation.create()
-						.keys("width", springKeys(at, typingW, slot.width, fps, SPRING))
-						.keys("height", springKeys(at, typingH, slot.height, fps, SPRING))
+						.keys("width", springKeys(at, typingW, slot.width, fps, spring))
+						.keys("height", springKeys(at, typingH, slot.height, fps, spring))
 						.keys(
 							"borderRadius",
-							springKeys(at, typingH / 2, radius, fps, SPRING),
+							springKeys(at, typingH / 2, radius, fps, spring),
 						)
 						.keys("opacity", [
 							[0, 0],
@@ -331,8 +338,8 @@ export const chatThread = /* @__PURE__ */ defineComponent({
 				const [scale, lift] = slot.right ? [0.86, fs * 1.1] : [0.6, fs * 0.5];
 				bubble.animate(
 					LayerAnimation.create()
-						.keys("scale", springKeys(at, scale, 1, fps, SPRING))
-						.keys("y", springKeys(at, slot.y + lift, slot.y, fps, SPRING))
+						.keys("scale", springKeys(at, scale, 1, fps, spring))
+						.keys("y", springKeys(at, slot.y + lift, slot.y, fps, spring))
 						.keys("opacity", [
 							[at, 0],
 							[at + fade, 1, "power2.out"],
@@ -389,16 +396,18 @@ export const chatThread = /* @__PURE__ */ defineComponent({
 				);
 			}
 			if (m.reaction) {
-				// Hearts are drawn, so they show without an emoji font; anything
-				// else is text (emoji need one registered).
-				const heart = /^(❤️?|♥️?|heart)$/u.test(m.reaction.trim());
-				const rfs = fs * 0.9;
-				const rm = measure(m.reaction, rfs);
+				// Text, so emoji draw from the registered color emoji font
+				// (installed with this component; see `fonts.ts`).
+				const reaction = m.reaction.trim() === "heart" ? "❤️" : m.reaction;
+				// Emoji draw a little past their advance, so a lone one is set
+				// smaller to keep the pill's margin.
+				const emojiOnly = !/[\p{L}\p{N}]/u.test(reaction);
+				const rfs = fs * (emojiOnly ? 0.74 : 0.9);
+				const rm = measure(reaction, rfs);
 				const rh = fs * 1.5;
-				const rw = heart ? rh : Math.max(rh, rm.width + fs * 0.6);
+				const rw = Math.max(rh, rm.width + fs * 0.6);
 				const rAt = at + Math.round(fps * 0.6);
 				const border = Math.max(2, fs * 0.1);
-				const hs = rh * 0.46;
 				// On the outer top corner, like a tapback.
 				const pill = host.box({
 					id: ctx.partId(`reaction-${slot.index}`),
@@ -414,33 +423,21 @@ export const chatThread = /* @__PURE__ */ defineComponent({
 					anchorX: 0.5,
 					anchorY: 1,
 					children: [
-						heart
-							? host.shape("path", {
-									id: ctx.partId(`reaction-${slot.index}-heart`),
-									position: "absolute",
-									x: (rw - hs) / 2,
-									y: (rh - hs * 0.92) / 2 + hs * 0.04,
-									width: hs,
-									height: hs * 0.92,
-									d: heartPath(hs),
-									fillType: "solid",
-									fillColor: theme.color.negative,
-								})
-							: host.text(m.reaction, {
-									id: ctx.partId(`reaction-${slot.index}-text`),
-									position: "absolute",
-									x: (rw - rm.width) / 2,
-									y: (rh - rm.height) / 2,
-									fontFamily,
-									fontSize: rfs,
-									fill: theme.color.ink,
-								}),
+						host.text(reaction, {
+							id: ctx.partId(`reaction-${slot.index}-text`),
+							position: "absolute",
+							x: (rw - rm.width) / 2,
+							y: (rh - rm.height) / 2,
+							fontFamily,
+							fontSize: rfs,
+							fill: theme.color.ink,
+						}),
 					],
 				});
 				pill.animate(
 					LayerAnimation.create()
-						.keys("scale", springKeys(rAt, 0, 1, fps, POP))
-						.keys("rotation", springKeys(rAt, -24, 0, fps, POP))
+						.keys("scale", springKeys(rAt, 0, 1, fps, pop))
+						.keys("rotation", springKeys(rAt, -24, 0, fps, pop))
 						.keys("opacity", [
 							[0, 0],
 							[rAt, 1, "hold"],
@@ -493,8 +490,8 @@ export const chatThread = /* @__PURE__ */ defineComponent({
 				}
 				node.animate(
 					LayerAnimation.create()
-						.keys("y", ascending(keys))
-						.keys("opacity", ascending(glow)),
+						.keys("y", supersede(keys))
+						.keys("opacity", supersede(glow)),
 				);
 				return node;
 			});
@@ -513,7 +510,7 @@ export const chatThread = /* @__PURE__ */ defineComponent({
 			});
 			bubble.animate(
 				LayerAnimation.create()
-					.keys("scale", springKeys(w.frame, 0.5, 1, fps, SPRING))
+					.keys("scale", springKeys(w.frame, 0.5, 1, fps, spring))
 					.keys("opacity", [
 						[0, 0],
 						[w.frame, 1, "hold"],
@@ -564,7 +561,7 @@ export const chatThread = /* @__PURE__ */ defineComponent({
 			const m = host.measure(letters, {
 				fontFamily,
 				fontSize: ifs,
-				fontWeight: 600,
+				fontWeight: theme.weight.semibold,
 			});
 			return host.box({
 				...base,
@@ -577,7 +574,7 @@ export const chatThread = /* @__PURE__ */ defineComponent({
 						y: (size - m.height) / 2,
 						fontFamily,
 						fontSize: ifs,
-						fontWeight: 600,
+						fontWeight: theme.weight.semibold,
 						fill: ink(from),
 					}),
 				],
@@ -609,7 +606,7 @@ export const chatThread = /* @__PURE__ */ defineComponent({
 			let current = startY;
 			for (const [f, to] of stops.slice(1)) {
 				if (to === current) continue;
-				y.push(...springKeys(f, current, to, fps, SPRING));
+				y.push(...springKeys(f, current, to, fps, spring));
 				current = to;
 			}
 			const node = avatar(
@@ -620,8 +617,8 @@ export const chatThread = /* @__PURE__ */ defineComponent({
 			);
 			node.animate(
 				LayerAnimation.create()
-					.keys("y", ascending(y))
-					.keys("scale", springKeys(start, 0.4, 1, fps, SPRING))
+					.keys("y", supersede(y))
+					.keys("scale", springKeys(start, 0.4, 1, fps, spring))
 					.keys("opacity", [
 						[0, 0],
 						[start, 0],
@@ -663,7 +660,7 @@ export const chatThread = /* @__PURE__ */ defineComponent({
 			height: Math.max(H, y + pad),
 			children: content,
 		});
-		column.animate(LayerAnimation.keys("y", ascending(scroll)));
+		column.animate(LayerAnimation.keys("y", supersede(scroll)));
 		const viewport = host.box({
 			id: ctx.partId("viewport"),
 			position: "absolute",
@@ -708,29 +705,4 @@ function initials(name: string): string {
 	return (
 		first(words[0]) + (words.length > 1 ? first(words[words.length - 1]) : "")
 	).toUpperCase();
-}
-
-/** A heart `size` wide, top-left at 0, 0 (two lobes and a point). */
-function heartPath(size: number): string {
-	const w = size;
-	const h = size * 0.92;
-	return [
-		`M${w / 2} ${h}`,
-		`C${w * 0.18} ${h * 0.72} 0 ${h * 0.5} 0 ${h * 0.28}`,
-		`C0 ${h * 0.1} ${w * 0.14} 0 ${w * 0.28} 0`,
-		`C${w * 0.39} 0 ${w * 0.47} ${h * 0.07} ${w / 2} ${h * 0.16}`,
-		`C${w * 0.53} ${h * 0.07} ${w * 0.61} 0 ${w * 0.72} 0`,
-		`C${w * 0.86} 0 ${w} ${h * 0.1} ${w} ${h * 0.28}`,
-		`C${w} ${h * 0.5} ${w * 0.82} ${h * 0.72} ${w / 2} ${h} Z`,
-	].join(" ");
-}
-
-function ascending(keys: KeyframeTuple[]): KeyframeTuple[] {
-	const out: KeyframeTuple[] = [];
-	for (const k of [...keys].sort((a, b) => a[0] - b[0])) {
-		while (out.length > 0 && (out[out.length - 1] as KeyframeTuple)[0] >= k[0])
-			out.pop();
-		out.push(k);
-	}
-	return out;
 }

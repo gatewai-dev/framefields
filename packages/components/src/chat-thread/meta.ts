@@ -16,4 +16,7 @@ export default defineMeta({
 	cues: ["messages", "typing"],
 	example: `ChatThread({ messages: [{ from: "me", text: "Shipped?" }, { from: "sam", text: "Live!", reaction: "🎉" }] })`,
 	since: "M5",
+	fonts: [
+		{ font: "emoji", why: "Reactions (❤️ 🎉 👍) and messages are often emoji." },
+	],
 });

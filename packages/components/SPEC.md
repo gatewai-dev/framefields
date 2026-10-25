@@ -1,6 +1,6 @@
 # framefields components — specification & plan
 
-Status: **M0 implemented** (foundations; no components yet) · Branch: `feat/components` · Owner: framefields core
+Status: **M9 delivered** (26 components, installed from the registry) · Owner: framefields core
 
 This document defines what the framefields component library is, how it plugs into the
 SDK, which components ship first and why, and the exact contract every component follows.
@@ -1805,7 +1805,7 @@ Deviations from the §8.1 rows:
   feathered. Use `ellipse` for a soft light.
 - Confetti paper doesn't flip in 3D: GPU particles have no per-particle rotation, so the
   flutter comes from curl noise.
-- Emoji need an emoji-capable font; the default theme fonts have none.
+- Emoji need a color emoji font registered (`FontManager.registerEmojiFont`); the theme fonts have none.
 
 ## 18. M7 delivery notes
 
@@ -1949,3 +1949,118 @@ the cap lift it:
 - Backdrop's loop bound goes from 120 to 960 keys per track.
 - WordCycle no longer throws past 120 keys.
 - Selection no longer thins its keys.
+
+## 21. Toolkit polish (2026-10, after the review in `REPORT.md`)
+
+Code shared by many components moved into the toolkit, and the theme gained the tokens
+components had been hard-coding.
+
+- **`core/keys.ts`**: `ascending` (sort; the last key on a frame wins), `supersede`
+  (timeline semantics: a key earlier than the previous one drops the later ones, as
+  springs that retarget need), `valueAt` (eased, like the renderer), `round`, `last`,
+  `Track` (from CodeBlock) and `KeyBook` (keys per node and prop, one `animate()` each).
+  Eight local `ascending` copies had two different behaviours. ChatThread and Spotlight
+  relied on the dropping one and now call `supersede`.
+- **`core/color.ts`**: `parseColor` (hex, `rgb()` / `rgba()`, a few names), `withAlpha`,
+  `transparent`, `mix`, `luminance`, `contrastRatio` (moved from `theme.ts`), `isLight`,
+  `inkOn`. It replaces five hex parsers. Backdrop's turned non-hex colors into
+  transparent black.
+- **`core/layout.ts`**: `safeArea(canvas, area, insets)` with `SAFE_INSETS.titles` /
+  `.captions` (the Captions and LowerThird copies, unchanged numbers).
+- **`core/surface.ts`**: `elevationStyle`, `elevate` and `surfaceFill` (a 5 % top sheen on
+  dark themes). They're used by LowerThird, Toasts, Callout, CardStack and ChatThread
+  bubbles. A light top edge is a white inner shadow at 270° with a `normal` blend: the
+  default multiply blend makes a light color invisible, and 90° shades the bottom edge.
+- **Theme:** `mode`, `color.shadow`, `weight`, `elevation`, `motion.spring`
+  (settle / base / pop) and `syntax`. `defineTheme` derives `mode` (and the matching
+  elevation) from a new `bg` when the input gives no mode. Font weights in components
+  read `theme.weight`. CodeBlock's number and type colors deepen on light themes.
+- **Contract:** a `canvas` base prop (`ctx.canvas`, default 1920 × 1080 × scale) replaces
+  ten copies of that default. MousePointer's `area` defaults to it. (It's named `canvas`
+  because Terminal and CodeBlock already have a `frame` prop.) Unknown-prop errors suggest
+  the nearest prop (`"lable" → "label"`) and name the instance (`Probe#intro`). Motion
+  presets take `blur` (stage motion blur; on for `slide-*`). Nodes expose `partNames`.
+  `withDefaults({ fps, canvas, theme, seed })` wraps factories, and `after(node, gap)`
+  chains from a component's end. Both are on the framefields root too.
+- **Meta stays true:** `meta.test.ts` builds every case in `test/cases.ts` (shared with
+  `ids.test.ts`) and checks that cue names equal `meta.cues` and that every part matches
+  `meta.parts` (`<n>` patterns). It found nine components whose metas listed only `-0`
+  examples or missed a part. `build-meta.ts` writes each component's props (type, default,
+  required, JSDoc description) into `components.json`, and the base props into
+  `base-props.json`.
+- **ChatThread reactions are text.** The drawn heart is gone: filled paths aren't
+  anti-aliased, so a small one looked jagged. Every reaction is now a text node, and emoji
+  draw in color from the registered emoji font (`FontManager.registerEmojiFont`, e.g. Noto
+  Color Emoji; framefields ships none). `"heart"` is shorthand for ❤️. A lone emoji is set
+  at 0.74 em, because emoji draw past their advance. `m5.render.test.ts` checks the heart
+  draws in color.
+- **Gallery:** `pnpm --filter framefields gallery [Name …]` renders a set of components
+  under every theme into `renders/gallery/` with an `index.html` contact sheet.
+- **Budgets:** the shared contract grew (suggestions, canvas, blur), so MousePointer goes
+  66 → 68 KB, TextReveal 58 → 60 KB and FocusZoom 40 → 42 KB.
+
+## 22. Fonts installed with components
+
+Components that draw with fonts beyond the theme's declare them in `meta.ts`
+(`fonts: [{ font: "emoji", why }]`, kept on the registry item). ChatThread and Captions
+ask for `emoji`.
+
+- **`framefields add`** collects the fonts its components ask for and installs each one
+  once (`cli/fonts.ts`). The catalog pins every file by URL, size and SHA-256, with its
+  license next to it. `emoji` is Noto Color Emoji v2.051 (10,673,480 bytes, OFL-1.1, the
+  same bytes as `packages/renderer/src/assets/NotoColorEmoji.ttf`). A download that doesn't
+  match its pin writes nothing. Fonts go to `assets/fonts/` (`--fonts-dir`) and are
+  recorded under `fonts` in `framefields.json`. A role already listed there counts as
+  installed, so pointing `fonts.emoji` at another file keeps it. A different file at the
+  target path needs `--overwrite`. `--no-fonts` skips the download and says how to install
+  later. Inside a Git repo whose `.gitattributes` doesn't send `.ttf` to LFS, `add` suggests
+  `git lfs track`.
+- **`<components>/fonts.ts`** is generated from `framefields.json`: `registerFonts()` calls
+  `FontManager.registerEmojiFont(asset(…))` with paths relative to the file
+  (`new URL(path, import.meta.url)`, so Node and the browser preview both resolve them). It's
+  rewritten when fonts change, but a `fonts.ts` without the generated marker line is the
+  user's and is left alone (the registration lines are printed instead).
+- **`framefields fonts add <role…>` / `fonts list`** do the same for projects that use
+  emoji in plain `Layer.text`.
+- **Lint:** `lintComposition(config, { emojiFont })` reports `missing_emoji_font` (a
+  warning naming the text layers and the fix) when `emojiFont` is false and any text or span
+  has emoji, using the renderer's emoji test. `Composition.lint()` passes
+  `FontManager.hasEmojiFont()`, and each composition's first `renderFrame` / `renderVideo`
+  prints the same warning once. Callers that don't know about fonts (omitting `emojiFont`)
+  aren't told.
+- The package still ships no fonts: a font in the npm tarball would cost every install
+  10 MB, used or not.
+
+## 23. `framefields init`
+
+`npx framefields init [dir]` (`src/cli/init.ts`, templates in `src/cli/templates.ts`) writes
+the project layout the setup skill describes, so a project starts the same way every time:
+
+- `package.json`: `type: "module"`, the scripts (`typecheck`, `frames`, `grid`, `preview`,
+  `render`), `framefields` at this package's version, the dev tools, `packageManager` from
+  `npm_config_user_agent` (or `--pm`), and the install-script approvals. Only skia-canvas
+  runs its script; sharp, webgpu, onnxruntime-node, node-av, esbuild and protobufjs are
+  denied (protobufjs was missing from the skill's list, and pnpm warned about it).
+- `tsconfig.json`, `src/theme.ts`, `src/film.ts`, `src/render.ts`, `README.md`,
+  `assets/footage/`, `.gitignore`, the LFS `.gitattributes`, `framefields.json`. `render.ts`
+  drops a `--` argument, because `npm run frames -- 0 30` needs it and pnpm passes it
+  through.
+- **Fonts:** the catalog gained `sans` (Inter) and `mono` (JetBrains Mono), the families
+  the built-in themes name. Both are pinned to google/fonts commit `e7db6ca` and match the
+  repo's `assets/fonts` byte for byte. Their entries register as text families
+  (`FontManager.register({ family, source })`), and Terminal and CodeBlock declare `mono`.
+  `init` installs both (`--no-fonts` skips them, `--emoji` adds emoji), and the generated
+  `src/components/fonts.ts`, which `theme.ts` calls, is the project's one registration
+  point.
+- **Never overwrites.** Existing files are reported `unchanged`. `package.json` gains only
+  missing fields, scripts and dependencies (one listed in either dependency block counts as
+  present), and `.gitignore` / `.gitattributes` gain only missing lines. A
+  `"type": "commonjs"` package is refused with the fix.
+- **Git:** `git init` when the folder isn't in a repository (`--no-git` skips it), and a
+  note to run `git lfs install`, or to install Git LFS when `git lfs` is missing.
+  `--install` runs the package manager's install, and prints the next steps either way.
+- **Tests:** `init.test.ts` covers a new project, a merge into an existing one (twice:
+  the second run changes nothing), CommonJS, emoji / no-git / install with bun, failures,
+  and the package-manager detection. It also checks that every TypeScript template parses.
+  End to end, `init --pm pnpm --install` in an empty folder, then `pnpm typecheck` and
+  `pnpm frames -- 0 45`, renders the title in Inter with a silent install.

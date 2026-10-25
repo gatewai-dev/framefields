@@ -13,12 +13,12 @@ import {
 } from "@framefields/compositions/program";
 import { z } from "zod";
 import { bakeSamples } from "../core/bake.js";
+import { contrastRatio } from "../core/color.js";
 import { defineComponent } from "../core/contract.js";
 import type { Animatable } from "../core/host.js";
 import { transformPathData, type Vec2 } from "../core/path.js";
 import { targetSchema } from "../core/schemas.js";
 import { resolveTarget, type Target, targetPoint } from "../core/targets.js";
-import { contrastRatio } from "../core/theme.js";
 import {
 	CURSOR_STYLES,
 	type CursorStyle,
@@ -160,10 +160,10 @@ export const mousePointer = /* @__PURE__ */ defineComponent({
 		from: z.union([z.enum(EDGES), targetSchema()]).optional(),
 		/** Leave to off-frame on this edge (or to a point) instead of fading away. */
 		to: z.union([z.enum(EDGES), targetSchema()]).optional(),
-		/** The frame the pointer lives in (for edges). Default 1920 × 1080. */
+		/** The frame the pointer lives in (for edges). Default: the composition `canvas`. */
 		area: z
 			.object({ width: z.number().positive(), height: z.number().positive() })
-			.default({ width: 1920, height: 1080 }),
+			.optional(),
 	}),
 	defaults: { enter: false, exit: false },
 	build(ctx, props) {
@@ -172,7 +172,7 @@ export const mousePointer = /* @__PURE__ */ defineComponent({
 		const k = size / 24;
 		const accent = props.accent ?? theme.color.accent;
 		const outlineWidth = props.outlineWidth ?? size / 16;
-		const { width: W, height: H } = props.area;
+		const { width: W, height: H } = props.area ?? ctx.canvas;
 
 		const resolvePoint = (target: Target): { point: PointAt; id?: string } => {
 			const resolved = resolveTarget(target, { measure: host.measure, fps });
@@ -304,7 +304,7 @@ export const mousePointer = /* @__PURE__ */ defineComponent({
 				: host.measure(labelText, {
 						fontFamily: theme.font.body,
 						fontSize: labelFont,
-						fontWeight: 600,
+						fontWeight: theme.weight.semibold,
 					});
 		const labelPadX = Math.round(labelFont * 0.62);
 		const labelH = Math.round(labelFont * 1.8);
@@ -419,7 +419,7 @@ export const mousePointer = /* @__PURE__ */ defineComponent({
 						y: Math.round((labelH - labelMetrics.lineHeight) / 2),
 						fontFamily: theme.font.body,
 						fontSize: labelFont,
-						fontWeight: 600,
+						fontWeight: theme.weight.semibold,
 						fill: ink,
 					}),
 				],

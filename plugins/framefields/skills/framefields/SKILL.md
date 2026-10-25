@@ -30,6 +30,14 @@ This skill takes a project from nothing to a verified first render. For anything
 
 ## 2. Install
 
+**Fastest path: `npx framefields init`.** It writes everything in sections 2 and 3 for you: `package.json` (with the install-script approvals below, scripts, dependencies, `packageManager`), `tsconfig.json`, `src/theme.ts` / `film.ts` / `render.ts`, `assets/`, the LFS `.gitattributes` and `.gitignore`. It also downloads Inter and JetBrains Mono (pinned, with their OFL licenses), registers them in the generated `src/components/fonts.ts` that `theme.ts` calls, and runs `git init`.
+
+```bash
+npx framefields init my-film --install      # a new project; or `init` inside an existing one
+```
+
+In an existing project it never overwrites: existing files are left alone, and `package.json`, `.gitignore` and `.gitattributes` only gain what they lack (a `"type": "commonjs"` package is refused). Options: `--pm npm|pnpm|yarn|bun` (default: the one running it), `--emoji` (also the color emoji font), `--no-fonts`, `--no-git`, `--name`. Then go to section 4. The rest of this section and section 3 describe what it writes, for doing it by hand or merging into an unusual setup.
+
 Use the package manager the project already uses (look for `pnpm-lock.yaml`, `yarn.lock`, `bun.lock`, or `package-lock.json`).
 
 **Write `package.json` before installing.** npm 11, pnpm 10, and bun block dependency install scripts unless the project approves them, and framefields needs exactly one: `skia-canvas` downloads its native binary in its install script. Without it, `import "framefields"` fails with `Cannot find module '.../skia.node'`. The other packages that ship install scripts work without them, so deny them to keep installs quiet and skip downloads framefields never uses.
@@ -47,11 +55,12 @@ For a new project, create `package.json` with all three blocks. In an existing p
     "webgpu": false,
     "onnxruntime-node": false,
     "node-av": false,
-    "esbuild": false
+    "esbuild": false,
+    "protobufjs": false
   },
   "pnpm": {
     "onlyBuiltDependencies": ["skia-canvas"],
-    "ignoredBuiltDependencies": ["sharp", "webgpu", "onnxruntime-node", "node-av", "esbuild"]
+    "ignoredBuiltDependencies": ["sharp", "webgpu", "onnxruntime-node", "node-av", "esbuild", "protobufjs"]
   },
   "trustedDependencies": ["skia-canvas"]
 }
@@ -372,6 +381,7 @@ framefields has a registry of parametric motion components: a mouse pointer with
 ```bash
 npx framefields list                            # every component, one line each
 npx framefields add mouse-pointer focus-zoom    # writes src/components/<name>/
+npx framefields fonts add emoji                 # color emoji (chat-thread and captions add it themselves)
 ```
 
 ```typescript
@@ -390,7 +400,9 @@ film.add(pointer);
 - **Before writing a common motion piece by hand, run `npx framefields list`.** A component already handles timing, theme, cues and edge cases, and the copy is the project's to adjust.
 - Files go to `src/components` (or `components` when there is no `src`); the folder is saved in `framefields.json`, and `--dir` changes it on first use. Components that build on others bring them along (`terminal` adds `app-frame` and `counter`).
 - Installed code imports only `framefields` and `framefields/components` (the shared toolkit), so it always matches the installed framefields version. After upgrading framefields, `npx framefields add <name> --overwrite` refreshes a component; without the flag, files you changed are left alone and reported as `skipped`.
-- Every component takes the base props (`x`, `y`, `width`, `height`, `at`, `duration`, `hold`, `theme`, `enter`, `exit`, `seed`) and returns a normal box layer with `cues` (frames of its events), `span` and `parts` (inner layers to animate or style). Time is in frames.
+- **Fonts come with the components that need them.** `chat-thread` and `captions` ask for a color emoji font. `add` downloads Noto Color Emoji (pinned by SHA-256, ~10.7 MB, saved with its OFL license) into `assets/fonts/`, records it under `fonts` in `framefields.json`, and writes `src/components/fonts.ts`. Call its `registerFonts()` once before building or rendering, next to the `FontManager.register` calls. `--no-fonts` skips the download, `npx framefields fonts add emoji` installs it later (or for plain `Layer.text`), and pointing `fonts.emoji` in `framefields.json` at another font keeps yours. Track `assets/fonts/**` with Git LFS.
+- **Emoji without an emoji font draw nothing.** `comp.lint()` reports `missing_emoji_font`, and the first render prints the same warning. Fix it with the command above, not by removing the emoji.
+- Every component takes the base props (`x`, `y`, `width`, `height`, `at`, `duration`, `hold`, `theme`, `enter`, `exit`, `seed`, `fps`, `canvas`) and returns a normal box layer with `cues` (frames of its events), `span` and `parts` (inner layers to animate or style). Time is in frames.
 - Each installed `index.ts` documents what the component does at the top and defines its props in its schema; `npx framefields list` gives one-line summaries. Props are validated when the component is built, and a wrong one throws with the reason.
 
 ## 9. Report engine issues

@@ -14,7 +14,7 @@
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import type { ComponentMeta } from "../src/core/meta.js";
+import type { ComponentMeta, FontNeed } from "../src/core/meta.js";
 import { collectMeta } from "./build-meta.js";
 
 const SRC = fileURLToPath(new URL("../src", import.meta.url));
@@ -41,6 +41,8 @@ export interface RegistryEntry
 export interface RegistryItem extends RegistryEntry {
 	parts: readonly string[];
 	cues: readonly string[];
+	/** Fonts to install with it (`framefields add` fetches them). */
+	fonts?: readonly FontNeed[];
 	files: RegistryFile[];
 }
 
@@ -183,6 +185,7 @@ export function registryItem(
 		example: meta.example,
 		parts: meta.parts,
 		cues: meta.cues,
+		...(meta.fonts && { fonts: meta.fonts }),
 		registryDependencies: [...deps].sort(),
 		files,
 	};

@@ -88,6 +88,7 @@
 	"scripts": {
 		"build": "tsdown && node ../../scripts/sync-readme.mjs && node scripts/check-dts-bundle.mjs && node scripts/check-components-treeshake.mjs && node scripts/check-registry-types.mjs",
 		"dev": "tsdown --watch",
+		"gallery": "tsx --conditions=development scripts/components-gallery.ts",
 		"clean": "rm -rf dist .turbo",
 		"prepack": "node ../../scripts/sync-readme.mjs",
 		"test": "vitest run --passWithNoTests"

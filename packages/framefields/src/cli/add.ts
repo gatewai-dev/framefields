@@ -5,37 +5,23 @@
  * plus any component it builds on, which is installed alongside it.
  *
  * Where they go is remembered in `framefields.json` at the project root.
+ * Components that draw with fonts beyond the theme's (emoji) get them
+ * installed too, plus a generated `fonts.ts` that registers them.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
+import { readConfig, writeConfig } from "./config.js";
+import {
+	type Fetch,
+	type FontInstall,
+	type FontSpec,
+	type FontsModule,
+	installFont,
+	writeFontsModule,
+} from "./fonts.js";
 import type { Registry, RegistryItem } from "./registry.js";
 
-export const CONFIG_FILE = "framefields.json";
-
-export interface ProjectConfig {
-	/** Components directory, relative to the project root. */
-	components: string;
-}
-
-/** The project's config, or the default it would get: `src/components` when there is a `src`. */
-export function readConfig(cwd: string): {
-	config: ProjectConfig;
-	saved: boolean;
-} {
-	const file = join(cwd, CONFIG_FILE);
-	if (existsSync(file)) {
-		const config = JSON.parse(
-			readFileSync(file, "utf8"),
-		) as Partial<ProjectConfig>;
-		if (typeof config.components !== "string")
-			throw new Error(`${CONFIG_FILE}: "components" must be a directory path`);
-		return { config: config as ProjectConfig, saved: true };
-	}
-	const components = existsSync(join(cwd, "src"))
-		? "src/components"
-		: "components";
-	return { config: { components }, saved: false };
-}
+export { CONFIG_FILE, type ProjectConfig, readConfig } from "./config.js";
 
 export interface AddOptions {
 	cwd: string;
@@ -44,6 +30,16 @@ export interface AddOptions {
 	dir?: string;
 	/** Replace files that differ from the registry's. */
 	overwrite?: boolean;
+	/** Install the fonts components ask for (default true). */
+	fonts?: boolean;
+	/** Folder for downloaded fonts. Default `assets/fonts`. */
+	fontsDir?: string;
+	/** For tests; default the global `fetch`. */
+	fetch?: Fetch;
+	/** For tests; default the built-in font catalog. */
+	fontCatalog?: Record<string, FontSpec>;
+	/** Called before a font download starts. */
+	onDownload?: (spec: FontSpec) => void;
 }
 
 export interface AddReport {
@@ -55,6 +51,12 @@ export interface AddReport {
 	/** Files left alone because they differ and `overwrite` is off. */
 	skipped: string[];
 	configWritten: boolean;
+	/** Fonts the components asked for, and what happened to each. */
+	fonts: Array<FontInstall & { why: string; by: string }>;
+	/** Fonts asked for but not installed (`fonts: false`), with why. */
+	fontsSkipped: Array<{ role: string; why: string; by: string }>;
+	/** The generated `fonts.ts`, when any font is installed. */
+	fontsModule?: FontsModule;
 }
 
 /** Resolve `names` (and what they import) and write their files. */
@@ -93,6 +95,8 @@ export async function add(
 		unchanged: [],
 		skipped: [],
 		configWritten: false,
+		fonts: [],
+		fontsSkipped: [],
 	};
 	for (const item of order) {
 		for (const file of item.files) {
@@ -114,11 +118,31 @@ export async function add(
 		}
 	}
 	if (!saved) {
-		writeFileSync(
-			join(cwd, CONFIG_FILE),
-			`${JSON.stringify({ components: relative(cwd, dir) || "." }, null, "\t")}\n`,
-		);
+		writeConfig(cwd, { components: relative(cwd, dir) || "." });
 		report.configWritten = true;
 	}
+
+	// One install per font, credited to the first component that asks.
+	const needs = new Map<string, { why: string; by: string }>();
+	for (const item of order)
+		for (const f of item.fonts ?? [])
+			if (!needs.has(f.font)) needs.set(f.font, { why: f.why, by: item.name });
+	for (const [role, need] of needs) {
+		if (options.fonts === false) {
+			report.fontsSkipped.push({ role, ...need });
+			continue;
+		}
+		const done = await installFont(role, {
+			cwd,
+			dir: options.fontsDir,
+			overwrite: options.overwrite,
+			fetch: options.fetch,
+			catalog: options.fontCatalog,
+			onDownload: options.onDownload,
+		});
+		report.fonts.push({ ...done, ...need });
+	}
+	if (report.fonts.length > 0 || readConfig(cwd).config.fonts)
+		report.fontsModule = writeFontsModule(cwd, dir, options.fontCatalog);
 	return report;
 }

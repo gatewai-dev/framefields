@@ -5,7 +5,7 @@
  * keyed plates, timed to the word's own frame.
  *
  * Coordinates are the frame's: the root covers the video (default
- * 1920 × 1080 × theme scale, or the given width / height) from 0, 0.
+ * the composition `canvas`, or the given width / height) from 0, 0.
  */
 import {
 	type KeyframeTuple,
@@ -15,6 +15,7 @@ import {
 } from "@framefields/compositions/program";
 import { z } from "zod";
 import { audioLevelsSchema } from "../core/audio.js";
+import { contrastRatio } from "../core/color.js";
 import { defineComponent } from "../core/contract.js";
 import type { Rect } from "../core/draw.js";
 import {
@@ -27,8 +28,9 @@ import {
 	windowExpression,
 } from "../core/glyphs.js";
 import type { Animatable } from "../core/host.js";
+import { SAFE_INSETS, safeArea } from "../core/layout.js";
 import { type MeasureOptions, rangeRects } from "../core/text.js";
-import { contrastRatio, themeFrames } from "../core/theme.js";
+import { themeFrames } from "../core/theme.js";
 import { parseTranscript, type Word } from "./parse.js";
 import { buildPhrases, type GroupOptions, type Phrase } from "./phrases.js";
 
@@ -79,19 +81,6 @@ const BASE_GROUP: GroupOptions = {
 	breakOnPunctuation: true,
 	minGap: 0.6,
 };
-
-/** The area captions stay inside: clear of edges and, in portrait, platform overlays. */
-function safeArea(
-	W: number,
-	H: number,
-	area: "portrait" | "landscape" | Rect | undefined,
-): Rect {
-	if (area && typeof area === "object") return area;
-	const portrait = area ? area === "portrait" : H > W;
-	return portrait
-		? { x: W * 0.08, y: H * 0.12, width: W * 0.84, height: H * 0.66 }
-		: { x: W * 0.1, y: H * 0.08, width: W * 0.8, height: H * 0.82 };
-}
 
 export const captions = /* @__PURE__ */ defineComponent({
 	name: "Captions",
@@ -174,8 +163,8 @@ export const captions = /* @__PURE__ */ defineComponent({
 	defaults: { enter: false, exit: false },
 	build(ctx, props) {
 		const { host, theme, fps } = ctx;
-		const W = ctx.requested.width ?? 1920 * theme.scale;
-		const H = ctx.requested.height ?? 1080 * theme.scale;
+		const W = ctx.requested.width ?? ctx.canvas.width;
+		const H = ctx.requested.height ?? ctx.canvas.height;
 		const style = props.style;
 
 		// ── Words ─────────────────────────────────────────────────────────
@@ -206,7 +195,11 @@ export const captions = /* @__PURE__ */ defineComponent({
 			...GROUP[style],
 			...stripUndefined(props.group),
 		};
-		const safe = safeArea(W, H, props.placement.safeArea);
+		const safe = safeArea(
+			{ width: W, height: H },
+			props.placement.safeArea,
+			SAFE_INSETS.captions,
+		);
 		const fontFamily = props.fontFamily ?? theme.font.display;
 		const weight = props.fontWeight ?? (style === "clean" ? undefined : 800);
 		const measureAt = (text: string, size: number, width?: number) =>

@@ -13,7 +13,7 @@ export default defineMeta({
 		"ui",
 		"pointer",
 	],
-	parts: ["line-0", "marquee", "item-0"],
+	parts: ["line-<n>", "marquee", "item-<n>"],
 	cues: ["selected", "items"],
 	example: `Selection({ target: { text: paragraph, match: "the key line" }, pointer })`,
 	since: "M8",

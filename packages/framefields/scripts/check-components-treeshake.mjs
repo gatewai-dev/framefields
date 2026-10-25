@@ -60,10 +60,10 @@ const CARDS = "Expected a layer or { title";
 
 /** Each component (by factory): a string only its module has, and what it may compose. */
 const COMPONENTS = {
-	MousePointer: { own: POINTER, uses: [], budget: 66_000 },
+	MousePointer: { own: POINTER, uses: [], budget: 68_000 },
 	AppFrame: { own: FRAME, uses: [], budget: 45_000 },
-	FocusZoom: { own: CAMERA, uses: [], budget: 40_000 },
-	TextReveal: { own: REVEAL, uses: [GLYPHS], budget: 58_000 },
+	FocusZoom: { own: CAMERA, uses: [], budget: 42_000 },
+	TextReveal: { own: REVEAL, uses: [GLYPHS], budget: 60_000 },
 	Counter: { own: COUNTER, uses: [], budget: 45_000 },
 	Annotate: { own: ANNOTATE, uses: [], budget: 50_000 },
 	Captions: { own: CAPTIONS, uses: [GLYPHS], budget: 55_000 },

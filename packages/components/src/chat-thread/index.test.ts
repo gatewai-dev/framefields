@@ -37,7 +37,7 @@ describe("ChatThread", () => {
 		expect(find(c, "c-bubble-1")?.x).toBeLessThan(100);
 	});
 
-	it("respects explicit times, draws hearts, and needs text or an image", () => {
+	it("respects explicit times, sets reactions as text, and needs text or an image", () => {
 		const c = make()({
 			id: "c",
 			messages: [
@@ -47,8 +47,13 @@ describe("ChatThread", () => {
 		});
 		expect(c.cues.messages.map((m) => m.frame)).toEqual([50, 90]);
 		expect(
-			find(make()({ id: "c", messages }), "c-reaction-2-heart"),
-		).toBeDefined();
+			find(make()({ id: "c", messages }), "c-reaction-2-text"),
+		).toMatchObject({ text: "❤️" });
+		const word = make()({
+			id: "w",
+			messages: [{ from: "a", text: "x", reaction: "heart" }],
+		});
+		expect(find(word, "w-reaction-0-text")).toMatchObject({ text: "❤️" });
 		expect(() => make()({ messages: [{ from: "a" }] })).toThrow(
 			/needs `text` or `image`/,
 		);

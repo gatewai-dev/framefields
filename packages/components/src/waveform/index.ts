@@ -14,6 +14,7 @@ import {
 	resampleBands,
 	smoothRelease,
 } from "../core/audio.js";
+import { mix } from "../core/color.js";
 import { defineComponent } from "../core/contract.js";
 import type { Animatable } from "../core/host.js";
 
@@ -222,24 +223,3 @@ export const waveform = /* @__PURE__ */ defineComponent({
 		};
 	},
 });
-
-/** Mix two `#rrggbb` colours (`t` 0 → a, 1 → b); other formats: `a`. */
-function mix(a: string, b: string, t: number): string {
-	const rgb = (c: string) => {
-		const h = c.replace(/^#/, "");
-		const full = h.length === 3 ? h.replace(/./g, (x) => x + x) : h.slice(0, 6);
-		return /^[0-9a-f]{6}$/i.test(full)
-			? [0, 2, 4].map((k) => Number.parseInt(full.slice(k, k + 2), 16))
-			: null;
-	};
-	const x = rgb(a);
-	const y = rgb(b);
-	if (!x || !y) return a;
-	return `#${x
-		.map((v, k) =>
-			Math.round(v + ((y[k] as number) - v) * t)
-				.toString(16)
-				.padStart(2, "0"),
-		)
-		.join("")}`;
-}

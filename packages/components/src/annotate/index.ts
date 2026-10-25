@@ -32,7 +32,7 @@ import {
 	resolveTarget,
 	type Target,
 } from "../core/targets.js";
-import { contrastRatio, themeFrames } from "../core/theme.js";
+import { themeFrames } from "../core/theme.js";
 import { scaleFrames } from "../core/timing.js";
 
 export const MARKS = [
@@ -319,9 +319,7 @@ export const annotate = /* @__PURE__ */ defineComponent({
 		const drawn = Math.max(...windows.map((w) => w.end));
 
 		// ── Nodes ────────────────────────────────────────────────────────
-		const lightBg =
-			(contrastRatio(theme.color.bg, "#000000") ?? 0) >
-			(contrastRatio(theme.color.bg, "#ffffff") ?? 0);
+		const lightBg = theme.mode === "light";
 		// The shapes' box must hold every stroke, or the renderer clips it.
 		const margin = pad * 4 + strokeW * 4;
 		const extentX = Math.max(b.x + b.width, ...reach.map((p) => p[0])) + margin;

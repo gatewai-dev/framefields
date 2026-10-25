@@ -8,8 +8,8 @@ export default defineMeta({
 	parts: [
 		"surface",
 		"background",
-		"blob-0",
-		"blob-0-x",
+		"blob-<n>",
+		"blob-<n>-x",
 		"pattern",
 		"pattern-lit",
 		"glow-matte",

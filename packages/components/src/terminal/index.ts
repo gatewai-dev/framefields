@@ -14,6 +14,7 @@ import { z } from "zod";
 import { appFrame } from "../app-frame/index.js";
 import { bind, defineComponent } from "../core/contract.js";
 import type { Animatable } from "../core/host.js";
+import { ascending } from "../core/keys.js";
 import { toPathData, type Vec2 } from "../core/path.js";
 import type { Theme } from "../core/theme.js";
 import { counter } from "../counter/index.js";
@@ -148,7 +149,7 @@ export const terminal = /* @__PURE__ */ defineComponent({
 				fill: sp.color
 					? (colors[sp.color] ?? theme.color.ink)
 					: theme.color.ink,
-				...(sp.bold && { fontWeight: 700 }),
+				...(sp.bold && { fontWeight: theme.weight.bold }),
 			}));
 
 		// ── Lines ─────────────────────────────────────────────────────────
@@ -450,14 +451,3 @@ export const terminal = /* @__PURE__ */ defineComponent({
 		};
 	},
 });
-
-/** Keys must ascend: a later key at the same frame replaces the earlier one. */
-function ascending(keys: KeyframeTuple[]): KeyframeTuple[] {
-	const out: KeyframeTuple[] = [];
-	for (const k of keys) {
-		while (out.length > 0 && (out[out.length - 1] as KeyframeTuple)[0] >= k[0])
-			out.pop();
-		out.push(k);
-	}
-	return out.length > 0 ? out : [[0, 0]];
-}

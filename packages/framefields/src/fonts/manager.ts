@@ -252,6 +252,11 @@ export class FontManager {
 		SlugFontCache.setEmojiFont(buffer, filePath);
 	}
 
+	/** Whether a color emoji font is registered (or set to load from a path / URL). */
+	public static hasEmojiFont(): boolean {
+		return SlugFontCache.hasEmojiFont();
+	}
+
 	/**
 	 * Measures text with the real font, exactly as `Layer.text` lays it out:
 	 * box size, line count, per-glyph positions and caret offsets. Use it to

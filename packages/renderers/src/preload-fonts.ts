@@ -66,7 +66,7 @@ export async function preloadCompositionFonts(
 		if (!SlugFontCache.hasEmojiFont() && !warnedNoEmojiFont) {
 			warnedNoEmojiFont = true;
 			console.warn(
-				"[framefields] Text uses emoji but no emoji font is registered, so exports draw nothing for them. Register a color emoji font (e.g. Noto Color Emoji) with FontManager.registerEmojiFont(path).",
+				"[framefields] Text uses emoji but no emoji font is registered, so exports draw nothing for them. Run `npx framefields fonts add emoji` and call the generated `registerFonts()`, or register a color emoji font (e.g. Noto Color Emoji) with FontManager.registerEmojiFont(path). `comp.lint()` names the layers (missing_emoji_font).",
 			);
 		}
 		for (const [key, fontSize] of emoji) {

@@ -9,4 +9,5 @@ export default defineMeta({
 	cues: ["keystrokes", "submits", "outputs", "done"],
 	example: `Terminal({ script: [{ cmd: "pnpm add framefields" }, { spinner: "Installing", for: 40, done: "1 package added" }] })`,
 	since: "M3",
+	fonts: [{ font: "mono", why: "Monospace text for the shell." }],
 });

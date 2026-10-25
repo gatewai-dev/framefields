@@ -12,7 +12,7 @@ export default defineMeta({
 		"launch",
 		"typography",
 	],
-	parts: ["before", "slot", "word-0", "after", "pill", "underline"],
+	parts: ["before", "slot", "word-<n>", "after", "pill", "underline"],
 	cues: ["changes"],
 	example: `WordCycle({ text: "Make videos {}", words: ["faster", "together", "in code"] })`,
 	since: "M7",

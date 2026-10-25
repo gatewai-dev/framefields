@@ -196,4 +196,38 @@ describe("lintComposition", () => {
 			]),
 		).toEqual([]);
 	});
+
+	it("flags emoji in text only when no emoji font is registered", () => {
+		const text = (id: string, t: string, spans?: unknown[]) => ({
+			id,
+			kind: "text",
+			text: t,
+			fill: "#ffffff",
+			...(spans && { spans }),
+		});
+		const layout = [
+			{
+				id: "box",
+				kind: "box",
+				children: [
+					text("plain", "Ship it"),
+					text("rocket", "Ship it 🚀"),
+					text("span", "x", [{ text: "❤️" }]),
+				],
+			},
+		];
+		const lint = (emojiFont?: boolean) =>
+			lintComposition({ ...base, layout: layout as never }, { emojiFont });
+		const missing = lint(false).filter((d) => d.code === "missing_emoji_font");
+		expect(missing).toHaveLength(1);
+		expect(missing[0]).toMatchObject({
+			severity: "warning",
+			layerId: "rocket",
+		});
+		expect(missing[0]?.message).toMatch(/2 text layers 'rocket', 'span'/);
+		expect(missing[0]?.message).toMatch(/framefields fonts add emoji/);
+		expect(lint(true).map((d) => d.code)).not.toContain("missing_emoji_font");
+		// Callers that don't know about fonts aren't told.
+		expect(lint().map((d) => d.code)).not.toContain("missing_emoji_font");
+	});
 });

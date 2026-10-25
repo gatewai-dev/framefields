@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { collectMeta } from "./build-meta.js";
+import { baseProps, collectMeta } from "./build-meta.js";
 
 const meta = (name: string) =>
 	`export default ${JSON.stringify({ name, summary: "s", tags: [], parts: [], cues: [], example: "", since: "M1" })};`;
@@ -33,5 +33,20 @@ describe("collectMeta", () => {
 		await expect(
 			collectMeta(fixture({ a: meta("Same"), b: meta("Same") })),
 		).rejects.toThrow(/Duplicate/);
+	});
+
+	it("documents each component's props from its schema and JSDoc", async () => {
+		const lower = (await collectMeta()).find((m) => m.name === "LowerThird");
+		const props = new Map(lower?.props?.map((p) => [p.name, p]));
+		expect(props.get("name")).toMatchObject({ type: "string", required: true });
+		expect(props.get("layout")).toMatchObject({
+			type: '"bar" | "stacked" | "tag" | "line"',
+			default: "bar",
+			required: false,
+		});
+		expect(props.get("stay")?.description).toMatch(/Stay on screen/);
+		const base = new Map(baseProps().map((p) => [p.name, p]));
+		expect(base.get("canvas")?.description).toMatch(/Composition size/);
+		expect(base.get("at")?.type).toBe("number");
 	});
 });

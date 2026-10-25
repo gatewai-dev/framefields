@@ -2059,6 +2059,17 @@ the project layout the setup skill describes, so a project starts the same way e
 - **Git:** `git init` when the folder isn't in a repository (`--no-git` skips it), and a
   note to run `git lfs install`, or to install Git LFS when `git lfs` is missing.
   `--install` runs the package manager's install, and prints the next steps either way.
+- **No questions.** `init` never prompts, so CI and remote servers run it unattended.
+  The AI gateway key is optional: `init` writes `.env.example` (`FRAMEFIELDS_API_KEY=`,
+  with the dashboard link), git-ignores `.env`, and `render.ts` loads `.env` when it exists
+  (`process.loadEnvFile`; Node's `--env-file-if-exists` prints a note when the file is
+  missing, which is noise in CI). The last line of the output names the gateway and
+  `framefields.dev/dashboard`.
+- **Fonts from `file://` URLs with spaces.** `FontManager` decoded a `file://` source by
+  taking its pathname, which stays percent-encoded (`My%20Film`). Node renders found the
+  file anyway through the `cwd/assets/fonts` fallback, but the browser preview has none, so
+  fonts failed there. It now decodes the path (and drops the leading slash before a Windows
+  drive letter). `font-sources.test.ts` covers it.
 - **Tests:** `init.test.ts` covers a new project, a merge into an existing one (twice:
   the second run changes nothing), CommonJS, emoji / no-git / install with bun, failures,
   and the package-manager detection. It also checks that every TypeScript template parses.

@@ -135,6 +135,10 @@ describe("framefields init", () => {
 		expect(existsSync(join(cwd, root("assets/footage/.gitkeep")))).toBe(true);
 		expect(read(root(".gitattributes"))).toContain(GITATTRIBUTES[0]);
 		expect(read(root(".gitignore"))).toContain("output/");
+		// The AI gateway key is optional: an example file, never a prompt.
+		expect(read(root(".env.example"))).toMatch(/^FRAMEFIELDS_API_KEY=$/m);
+		expect(read(root(".gitignore"))).toContain(".env\n");
+		expect(read(root("src/render.ts"))).toContain("process.loadEnvFile(ENV)");
 		expect(read(root("README.md"))).toContain("pnpm frames -- 0 30 60");
 		// The themes' fonts, recorded and registered where theme.ts imports them.
 		expect(report.fonts.map((f) => [f.role, f.path, f.status])).toEqual([
@@ -190,7 +194,7 @@ describe("framefields init", () => {
 		expect(pkg.pnpm.onlyBuiltDependencies).toEqual(["esbuild", "skia-canvas"]);
 		expect(read("src/film.ts")).toBe("// mine\n");
 		expect(read(".gitignore")).toBe(
-			"dist/\noutput/\nnode_modules/\nscratch/\n.DS_Store\n",
+			"dist/\noutput/\nnode_modules/\nscratch/\n.DS_Store\n.env\n",
 		);
 		expect(report.merged).toEqual(["package.json", ".gitignore"]);
 		expect(report.unchanged).toContain("src/film.ts");

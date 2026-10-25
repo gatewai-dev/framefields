@@ -77,7 +77,24 @@ export const TSCONFIG = `${JSON.stringify(
 )}\n`;
 
 /** Lines `init` makes sure `.gitignore` has. */
-export const GITIGNORE = ["node_modules/", "output/", "scratch/", ".DS_Store"];
+export const GITIGNORE = [
+	"node_modules/",
+	"output/",
+	"scratch/",
+	".DS_Store",
+	".env",
+];
+
+/** Where the AI gateway's keys come from. */
+export const AI_DASHBOARD = "https://framefields.dev/dashboard";
+
+/** Optional settings; `render.ts` loads `.env` when there is one. Commit this, not `.env`. */
+export const ENV_EXAMPLE = `# Copy to .env (git-ignored). Everything here is optional.
+
+# framefields AI gateway: generate images, video, music, voice and 3D from code.
+# Create a key at ${AI_DASHBOARD}
+FRAMEFIELDS_API_KEY=
+`;
 
 /** Media, LUTs and fonts go to Git LFS; renders stay out of Git. */
 export const GITATTRIBUTES = [
@@ -159,10 +176,15 @@ export async function buildFilm(): Promise<Composition> {
 }
 `;
 
-export const RENDER_TS = `import fs from "node:fs/promises";
+export const RENDER_TS = `import { existsSync } from "node:fs";
+import fs from "node:fs/promises";
 import path from "node:path";
 import { HeadlessMediaRenderer, startPreview } from "framefields";
 import { buildFilm } from "./film.js";
+
+// Optional settings such as FRAMEFIELDS_API_KEY (see .env.example).
+const ENV = path.resolve(import.meta.dirname, "../.env");
+if (existsSync(ENV)) process.loadEnvFile(ENV);
 
 const OUT = path.resolve(import.meta.dirname, "../output");
 // \`npm run frames -- 0 30\` needs the \`--\`; pnpm passes it through: drop it.
@@ -231,6 +253,8 @@ ${run("render")}              # output/output.mp4
   \`src/render.ts\` renders it.
 - \`npx framefields list\` shows ready-made components; \`npx framefields add <name>\` copies
   one into \`src/components/\`.
+- Optional: the AI gateway generates images, video, music, voice and 3D from code. Copy
+  \`.env.example\` to \`.env\` and set \`FRAMEFIELDS_API_KEY\` (keys at ${AI_DASHBOARD}).
 - Footage, audio and fonts live in \`assets/\` and are tracked with Git LFS
   (\`git lfs install\` once per machine, \`git lfs pull\` after cloning).
 `;

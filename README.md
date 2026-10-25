@@ -82,6 +82,15 @@ Every frame is rendered by framefields directly from TypeScript in [`examples/`]
 pnpm add framefields
 ```
 
+Starting a new film? `framefields init` sets up the whole project: `package.json`, TypeScript, a `film.ts` to edit and a `render.ts` to render it, `assets/` with Git LFS, and the Inter and JetBrains Mono fonts:
+
+```bash
+pnpm dlx framefields init my-film --install   # or: npx framefields init my-film --install
+cd my-film && pnpm frames -- 0 30 60          # first frames in output/
+```
+
+Run it inside an existing project to add framefields there; it only fills in what's missing and never overwrites your files. It asks nothing, so it works in CI and on remote servers too.
+
 > **Requirements:** Node.js ≥ 22. Native GPU acceleration via WebGPU / Dawn (macOS Metal, Linux Vulkan, Windows D3D12). Machines without a dedicated GPU can render on the CPU via Mesa lavapipe on Linux or WARP on Windows (~10–12× slower than GPU; suitable for headless CI and test frames).
 
 ---
@@ -185,6 +194,8 @@ Installed components import only `framefields` and the shared toolkit in `framef
 ## AI Gateway
 
 Framefields provides built-in access to the [**AI Gateway**](https://framefields.dev/models), allowing agents and developers to generate cinematic video, images, music, and voiceovers directly from code using hundreds of hosted models. Explore the full model catalog in the [**AI Gateway**](https://framefields.dev/models) or read the integration guide in the [**documentation**](https://framefields.dev/docs/guides/ai/).
+
+The gateway is optional. To use it, create a key at [**framefields.dev/dashboard**](https://framefields.dev/dashboard) and set `FRAMEFIELDS_API_KEY`. In a project made with `framefields init`, copy `.env.example` to `.env` and put the key there; `render.ts` loads it.
 
 ---
 

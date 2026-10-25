@@ -23,6 +23,7 @@ import {
 	writeFontsModule,
 } from "./fonts.js";
 import {
+	ENV_EXAMPLE,
 	FILM_TS,
 	GITATTRIBUTES,
 	GITIGNORE,
@@ -171,6 +172,7 @@ export async function init(options: InitOptions): Promise<InitReport> {
 		["src/film.ts", FILM_TS],
 		["src/render.ts", RENDER_TS],
 		["assets/footage/.gitkeep", ""],
+		[".env.example", ENV_EXAMPLE],
 		["README.md", readme(report.name, report.runScript)],
 	];
 	for (const [path, content] of files) {

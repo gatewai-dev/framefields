@@ -36,7 +36,7 @@ This skill takes a project from nothing to a verified first render. For anything
 npx framefields init my-film --install      # a new project; or `init` inside an existing one
 ```
 
-In an existing project it never overwrites: existing files are left alone, and `package.json`, `.gitignore` and `.gitattributes` only gain what they lack (a `"type": "commonjs"` package is refused). Options: `--pm npm|pnpm|yarn|bun` (default: the one running it), `--emoji` (also the color emoji font), `--no-fonts`, `--no-git`, `--name`. Then go to section 4. The rest of this section and section 3 describe what it writes, for doing it by hand or merging into an unusual setup.
+In an existing project it never overwrites: existing files are left alone, and `package.json`, `.gitignore` and `.gitattributes` only gain what they lack (a `"type": "commonjs"` package is refused). Options: `--pm npm|pnpm|yarn|bun` (default: the one running it), `--emoji` (also the color emoji font), `--no-fonts`, `--no-git`, `--name`. It asks no questions, so it runs unattended in CI. The AI gateway key is optional: `init` writes `.env.example` and git-ignores `.env`, and `render.ts` loads `.env` when it exists; the user sets `FRAMEFIELDS_API_KEY` there themselves (never write a key for them). Then go to section 4. The rest of this section and section 3 describe what it writes, for doing it by hand or merging into an unusual setup.
 
 Use the package manager the project already uses (look for `pnpm-lock.yaml`, `yarn.lock`, `bun.lock`, or `package-lock.json`).
 

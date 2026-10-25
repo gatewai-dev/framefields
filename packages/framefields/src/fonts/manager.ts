@@ -102,7 +102,12 @@ async function resolveSourceBuffer(
 
 	if (cleanPath.startsWith("file://")) {
 		try {
-			cleanPath = new URL(cleanPath).pathname;
+			// A URL path is percent-encoded ("My%20Film"); files aren't. On
+			// Windows "/C:/…" loses its leading slash.
+			cleanPath = decodeURIComponent(new URL(cleanPath).pathname).replace(
+				/^\/([A-Za-z]:)/,
+				"$1",
+			);
 		} catch {
 			cleanPath = cleanPath.replace(/^file:\/\//, "");
 		}

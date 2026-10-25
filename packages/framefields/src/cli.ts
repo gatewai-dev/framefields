@@ -28,6 +28,7 @@ import {
 	shownPath,
 } from "./cli/init.js";
 import { openRegistry } from "./cli/registry.js";
+import { AI_DASHBOARD } from "./cli/templates.js";
 
 const HELP = `Usage: framefields <command> [options]
 
@@ -305,6 +306,9 @@ function logInit(report: InitReport, cwd: string, log: (s: string) => void) {
 	);
 	log(
 		"\nThen edit src/film.ts, and run `npx framefields list` for ready-made components.",
+	);
+	log(
+		`\nOptional: to generate images, video, music, voice and 3D with the framefields AI gateway, get a key at ${AI_DASHBOARD} and put it in .env as FRAMEFIELDS_API_KEY (see .env.example).`,
 	);
 }
 

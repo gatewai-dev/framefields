@@ -1,5 +1,7 @@
 # @framefields/node-shadows-highlights
 
+## 2.6.1
+
 ## 2.6.0
 
 ## 2.5.5

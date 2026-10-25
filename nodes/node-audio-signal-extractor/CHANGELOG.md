@@ -1,5 +1,7 @@
 # @framefields/node-audio-signal-extractor
 
+## 2.6.1
+
 ## 2.6.0
 
 ## 2.5.5

@@ -1,6 +1,6 @@
 {
 	"name": "@framefields/node-audio-compressor",
-	"version": "2.6.0",
+	"version": "2.6.1",
 	"license": "Apache-2.0",
 	"private": false,
 	"framefields": {

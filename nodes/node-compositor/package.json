@@ -1,6 +1,6 @@
 {
 	"name": "@framefields/node-compositor",
-	"version": "2.5.3",
+	"version": "2.5.5",
 	"private": false,
 	"framefields": {
 		"type": "Compositor",

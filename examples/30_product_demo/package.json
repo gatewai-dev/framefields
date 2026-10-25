@@ -1,6 +1,6 @@
 {
 	"name": "@framefields/example-30-product-demo",
-	"version": "2.5.3",
+	"version": "2.5.5",
 	"private": true,
 	"type": "module",
 	"scripts": {

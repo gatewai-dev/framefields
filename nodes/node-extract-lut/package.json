@@ -1,6 +1,6 @@
 {
 	"name": "@framefields/node-extract-lut",
-	"version": "2.5.3",
+	"version": "2.5.5",
 	"private": false,
 	"framefields": {
 		"type": "ExtractLUT",

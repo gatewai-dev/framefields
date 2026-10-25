@@ -1,6 +1,6 @@
 {
 	"name": "@framefields/node-camera-parallax-3d",
-	"version": "2.5.3",
+	"version": "2.5.5",
 	"private": false,
 	"framefields": {
 		"type": "CameraParallax3D",

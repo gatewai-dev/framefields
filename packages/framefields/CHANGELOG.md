@@ -1,5 +1,19 @@
 # framefields
 
+## 2.5.5
+
+### Patch Changes
+
+- demos
+
+## 2.5.4
+
+### Patch Changes
+
+- Compositor container fast paths and effect reach optimization:
+  - Containers draw background, children, and border directly onto the destination when no isolation or corner masking is required.
+  - Effects can declare their spatial reach (`EffectReach`), allowing the compositor to bound container effect passes (such as LayerStyle drop shadows, glows, outer strokes) to the layer's reach rather than the full canvas.
+
 ## 2.5.3
 
 ### Patch Changes

@@ -1,5 +1,13 @@
 # @framefields/node-refine-edge
 
+## 2.5.5
+
+### Patch Changes
+
+- demos
+
+## 2.5.4
+
 ## 2.5.3
 
 ### Patch Changes

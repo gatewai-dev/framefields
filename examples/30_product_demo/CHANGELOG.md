@@ -1,5 +1,7 @@
 # @framefields/example-30-product-demo
 
+## 2.6.2
+
 ## 2.6.1
 
 ## 2.6.0

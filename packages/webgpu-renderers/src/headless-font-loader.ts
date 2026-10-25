@@ -23,7 +23,8 @@ async function getLocalFontPath(family: string, url: string): Promise<string> {
 
 	if (resolvedUrl.startsWith("file://")) {
 		try {
-			let fontPath = new URL(resolvedUrl).pathname;
+			// A URL path is percent-encoded ("My%20Film"); files aren't.
+			let fontPath = decodeURIComponent(new URL(resolvedUrl).pathname);
 			if (process.platform === "win32" && fontPath.startsWith("/")) {
 				fontPath = fontPath.slice(1);
 			}
@@ -98,10 +99,25 @@ export async function clearHeadlessFonts(): Promise<void> {
 	}
 }
 
+/**
+ * A browser page rather than Node or the headless renderer: there is no
+ * file system, and text draws from the registered source (Slug, FontFace).
+ */
+function inBrowserPage(): boolean {
+	return (
+		!(globalThis as Record<string, unknown>).__IS_HEADLESS_RENDERER__ &&
+		typeof window !== "undefined" &&
+		typeof globalThis.document !== "undefined"
+	);
+}
+
 export async function registerHeadlessFont(
 	family: string,
 	url: string,
 ): Promise<string | undefined> {
+	// The local copy is for skia-canvas and DotLottie in Node; a page would
+	// only try (and warn about) a temp-dir download it can't make.
+	if (inBrowserPage()) return undefined;
 	if (fontPaths.has(family)) {
 		return fontPaths.get(family);
 	}

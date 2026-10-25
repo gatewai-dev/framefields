@@ -10,7 +10,7 @@ import {
 	type LayoutNode,
 } from "@framefields/compositions/program";
 import { z } from "zod";
-import { springKeys } from "../core/bake.js";
+import { springKeys, springSettleFrames } from "../core/bake.js";
 import { defineComponent } from "../core/contract.js";
 import type { Animatable } from "../core/host.js";
 import { supersede } from "../core/keys.js";
@@ -93,6 +93,8 @@ export const chatThread = /* @__PURE__ */ defineComponent({
 		const { host, theme, fps } = ctx;
 		// Bubbles overshoot a little; reactions bounce.
 		const { base: spring, pop } = theme.motion.spring;
+		/** The last frame anything moves: reactions pop after their bubble lands. */
+		let settled = 0;
 		const s = theme.scale;
 		const W = ctx.requested.width ?? 720 * s;
 		const H = ctx.requested.height ?? 960 * s;
@@ -407,6 +409,7 @@ export const chatThread = /* @__PURE__ */ defineComponent({
 				const rh = fs * 1.5;
 				const rw = Math.max(rh, rm.width + fs * 0.6);
 				const rAt = at + Math.round(fps * 0.6);
+				settled = Math.max(settled, rAt + springSettleFrames(fps, pop));
 				const border = Math.max(2, fs * 0.1);
 				// On the outer top corner, like a tapback.
 				const pill = host.box({
@@ -679,7 +682,7 @@ export const chatThread = /* @__PURE__ */ defineComponent({
 			children: [viewport],
 			width: W,
 			height: H,
-			duration: lastAt + Math.round(fps * 0.8),
+			duration: Math.max(lastAt + Math.round(fps * 0.8), settled),
 			openEnded: true,
 			cues: {
 				messages: landed.map((frame, index) => ({

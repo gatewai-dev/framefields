@@ -1,5 +1,7 @@
 # @framefields/node-audio-delay
 
+## 2.6.0
+
 ## 2.5.5
 
 ### Patch Changes

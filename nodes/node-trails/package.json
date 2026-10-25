@@ -1,6 +1,6 @@
 {
 	"name": "@framefields/node-trails",
-	"version": "2.5.5",
+	"version": "2.6.0",
 	"private": false,
 	"framefields": {
 		"type": "Trails",

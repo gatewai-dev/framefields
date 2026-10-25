@@ -1,5 +1,7 @@
 # @framefields/node-particles
 
+## 2.6.0
+
 ## 2.5.5
 
 ### Patch Changes

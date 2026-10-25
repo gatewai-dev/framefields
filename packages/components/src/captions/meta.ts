@@ -16,4 +16,5 @@ export default defineMeta({
 	cues: ["words", "phrases"],
 	example: `Captions({ transcript: srt, style: "karaoke", emphasis: ["faster"] })`,
 	since: "M3",
+	fonts: [{ font: "emoji", why: "Social captions often carry emoji." }],
 });

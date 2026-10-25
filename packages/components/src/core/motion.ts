@@ -52,6 +52,11 @@ export interface MotionOptions {
 	distance?: number;
 	/** Frames to wait after the window starts (enter) or before it ends (exit). */
 	delay?: number;
+	/**
+	 * Motion blur while the stage moves: `true` (90° shutter), a shutter
+	 * angle in degrees, or `false`. Default on for `slide-*`, off otherwise.
+	 */
+	blur?: boolean | number;
 }
 
 export type MotionPreset =
@@ -64,6 +69,8 @@ export interface ResolvedMotion {
 	ease: string;
 	distance: number;
 	delay: number;
+	/** Shutter angle in degrees; 0 = no motion blur. */
+	blur: number;
 }
 
 /** Normalise a preset (or `false`) against a theme and fps. */
@@ -97,8 +104,12 @@ export function resolveMotion(
 		distance:
 			o.distance ?? (o.preset.startsWith("slide-") ? 120 : 40) * theme.scale,
 		delay: Math.max(0, Math.round(o.delay ?? 0)),
+		blur: shutter(o.blur ?? o.preset.startsWith("slide-")),
 	};
 }
+
+const shutter = (blur: boolean | number) =>
+	blur === true ? 90 : blur === false ? 0 : Math.max(0, Math.min(360, blur));
 
 /** The box a mask preset slides through. */
 export interface MotionSize {

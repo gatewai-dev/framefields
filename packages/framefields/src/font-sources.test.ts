@@ -126,3 +126,21 @@ describe.skipIf(!hasInter)(
 		});
 	},
 );
+
+describe.skipIf(!hasInter)("file URLs", () => {
+	it("registers a font from a file:// URL whose path has spaces", async () => {
+		const { mkdtempSync, cpSync } = await import("node:fs");
+		const { tmpdir } = await import("node:os");
+		const { pathToFileURL } = await import("node:url");
+		const dir = path.join(mkdtempSync(path.join(tmpdir(), "ff-")), "My Film");
+		const file = path.join(dir, "Spaced Name.ttf");
+		cpSync(INTER, file, { recursive: true });
+		const url = pathToFileURL(file).href;
+		expect(url).toContain("My%20Film");
+		// Run from elsewhere so no cwd fallback can find it by name.
+		const cwd = vi.spyOn(process, "cwd").mockReturnValue(tmpdir());
+		await FontManager.register({ family: "Spaced", source: url });
+		cwd.mockRestore();
+		expect(FontManager.has("Spaced")).toBe(true);
+	});
+});

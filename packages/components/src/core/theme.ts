@@ -2,9 +2,32 @@
  * Design tokens every component reads instead of hard-coded colors, fonts and
  * timings. `defineTheme` deep-merges a partial theme over `themes.graphite`.
  */
+import { contrastRatio, isLight } from "./color.js";
 import { scaleFrames } from "./timing.js";
 
+/** A spring, as `springKeys` / `springAt` take it. */
+export interface Spring {
+	stiffness: number;
+	damping: number;
+}
+
+/**
+ * How far a surface sits above what's behind it: a soft drop shadow, plus a
+ * faint highlight along its top edge so it reads as a lit object.
+ */
+export interface Elevation {
+	/** Shadow opacity, 0–1. */
+	opacity: number;
+	/** Shadow offset (straight down) and blur, px at theme scale 1. */
+	distance: number;
+	size: number;
+	/** Opacity of the 1 px top-edge highlight, 0–1 (0: none). */
+	edge: number;
+}
+
 export interface Theme {
+	/** Whether `bg` is dark or light; components pick shadows and chrome by it. */
+	mode: "dark" | "light";
 	color: {
 		bg: string;
 		surface: string;
@@ -17,18 +40,47 @@ export interface Theme {
 		positive: string;
 		negative: string;
 		highlight: string;
+		/** Shadow color (elevation). */
+		shadow: string;
 	};
 	font: { display: string; body: string; mono: string; hand?: string };
+	/** Font weights by role, so one theme can swap a heavier or lighter family. */
+	weight: {
+		regular: number;
+		medium: number;
+		semibold: number;
+		bold: number;
+		heavy: number;
+	};
 	radius: { sm: number; md: number; lg: number; pill: number };
 	stroke: { hair: number; base: number; bold: number };
+	/** Surfaces: `low` (chips, tags), `mid` (cards, toasts), `high` (windows, modals). */
+	elevation: { low: Elevation; mid: Elevation; high: Elevation };
 	motion: {
 		ease: { enter: string; exit: string; move: string; snap: string };
 		/** Durations in frames at 30 fps; see {@link themeFrames}. */
 		speed: { fast: number; base: number; slow: number };
+		/** `settle` lands without overshoot, `base` overshoots a little, `pop` bounces. */
+		spring: { settle: Spring; base: Spring; pop: Spring };
 	};
+	/** Code token colors (CodeBlock); unset kinds use the built-in palette. */
+	syntax?: Partial<Record<SyntaxKind, string>>;
 	/** 1 = designed for 1080p. 2 for 4K, 0.5 for 540p. */
 	scale: number;
 }
+
+/** Token kinds CodeBlock colors. */
+export type SyntaxKind =
+	| "plain"
+	| "keyword"
+	| "string"
+	| "number"
+	| "comment"
+	| "function"
+	| "type"
+	| "property"
+	| "punctuation"
+	| "operator";
 
 export type ThemeInput = DeepPartial<Theme>;
 
@@ -44,6 +96,31 @@ const motion: Theme["motion"] = {
 		snap: "back.out(1.6)",
 	},
 	speed: { fast: 8, base: 16, slow: 30 },
+	spring: {
+		settle: { stiffness: 230, damping: 24 },
+		base: { stiffness: 260, damping: 20 },
+		pop: { stiffness: 320, damping: 14 },
+	},
+};
+
+const weight: Theme["weight"] = {
+	regular: 400,
+	medium: 500,
+	semibold: 600,
+	bold: 700,
+	heavy: 800,
+};
+
+/** Dark grounds need deeper shadows, and a lit top edge to separate surfaces. */
+const darkElevation: Theme["elevation"] = {
+	low: { opacity: 0.32, distance: 3, size: 10, edge: 0.07 },
+	mid: { opacity: 0.4, distance: 10, size: 30, edge: 0.08 },
+	high: { opacity: 0.5, distance: 22, size: 60, edge: 0.1 },
+};
+const lightElevation: Theme["elevation"] = {
+	low: { opacity: 0.1, distance: 2, size: 8, edge: 0 },
+	mid: { opacity: 0.14, distance: 8, size: 26, edge: 0 },
+	high: { opacity: 0.2, distance: 18, size: 54, edge: 0 },
 };
 
 const shape = {
@@ -61,6 +138,7 @@ const fonts: Theme["font"] = {
 export const themes = {
 	/** Dark neutral: product demos, dev tools. */
 	graphite: {
+		mode: "dark",
 		color: {
 			bg: "#0d0e11",
 			surface: "#16181d",
@@ -73,14 +151,18 @@ export const themes = {
 			positive: "#3ecf8e",
 			negative: "#ff5c5c",
 			highlight: "#ffd23f",
+			shadow: "#000000",
 		},
 		font: fonts,
+		weight,
 		...shape,
+		elevation: darkElevation,
 		motion,
 		scale: 1,
 	},
 	/** Light editorial: explainers, documentaries. */
 	paper: {
+		mode: "light",
 		color: {
 			bg: "#f4f1ea",
 			surface: "#fffdf8",
@@ -93,14 +175,18 @@ export const themes = {
 			positive: "#1f8a4c",
 			negative: "#c8282d",
 			highlight: "#ffe066",
+			shadow: "#3b2f1e",
 		},
 		font: fonts,
+		weight,
 		...shape,
+		elevation: lightElevation,
 		motion,
 		scale: 1,
 	},
 	/** High contrast, saturated accent: social clips. */
 	signal: {
+		mode: "dark",
 		color: {
 			bg: "#000000",
 			surface: "#111111",
@@ -113,13 +199,21 @@ export const themes = {
 			positive: "#00e676",
 			negative: "#ff1744",
 			highlight: "#c6ff00",
+			shadow: "#000000",
 		},
 		font: fonts,
+		weight,
 		...shape,
+		elevation: darkElevation,
 		motion: {
 			...motion,
 			ease: { ...motion.ease, enter: "back.out(1.8)" },
 			speed: { fast: 6, base: 12, slow: 24 },
+			spring: {
+				settle: { stiffness: 300, damping: 26 },
+				base: { stiffness: 340, damping: 22 },
+				pop: { stiffness: 400, damping: 14 },
+			},
 		},
 		scale: 1,
 	},
@@ -136,6 +230,12 @@ export function defineTheme(
 	base: Theme = themes.graphite,
 ): Theme {
 	const theme = merge(base, input) as Theme;
+	// A new background without a mode says which one it is.
+	if (input.mode === undefined && input.color?.bg !== undefined) {
+		theme.mode = isLight(theme.color.bg) ? "light" : "dark";
+		if (input.elevation === undefined)
+			theme.elevation = theme.mode === "light" ? lightElevation : darkElevation;
+	}
 	const ratio = contrastRatio(theme.color.ink, theme.color.surface);
 	if (ratio !== null && ratio < 4.5) {
 		throw new Error(
@@ -171,30 +271,4 @@ function merge(base: unknown, over: unknown): unknown {
 		out[key] = merge(out[key], value);
 	}
 	return out;
-}
-
-/** WCAG contrast ratio of two hex colors, or null when either isn't hex. */
-export function contrastRatio(a: string, b: string): number | null {
-	const la = luminance(a);
-	const lb = luminance(b);
-	if (la === null || lb === null) return null;
-	const [hi, lo] = la > lb ? [la, lb] : [lb, la];
-	return (hi + 0.05) / (lo + 0.05);
-}
-
-function luminance(hex: string): number | null {
-	const m = hex.trim().match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
-	if (!m?.[1]) return null;
-	const h =
-		m[1].length === 3
-			? m[1]
-					.split("")
-					.map((c) => c + c)
-					.join("")
-			: m[1];
-	const channel = (i: number) => {
-		const c = Number.parseInt(h.slice(i, i + 2), 16) / 255;
-		return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-	};
-	return 0.2126 * channel(0) + 0.7152 * channel(2) + 0.0722 * channel(4);
 }

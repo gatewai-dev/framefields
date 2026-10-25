@@ -18,6 +18,21 @@ export interface ComponentMeta {
 	example: string;
 	/** Spec milestone that introduced it. */
 	since: string;
+	/**
+	 * Fonts it draws with beyond the theme's families. `framefields add`
+	 * installs each one into the project (pinned, hash-checked) and registers
+	 * it in the generated `fonts.ts`.
+	 */
+	fonts?: readonly FontNeed[];
+}
+
+/** Fonts `framefields add` knows how to install, by role. */
+export type FontRole = "emoji" | "sans" | "mono";
+
+export interface FontNeed {
+	font: FontRole;
+	/** Why, shown when `add` installs it. */
+	why: string;
 }
 
 export function defineMeta(meta: ComponentMeta): ComponentMeta {

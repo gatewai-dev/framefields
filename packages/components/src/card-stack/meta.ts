@@ -14,7 +14,7 @@ export default defineMeta({
 		"features",
 		"3d",
 	],
-	parts: ["card-0", "card-0-clip", "tilt"],
+	parts: ["card-<n>", "card-<n>-clip", "tilt"],
 	cues: ["changes"],
 	example: `CardStack({ cards: [{ title: "Fast" }, { title: "Typed" }, { title: "Yours" }] })`,
 	since: "M8",

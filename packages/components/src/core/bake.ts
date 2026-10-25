@@ -134,3 +134,40 @@ export function springKeys(
 	);
 	return bakeSamples(values, start, { tolerance });
 }
+
+/**
+ * Per-frame values (frames 0…`length`) that spring to each new target from
+ * wherever they are: a retarget mid-flight starts from the current value
+ * (velocity isn't carried over). Bake with `bakeSamples` or bind as a signal.
+ */
+export function springTrack(
+	changes: ReadonlyArray<readonly [frame: number, target: number]>,
+	initial: number,
+	length: number,
+	fps: number,
+	options: { stiffness: number; damping: number } = {
+		stiffness: 230,
+		damping: 24,
+	},
+): number[] {
+	const sorted = [...changes].sort((a, b) => a[0] - b[0]);
+	const out = new Array<number>(length + 1);
+	let from = initial;
+	let to = initial;
+	let since = 0;
+	let k = 0;
+	for (let f = 0; f <= length; f++) {
+		while (
+			k < sorted.length &&
+			(sorted[k] as readonly [number, number])[0] <= f
+		) {
+			// Restart from the current value toward the new target.
+			from = from + (to - from) * springAt((f - since) / fps, options);
+			to = (sorted[k] as readonly [number, number])[1];
+			since = (sorted[k] as readonly [number, number])[0];
+			k++;
+		}
+		out[f] = from + (to - from) * springAt((f - since) / fps, options);
+	}
+	return out;
+}

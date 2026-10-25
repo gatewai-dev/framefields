@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { diffLines, expandTabs, focusSet, Track } from "./plan.js";
+import { Track } from "../core/keys.js";
+import { diffLines, expandTabs, focusSet } from "./plan.js";
 
 describe("CodeBlock plan", () => {
 	it("keeps the longest common run of lines, ignoring indentation", () => {

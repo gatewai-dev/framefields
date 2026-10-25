@@ -36,7 +36,6 @@ export interface LogoRevealCues {
 	glint: ReadonlyArray<{ frame: number }>;
 }
 
-const POP = { stiffness: 260, damping: 14 };
 const SWING = { stiffness: 120, damping: 14 };
 
 export const logoReveal = /* @__PURE__ */ defineComponent({
@@ -254,7 +253,15 @@ export const logoReveal = /* @__PURE__ */ defineComponent({
 			const anim = LayerAnimation.create();
 			const scale: KeyframeTuple[] = [];
 			if (style === "slide" || style === "pop")
-				scale.push(...(springKeys(0, 0, 1, fps, POP) as KeyframeTuple[]));
+				scale.push(
+					...(springKeys(
+						0,
+						0,
+						1,
+						fps,
+						theme.motion.spring.pop,
+					) as KeyframeTuple[]),
+				);
 			if (glints) {
 				// A small bump as the light passes.
 				if (scale.length === 0) scale.push([0, 1]);

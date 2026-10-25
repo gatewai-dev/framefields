@@ -2,7 +2,6 @@
  * CodeBlock planning, kept pure: tab expansion, the line diff, focus ranges,
  * and opacity tracks built from timed transitions.
  */
-import type { KeyframeTuple } from "@framefields/compositions/program";
 
 export function expandTabs(code: string, size: number): string {
 	return code.replace(/\t/g, " ".repeat(size));
@@ -76,47 +75,4 @@ export function focusSet(
 				)
 			: lines;
 	return new Set(list.map((l) => l - 1).filter((l) => l >= 0 && l < count));
-}
-
-/** A value track built from transitions: each eases from wherever the value is to `to`. */
-export class Track {
-	private changes: Array<{
-		start: number;
-		end: number;
-		to: number;
-		ease: string;
-	}> = [];
-
-	constructor(private readonly initial: number) {}
-
-	to(start: number, end: number, value: number, ease = "power2.out"): this {
-		this.changes.push({ start, end: Math.max(start, end), to: value, ease });
-		return this;
-	}
-
-	/** Ascending keyframes; a change that starts mid-transition starts from its target. */
-	keys(): KeyframeTuple[] {
-		const keys: KeyframeTuple[] = [[0, this.initial]];
-		let value = this.initial;
-		for (const c of [...this.changes].sort((x, y) => x.start - y.start)) {
-			const last = keys[keys.length - 1] as KeyframeTuple;
-			const start = Math.max(c.start, last[0] + (c.end === c.start ? 1 : 0));
-			if (start > last[0]) keys.push([start, value]);
-			const end = Math.max(c.end, start);
-			if (end === start) keys[keys.length - 1] = [start, c.to, "hold"];
-			else keys.push([end, c.to, c.ease]);
-			value = c.to;
-		}
-		// Drop duplicate frames (a later key wins).
-		const out: KeyframeTuple[] = [];
-		for (const k of keys) {
-			while (
-				out.length > 0 &&
-				(out[out.length - 1] as KeyframeTuple)[0] >= k[0]
-			)
-				out.pop();
-			out.push(k);
-		}
-		return out;
-	}
 }

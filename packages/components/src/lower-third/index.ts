@@ -4,17 +4,17 @@
  * through their own box, and leave on their own after `hold`.
  *
  * Coordinates are the frame's: the root covers the video (default
- * 1920 × 1080 × theme scale, or the given width / height) from 0, 0.
+ * the composition `canvas`, or the given width / height) from 0, 0.
  */
-import {
-	type KeyframeTuple,
-	LayerAnimation,
-	type LayoutNode,
-} from "@framefields/compositions/program";
+import type { LayoutNode } from "@framefields/compositions/program";
 import { z } from "zod";
+import { parseColor } from "../core/color.js";
 import { defineComponent } from "../core/contract.js";
 import type { Rect } from "../core/draw.js";
 import type { Animatable } from "../core/host.js";
+import { KeyBook } from "../core/keys.js";
+import { safeArea } from "../core/layout.js";
+import { elevate, surfaceFill } from "../core/surface.js";
 import { themeFrames } from "../core/theme.js";
 
 export const LOWER_THIRD_LAYOUTS = ["bar", "stacked", "tag", "line"] as const;
@@ -29,18 +29,6 @@ export interface LowerThirdCues {
 	in: ReadonlyArray<{ frame: number }>;
 	/** Starts to leave (empty with `stay`). */
 	out: ReadonlyArray<{ frame: number }>;
-}
-
-function safeArea(
-	W: number,
-	H: number,
-	area: "portrait" | "landscape" | Rect | undefined,
-): Rect {
-	if (area && typeof area === "object") return area;
-	const portrait = area ? area === "portrait" : H > W;
-	return portrait
-		? { x: W * 0.08, y: H * 0.1, width: W * 0.84, height: H * 0.66 }
-		: { x: W * 0.06, y: H * 0.08, width: W * 0.88, height: H * 0.82 };
 }
 
 export const lowerThird = /* @__PURE__ */ defineComponent({
@@ -72,9 +60,9 @@ export const lowerThird = /* @__PURE__ */ defineComponent({
 	build(ctx, props) {
 		const { host, theme, fps } = ctx;
 		const s = theme.scale;
-		const W = ctx.requested.width ?? 1920 * s;
-		const H = ctx.requested.height ?? 1080 * s;
-		const safe = safeArea(W, H, props.safeArea);
+		const W = ctx.requested.width ?? ctx.canvas.width;
+		const H = ctx.requested.height ?? ctx.canvas.height;
+		const safe = safeArea({ width: W, height: H }, props.safeArea);
 		const fontFamily = props.fontFamily ?? theme.font.display;
 		const nameSize = props.nameSize ?? 44 * s;
 		const roleSize = nameSize * 0.62;
@@ -88,13 +76,13 @@ export const lowerThird = /* @__PURE__ */ defineComponent({
 		const nameM = host.measure(props.name, {
 			fontFamily,
 			fontSize: nameSize,
-			fontWeight: 700,
+			fontWeight: theme.weight.bold,
 		});
 		const roleM = props.role
 			? host.measure(props.role, {
 					fontFamily,
 					fontSize: roleSize,
-					fontWeight: 500,
+					fontWeight: theme.weight.medium,
 				})
 			: null;
 		const padX = nameSize * 0.55;
@@ -102,19 +90,8 @@ export const lowerThird = /* @__PURE__ */ defineComponent({
 		const children: LayoutNode[] = [];
 		const parts: Record<string, Animatable<LayoutNode>> = {};
 		/** Keys per node and prop, merged into one track each at the end. */
-		const tracks = new Map<
-			Animatable<LayoutNode>,
-			Map<string, KeyframeTuple[]>
-		>();
-		const key = (
-			node: Animatable<LayoutNode>,
-			prop: string,
-			keys: KeyframeTuple[],
-		) => {
-			const byProp = tracks.get(node) ?? new Map<string, KeyframeTuple[]>();
-			tracks.set(node, byProp);
-			byProp.set(prop, [...(byProp.get(prop) ?? []), ...keys]);
-		};
+		const book = new KeyBook<Animatable<LayoutNode>>();
+		const key = book.key.bind(book);
 
 		const text = (
 			id: string,
@@ -155,8 +132,10 @@ export const lowerThird = /* @__PURE__ */ defineComponent({
 				y: 0,
 				width: rect.width,
 				height: rect.height,
-				background,
+				background: surfaceFill(background, theme),
 				borderRadius: radius,
+				// The slide is fast: a little smear sells it.
+				motionBlurShutter: 90,
 			});
 			const travel = rect.width * (right ? 1 : -1);
 			const slide = Math.round(base * 1.1);
@@ -184,6 +163,8 @@ export const lowerThird = /* @__PURE__ */ defineComponent({
 				borderRadius: radius,
 				children: [fill, ...content],
 			});
+			// A clear plate (the `line` layout) has nothing to lift.
+			if (parseColor(background)?.[3] !== 0) elevate(host, clip, theme, "low");
 			children.push(clip);
 			parts[id] = clip;
 			return {
@@ -212,7 +193,15 @@ export const lowerThird = /* @__PURE__ */ defineComponent({
 				const rect = { x: xFor(w), y: bottom - h, width: w, height: h };
 				const tx = right ? padX : padX + edge;
 				const content = [
-					text("name", props.name, nameSize, 700, theme.color.ink, tx, padY),
+					text(
+						"name",
+						props.name,
+						nameSize,
+						theme.weight.bold,
+						theme.color.ink,
+						tx,
+						padY,
+					),
 				];
 				if (props.role && roleM)
 					content.push(
@@ -220,7 +209,7 @@ export const lowerThird = /* @__PURE__ */ defineComponent({
 							"role",
 							props.role,
 							roleSize,
-							500,
+							theme.weight.medium,
 							theme.color.muted,
 							tx,
 							padY + nameM.height * 0.95,
@@ -270,7 +259,7 @@ export const lowerThird = /* @__PURE__ */ defineComponent({
 								"name",
 								props.name,
 								nameSize,
-								700,
+								theme.weight.bold,
 								theme.color.ink,
 								padX,
 								padY,
@@ -296,7 +285,7 @@ export const lowerThird = /* @__PURE__ */ defineComponent({
 									"role",
 									props.role,
 									roleSize,
-									600,
+									theme.weight.semibold,
 									theme.color.bg,
 									padX * 0.8,
 									padY * 0.6,
@@ -326,13 +315,17 @@ export const lowerThird = /* @__PURE__ */ defineComponent({
 						fontSize: nameSize,
 						fill: theme.color.ink,
 						spans: [
-							{ text: props.name, fontWeight: 700, fill: theme.color.ink },
+							{
+								text: props.name,
+								fontWeight: theme.weight.bold,
+								fill: theme.color.ink,
+							},
 							...(props.role
 								? [
 										{
 											text: `${sep}${props.role}`,
 											fontSize: roleSize,
-											fontWeight: 500,
+											fontWeight: theme.weight.medium,
 											fill: theme.color.muted,
 											// Centred on the name's capitals, not on its baseline: one
 											// line in a pill reads as aligned when the caps share a middle.
@@ -385,7 +378,15 @@ export const lowerThird = /* @__PURE__ */ defineComponent({
 				children.push(accentLine);
 				parts.line = accentLine;
 				const content = [
-					text("name", props.name, nameSize, 700, theme.color.ink, tx, 0),
+					text(
+						"name",
+						props.name,
+						nameSize,
+						theme.weight.bold,
+						theme.color.ink,
+						tx,
+						0,
+					),
 				];
 				if (props.role && roleM)
 					content.push(
@@ -393,7 +394,7 @@ export const lowerThird = /* @__PURE__ */ defineComponent({
 							"role",
 							props.role,
 							roleSize,
-							500,
+							theme.weight.medium,
 							theme.color.muted,
 							tx,
 							nameM.height,
@@ -441,15 +442,7 @@ export const lowerThird = /* @__PURE__ */ defineComponent({
 						[outAt + afterHold, 0, "power2.in"],
 					]);
 		}
-		for (const [node, byProp] of tracks) {
-			const a = LayerAnimation.create();
-			for (const [prop, keys] of byProp)
-				a.keys(
-					prop as "x",
-					[...keys].sort((x, y) => x[0] - y[0]),
-				);
-			node.animate(a);
-		}
+		book.apply();
 
 		return {
 			children,

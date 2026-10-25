@@ -32,6 +32,30 @@ const COLOR_PROPS = [
  */
 export const LARGE_ANIMATION_KEYFRAMES = 2000;
 
+/**
+ * Characters layout draws from the color emoji font (the renderer's own
+ * test, `emojiGraphemes` in webgpu-renderers).
+ */
+const EMOJI =
+	/(\p{Extended_Pictographic}|\p{Emoji_Presentation}|[\u2600-\u27BF])/u;
+
+/** The text a text node draws: its string and its spans'. */
+function textOf(node: AnyNode): string {
+	const spans = (node.spans as Array<{ text?: unknown }> | undefined) ?? [];
+	return [node.text, ...spans.map((s) => s.text)]
+		.filter((t): t is string => typeof t === "string")
+		.join("");
+}
+
+export interface LintOptions {
+	/**
+	 * Whether a color emoji font is registered (framefields'
+	 * `FontManager.hasEmojiFont()`). When false, text with emoji is flagged:
+	 * the emoji would draw nothing. Unknown (omitted): not checked.
+	 */
+	emojiFont?: boolean;
+}
+
 /** Contrast below this makes text hard to read (WCAG large-text minimum). */
 const MIN_TEXT_CONTRAST = 3;
 
@@ -72,6 +96,7 @@ export function lintComposition(
 	config: Pick<CompositorProgramConfig, "width" | "height" | "layout"> & {
 		backgroundColor?: string;
 	},
+	options: LintOptions = {},
 ): RenderDiagnostic[] {
 	const out: RenderDiagnostic[] = [];
 	const push = (
@@ -88,9 +113,16 @@ export function lintComposition(
 	let has3D = false;
 	const pbrNodes: string[] = [];
 	const shadowLights: string[] = [];
+	const emojiText: string[] = [];
 
 	const visit = (node: AnyNode, backdrop: string | null, atRoot: boolean) => {
 		const id = String(node.id ?? "?");
+		if (
+			options.emojiFont === false &&
+			node.kind === "text" &&
+			EMOJI.test(textOf(node))
+		)
+			emojiText.push(id);
 
 		for (const prop of COLOR_PROPS) {
 			const v = node[prop];
@@ -277,6 +309,18 @@ export function lintComposition(
 	const rootBackdrop = solidColor(config.backgroundColor) ?? null;
 	visitLevel(config.layout as AnyNode[], rootBackdrop, true);
 
+	if (emojiText.length > 0) {
+		const shown = emojiText
+			.slice(0, 3)
+			.map((id) => `'${id}'`)
+			.join(", ");
+		push(
+			"warning",
+			"missing_emoji_font",
+			`${emojiText.length === 1 ? "Text" : `${emojiText.length} text layers`} ${shown}${emojiText.length > 3 ? ", …" : ""} ${emojiText.length === 1 ? "has" : "have"} emoji, but no emoji font is registered, so the emoji draw nothing. Run \`npx framefields fonts add emoji\` and call the generated \`registerFonts()\`, or \`FontManager.registerEmojiFont(path)\` with a color emoji font.`,
+			emojiText[0],
+		);
+	}
 	if (hasEnvironment && ambientLights.length > 0) {
 		push(
 			"info",

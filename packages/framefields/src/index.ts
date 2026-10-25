@@ -2120,7 +2120,9 @@ export class Composition {
 	 * never change. `renderVideo({ qa })` includes these automatically.
 	 */
 	public lint(): RenderDiagnostic[] {
-		return lintComposition(this.toSpec());
+		return lintComposition(this.toSpec(), {
+			emojiFont: FontManager.hasEmojiFont(),
+		});
 	}
 }
 
@@ -3389,6 +3391,7 @@ export type Effect<TConfig extends object = Record<string, unknown>> =
 export {
 	type Anchor,
 	type AudioLevels,
+	after,
 	type BaseProps,
 	type Cue,
 	type Cues,
@@ -3399,6 +3402,7 @@ export {
 	type Theme,
 	type ThemeInput,
 	themes,
+	withDefaults,
 } from "@framefields/components/toolkit";
 export {
 	analyzeAudio,

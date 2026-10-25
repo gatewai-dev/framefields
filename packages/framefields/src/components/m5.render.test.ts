@@ -12,6 +12,9 @@ import { ChatThread, Confetti, Spotlight, Toasts } from "./testing.js";
  */
 beforeAll(async () => {
 	await FontManager.register("assets/fonts/Inter.ttf");
+	await FontManager.registerEmojiFont(
+		"../renderer/src/assets/NotoColorEmoji.ttf",
+	);
 });
 function comp(
 	nodes: Parameters<Composition["add"]>[0],
@@ -55,6 +58,39 @@ describe("ChatThread (render)", () => {
 		expect(computeMse(before.pixels, empty.pixels)).toBe(0);
 		const after = await frame(c, 90);
 		expect(computeMse(after.pixels, empty.pixels)).toBeGreaterThan(0);
+	});
+});
+
+describe("ChatThread reactions (render)", () => {
+	/** Clearly red pixels: the Noto heart (no theme colour is this red). */
+	const reds = (data: Uint8ClampedArray) => {
+		let n = 0;
+		for (let i = 0; i < data.length; i += 4)
+			if (
+				(data[i] as number) > 180 &&
+				(data[i + 1] as number) < 90 &&
+				(data[i + 2] as number) < 90
+			)
+				n++;
+		return n;
+	};
+	it("draws an emoji reaction from the color emoji font", async () => {
+		const thread = (reaction?: string) =>
+			ChatThread({
+				width: 960,
+				height: 540,
+				messages: [
+					{ from: "me", text: "Shipped?", at: 0 },
+					{ from: "sam", text: "Yes!", at: 10, reaction },
+				],
+			});
+		const withHeart = await frame(comp(thread("❤️")), 120);
+		const without = await frame(comp(thread()), 120);
+		expect(reds(without.pixels)).toBe(0);
+		expect(reds(withHeart.pixels)).toBeGreaterThan(40);
+		// "heart" is shorthand for the same emoji.
+		const word = await frame(comp(thread("heart")), 120);
+		expect(computeMse(word.pixels, withHeart.pixels)).toBe(0);
 	});
 });
 

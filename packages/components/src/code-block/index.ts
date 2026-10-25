@@ -13,11 +13,13 @@ import {
 } from "@framefields/compositions/program";
 import { z } from "zod";
 import { appFrame } from "../app-frame/index.js";
+import { withAlpha } from "../core/color.js";
 import { bind, defineComponent } from "../core/contract.js";
 import type { Animatable } from "../core/host.js";
+import { ascending, Track } from "../core/keys.js";
 import { type Theme, themeFrames } from "../core/theme.js";
 import { typingFrames } from "../core/typing.js";
-import { diffLines, expandTabs, focusSet, Track } from "./plan.js";
+import { diffLines, expandTabs, focusSet } from "./plan.js";
 import {
 	CODE_LANGS,
 	type Token,
@@ -44,32 +46,24 @@ export interface CodeBlockCues {
 	diff: ReadonlyArray<{ frame: number; end: number }>;
 }
 
-/** Token colours from theme tokens. */
+/** Token colours from theme tokens, then `theme.syntax` on top. */
 function palette(theme: Theme): Record<TokenKind, string> {
 	const c = theme.color;
+	const light = theme.mode === "light";
 	return {
 		plain: c.ink,
 		keyword: c.accent2,
 		string: c.positive,
-		number: c.highlight,
+		// The highlight yellow and a bright teal wash out on light grounds.
+		number: light ? "#a65a00" : c.highlight,
 		comment: c.muted,
 		function: c.accent,
-		type: "#4cc9e0",
+		type: light ? "#0e7c91" : "#4cc9e0",
 		property: c.ink,
 		punctuation: c.muted,
 		operator: c.muted,
+		...theme.syntax,
 	};
-}
-
-/** `#rrggbb` (or `#rgb`) at `alpha`, for washes and bands. */
-function tint(color: string, alpha: number): string {
-	const m = color.trim().match(/^#([\da-f]{3}|[\da-f]{6})$/i);
-	if (!m?.[1]) return color;
-	const h = m[1].length === 3 ? [...m[1]].map((c) => c + c).join("") : m[1];
-	const [r, g, b] = [0, 2, 4].map((i) =>
-		Number.parseInt(h.slice(i, i + 2), 16),
-	);
-	return `rgba(${r},${g},${b},${alpha})`;
 }
 
 function tokenSchema() {
@@ -355,7 +349,7 @@ export const codeBlock = /* @__PURE__ */ defineComponent({
 					y: rowY(row),
 					width: W - pad * 0.8,
 					height: lh,
-					background: tint(color, 0.22),
+					background: withAlpha(color, 0.22),
 					borderRadius: theme.radius.sm,
 				});
 				fade(box, 0)
@@ -445,7 +439,7 @@ export const codeBlock = /* @__PURE__ */ defineComponent({
 			y: rowY(0),
 			width: W - pad * 0.8,
 			height: lh,
-			background: tint(theme.color.accent, 0.14),
+			background: withAlpha(theme.color.accent, 0.14),
 			borderRadius: theme.radius.sm,
 		});
 		const bandY = new Track(rowY(0));
@@ -544,14 +538,3 @@ export const codeBlock = /* @__PURE__ */ defineComponent({
 		};
 	},
 });
-
-/** Keys must ascend: a later key at the same frame replaces the earlier one. */
-function ascending(keys: KeyframeTuple[]): KeyframeTuple[] {
-	const out: KeyframeTuple[] = [];
-	for (const k of keys) {
-		while (out.length > 0 && (out[out.length - 1] as KeyframeTuple)[0] >= k[0])
-			out.pop();
-		out.push(k);
-	}
-	return out;
-}

@@ -11,6 +11,7 @@ import { z } from "zod";
 import { bakeSamples } from "../core/bake.js";
 import { bind, defineComponent } from "../core/contract.js";
 import type { Animatable } from "../core/host.js";
+import { ascending } from "../core/keys.js";
 import { toPathData, type Vec2 } from "../core/path.js";
 import { themeFrames } from "../core/theme.js";
 import { counter } from "../counter/index.js";
@@ -131,7 +132,7 @@ export const meter = /* @__PURE__ */ defineComponent({
 				ease,
 				fontFamily,
 				fontSize: size,
-				fontWeight: 700,
+				fontWeight: theme.weight.bold,
 				align,
 				x: 0,
 				y: 0,
@@ -437,13 +438,3 @@ export const meter = /* @__PURE__ */ defineComponent({
 		};
 	},
 });
-
-function ascending(keys: KeyframeTuple[]): KeyframeTuple[] {
-	const out: KeyframeTuple[] = [];
-	for (const k of [...keys].sort((a, b) => a[0] - b[0])) {
-		while (out.length > 0 && (out[out.length - 1] as KeyframeTuple)[0] >= k[0])
-			out.pop();
-		out.push(k);
-	}
-	return out;
-}

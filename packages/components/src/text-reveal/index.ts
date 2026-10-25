@@ -27,6 +27,7 @@ import {
 	type UnitSchedule,
 } from "../core/glyphs.js";
 import type { Animatable } from "../core/host.js";
+import { round as roundTo } from "../core/keys.js";
 import {
 	findRange,
 	lineShift,
@@ -805,7 +806,7 @@ export const textReveal = /* @__PURE__ */ defineComponent({
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-const round = (v: number) => Math.round(v * 10000) / 10000;
+const round = (v: number) => roundTo(v, 4);
 const list = (values: readonly number[]) => `[${values.map(round).join(",")}]`;
 
 /** 1 for characters inside an emphasis match, else 0 (null when nothing matches). */

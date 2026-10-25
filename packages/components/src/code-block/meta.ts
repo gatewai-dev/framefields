@@ -9,4 +9,5 @@ export default defineMeta({
 	cues: ["keystrokes", "lines", "focus", "diff"],
 	example: `CodeBlock({ code, lang: "ts", focus: [{ at: 60, lines: [3] }] })`,
 	since: "M4",
+	fonts: [{ font: "mono", why: "Monospace text for code." }],
 });

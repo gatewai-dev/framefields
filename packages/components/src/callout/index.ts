@@ -5,7 +5,7 @@
  * snapped).
  *
  * Coordinates are the frame's: the root covers the video (default
- * 1920 × 1080 × theme scale, or the given width / height) from 0, 0.
+ * the composition `canvas`, or the given width / height) from 0, 0.
  */
 import {
 	LayerAnimation,
@@ -18,6 +18,7 @@ import { evaluateEase } from "../core/ease.js";
 import type { Animatable } from "../core/host.js";
 import type { Vec2 } from "../core/path.js";
 import { targetSchema } from "../core/schemas.js";
+import { elevate, surfaceFill } from "../core/surface.js";
 import { resolveTarget, targetPoint } from "../core/targets.js";
 import { themeFrames } from "../core/theme.js";
 
@@ -74,8 +75,8 @@ export const callout = /* @__PURE__ */ defineComponent({
 	build(ctx, props) {
 		const { host, theme, fps } = ctx;
 		const s = theme.scale;
-		const W = ctx.requested.width ?? 1920 * s;
-		const H = ctx.requested.height ?? 1080 * s;
+		const W = ctx.requested.width ?? ctx.canvas.width;
+		const H = ctx.requested.height ?? ctx.canvas.height;
 		const fs = props.fontSize ?? 26 * s;
 		const fontFamily = props.fontFamily ?? theme.font.body;
 		const color = props.color ?? theme.color.accent;
@@ -97,7 +98,11 @@ export const callout = /* @__PURE__ */ defineComponent({
 		const padX = fs * 0.6;
 		const padY = fs * 0.42;
 		const titleM = props.title
-			? host.measure(props.title, { fontFamily, fontSize: fs, fontWeight: 700 })
+			? host.measure(props.title, {
+					fontFamily,
+					fontSize: fs,
+					fontWeight: theme.weight.bold,
+				})
 			: null;
 		const textM = host.measure(props.text, {
 			fontFamily,
@@ -260,7 +265,7 @@ export const callout = /* @__PURE__ */ defineComponent({
 					y: padY,
 					fontFamily,
 					fontSize: fs,
-					fontWeight: 700,
+					fontWeight: theme.weight.bold,
 					fill: theme.color.ink,
 				}),
 			);
@@ -282,12 +287,13 @@ export const callout = /* @__PURE__ */ defineComponent({
 			y: frames[0]?.label[1] ?? 0,
 			width: lw,
 			height: lh,
-			background: theme.color.raised,
+			background: surfaceFill(theme.color.raised, theme),
 			borderRadius: theme.radius.md,
 			borderColor: color,
 			borderWidth: Math.max(1.5, 1.5 * s),
 			children: labelKids,
 		});
+		elevate(host, label, theme, "low");
 		const rise = 10 * s;
 		label.animate(
 			LayerAnimation.create()

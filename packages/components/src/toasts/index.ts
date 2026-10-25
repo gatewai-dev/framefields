@@ -5,17 +5,18 @@
  * The stack is solved offline and every move is a baked spring.
  *
  * Coordinates are the frame's: the root covers the video (default
- * 1920 × 1080 × theme scale, or the given width / height) from 0, 0.
+ * the composition `canvas`, or the given width / height) from 0, 0.
  */
 import {
 	LayerAnimation,
 	type LayoutNode,
 } from "@framefields/compositions/program";
 import { z } from "zod";
-import { bakeSamples, springAt } from "../core/bake.js";
+import { bakeSamples, springTrack } from "../core/bake.js";
 import { defineComponent } from "../core/contract.js";
 import type { Animatable } from "../core/host.js";
 import { toPathData, type Vec2 } from "../core/path.js";
+import { elevate, surfaceFill } from "../core/surface.js";
 import type { Theme } from "../core/theme.js";
 
 export const TOAST_CORNERS = [
@@ -34,38 +35,6 @@ export interface ToastsCues {
 	[name: string]: ReadonlyArray<{ frame: number }>;
 	arrivals: ReadonlyArray<{ frame: number; index: number }>;
 	dismissals: ReadonlyArray<{ frame: number; index: number }>;
-}
-
-const SPRING = { stiffness: 230, damping: 24 };
-
-/** Per-frame values that spring to each new target from wherever they are. */
-export function springTrack(
-	changes: ReadonlyArray<readonly [frame: number, target: number]>,
-	initial: number,
-	length: number,
-	fps: number,
-	options = SPRING,
-): number[] {
-	const sorted = [...changes].sort((a, b) => a[0] - b[0]);
-	const out = new Array<number>(length + 1);
-	let from = initial;
-	let to = initial;
-	let since = 0;
-	let k = 0;
-	for (let f = 0; f <= length; f++) {
-		while (
-			k < sorted.length &&
-			(sorted[k] as readonly [number, number])[0] <= f
-		) {
-			// Restart from the current value toward the new target.
-			from = from + (to - from) * springAt((f - since) / fps, options);
-			to = (sorted[k] as readonly [number, number])[1];
-			since = (sorted[k] as readonly [number, number])[0];
-			k++;
-		}
-		out[f] = from + (to - from) * springAt((f - since) / fps, options);
-	}
-	return out;
 }
 
 /** A small icon per kind: a coloured disc with a drawn mark. */
@@ -150,8 +119,8 @@ export const toasts = /* @__PURE__ */ defineComponent({
 	build(ctx, props) {
 		const { host, theme, fps } = ctx;
 		const s = theme.scale;
-		const W = ctx.requested.width ?? 1920 * s;
-		const H = ctx.requested.height ?? 1080 * s;
+		const W = ctx.requested.width ?? ctx.canvas.width;
+		const H = ctx.requested.height ?? ctx.canvas.height;
 		const tw = props.toastWidth ?? 440 * s;
 		const margin = props.margin ?? 36 * s;
 		const fontFamily = props.fontFamily ?? theme.font.body;
@@ -176,7 +145,7 @@ export const toasts = /* @__PURE__ */ defineComponent({
 			const titleM = host.measure(item.title, {
 				fontFamily,
 				fontSize: titleFs,
-				fontWeight: 600,
+				fontWeight: theme.weight.semibold,
 				width: textW,
 			});
 			const bodyM = item.body
@@ -239,12 +208,14 @@ export const toasts = /* @__PURE__ */ defineComponent({
 		for (const t of items) {
 			const ys = yChanges.get(t.index) ?? [[t.at, margin]];
 			const firstY = ys[0]?.[1] ?? margin;
-			const yTrack = springTrack(ys, firstY, length, fps);
+			const settle = theme.motion.spring.settle;
+			const yTrack = springTrack(ys, firstY, length, fps, settle);
 			const scaleTrack = springTrack(
 				scaleChanges.get(t.index) ?? [],
 				1,
 				length,
 				fps,
+				settle,
 			);
 			const fade = fadeChanges.get(t.index) ?? [];
 			// Slide in from the edge; slide back out when dismissed.
@@ -302,7 +273,7 @@ export const toasts = /* @__PURE__ */ defineComponent({
 					width: textW,
 					fontFamily,
 					fontSize: titleFs,
-					fontWeight: 600,
+					fontWeight: theme.weight.semibold,
 					fill: theme.color.ink,
 				}),
 			];
@@ -326,23 +297,16 @@ export const toasts = /* @__PURE__ */ defineComponent({
 				y: firstY,
 				width: tw,
 				height: t.height,
-				background: theme.color.raised,
+				background: surfaceFill(theme.color.raised, theme),
 				borderRadius: theme.radius.md,
 				borderColor: theme.color.line,
 				borderWidth: Math.max(1, s),
 				anchorX: 0.5,
 				anchorY: top ? 0 : 1,
+				motionBlurShutter: 60,
 				children: kids,
 			});
-			host.style(card, {
-				dropShadow: {
-					color: "#000000",
-					opacity: 0.35,
-					angle: 90,
-					distance: 10 * s,
-					size: 30 * s,
-				},
-			});
+			elevate(host, card, theme, "mid");
 			const from = Math.max(0, t.at - 1);
 			const slice = (v: number[]) => v.slice(from);
 			card.animate(

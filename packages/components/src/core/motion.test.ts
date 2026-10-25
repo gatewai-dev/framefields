@@ -34,6 +34,18 @@ describe("motion presets", () => {
 		).toThrow(/Unknown motion preset/);
 	});
 
+	it("blurs slides by default, and anything on request", () => {
+		const g = themes.graphite;
+		expect(resolveMotion("slide-left", "enter", g)?.blur).toBe(90);
+		expect(resolveMotion("rise", "enter", g)?.blur).toBe(0);
+		expect(resolveMotion({ preset: "rise", blur: 45 }, "enter", g)?.blur).toBe(
+			45,
+		);
+		expect(
+			resolveMotion({ preset: "slide-up", blur: false }, "enter", g)?.blur,
+		).toBe(0);
+	});
+
 	it("enters from an offset and settles at zero", () => {
 		const m = resolveMotion(
 			{ preset: "rise", duration: 10, delay: 2 },

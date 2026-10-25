@@ -13,7 +13,7 @@ export default defineMeta({
 		"music",
 		"visualizer",
 	],
-	parts: ["bar-0", "spoke-0"],
+	parts: ["bar-<n>", "spoke-<n>"],
 	cues: ["beats"],
 	example: `Waveform({ audio: await analyzeAudio("voice.wav", { fps: 30 }), kind: "mirror" })`,
 	since: "M7",

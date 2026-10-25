@@ -3,7 +3,14 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { fakeHost } from "../test/fake-host.js";
 import { probe } from "../test/probe.js";
-import { bind, defineComponent, pulseKeys } from "./contract.js";
+import {
+	bind,
+	defineComponent,
+	after as endPlus,
+	pulseKeys,
+	withDefaults,
+} from "./contract.js";
+import { themes } from "./theme.js";
 
 const make = () => bind(fakeHost(), probe);
 
@@ -226,5 +233,66 @@ describe("first keys", () => {
 			[40, 0],
 			[44, 1],
 		]);
+	});
+
+	it("suggests the prop a typo meant, and names the instance", () => {
+		const Probe = make();
+		expect(() => Probe({ lable: "x" } as never)).toThrow(
+			/did you mean "lable" → "label"\?/,
+		);
+		expect(() => Probe({ id: "intro", at: -1 })).toThrow(
+			/^Probe#intro: invalid props/,
+		);
+	});
+
+	it("hands the canvas to the build, defaulting to 1920 × 1080 × scale", () => {
+		let seen: unknown;
+		const Spy = bind(
+			fakeHost(),
+			defineComponent({
+				name: "Spy",
+				props: () => ({ n: z.number().optional() }),
+				build(ctx) {
+					seen = ctx.canvas;
+					return { children: [], width: 1, height: 1, duration: 1, cues: {} };
+				},
+			}),
+		);
+		Spy({});
+		expect(seen).toEqual({ width: 1920, height: 1080 });
+		Spy({ theme: { scale: 2 } });
+		expect(seen).toEqual({ width: 3840, height: 2160 });
+		Spy({ canvas: { width: 1080, height: 1920 } });
+		expect(seen).toEqual({ width: 1080, height: 1920 });
+	});
+
+	it("withDefaults sets project props once; calls still win", () => {
+		const ui = withDefaults({ fps: 60, theme: themes.paper, seed: 7 });
+		const Probe = ui(make());
+		const node = Probe({ id: "d" });
+		const plate = node.part("plate") as unknown as { background: string };
+		expect(plate.background).toBe(themes.paper.color.accent);
+		// A partial theme merges over the default theme, not over graphite.
+		const tinted = Probe({ id: "e", theme: { color: { accent: "#123456" } } });
+		expect(tinted.part("plate")).toMatchObject({
+			background: "#123456",
+			borderRadius: themes.paper.radius.md,
+		});
+		expect(() => Probe({ fps: 24 })).not.toThrow();
+	});
+
+	it("after() chains from a component's end", () => {
+		const node = make()({ at: 30 });
+		expect(endPlus(node, 6)).toBe(51);
+		expect(() => endPlus({ span: { end: Number.POSITIVE_INFINITY } })).toThrow(
+			/open-ended/,
+		);
+	});
+
+	it("puts the stage's motion blur on when its enter or exit asks", () => {
+		const blurred = make()({ enter: "slide-left" });
+		expect(blurred.part("stage")).toMatchObject({ motionBlurShutter: 90 });
+		const plain = make()({ enter: "rise" });
+		expect(plain.part("stage")).not.toHaveProperty("motionBlurShutter");
 	});
 });

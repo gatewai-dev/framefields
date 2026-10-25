@@ -12,8 +12,8 @@ import {
 import { z } from "zod";
 import { bakeSamples } from "../core/bake.js";
 import { defineComponent } from "../core/contract.js";
-import { evaluateEase } from "../core/ease.js";
 import type { Animatable } from "../core/host.js";
+import { round, valueAt } from "../core/keys.js";
 import { scaleFrames } from "../core/timing.js";
 
 export interface BeforeAfterCues {
@@ -249,7 +249,7 @@ export const beforeAfter = /* @__PURE__ */ defineComponent({
 				const m = host.measure(text, {
 					fontFamily: theme.font.body,
 					fontSize: fs,
-					fontWeight: 600,
+					fontWeight: theme.weight.semibold,
 				});
 				const w = m.width + pad * 2;
 				const h = m.height + pad * 0.9;
@@ -282,7 +282,7 @@ export const beforeAfter = /* @__PURE__ */ defineComponent({
 								y: pad * 0.45,
 								fontFamily: theme.font.body,
 								fontSize: fs,
-								fontWeight: 600,
+								fontWeight: theme.weight.semibold,
 								fill: "#ffffff",
 							}),
 						],
@@ -313,23 +313,3 @@ export const beforeAfter = /* @__PURE__ */ defineComponent({
 		};
 	},
 });
-
-const round = (v: number) => Math.round(v * 1000) / 1000;
-
-/** The split keys' value at frame `f` (each segment eased by its end key). */
-function valueAt(keys: readonly KeyframeTuple[], f: number): number {
-	const first = keys[0] as KeyframeTuple;
-	if (f <= (first[0] as number)) return first[1] as number;
-	for (let i = 0; i < keys.length - 1; i++) {
-		const [f0, v0] = keys[i] as KeyframeTuple;
-		const [f1, v1, e] = keys[i + 1] as KeyframeTuple;
-		if (f >= (f0 as number) && f <= (f1 as number)) {
-			const t = evaluateEase(
-				e as string | undefined,
-				(f - (f0 as number)) / Math.max(1, (f1 as number) - (f0 as number)),
-			);
-			return (v0 as number) + ((v1 as number) - (v0 as number)) * t;
-		}
-	}
-	return keys[keys.length - 1]?.[1] as number;
-}

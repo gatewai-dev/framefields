@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { springTrack } from "../core/bake.js";
 import { bind } from "../core/contract.js";
 import { fakeHost } from "../test/fake-host.js";
-import { springTrack, toasts } from "./index.js";
+import { toasts } from "./index.js";
 
 describe("springTrack", () => {
 	it("springs to each target and lands on it", () => {

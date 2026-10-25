@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { contrastRatio, defineTheme, themeFrames, themes } from "./theme.js";
+import { contrastRatio } from "./color.js";
+import { defineTheme, themeFrames, themes } from "./theme.js";
 
 describe("theme", () => {
 	it("merges partials over graphite", () => {

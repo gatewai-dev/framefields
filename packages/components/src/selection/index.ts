@@ -5,7 +5,7 @@
  * covers.
  *
  * Coordinates are the frame's: the root covers the video (default
- * 1920 × 1080 × theme scale, or the given width / height) from 0, 0.
+ * the composition `canvas`, or the given width / height) from 0, 0.
  */
 import {
 	type KeyframeTuple,
@@ -14,10 +14,12 @@ import {
 } from "@framefields/compositions/program";
 import { z } from "zod";
 import { bakeSamples } from "../core/bake.js";
+import { withAlpha } from "../core/color.js";
 import { defineComponent } from "../core/contract.js";
 import type { Rect } from "../core/draw.js";
 import { evaluateEase } from "../core/ease.js";
 import type { Animatable } from "../core/host.js";
+import { round as roundTo } from "../core/keys.js";
 import type { Vec2 } from "../core/path.js";
 import { targetSchema } from "../core/schemas.js";
 import {
@@ -87,8 +89,8 @@ export const selection = /* @__PURE__ */ defineComponent({
 	build(ctx, props) {
 		const { host, theme, fps } = ctx;
 		const s = theme.scale;
-		const W = ctx.requested.width ?? 1920 * s;
-		const H = ctx.requested.height ?? 1080 * s;
+		const W = ctx.requested.width ?? ctx.canvas.width;
+		const H = ctx.requested.height ?? ctx.canvas.height;
 		const color = props.color ?? theme.color.accent;
 		const at0 = ctx.requested.at;
 		const drag = props.drag ?? props.pointer?.cues?.drags?.[0];
@@ -319,14 +321,4 @@ export const selection = /* @__PURE__ */ defineComponent({
 	},
 });
 
-const round = (v: number) => Math.round(v * 100) / 100;
-
-/** `#rrggbb` / `#rgb` at alpha `a`; other colours pass through. */
-function withAlpha(color: string, a: number): string {
-	const hex = color.trim().replace(/^#/, "");
-	const full =
-		hex.length === 3 ? hex.replace(/./g, (x) => x + x) : hex.slice(0, 6);
-	if (!/^[0-9a-f]{6}$/i.test(full)) return color;
-	const n = Number.parseInt(full, 16);
-	return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
-}
+const round = (v: number) => roundTo(v, 2);

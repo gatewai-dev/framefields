@@ -11,6 +11,7 @@ import {
 import { z } from "zod";
 import { defineComponent } from "../core/contract.js";
 import type { Animatable } from "../core/host.js";
+import { ascending, round, valueAt } from "../core/keys.js";
 import { themeFrames } from "../core/theme.js";
 
 export const WORD_TRANSITIONS = ["roll", "fade", "slide", "type"] as const;
@@ -338,30 +339,3 @@ export const wordCycle = /* @__PURE__ */ defineComponent({
 		};
 	},
 });
-
-const round = (v: number) => Math.round(v * 1000) / 1000;
-
-/** Later keys on a shared frame win; frames ascend. */
-function ascending(keys: KeyframeTuple[]): KeyframeTuple[] {
-	const byFrame = new Map<number, KeyframeTuple>();
-	for (const k of keys) byFrame.set(k[0] as number, k);
-	return [...byFrame.values()].sort(
-		(a, b) => (a[0] as number) - (b[0] as number),
-	);
-}
-
-/** A keyed track's value at `f` (linear between keys, `hold` steps). */
-function valueAt(keys: readonly KeyframeTuple[], f: number): number {
-	const first = keys[0] as KeyframeTuple;
-	if (f <= (first[0] as number)) return first[1] as number;
-	for (let i = 0; i < keys.length - 1; i++) {
-		const [f0, v0] = keys[i] as KeyframeTuple;
-		const [f1, v1, e] = keys[i + 1] as KeyframeTuple;
-		if (f >= (f0 as number) && f <= (f1 as number)) {
-			if (e === "hold") return f === f1 ? (v1 as number) : (v0 as number);
-			const t = (f - (f0 as number)) / ((f1 as number) - (f0 as number));
-			return (v0 as number) + ((v1 as number) - (v0 as number)) * t;
-		}
-	}
-	return keys[keys.length - 1]?.[1] as number;
-}

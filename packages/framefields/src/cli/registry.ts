@@ -22,6 +22,8 @@ export interface RegistryEntry {
 export interface RegistryItem extends RegistryEntry {
 	parts: readonly string[];
 	cues: readonly string[];
+	/** Fonts to install with it, by role (see `cli/fonts.ts`). */
+	fonts?: ReadonlyArray<{ font: string; why: string }>;
 	/** Paths relative to the components directory. */
 	files: Array<{ path: string; content: string }>;
 }

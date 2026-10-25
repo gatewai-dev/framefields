@@ -5,6 +5,7 @@
  * serialises as JSON.
  */
 import { z } from "zod";
+import { round } from "./keys.js";
 
 /** A track's spectrum and loudness per frame, every value 0–1. */
 export interface AudioLevels {
@@ -85,7 +86,6 @@ function percentile(values: readonly number[], p: number): number {
 
 const db = (v: number) => 20 * Math.log10(v + 1e-9);
 const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
-const round = (v: number) => Math.round(v * 1000) / 1000;
 
 /** Band edges in Hz, log-spaced. */
 export function bandEdges(

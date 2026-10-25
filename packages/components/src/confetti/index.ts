@@ -5,7 +5,7 @@
  * come straight from another component's cues.
  *
  * Coordinates are the frame's: the root covers the video (default
- * 1920 × 1080 × theme scale, or the given width / height) from 0, 0.
+ * the composition `canvas`, or the given width / height) from 0, 0.
  */
 import type { LayoutNode } from "@framefields/compositions/program";
 import { z } from "zod";
@@ -57,8 +57,8 @@ export const confetti = /* @__PURE__ */ defineComponent({
 	build(ctx, props) {
 		const { host, theme, fps } = ctx;
 		const s = theme.scale;
-		const W = ctx.requested.width ?? 1920 * s;
-		const H = ctx.requested.height ?? 1080 * s;
+		const W = ctx.requested.width ?? ctx.canvas.width;
+		const H = ctx.requested.height ?? ctx.canvas.height;
 		const c = theme.color;
 		const palette = props.palette ?? [
 			c.accent,

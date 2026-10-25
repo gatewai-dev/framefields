@@ -8,7 +8,7 @@
  * between extremes), so a loop costs a few keys per axis.
  *
  * Coordinates are the frame's: the root covers the video (default
- * 1920 × 1080 × theme scale, or the given width / height) from 0, 0.
+ * the composition `canvas`, or the given width / height) from 0, 0.
  */
 import {
 	type KeyframeTuple,
@@ -16,8 +16,10 @@ import {
 	type LayoutNode,
 } from "@framefields/compositions/program";
 import { z } from "zod";
+import { transparent } from "../core/color.js";
 import { defineComponent } from "../core/contract.js";
 import type { Animatable } from "../core/host.js";
+import { round } from "../core/keys.js";
 
 export const BACKDROP_KINDS = ["mesh", "grid", "dots", "solid"] as const;
 export type BackdropKind = (typeof BACKDROP_KINDS)[number];
@@ -58,8 +60,8 @@ export const backdrop = /* @__PURE__ */ defineComponent({
 	build(ctx, props) {
 		const { host, theme, fps } = ctx;
 		const s = theme.scale;
-		const W = ctx.requested.width ?? 1920 * s;
-		const H = ctx.requested.height ?? 1080 * s;
+		const W = ctx.requested.width ?? ctx.canvas.width;
+		const H = ctx.requested.height ?? ctx.canvas.height;
 		const c = theme.color;
 		const loop = props.loop ?? fps * 10;
 		const colors = props.colors ?? [c.accent, c.accent2, c.highlight];
@@ -310,23 +312,6 @@ export const backdrop = /* @__PURE__ */ defineComponent({
 		};
 	},
 });
-
-const round = (v: number) => Math.round(v * 1000) / 1000;
-
-/** `#rrggbb` / `#rgb` at alpha 0 (same hue, so the fade has no dark fringe). */
-function transparent(color: string): string {
-	const hex = color.trim().replace(/^#/, "");
-	const full =
-		hex.length === 3
-			? hex
-					.split("")
-					.map((h) => h + h)
-					.join("")
-			: hex.slice(0, 6);
-	if (!/^[0-9a-f]{6}$/i.test(full)) return "rgba(0,0,0,0)";
-	const n = Number.parseInt(full, 16);
-	return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},0)`;
-}
 
 /**
  * Keys for `centre + amplitude × cos(2π · cycles · f / loop + phase)` over

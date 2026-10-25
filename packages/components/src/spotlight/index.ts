@@ -4,7 +4,7 @@
  * target rects; a `"full"` step lifts the dim.
  *
  * Coordinates are the frame's: the root covers the video (default
- * 1920 × 1080 × theme scale, or the given width / height) from 0, 0.
+ * the composition `canvas`, or the given width / height) from 0, 0.
  */
 import {
 	type KeyframeTuple,
@@ -16,6 +16,7 @@ import { bakeSamples } from "../core/bake.js";
 import { defineComponent } from "../core/contract.js";
 import type { Rect } from "../core/draw.js";
 import type { Animatable } from "../core/host.js";
+import { supersede } from "../core/keys.js";
 import { targetSchema } from "../core/schemas.js";
 import { boundsOf, resolveTarget } from "../core/targets.js";
 import { themeFrames } from "../core/theme.js";
@@ -58,8 +59,8 @@ export const spotlight = /* @__PURE__ */ defineComponent({
 	build(ctx, props) {
 		const { host, theme, fps } = ctx;
 		const s = theme.scale;
-		const W = ctx.requested.width ?? 1920 * s;
-		const H = ctx.requested.height ?? 1080 * s;
+		const W = ctx.requested.width ?? ctx.canvas.width;
+		const H = ctx.requested.height ?? ctx.canvas.height;
 		const glide =
 			props.glide ?? Math.round(themeFrames(theme, "base", fps) * 1.6);
 		const ease = theme.motion.ease.move;
@@ -170,10 +171,10 @@ export const spotlight = /* @__PURE__ */ defineComponent({
 		});
 		hole.animate(
 			LayerAnimation.create()
-				.keys("x", ascending(keys.x))
-				.keys("y", ascending(keys.y))
-				.keys("width", ascending(keys.width))
-				.keys("height", ascending(keys.height)),
+				.keys("x", track(keys.x))
+				.keys("y", track(keys.y))
+				.keys("width", track(keys.width))
+				.keys("height", track(keys.height)),
 		);
 		const shade = host.box({
 			id: ctx.partId("dim"),
@@ -185,7 +186,7 @@ export const spotlight = /* @__PURE__ */ defineComponent({
 			background: props.color,
 			opacity: 0,
 		});
-		shade.animate(LayerAnimation.keys("opacity", ascending(dimKeys)));
+		shade.animate(LayerAnimation.keys("opacity", track(dimKeys)));
 		host.matte(shade, hole, "alpha-inverted");
 		const parts: Record<string, Animatable<LayoutNode>> = { dim: shade, hole };
 
@@ -203,12 +204,6 @@ export const spotlight = /* @__PURE__ */ defineComponent({
 	},
 });
 
-function ascending(keys: KeyframeTuple[]): KeyframeTuple[] {
-	const out: KeyframeTuple[] = [];
-	for (const k of keys) {
-		while (out.length > 0 && (out[out.length - 1] as KeyframeTuple)[0] >= k[0])
-			out.pop();
-		out.push(k);
-	}
-	return out.length > 0 ? out : [[0, 0]];
-}
+/** Retargeting keys, or a single 0 key when nothing was keyed. */
+const track = (keys: KeyframeTuple[]): KeyframeTuple[] =>
+	keys.length > 0 ? supersede(keys) : [[0, 0]];

@@ -20,6 +20,8 @@ import {
 import { z } from "zod";
 import { defineComponent } from "../core/contract.js";
 import type { Animatable } from "../core/host.js";
+import { ascending, round } from "../core/keys.js";
+import { elevate, surfaceFill } from "../core/surface.js";
 import { themeFrames } from "../core/theme.js";
 
 export interface CardStackCues {
@@ -313,6 +315,8 @@ export const cardStack = /* @__PURE__ */ defineComponent({
 				height: ch,
 				anchorX: 0.5,
 				anchorY: 0,
+				// Blur only shows on fast moves: the card leaving, not the step forward.
+				motionBlurShutter: 60,
 				children: [clip],
 			});
 			const anim = LayerAnimation.create()
@@ -326,15 +330,7 @@ export const cardStack = /* @__PURE__ */ defineComponent({
 			if (tracks.rotateX.some((k) => k[1] !== 0))
 				anim.keys("rotateX", ascending(tracks.rotateX));
 			node.animate(anim);
-			host.style(node, {
-				dropShadow: {
-					color: "#000000",
-					opacity: 0.35,
-					angle: 90,
-					distance: 12 * s,
-					size: 34 * s,
-				},
-			});
+			elevate(host, node, theme, "mid");
 			parts[`card-${c}`] = node;
 			parts[`card-${c}-clip`] = clip;
 			nodes.push(node);
@@ -372,22 +368,11 @@ export const cardStack = /* @__PURE__ */ defineComponent({
 	},
 });
 
-const round = (v: number) => Math.round(v * 1000) / 1000;
-
 const isSimple = (card: unknown): card is SimpleCard =>
 	typeof card === "object" &&
 	card !== null &&
 	"title" in card &&
 	!("kind" in card);
-
-/** Later keys on a shared frame win; frames ascend. */
-function ascending(keys: KeyframeTuple[]): KeyframeTuple[] {
-	const byFrame = new Map<number, KeyframeTuple>();
-	for (const k of keys) byFrame.set(k[0] as number, k);
-	return [...byFrame.values()].sort(
-		(a, b) => (a[0] as number) - (b[0] as number),
-	);
-}
 
 /** A card drawn from the theme: optional image on top, title, body, accent bar. */
 function simpleCard(
@@ -433,7 +418,7 @@ function simpleCard(
 			width: w - pad * 2,
 			fontFamily: theme.font.display,
 			fontSize: 40 * s,
-			fontWeight: 700,
+			fontWeight: theme.weight.bold,
 			fill: theme.color.ink,
 		}),
 	);
@@ -457,7 +442,7 @@ function simpleCard(
 		y: 0,
 		width: w,
 		height: h,
-		background: theme.color.raised,
+		background: surfaceFill(theme.color.raised, theme),
 		borderRadius: theme.radius.lg,
 		borderColor: theme.color.line,
 		borderWidth: Math.max(1, s),

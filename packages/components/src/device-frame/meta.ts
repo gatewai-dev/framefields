@@ -25,6 +25,7 @@ export default defineMeta({
 		"base",
 		"shadow",
 		"tilt",
+		"overlay",
 	],
 	cues: [],
 	example: `DeviceFrame({ device: "phone", content: "assets/app.mp4" })`,

@@ -14,7 +14,6 @@ import { z } from "zod";
 import { defineComponent } from "../core/contract.js";
 import type { Animatable } from "../core/host.js";
 import type { Vec2 } from "../core/path.js";
-import { contrastRatio } from "../core/theme.js";
 
 const KINDS = ["window", "browser", "terminal", "minimal"] as const;
 export type AppFrameKind = (typeof KINDS)[number];
@@ -122,8 +121,7 @@ export const appFrame = /* @__PURE__ */ defineComponent({
 		const height = ctx.requested.height ?? 900 * s;
 		const dark =
 			props.appearance === "dark" ||
-			(props.appearance === undefined &&
-				(contrastRatio(theme.color.bg, "#000000") ?? 1) < 4);
+			(props.appearance === undefined && theme.mode === "dark");
 		const pal = dark ? PALETTES.dark : PALETTES.light;
 		const radius = props.radius ?? 14 * s;
 		const hasTabs = props.kind === "browser" && (props.tabs?.length ?? 0) > 0;
@@ -228,7 +226,7 @@ export const appFrame = /* @__PURE__ */ defineComponent({
 						align: "center",
 						fontFamily: props.kind === "terminal" ? theme.font.mono : font,
 						fontSize: 13 * s,
-						fontWeight: 500,
+						fontWeight: theme.weight.medium,
 						fill: pal.muted,
 					}),
 				);
@@ -404,7 +402,7 @@ function tabStrip(
 		const m = host.measure(label, {
 			fontFamily: o.font,
 			fontSize,
-			fontWeight: 500,
+			fontWeight: ctx.theme.weight.medium,
 		});
 		const w = Math.min(240 * o.s, Math.max(120 * o.s, m.width + 40 * o.s));
 		out.push(
@@ -426,7 +424,7 @@ function tabStrip(
 						width: w - 28 * o.s,
 						fontFamily: o.font,
 						fontSize,
-						fontWeight: 500,
+						fontWeight: ctx.theme.weight.medium,
 						fill: active ? o.pal.text : o.pal.muted,
 					}),
 				],

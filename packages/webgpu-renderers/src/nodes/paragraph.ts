@@ -141,9 +141,11 @@ function getOrCreateEmojiTexture(
 		typeof globalThis.document === "undefined";
 
 	if (isNode) {
-		console.warn(
-			`[getOrCreateEmojiTexture] Emoji "${char}" not preloaded. Returning fallback dummy texture.`,
-		);
+		// With no emoji font at all, the preloader has already said so once.
+		if (SlugFontCache.hasEmojiFont())
+			console.warn(
+				`[getOrCreateEmojiTexture] Emoji "${char}" not preloaded. Returning fallback dummy texture.`,
+			);
 		tex = device.createTexture({
 			label: `Emoji-Dummy-${char}`,
 			size: [1, 1],

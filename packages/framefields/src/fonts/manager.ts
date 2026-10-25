@@ -102,7 +102,12 @@ async function resolveSourceBuffer(
 
 	if (cleanPath.startsWith("file://")) {
 		try {
-			cleanPath = new URL(cleanPath).pathname;
+			// A URL path is percent-encoded ("My%20Film"); files aren't. On
+			// Windows "/C:/…" loses its leading slash.
+			cleanPath = decodeURIComponent(new URL(cleanPath).pathname).replace(
+				/^\/([A-Za-z]:)/,
+				"$1",
+			);
 		} catch {
 			cleanPath = cleanPath.replace(/^file:\/\//, "");
 		}
@@ -250,6 +255,11 @@ export class FontManager {
 			filePath ?? (typeof source === "string" ? source : "Uint8Array");
 		validateFontBinaryHeader(buffer, label);
 		SlugFontCache.setEmojiFont(buffer, filePath);
+	}
+
+	/** Whether a color emoji font is registered (or set to load from a path / URL). */
+	public static hasEmojiFont(): boolean {
+		return SlugFontCache.hasEmojiFont();
 	}
 
 	/**

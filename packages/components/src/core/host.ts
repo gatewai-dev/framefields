@@ -38,9 +38,13 @@ export interface LayerStyleConfig {
 	innerShadow?: {
 		color?: string;
 		opacity?: number;
+		/** Degrees, as for drop shadows: 90 shades the bottom inside edge, 270 the top. */
 		angle?: number;
 		distance?: number;
 		size?: number;
+		choke?: number;
+		/** Default `"multiply"` (a light color then does nothing: use `"normal"` or `"screen"`). */
+		blendMode?: string;
 	};
 	stroke?: {
 		size?: number;

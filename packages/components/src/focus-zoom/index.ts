@@ -111,9 +111,9 @@ export const focusZoom = /* @__PURE__ */ defineComponent({
 	}),
 	defaults: { enter: false, exit: false },
 	build(ctx, props) {
-		const { host, theme, fps } = ctx;
-		const W = ctx.requested.width ?? 1920 * theme.scale;
-		const H = ctx.requested.height ?? 1080 * theme.scale;
+		const { host, fps } = ctx;
+		const W = ctx.requested.width ?? ctx.canvas.width;
+		const H = ctx.requested.height ?? ctx.canvas.height;
 		// By default the push starts early enough to run at its natural pace.
 		const lead =
 			props.lead ?? Math.round((0.55 + 0.75 * props.smoothing) * fps) + 2;

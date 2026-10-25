@@ -1,8 +1,8 @@
 /**
  * ChatThread: a messaging conversation. Bubbles arrive from either side
  * with a spring, the other side types first (three bouncing dots), and the
- * thread scrolls to keep the newest message in view. Names, timestamps,
- * reactions and images included.
+ * thread scrolls to keep the newest message in view. Names, avatars,
+ * timestamps, reactions and images included.
  */
 import {
 	type KeyframeTuple,
@@ -49,6 +49,8 @@ function messageSchema() {
 }
 
 const SPRING = { stiffness: 260, damping: 20 };
+/** Livelier, for reactions. */
+const POP = { stiffness: 320, damping: 14 };
 
 export const chatThread = /* @__PURE__ */ defineComponent({
 	name: "ChatThread",
@@ -61,10 +63,20 @@ export const chatThread = /* @__PURE__ */ defineComponent({
 			.record(
 				z.string(),
 				z
-					.object({ name: z.string().optional(), color: z.string().optional() })
+					.object({
+						name: z.string().optional(),
+						color: z.string().optional(),
+						/** A picture (path or URL); without one the avatar shows initials. */
+						avatar: z.string().optional(),
+					})
 					.strict(),
 			)
 			.default({}),
+		/**
+		 * Avatars beside each run of bubbles, at its newest one. Default:
+		 * `"others"` when any participant has an `avatar`, else `"none"`.
+		 */
+		avatars: z.enum(["others", "everyone", "none"]).optional(),
 		/** Names above the first bubble of each run (default: when more than two people talk). */
 		names: z.boolean().optional(),
 		/** Others type before they send. */
@@ -85,10 +97,24 @@ export const chatThread = /* @__PURE__ */ defineComponent({
 		const me = props.me ?? props.messages[0]?.from ?? "me";
 		const senders = [...new Set(props.messages.map((m) => m.from))];
 		const showNames = props.names ?? senders.length > 2;
+		const avatars =
+			props.avatars ??
+			(Object.values(props.participants).some((p) => p.avatar)
+				? "others"
+				: "none");
+		const hasAvatar = (from: string) =>
+			avatars === "everyone" || (avatars === "others" && from !== me);
 		const pad = fs * 0.8;
 		const padX = fs * 0.62;
 		const padY = fs * 0.42;
-		const maxW = W * 0.74;
+		const avatarSize = fs * 1.5;
+		// Bubbles on a side with avatars move in by this much.
+		const inset = (from: string) =>
+			hasAvatar(from) ? avatarSize + fs * 0.3 : 0;
+		const maxW = Math.min(
+			W * 0.74,
+			W - pad * 2 - Math.max(...senders.map(inset)),
+		);
 		const radius = fs * 0.9;
 		const smallFs = fs * 0.62;
 
@@ -149,6 +175,8 @@ export const chatThread = /* @__PURE__ */ defineComponent({
 			const right = m.from === me;
 			const newRun = !prev || prev.from !== m.from;
 			if (prev) y += newRun ? fs * 0.75 : fs * 0.22;
+			// A reaction sits on the bubble's top corner; leave it room.
+			if (prev && m.reaction) y += fs * 0.5;
 			let nameY: number | undefined;
 			if (showNames && newRun && !right) {
 				nameY = y;
@@ -196,21 +224,20 @@ export const chatThread = /* @__PURE__ */ defineComponent({
 			from === me && !props.participants[from]?.color
 				? "#ffffff"
 				: theme.color.ink;
-		const entry = (node: Animatable<LayoutNode>, at: number, baseY: number) =>
-			node.animate(
-				LayerAnimation.create()
-					.keys("scale", springKeys(at, 0.6, 1, fps, SPRING))
-					.keys("y", springKeys(at, baseY + fs * 0.5, baseY, fps, SPRING))
-					.keys("opacity", [
-						[at, 0],
-						[at + Math.max(2, Math.round(fps * 0.12)), 1, "power2.out"],
-					]),
-			);
+		const fade = Math.max(2, Math.round(fps * 0.12));
+		// The typing bubble: three dots in a pill, where the message will land.
+		const dot = fs * 0.24;
+		const typingW = dot * 3 + dot * 1.1 * 2 + padX * 2;
+		const typingH = Math.max(fs + padY * 2 - fs * 0.3, dot + padY * 2);
+		const typingOf = (index: number) =>
+			typingWindows.find((w) => w.index === index);
 
 		slots.forEach((slot) => {
 			const m = props.messages[slot.index] as (typeof props.messages)[number];
 			const at = landed[slot.index] as number;
-			const x = slot.right ? W - pad - slot.width : pad;
+			const x = slot.right
+				? W - pad - inset(m.from) - slot.width
+				: pad + inset(m.from);
 			const children: LayoutNode[] = [];
 			if (m.image) {
 				children.push(
@@ -237,19 +264,39 @@ export const chatThread = /* @__PURE__ */ defineComponent({
 					}),
 				);
 			}
-			if (m.text)
-				children.push(
-					host.text(m.text, {
-						id: ctx.partId(`text-${slot.index}`),
-						position: "absolute",
-						x: padX,
-						y: slot.imageH + padY,
-						width: slot.width - padX * 2 + 1,
-						fontFamily,
-						fontSize: fs,
-						fill: ink(m.from),
-					}),
+			const typed = typingOf(slot.index);
+			// A typed text reply grows out of its typing bubble: same place,
+			// same colour, so the dots become the message.
+			const morph = typed !== undefined && !m.image;
+			if (m.text) {
+				const ty = slot.imageH + padY;
+				const text = host.text(m.text, {
+					id: ctx.partId(`text-${slot.index}`),
+					position: "absolute",
+					x: padX,
+					y: ty,
+					width: slot.width - padX * 2 + 1,
+					fontFamily,
+					fontSize: fs,
+					fill: ink(m.from),
+				});
+				// The words settle in just after their bubble opens.
+				const t0 = at + (morph ? Math.round(fps * 0.12) : 1);
+				text.animate(
+					LayerAnimation.create()
+						.keys("opacity", [
+							[0, 0],
+							[t0, 0],
+							[t0 + fade, 1, "power2.out"],
+						])
+						.keys("y", [
+							[0, ty + fs * 0.2],
+							[t0, ty + fs * 0.2],
+							[t0 + Math.round(fps * 0.3), ty, "power3.out"],
+						]),
 				);
+				children.push(text);
+			}
 			const bubble = host.box({
 				id: ctx.partId(`bubble-${slot.index}`),
 				position: "absolute",
@@ -264,7 +311,34 @@ export const chatThread = /* @__PURE__ */ defineComponent({
 				anchorY: 1,
 				children,
 			});
-			entry(bubble, at, slot.y);
+			if (morph)
+				bubble.animate(
+					LayerAnimation.create()
+						.keys("width", springKeys(at, typingW, slot.width, fps, SPRING))
+						.keys("height", springKeys(at, typingH, slot.height, fps, SPRING))
+						.keys(
+							"borderRadius",
+							springKeys(at, typingH / 2, radius, fps, SPRING),
+						)
+						.keys("opacity", [
+							[0, 0],
+							[at, 1, "hold"],
+						]),
+				);
+			else {
+				// Sent bubbles rise from below, as if from the compose field;
+				// received ones pop from their corner.
+				const [scale, lift] = slot.right ? [0.86, fs * 1.1] : [0.6, fs * 0.5];
+				bubble.animate(
+					LayerAnimation.create()
+						.keys("scale", springKeys(at, scale, 1, fps, SPRING))
+						.keys("y", springKeys(at, slot.y + lift, slot.y, fps, SPRING))
+						.keys("opacity", [
+							[at, 0],
+							[at + fade, 1, "power2.out"],
+						]),
+				);
+			}
 			content.push(bubble);
 			parts[`bubble-${slot.index}`] = bubble;
 
@@ -274,6 +348,7 @@ export const chatThread = /* @__PURE__ */ defineComponent({
 				size: number,
 				tx: number,
 				ty: number,
+				from = at,
 			) => {
 				const node = host.text(text, {
 					id: ctx.partId(id),
@@ -287,8 +362,8 @@ export const chatThread = /* @__PURE__ */ defineComponent({
 				node.animate(
 					LayerAnimation.keys("opacity", [
 						[0, 0],
-						[at, 0],
-						[at + Math.round(fps * 0.25), 1, "power2.out"],
+						[from, 0],
+						[from + Math.round(fps * 0.25), 1, "power2.out"],
 					]),
 				);
 				content.push(node);
@@ -300,6 +375,8 @@ export const chatThread = /* @__PURE__ */ defineComponent({
 					smallFs,
 					x + padX * 0.5,
 					slot.nameY,
+					// With the run's typing dots, when it starts with them.
+					typed?.frame ?? at,
 				);
 			if (slot.timeY !== undefined && m.time) {
 				const tw = measure(m.time, smallFs * 0.9).width;
@@ -312,53 +389,58 @@ export const chatThread = /* @__PURE__ */ defineComponent({
 				);
 			}
 			if (m.reaction) {
-				// Hearts are drawn (most fonts have no emoji); anything else is text.
+				// Hearts are drawn, so they show without an emoji font; anything
+				// else is text (emoji need one registered).
 				const heart = /^(❤️?|♥️?|heart)$/u.test(m.reaction.trim());
-				const rm = measure(heart ? "M" : m.reaction, fs * 0.7);
-				const rh = rm.height + fs * 0.16;
-				const rw = heart ? rh * 1.3 : rm.width + fs * 0.5;
+				const rfs = fs * 0.9;
+				const rm = measure(m.reaction, rfs);
+				const rh = fs * 1.5;
+				const rw = heart ? rh : Math.max(rh, rm.width + fs * 0.6);
 				const rAt = at + Math.round(fps * 0.6);
+				const border = Math.max(2, fs * 0.1);
+				const hs = rh * 0.46;
+				// On the outer top corner, like a tapback.
 				const pill = host.box({
 					id: ctx.partId(`reaction-${slot.index}`),
 					position: "absolute",
-					x: slot.right ? x - rw * 0.35 : x + slot.width - rw * 0.65,
-					y: slot.y + slot.height - rh * 0.45,
+					x: slot.right ? x - rw * 0.45 : x + slot.width - rw * 0.55,
+					y: slot.y - rh * 0.6,
 					width: rw,
 					height: rh,
-					background: theme.color.surface,
+					background: theme.color.raised,
 					borderRadius: rh / 2,
 					borderColor: theme.color.bg,
-					borderWidth: Math.max(2, fs * 0.08),
+					borderWidth: border,
+					anchorX: 0.5,
+					anchorY: 1,
 					children: [
 						heart
 							? host.shape("path", {
 									id: ctx.partId(`reaction-${slot.index}-heart`),
 									position: "absolute",
-									x: (rw - rh * 0.56) / 2,
-									y: rh * 0.24,
-									width: rh * 0.56,
-									height: rh * 0.52,
-									d: heartPath(rh * 0.56),
+									x: (rw - hs) / 2,
+									y: (rh - hs * 0.92) / 2 + hs * 0.04,
+									width: hs,
+									height: hs * 0.92,
+									d: heartPath(hs),
 									fillType: "solid",
 									fillColor: theme.color.negative,
 								})
 							: host.text(m.reaction, {
 									id: ctx.partId(`reaction-${slot.index}-text`),
 									position: "absolute",
-									x: fs * 0.25,
-									y: fs * 0.08,
+									x: (rw - rm.width) / 2,
+									y: (rh - rm.height) / 2,
 									fontFamily,
-									fontSize: fs * 0.7,
+									fontSize: rfs,
 									fill: theme.color.ink,
 								}),
 					],
 				});
 				pill.animate(
 					LayerAnimation.create()
-						.keys(
-							"scale",
-							springKeys(rAt, 0, 1, fps, { stiffness: 320, damping: 14 }),
-						)
+						.keys("scale", springKeys(rAt, 0, 1, fps, POP))
+						.keys("rotation", springKeys(rAt, -24, 0, fps, POP))
 						.keys("opacity", [
 							[0, 0],
 							[rAt, 1, "hold"],
@@ -369,11 +451,10 @@ export const chatThread = /* @__PURE__ */ defineComponent({
 		});
 
 		// Typing indicators sit where the message will land.
-		const dot = fs * 0.24;
 		typingWindows.forEach((w, k) => {
 			const slot = slots[w.index] as Slot;
-			const bw = dot * 3 + dot * 1.1 * 2 + padX * 2;
-			const bh = Math.max(fs + padY * 2 - fs * 0.3, dot + padY * 2);
+			const bw = typingW;
+			const bh = typingH;
 			const dots: LayoutNode[] = [0, 1, 2].map((d) => {
 				const node = host.box({
 					id: ctx.partId(`typing-${k}-dot-${d}`),
@@ -388,11 +469,12 @@ export const chatThread = /* @__PURE__ */ defineComponent({
 				// A wave through the dots, one bounce every 0.6 s.
 				const period = Math.round(fps * 0.6);
 				const keys: KeyframeTuple[] = [[0, (bh - dot) / 2]];
+				const glow: KeyframeTuple[] = [[0, 0.45]];
 				for (
 					let f = w.frame + d * Math.round(period / 5);
 					f < w.end;
 					f += period
-				)
+				) {
 					keys.push(
 						[f, (bh - dot) / 2],
 						[
@@ -402,13 +484,24 @@ export const chatThread = /* @__PURE__ */ defineComponent({
 						],
 						[f + Math.round(period / 2), (bh - dot) / 2, "sine.in"],
 					);
-				node.animate(LayerAnimation.keys("y", ascending(keys)));
+					// Each dot brightens at the top of its bounce.
+					glow.push(
+						[f, 0.45],
+						[f + Math.round(period / 4), 1, "sine.out"],
+						[f + Math.round(period / 2), 0.45, "sine.in"],
+					);
+				}
+				node.animate(
+					LayerAnimation.create()
+						.keys("y", ascending(keys))
+						.keys("opacity", ascending(glow)),
+				);
 				return node;
 			});
 			const bubble = host.box({
 				id: ctx.partId(`typing-${k}`),
 				position: "absolute",
-				x: pad,
+				x: pad + inset(w.from),
 				y: slot.y,
 				width: bw,
 				height: bh,
@@ -428,6 +521,115 @@ export const chatThread = /* @__PURE__ */ defineComponent({
 					]),
 			);
 			content.push(bubble);
+		});
+
+		const avatar = (
+			from: string,
+			id: string,
+			x: number,
+			y: number,
+		): Animatable<LayoutNode> => {
+			const p = props.participants[from];
+			const size = avatarSize;
+			const base = {
+				id: ctx.partId(id),
+				position: "absolute" as const,
+				x,
+				y,
+				width: size,
+				height: size,
+				borderRadius: size / 2,
+				anchorX: 0.5,
+				anchorY: 1,
+			};
+			if (p?.avatar)
+				return host.box({
+					...base,
+					overflow: "hidden",
+					background: theme.color.raised,
+					children: [
+						host.media(p.avatar, {
+							id: ctx.partId(`${id}-image`),
+							position: "absolute",
+							x: 0,
+							y: 0,
+							width: size,
+							height: size,
+							fit: "cover",
+						}),
+					],
+				});
+			const letters = initials(p?.name ?? from);
+			const ifs = size * (letters.length > 1 ? 0.38 : 0.44);
+			const m = host.measure(letters, {
+				fontFamily,
+				fontSize: ifs,
+				fontWeight: 600,
+			});
+			return host.box({
+				...base,
+				background: colorOf(from),
+				children: [
+					host.text(letters, {
+						id: ctx.partId(`${id}-initials`),
+						position: "absolute",
+						x: (size - m.width) / 2,
+						y: (size - m.height) / 2,
+						fontFamily,
+						fontSize: ifs,
+						fontWeight: 600,
+						fill: ink(from),
+					}),
+				],
+			});
+		};
+
+		// One avatar per run of bubbles: it arrives with the run's typing dots
+		// or first bubble and moves down to each newer bubble, iMessage style.
+		const runs: number[][] = [];
+		props.messages.forEach((m, i) => {
+			const run = runs[runs.length - 1];
+			if (run && props.messages[run[0] as number]?.from === m.from) run.push(i);
+			else runs.push([i]);
+		});
+		runs.forEach((run) => {
+			const from = props.messages[run[0] as number]?.from ?? "";
+			if (!hasAvatar(from)) return;
+			const r = run[0] as number;
+			const stops: Array<[number, number]> = [];
+			for (const i of run) {
+				const slot = slots[i] as Slot;
+				const w = typingWindows.find((tw) => tw.index === i);
+				if (w) stops.push([w.frame, slot.y + typingH - avatarSize]);
+				stops.push([landed[i] as number, slot.y + slot.height - avatarSize]);
+			}
+			const [start, startY] = stops[0] as [number, number];
+			// Same spring as the bubbles, so it stays level with their bottoms.
+			const y: KeyframeTuple[] = [[0, startY]];
+			let current = startY;
+			for (const [f, to] of stops.slice(1)) {
+				if (to === current) continue;
+				y.push(...springKeys(f, current, to, fps, SPRING));
+				current = to;
+			}
+			const node = avatar(
+				from,
+				`avatar-${r}`,
+				from === me ? W - pad - avatarSize : pad,
+				startY,
+			);
+			node.animate(
+				LayerAnimation.create()
+					.keys("y", ascending(y))
+					.keys("scale", springKeys(start, 0.4, 1, fps, SPRING))
+					.keys("opacity", [
+						[0, 0],
+						[start, 0],
+						[start + Math.max(2, Math.round(fps * 0.12)), 1, "power2.out"],
+					]),
+			);
+			content.push(node);
+			parts[`avatar-${r}`] = node;
 		});
 
 		// ── Scroll: keep the newest bubble (or typing dots) in view ───────
@@ -498,6 +700,15 @@ export const chatThread = /* @__PURE__ */ defineComponent({
 		};
 	},
 });
+
+/** "Ana Lima" → "AL", "kai" → "K". */
+function initials(name: string): string {
+	const words = name.trim().split(/\s+/u).filter(Boolean);
+	const first = (w: string | undefined) => [...(w ?? "")][0] ?? "";
+	return (
+		first(words[0]) + (words.length > 1 ? first(words[words.length - 1]) : "")
+	).toUpperCase();
+}
 
 /** A heart `size` wide, top-left at 0, 0 (two lobes and a point). */
 function heartPath(size: number): string {

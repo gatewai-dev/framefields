@@ -71,6 +71,17 @@ interface ShapeOptions {
 const EMOJI_REGEX =
 	/(\p{Extended_Pictographic}|\p{Emoji_Presentation}|[☀-➿])/u;
 
+/**
+ * The emoji in `text`, one per grapheme, as layout draws them: "❤️" keeps
+ * its variation selector, "👍🏽" its skin tone. Preloading uses these, so its
+ * textures are the ones drawing looks up.
+ */
+export function emojiGraphemes(text: string): string[] {
+	return segmentGraphemes(text)
+		.map((g) => g.text)
+		.filter((g) => EMOJI_REGEX.test(g));
+}
+
 /** Characters that make bidi analysis necessary (RTL letters and explicit RTL controls). */
 const RTL_REGEX = /[֐-ࣿיִ-﷿ﹰ-﻿‏‫‮⁧\u{10800}-\u{10FFF}\u{1E800}-\u{1EFFF}]/u;
 

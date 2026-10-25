@@ -1992,7 +1992,10 @@ export function drawParagraphNode(
 			emoji.size,
 		);
 
-		const localEmojiSize = emoji.size * 1.5;
+		// Layout gives an emoji a 1 em advance. Noto-style bitmaps carry about
+		// 13 % padding, so a 1.15 em square puts the ink on that advance
+		// instead of over its neighbours.
+		const localEmojiSize = emoji.size * 1.15;
 		const offsetAdjustment = (localEmojiSize - emoji.size) / 2;
 
 		const emojiDstRect = {

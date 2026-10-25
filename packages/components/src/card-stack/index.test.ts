@@ -74,4 +74,63 @@ describe("CardStack", () => {
 		);
 		expect(st.cues.changes.map((c) => c.index)).toEqual([1, 2, 3]);
 	});
+
+	it("shows the next card whole as soon as the front one starts leaving", () => {
+		const st = make()({ id: "s", cards, every: 40, tilt: false });
+		const clip = find(st, "s-card-1-clip");
+		const strip = valueAt(clip, "height", 0) as number;
+		expect(strip).toBeLessThan(60);
+		// Whole (the card's height) from the frame after the move starts.
+		expect(valueAt(clip, "height", 41)).toBe(400);
+		expect(valueAt(clip, "height", 60)).toBe(400);
+	});
+
+	it("leaves by flying, dropping, zooming or flipping", () => {
+		const at = (leave: "fly" | "drop" | "zoom" | "flip", prop: string) => {
+			const st = make()({ id: "s", cards, every: 40, tilt: false, leave });
+			const card = find(st, "s-card-0");
+			const y0 = valueAt(card, prop, 0) as number;
+			const keys =
+				card?.animation?.tracks.find((t) => t.prop === prop)?.keyframes ?? [];
+			// The furthest it gets from rest during its exit.
+			return Math.max(
+				...keys
+					.filter((k) => k.frame > 40 && k.frame < 80)
+					.map((k) => k.value - y0),
+			);
+		};
+		expect(at("drop", "y")).toBeGreaterThan(100);
+		expect(at("zoom", "scale")).toBeGreaterThan(0.15);
+		expect(at("flip", "rotateX")).toBeGreaterThan(80);
+		expect(at("fly", "x")).toBeLessThanOrEqual(0); // flies left
+	});
+
+	it("fans out into a hand and gathers again", () => {
+		const st = make()({ id: "s", cards, mode: "fan", every: 40, tilt: false });
+		expect(st.cues.changes.map((c) => c.frame)).toEqual([40, 80]);
+		const spread = 75;
+		const xs = cards.map(
+			(_, c) => valueAt(find(st, `s-card-${c}`), "x", spread) as number,
+		);
+		for (let c = 1; c < xs.length; c++)
+			expect(xs[c]).toBeGreaterThan(xs[c - 1] as number);
+		const rot = (c: number, f: number) =>
+			valueAt(find(st, `s-card-${c}`), "rotation", f) as number;
+		expect(rot(0, spread)).toBeLessThan(0);
+		expect(rot(3, spread)).toBeGreaterThan(0);
+		// Every card shows in the fan, even past `visible`.
+		const many = make()({
+			id: "m",
+			cards: [...cards, ...cards],
+			mode: "fan",
+			every: 40,
+			visible: 2,
+		});
+		expect(valueAt(find(many, "m-card-7"), "opacity", 79)).toBe(1);
+		// Gathered: back to the stack.
+		expect(valueAt(find(st, "s-card-2"), "x", 200)).toBe(
+			valueAt(find(st, "s-card-2"), "x", 0) ?? xs[2],
+		);
+		expect(rot(3, 200)).toBe(0);
+	});
 });

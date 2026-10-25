@@ -1,9 +1,7 @@
 import type { VirtualMediaData } from "@framefields/core";
-import { SlugFontCache } from "@framefields/webgpu-renderers";
+import { emojiGraphemes, SlugFontCache } from "@framefields/webgpu-renderers";
 import { fontSource, fontUrl } from "./font-source.js";
 import { preloadFont } from "./utils.js";
-
-const EMOJI_REGEX = /\p{Extended_Pictographic}/gu;
 
 type Device = Parameters<typeof SlugFontCache.preloadSlugFont>[0];
 
@@ -33,9 +31,10 @@ export async function preloadCompositionFonts(
 				typeof op.text === "string";
 			const family = (op.fontFamily as string) || (isText ? "Inter" : "");
 			if (family) families.add(family);
-			if (op.op === "text" && typeof op.text === "string") {
+			// Text layers arrive as `{ op: "CompositorLayer", kind: "text" }`.
+			if (isText && typeof op.text === "string") {
 				const fontSize = (op.fontSize as number) ?? 48;
-				for (const char of op.text.match(EMOJI_REGEX) ?? []) {
+				for (const char of emojiGraphemes(op.text)) {
 					emoji.set(`${char}-${fontSize}`, fontSize);
 				}
 			}

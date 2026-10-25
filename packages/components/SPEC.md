@@ -1392,7 +1392,7 @@ starts.
 | Component | Summary | Key props | Notable framefields use |
 |---|---|---|---|
 | `CodeBlock` | Specified in §7.9 (M4). | | |
-| `ChatThread` | A messaging conversation: bubbles from either side, typing indicator, reactions, timestamps, auto-scroll. | `messages: { from, text \| media, at? }[]`, `participants`, `appearance` | Bubble sizes from measured text; spring entries baked; typing dots between messages. |
+| `ChatThread` | A messaging conversation: bubbles from either side, typing indicator, avatars, reactions, timestamps, auto-scroll. | `messages: { from, text \| media, at? }[]`, `participants: { name, color, avatar }`, `avatars` | Bubble sizes from measured text; spring entries baked; typing dots between messages. |
 | `Callout` | A label with a leader line pinned to a point or a moving tracked object; stays inside the frame. | `target`, `text`, `side: "auto" \| …`, `elbow` | Dynamic targets bind to vision `track` signals; auto side picks the free quadrant per frame. |
 | `Spotlight` | Dims the frame except a feathered region that glides between targets. | `targets: { at, target }[]`, `dim`, `feather`, `shape` | Inverted alpha matte + blur; region keyed between target rects. |
 | `Confetti` | Celebration bursts with paper, ribbons and sparkles that fall and settle. | `bursts: { at, origin, count }[]`, `palette`, `gravity`, `floor` | GPU particles; optional physics floor; bursts can come straight from `cues`. |

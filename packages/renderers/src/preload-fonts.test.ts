@@ -9,7 +9,13 @@ vi.mock("./utils.js", () => ({ preloadFont: vi.fn(async () => {}) }));
 
 const text = (value: string, fontFamily?: string): VirtualMediaData =>
 	({
-		operation: { op: "text", text: value, fontFamily, fontSize: 32 },
+		operation: {
+			op: "CompositorLayer",
+			kind: "text",
+			text: value,
+			fontFamily,
+			fontSize: 32,
+		},
 	}) as unknown as VirtualMediaData;
 
 const tree = (...children: VirtualMediaData[]): VirtualMediaData =>
@@ -28,12 +34,20 @@ describe("preloadCompositionFonts", () => {
 			.mockResolvedValue({} as never);
 
 		await preloadCompositionFonts(
-			tree(text("hi 😀", "Serif"), text("😀 🎉", "Serif"), text("plain")),
+			tree(
+				text("hi 😀", "Serif"),
+				text("😀 🎉", "Serif"),
+				text("plain"),
+				text("❤️ 👍🏽"),
+			),
 			{} as Device,
 		);
 
 		expect(slug.mock.calls.map((c) => c[1]).sort()).toEqual(["Inter", "Serif"]);
-		expect(emoji.mock.calls.map((c) => c[1]).sort()).toEqual(["🎉", "😀"]);
+		// Whole graphemes, as layout draws them: with selectors and skin tones.
+		expect(emoji.mock.calls.map((c) => c[1]).sort()).toEqual(
+			["🎉", "😀", "❤️", "👍🏽"].sort(),
+		);
 	});
 
 	it("warns once, and does not fail, when emoji have no font", async () => {

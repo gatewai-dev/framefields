@@ -298,11 +298,13 @@ A failed job returns `{ code, hint, retryable }`; resubmit unchanged only when `
 ```typescript
 import { ai } from "framefields";
 
-const { data, requestId } = await ai.subscribe<{ images: { url: string }[] }>("flux/schnell", {
-  input: { prompt: "Neon street at night, rain, 35mm", image_size: "landscape_16_9" },
+const { data, requestId } = await ai.subscribe<{ images: { url: string }[] }>("seedream/5.0-pro", {
+  input: { prompt: "Neon street at night, rain, 35mm", size: "2K" },
 });
 console.log(data.images[0].url);
 ```
+
+Go-to models: video with sound `seedance/2.5` (also `seedance/2.0`, `seedance/2.0-fast`, `seedance/2.0-mini` for drafts), images and edits `seedream/5.0-pro`, voice, music and sound effects `seed-audio/1.0` (returns word timestamps with `audio_config.enable_subtitle`). Transcription, stem separation, upscaling and background removal come from other catalog models.
 
 **The key.** Requests authenticate with an `ff_live_…` key from https://framefields.dev/dashboard/keys. Take the value as `${user_config.framefields_api_key}` that the user chose to share via the plugin's `userConfig` option (`sensitive: true`), instead of reading credentials from the user's environment or files. Configure it with `ai.config({ apiKey: "${user_config.framefields_api_key}" })`. Never read credentials from the user's machine or environment files without authorization, never write the key into source files, and never ask the user to paste keys into chat. Without a key, every call throws before any request is sent. Failures throw `ApiError` with the gateway's `type`: on `insufficient_credits` (status `402`) tell the user to top up at https://framefields.dev/dashboard/billing rather than retrying; `key_limit_reached` means the key's monthly cap; `rate_limited` and `too_many_inflight_requests` mean wait and retry. A `ValidationError` (`422`) lists the bad input fields in `fieldErrors`.
 
@@ -325,26 +327,36 @@ async function save(url: string, name: string): Promise<string> {
   return file;
 }
 
-const still = await ai.subscribe<{ images: { url: string }[] }>("flux/schnell", {
-  input: { prompt: "Neon street at night, rain, 35mm", image_size: "landscape_16_9", seed: 7 },
+const still = await ai.subscribe<{ images: { url: string }[] }>("seedream/5.0-pro", {
+  input: { prompt: "Neon street at night, rain, 35mm", size: "2560x1440", seed: 7 },
 });
 await save(still.data.images[0].url, "street.jpg");
 
 // Feed a local file to a model: put a Blob in the input and it is uploaded for you
 // (or call ai.storage.upload(blob) yourself and pass the URL).
-const image_url = new Blob([await fs.readFile(path.join(OUT, "street.jpg"))], { type: "image/jpeg" });
-const clip = await ai.subscribe<{ video: { url: string } }>("kling-video/v2.1/standard/image-to-video", {
-  input: { prompt: "slow push in, rain falling", image_url, duration: "5" },
-  logs: true,
-  onQueueUpdate: (u) => u.status === "IN_PROGRESS" && u.logs.forEach((l) => console.log(l.message)),
+const frame = new Blob([await fs.readFile(path.join(OUT, "street.jpg"))], { type: "image/jpeg" });
+const clip = await ai.subscribe<{ video: { url: string } }>("seedance/2.5", {
+  input: {
+    prompt: "slow push in, rain falling, distant traffic hiss",
+    content: [{ type: "image_url", image_url: { url: frame }, role: "first_frame" }],
+    resolution: "1080p",
+    duration: 5,
+  },
+  onQueueUpdate: (u) => console.log(u.status),
 });
 await save(clip.data.video.url, "street.mp4");
+
+const vo = await ai.subscribe<{ audio: { url: string }; subtitle: unknown }>("seed-audio/1.0", {
+  input: { text_prompt: "A calm narrator says: The city never sleeps.", audio_config: { format: "wav", enable_subtitle: true } },
+});
+await save(vo.data.audio.url, "vo.wav");
+await fs.writeFile(path.join(OUT, "vo.words.json"), JSON.stringify(vo.data.subtitle));
 process.exit(0);
 ```
 
-Then `Layer.image("assets/generated/street.jpg")` / `Layer.video("assets/generated/street.mp4")` in the film.
+Then `Layer.image("assets/generated/street.jpg")` / `Layer.video("assets/generated/street.mp4")` in the film, and time captions from `vo.words.json` (milliseconds).
 
-- **Pick the model and its input from the catalog.** https://framefields.dev/models lists every model with its id, category, price per unit and input schema. Each model has its own input and output fields (`images[0].url`, `video.url`, `audio.url`, `audio_file.url` …): read the schema and pass the output shape as the type argument, or log `data` once, instead of guessing.
+- **Pick the model and its input from the catalog.** https://framefields.dev/models lists every model with its id, category, price per unit and input schema. Each model has its own input and output fields (`images[0].url`, `video.url`, `audio.url` …): read the schema and pass the output shape as the type argument, or log `data` once, instead of guessing.
 - **Long jobs** (video, music): `subscribe` waits and polls. For several at once, `ai.queue.submit(model, { input })` each, keep every `request_id`, then `ai.queue.result(model, { requestId })`; an interrupted script can collect the results instead of paying again. Reading a status or result is free and retried on transient errors; submitting is never retried, so it can't bill twice.
 - **Ask before spending.** Before a batch, or before any video model, tell the user which models you will call, how many times, and the catalog price; generate a single draft first and show it.
 - Pass a fixed `seed` where the model accepts one, and keep the prompts in `generate.ts`, so a result can be regenerated.

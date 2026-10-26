@@ -8,7 +8,14 @@ const root = new URL("..", import.meta.url).pathname;
 const scan = ["src", "README.md", "package.json"];
 if (process.argv.includes("--dist")) scan.push("dist");
 // Encoded so this file does not match itself.
-const names = ["ZmFs", "ZmFsLWFp", "ZmFsX2Fp"].map((b) => atob(b));
+const names = [
+	"ZmFs",
+	"ZmFsLWFp",
+	"ZmFsX2Fp",
+	"Ynl0ZXBsdXM=",
+	"Ynl0ZXBsdXNlcw==",
+	"dm9sY2Vz",
+].map((b) => atob(b));
 const pattern = new RegExp(`\\b(${names.join("|")})\\b|\\.${names[0]}\\.`, "i");
 
 function* files(path) {

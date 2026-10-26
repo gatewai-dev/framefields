@@ -8,16 +8,24 @@ import { ai } from "framefields";
 // FRAMEFIELDS_API_KEY from the environment, or:
 ai.config({ apiKey: process.env.FRAMEFIELDS_API_KEY });
 
-const { data } = await ai.subscribe<{ images: { url: string }[] }>("flux/schnell", {
-  input: { prompt: "Neon street at night" },
+const { data } = await ai.subscribe<{ images: { url: string }[] }>("seedream/5.0-pro", {
+  input: { prompt: "Neon street at night", size: "2K" },
 });
 console.log(data.images[0].url);
 ```
 
+| Kind | Model ids |
+| --- | --- |
+| Video with sound, from text, images, audio or video | `seedance/2.5`, `seedance/2.0`, `seedance/2.0-fast`, `seedance/2.0-mini` |
+| Images: generation, editing, batches, layers | `seedream/5.0-pro`, `seedream/5.0-flash`, `seedream/5.0-lite`, `seedream/4.5` |
+| Speech, music and sound effects, with word timestamps | `seed-audio/1.0` |
+
+Video models run through the queue (`ai.subscribe`, `ai.queue`); outputs are `{ video: { url } }`, `{ images: [{ url, width, height }] }` and `{ audio: { url, duration }, subtitle }`.
+
 | Method | Use |
 | --- | --- |
 | `ai.run(model, { input })` | One request; best for fast models. |
-| `ai.subscribe(model, { input, onQueueUpdate, logs })` | Queues the job, polls, returns the output. Use for video and music. |
+| `ai.subscribe(model, { input, onQueueUpdate, logs })` | Queues the job, polls, returns the output. Use for video. |
 | `ai.stream(model, { input })` | Iterate partial output; `await stream.done()` for the last. |
 | `ai.queue.submit / status / result / cancel` | Run many jobs and collect them later by `requestId`. |
 | `ai.storage.upload(blob)` | Upload a local file and pass the URL as input. `Blob`s inside `input` upload automatically. |

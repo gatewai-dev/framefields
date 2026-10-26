@@ -161,6 +161,27 @@ function checkManifests() {
 	}
 }
 
+function checkMcpManifests() {
+	const portableFile = join(PLUGIN_DIR, "mcp.json");
+	const claudeFile = join(PLUGIN_DIR, ".mcp.json");
+	if (!existsSync(portableFile) || !existsSync(claudeFile)) {
+		fail("both portable and Claude MCP configurations are required");
+		return;
+	}
+	const portable = readJson(portableFile).mcpServers?.framefields;
+	const claude = readJson(claudeFile).mcpServers?.framefields;
+	if (portable?.type !== "streamable-http" || claude?.type !== "http")
+		fail("MCP configurations must use their respective HTTP transports");
+	if (
+		portable?.url !== "https://framefields.dev/api/mcp" ||
+		claude?.url !== portable?.url
+	)
+		fail("MCP configurations must point to the same Framefields endpoint");
+	if (claude?.oauth?.scopes !== "framefields:media")
+		fail("Claude MCP configuration must request the media scope");
+	ok("portable and Claude MCP configurations");
+}
+
 function checkSkills() {
 	const skillsDir = join(PLUGIN_DIR, "skills");
 	if (!existsSync(skillsDir)) {
@@ -339,6 +360,7 @@ function checkGeneratedEffects() {
 }
 
 checkManifests();
+checkMcpManifests();
 checkSkills();
 checkSymlinks();
 checkGeneratedEffects();

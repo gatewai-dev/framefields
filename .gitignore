@@ -90,8 +90,8 @@ packages/**/models/
 # Local agent workspace (Hermes plans, scratch probes)
 .hermes/
 
-# Plugin ZIP for the OpenAI plugin directory (pnpm run pack:plugin)
-framefields-plugin.zip
+# Generated plugin archives
+*plugin*.zip
 
 # Generated package README, built from the repo root README (scripts/sync-readme.mjs)
 packages/framefields/README.md

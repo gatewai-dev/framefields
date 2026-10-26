@@ -496,6 +496,10 @@ function assemble<S extends z.ZodRawShape, C extends Cues, E extends object>(
 	const height = props.height ?? built.height;
 
 	const blur = Math.max(enter?.blur ?? 0, exit?.blur ?? 0);
+	// The box is the component's footprint, not a clip: shadows, overshoot
+	// and landing words may reach past it. Only mask presets cut to it.
+	const masked =
+		enter?.preset.startsWith("mask-") || exit?.preset.startsWith("mask-");
 	const stage = host.box({
 		id: ctx.partId("stage"),
 		position: "absolute",
@@ -503,6 +507,7 @@ function assemble<S extends z.ZodRawShape, C extends Cues, E extends object>(
 		y: 0,
 		width,
 		height,
+		overflow: "visible",
 		...(blur > 0 && { motionBlurShutter: blur }),
 		children: built.children,
 	});
@@ -529,8 +534,7 @@ function assemble<S extends z.ZodRawShape, C extends Cues, E extends object>(
 		width,
 		height,
 		// Mask presets slide the stage through the root's own box.
-		...((enter?.preset.startsWith("mask-") ||
-			exit?.preset.startsWith("mask-")) && { overflow: "hidden" as const }),
+		overflow: masked ? "hidden" : "visible",
 		startFrame: props.at ?? 0,
 		...(duration !== null && { durationFrames: duration }),
 		children: [stage],

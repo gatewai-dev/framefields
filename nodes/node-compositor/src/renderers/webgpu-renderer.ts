@@ -3700,16 +3700,15 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					});
 				}
 
-				const hasKineticAnimators =
-					Array.isArray(resolvedAnimators) && resolvedAnimators.length > 0;
 				const hasTypewriter = Boolean(lop.typewriter || target?.typewriter);
 
 				// Check if there is an active text track or progress value evaluated by GSAP
 				const textTrack = lop.animation?.tracks?.find(
 					(t: { prop: string }) => t.prop === "text",
 				);
+				// Glyph animators index the full text, so they compose with a
+				// prefix reveal: the shown characters keep their indices.
 				const hasTextAnimation =
-					!hasKineticAnimators &&
 					!hasTypewriter &&
 					(textTrack !== undefined || typeof target?.text === "number");
 

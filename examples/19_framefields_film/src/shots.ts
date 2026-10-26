@@ -1,19 +1,17 @@
 /**
- * Creative source of truth for every generated asset: stills (gpt-image-2),
- * their motion (h3-max-turbo image-to-video) and the score plan (ElevenLabs).
+ * Creative source of truth for every generated asset: stills (Seedream 5.0 Pro),
+ * their motion (Seedance 2.0 Mini image-to-video) and the score plan (Seed Audio).
  *
  * Palette is warm and restrained: ink, bone, sand and a single ember accent.
  */
 
 export interface Shot {
 	id: string;
-	/** gpt-image-2 prompt for the first frame. */
+	/** Seedream prompt for the first frame. */
 	image: string;
-	/** h3 prompt describing how the still comes alive. */
+	/** Seedance prompt describing how the still comes alive. */
 	motion: string;
 	seconds: number;
-	/** Faces need h3-max's identity preservation; everything else runs on turbo. */
-	model?: "minimax/h3-max/image-to-video";
 }
 
 const FILM =
@@ -33,7 +31,6 @@ export const SHOTS: Shot[] = [
 		motion:
 			"She stays almost perfectly still in the same three-quarter profile pose, calm and present. Only a slow natural blink and a soft breath; a few loose strands of hair stir faintly and glowing dust particles drift slowly through the sunbeam. Her face, freckles and features stay exactly the same throughout. Very slow, subtle push-in, stable camera, one continuous shot, no cuts.",
 		seconds: 6,
-		model: "minimax/h3-max/image-to-video",
 	},
 	{
 		id: "dancer",
@@ -51,12 +48,23 @@ export const SHOTS: Shot[] = [
 	},
 ];
 
-const section = (name: string, ms: number, styles: string[], avoid: string[] = []) => ({
-	section_name: name,
-	duration_ms: ms,
-	positive_local_styles: styles,
-	negative_local_styles: avoid,
-	lines: [],
+interface ScoreSection {
+	name: string;
+	ms: number;
+	styles: string[];
+	avoid: string[];
+}
+
+const section = (
+	name: string,
+	ms: number,
+	styles: string[],
+	avoid: string[] = [],
+): ScoreSection => ({
+	name,
+	ms,
+	styles,
+	avoid,
 });
 
 /**
@@ -64,7 +72,7 @@ const section = (name: string, ms: number, styles: string[], avoid: string[] = [
  * musical changes land exactly on picture changes. They sum to 30 s, the film's length.
  */
 export const SCORE = {
-	positive_global_styles: [
+	styles: [
 		"instrumental",
 		"modern cinematic electronic",
 		"premium product film score",
@@ -76,7 +84,7 @@ export const SCORE = {
 		"elegant and confident",
 		"clean high-end mix",
 	],
-	negative_global_styles: [
+	avoid: [
 		"vocals",
 		"lyrics",
 		"choir",
@@ -86,14 +94,93 @@ export const SCORE = {
 		"lo-fi hiss",
 		"guitar solo",
 	],
-	sections: [
-		section("Open", 2200, ["solo felt piano", "three sparse notes", "intimate", "lots of silence", "soft room reverb"], ["drums", "bass"]),
-		section("Film", 4400, ["warm string pad and deep sub swell enter on the downbeat", "slow cinematic chords", "felt piano melody continues"], ["drums", "kick"]),
-		section("Grade", 3600, ["plucked synth ostinato in eighth notes", "soft shaker", "gently building tension", "short riser in the last bar"], ["kick"]),
-		section("Motion", 4800, ["the drop: punchy kick and tight snare land on the first downbeat", "driving bass", "plucked arpeggio", "confident groove"]),
-		section("Code", 4800, ["low-pass filtered groove", "ticking clock-like hi-hat", "muted pulse", "suspense", "riser into the next drop"]),
-		section("Effects", 3600, ["second drop: full groove returns on the downbeat", "extra percussion fills", "short rhythmic stabs", "energetic"]),
-		section("Vision", 3000, ["full groove continues", "shimmering arpeggio on top", "builds into the final hit"]),
-		section("Resolve", 3600, ["one huge warm major chord hit on the downbeat with piano and strings", "long natural reverb tail ringing out through the entire section"], ["abrupt ending", "drums"]),
+	sections: <ScoreSection[]>[
+		section(
+			"Open",
+			2200,
+			[
+				"solo felt piano",
+				"three sparse notes",
+				"intimate",
+				"lots of silence",
+				"soft room reverb",
+			],
+			["drums", "bass"],
+		),
+		section(
+			"Film",
+			4400,
+			[
+				"warm string pad and deep sub swell enter on the downbeat",
+				"slow cinematic chords",
+				"felt piano melody continues",
+			],
+			["drums", "kick"],
+		),
+		section(
+			"Grade",
+			3600,
+			[
+				"plucked synth ostinato in eighth notes",
+				"soft shaker",
+				"gently building tension",
+				"short riser in the last bar",
+			],
+			["kick"],
+		),
+		section("Motion", 4800, [
+			"the drop: punchy kick and tight snare land on the first downbeat",
+			"driving bass",
+			"plucked arpeggio",
+			"confident groove",
+		]),
+		section("Code", 4800, [
+			"low-pass filtered groove",
+			"ticking clock-like hi-hat",
+			"muted pulse",
+			"suspense",
+			"riser into the next drop",
+		]),
+		section("Effects", 3600, [
+			"second drop: full groove returns on the downbeat",
+			"extra percussion fills",
+			"short rhythmic stabs",
+			"energetic",
+		]),
+		section("Vision", 3000, [
+			"full groove continues",
+			"shimmering arpeggio on top",
+			"builds into the final hit",
+		]),
+		section(
+			"Resolve",
+			3600,
+			[
+				"one huge warm major chord hit on the downbeat with piano and strings",
+				"long natural reverb tail ringing out through the entire section",
+			],
+			["abrupt ending", "drums"],
+		),
 	],
 };
+
+const seconds = (ms: number) => (ms / 1000).toFixed(1);
+
+/**
+ * Seed Audio takes one prompt, so the plan is written out with each section's start and end
+ * time, the way an editor would brief a composer.
+ */
+export function scorePrompt(): string {
+	let at = 0;
+	const timeline = SCORE.sections.map((s) => {
+		const line = `${seconds(at)}-${seconds(at + s.ms)} s, ${s.name}: ${s.styles.join(", ")}${s.avoid.length ? `; no ${s.avoid.join(", no ")}` : ""}.`;
+		at += s.ms;
+		return line;
+	});
+	return [
+		`A ${seconds(at)}-second instrumental: ${SCORE.styles.join(", ")}.`,
+		`Avoid ${SCORE.avoid.join(", ")}.`,
+		"Each section change lands exactly on its time:",
+		...timeline,
+	].join(" ");
+}

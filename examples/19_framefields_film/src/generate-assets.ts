@@ -1,7 +1,7 @@
 /**
  * Asset pipeline for the Framefields film.
  *
- *   pnpm assets            → fonts, plates (gpt-image-2), shots (h3-max / h3-max-turbo), score (ElevenLabs)
+ *   pnpm assets            → fonts, plates (Seedream 5.0 Pro), shots (Seedance 2.0 Mini, 720p), score (Seed Audio)
  *   pnpm assets images     → only the stills
  *   pnpm assets videos     → only the image-to-video shots
  *   pnpm assets music      → only the score
@@ -13,7 +13,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
 import { ai } from "framefields";
-import { SCORE, SHOTS } from "./shots.js";
+import { SHOTS, scorePrompt } from "./shots.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "../../..");
@@ -79,12 +79,11 @@ async function images() {
 			if (await exists(dest)) return;
 			const t0 = Date.now();
 			const { data: out } = await ai.subscribe<{ images: { url: string }[] }>(
-				"openai/gpt-image-2",
+				"seedream/5.0-pro",
 				{
 					input: {
 						prompt: shot.image,
-						image_size: { width: 2048, height: 1152 },
-						quality: "high",
+						size: "2048x1152",
 						output_format: "png",
 					},
 				},
@@ -97,7 +96,7 @@ async function images() {
 	);
 }
 
-/** The gateway accepts data URIs for image inputs, so the local plate is sent as-is. */
+/** Seedance accepts a data URI first frame, so the local plate is sent as-is. */
 async function videos() {
 	checkApiKey();
 	await Promise.all(
@@ -107,14 +106,23 @@ async function videos() {
 			const plate = await fs.readFile(path.join(ASSETS, `${shot.id}.png`));
 			const t0 = Date.now();
 			const { data: out } = await ai.subscribe<{ video: { url: string } }>(
-				shot.model ?? "minimax/h3-max-turbo/image-to-video",
+				"seedance/2.0-mini",
 				{
 					input: {
 						prompt: shot.motion,
-						image_url: `data:image/png;base64,${plate.toString("base64")}`,
+						content: [
+							{
+								type: "image_url",
+								image_url: {
+									url: `data:image/png;base64,${plate.toString("base64")}`,
+								},
+								role: "first_frame",
+							},
+						],
+						resolution: "720p",
+						ratio: "16:9",
 						duration: shot.seconds,
-						resolution: "1080P",
-						prompt_expansion_mode: "disabled",
+						generate_audio: false,
 					},
 				},
 			);
@@ -132,11 +140,11 @@ async function music() {
 	if (await exists(dest)) return;
 	const t0 = Date.now();
 	const { data: out } = await ai.subscribe<{ audio: { url: string } }>(
-		"fal-ai/elevenlabs/music",
+		"seed-audio/1.0",
 		{
 			input: {
-				composition_plan: SCORE,
-				respect_sections_durations: true,
+				text_prompt: scorePrompt(),
+				audio_config: { format: "mp3" },
 			},
 		},
 	);

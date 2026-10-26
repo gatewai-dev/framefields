@@ -1,11 +1,11 @@
 /**
  * Asset pipeline for Full Circle. Every model is the cheapest one that holds
- * up on screen; the whole film costs about one dollar to generate.
+ * up on screen; the whole film costs about $6.50 to generate.
  *
  *   pnpm assets          → fonts, stills, shots, score, beat grid
- *   pnpm assets images   → stills only    (z-image turbo, ~$0.01 each)
- *   pnpm assets videos   → shots only     (h3-max-turbo $0.015/s, h3-max $0.03/s)
- *   pnpm assets music    → score only     (MiniMax Music 3, $0.002/s)
+ *   pnpm assets images   → stills only    (Seedream 5.0 Pro, $0.072 each)
+ *   pnpm assets videos   → shots only     (Seedance 2.0 Mini at 720p, $0.121/s)
+ *   pnpm assets music    → score only     (Seed Audio, $0.003125/s)
  *   pnpm assets grid     → re-analyze the score into assets/score.json (free)
  *   pnpm assets circles  → measure each shot's circle into assets/circles.json (free, needs ffmpeg)
  *   pnpm assets cost     → print the estimate without calling anything
@@ -42,9 +42,9 @@ const FONTS: Record<string, string> = {
 		"https://github.com/google/fonts/raw/main/ofl/jetbrainsmono/JetBrainsMono%5Bwght%5D.ttf",
 };
 
-/** z-image wants multiples of 16; h3 keeps the still's aspect. */
-const STILL = { width: 1920, height: 1088 };
-const STILL_MP = (STILL.width * STILL.height) / 1e6;
+/** Seedance keeps the first frame's 16:9 framing at 720p. */
+const STILL = { width: 1920, height: 1080 };
+const VIDEO_MODEL = "seedance/2.0-mini";
 
 const elapsed = (t0: number) => `${((Date.now() - t0) / 1000).toFixed(0)}s`;
 
@@ -72,24 +72,23 @@ async function images() {
 			if (await exists(dest)) return;
 			const t0 = Date.now();
 			const { data: out } = await ai.subscribe<{ images: { url: string }[] }>(
-				"fal-ai/z-image/turbo",
+				"seedream/5.0-pro",
 				{
 					input: {
 						prompt: shot.image,
-						image_size: STILL,
-						num_inference_steps: 8,
+						size: `${STILL.width}x${STILL.height}`,
 						output_format: "png",
 					},
 				},
 			);
 			await download(out.images[0].url, dest);
-			spent += estimate("fal-ai/z-image/turbo", STILL_MP);
+			spent += estimate("seedream/5.0-pro", 1);
 			console.log(`image  ${shot.id} (${elapsed(t0)})`);
 		}),
 	);
 }
 
-/** The gateway accepts data URIs for image inputs, so the local still is sent as-is. */
+/** Seedance accepts a data URI first frame, so the local still is sent as-is. */
 async function videos(target?: string) {
 	checkApiKey();
 	const shotList = target ? SHOTS.filter((s) => s.id === target) : SHOTS;
@@ -100,20 +99,29 @@ async function videos(target?: string) {
 			const still = await fs.readFile(path.join(ASSETS, `${shot.id}.png`));
 			const t0 = Date.now();
 			const { data: out } = await ai.subscribe<{ video: { url: string } }>(
-				shot.model,
+				VIDEO_MODEL,
 				{
 					input: {
 						prompt: shot.motion,
-						image_url: `data:image/png;base64,${still.toString("base64")}`,
+						content: [
+							{
+								type: "image_url",
+								image_url: {
+									url: `data:image/png;base64,${still.toString("base64")}`,
+								},
+								role: "first_frame",
+							},
+						],
+						resolution: "720p",
+						ratio: "16:9",
 						duration: shot.seconds,
-						resolution: "1080P",
-						prompt_expansion_mode: "disabled",
+						generate_audio: false,
 					},
 				},
 			);
 			await download(out.video.url, dest);
-			spent += estimate(shot.model, shot.seconds);
-			console.log(`video  ${shot.id} via ${shot.model} (${elapsed(t0)})`);
+			spent += estimate(VIDEO_MODEL, shot.seconds);
+			console.log(`video  ${shot.id} (${elapsed(t0)})`);
 		}),
 	);
 }
@@ -124,20 +132,17 @@ async function music() {
 	if (await exists(dest)) return;
 	const t0 = Date.now();
 	const { data: out } = await ai.subscribe<{
-		audio: { url: string };
-		duration: number;
-		seed: number;
-	}>("minimax/music-3", {
+		audio: { url: string; duration: number };
+	}>("seed-audio/1.0", {
 		input: {
-			prompt: SCORE.prompt,
-			lyrics: SCORE.lyrics,
-			duration: SCORE_SECONDS,
+			text_prompt: SCORE.prompt,
+			audio_config: { format: "wav", sample_rate: 48000 },
 		},
 	});
 	await download(out.audio.url, dest);
-	spent += estimate("minimax/music-3", SCORE_SECONDS);
+	spent += estimate("seed-audio/1.0", out.audio.duration);
 	console.log(
-		`music  score ${out.duration.toFixed(1)}s seed ${out.seed} (${elapsed(t0)})`,
+		`music  score ${out.audio.duration.toFixed(1)}s (${elapsed(t0)})`,
 	);
 }
 
@@ -221,9 +226,12 @@ async function circles(target?: string) {
 }
 
 function cost() {
-	const stills = SHOTS.length * estimate("fal-ai/z-image/turbo", STILL_MP);
-	const shots = SHOTS.reduce((sum, s) => sum + estimate(s.model, s.seconds), 0);
-	const score = estimate("minimax/music-3", SCORE_SECONDS);
+	const stills = SHOTS.length * estimate("seedream/5.0-pro", 1);
+	const shots = SHOTS.reduce(
+		(sum, s) => sum + estimate(VIDEO_MODEL, s.seconds),
+		0,
+	);
+	const score = estimate("seed-audio/1.0", SCORE_SECONDS);
 	console.log(
 		`stills $${stills.toFixed(3)}  shots $${shots.toFixed(3)}  score $${score.toFixed(3)}  total $${(stills + shots + score).toFixed(2)}`,
 	);

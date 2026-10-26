@@ -9,7 +9,7 @@ export type Service = "run" | "queue" | "storage";
 
 export interface GatewayRequest {
 	service: Service;
-	/** Path under the service, e.g. `flux/schnell` or `flux/schnell/requests/<id>/status`. */
+	/** Path under the service, e.g. `seedance/2.5` or `seedance/2.5/requests/<id>/status`. */
 	path: string;
 	method?: "GET" | "POST" | "PUT";
 	body?: unknown;

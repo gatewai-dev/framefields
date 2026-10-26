@@ -3,7 +3,7 @@
  * pnpm song cost   → print the estimate, no calls
  * pnpm song measure → re-run the free steps (grid, structure, lyrics, envelopes)
  *
- *   1. song       ElevenLabs Music v2.5, one chunk per section of song.ts      → assets/song.mp3
+ *   1. song       Seed Audio, one prompt timing every section of song.ts       → assets/song.mp3
  *   2. stems      fal-ai/demucs: vocals, drums                                   → assets/stems/
  *   3. words      ElevenLabs Scribe v2 on the vocal stem, word timestamps        → assets/words.json
  *   4. grid       the drum stem's tempo (beat-grid.ts), checked against 180 BPM
@@ -27,12 +27,7 @@ import { type Stereo, stereo } from "./music/dsp.js";
 import { envelopes } from "./music/envelopes.js";
 import { findFinalHit } from "./music/structure.js";
 import { ASSETS, asset, ROOT } from "./paths.js";
-import {
-	GLOBAL_AVOID,
-	GLOBAL_STYLES,
-	SECTIONS,
-	sectionDurationsMs,
-} from "./song.js";
+import { SECTIONS, songPrompt } from "./song.js";
 
 const SONG = asset("song.mp3");
 const SONG_META = asset("song.json");
@@ -51,38 +46,26 @@ function checkApiKey(): void {
 		throw new Error("FRAMEFIELDS_API_KEY missing from the repo root .env");
 }
 
-/** Generous upper bound on the music model's compute time, for the estimate. */
-const SONG_COMPUTE_SEC = 120;
-
-async function song(seed: number): Promise<void> {
+async function song(take: number): Promise<void> {
 	if (await exists(SONG)) return;
-	const durations = sectionDurationsMs();
-	// v2.5 has no global styles: the first chunk's styles set the whole song's
-	// tone, so it carries the global ones; every chunk avoids the global faults.
-	const plan = {
-		chunks: SECTIONS.map((s, i) => ({
-			duration_ms: durations[i],
-			text: [`[${s.name}]`, ...s.lines].join("\n"),
-			positive_styles: i === 0 ? [...GLOBAL_STYLES, ...s.styles] : s.styles,
-			negative_styles: [...GLOBAL_AVOID, ...s.avoid],
-			context_adherence: "high",
-		})),
-	};
+	const prompt = songPrompt();
 	const t0 = Date.now();
-	const { data: out } = await ai.subscribe<{ audio: { url: string } }>(
-		"fal-ai/elevenlabs/music/v2.5",
-		{
-			input: { composition_plan: plan, seed, output_format: "mp3_48000_192" },
+	const { data: out } = await ai.subscribe<{
+		audio: { url: string; duration: number };
+	}>("seed-audio/1.0", {
+		input: {
+			text_prompt: prompt,
+			audio_config: { format: "mp3", sample_rate: SAMPLE_RATE },
 		},
-	);
+	});
 	await download(out.audio.url, SONG);
 	await fs.writeFile(
 		SONG_META,
-		JSON.stringify({ url: out.audio.url, seed, plan }, null, 2),
+		JSON.stringify({ url: out.audio.url, take, prompt }, null, 2),
 	);
-	spent += PRICING["fal-ai/elevenlabs/music/v2.5"].usd * SONG_COMPUTE_SEC;
+	spent += PRICING["seed-audio/1.0"].usd * out.audio.duration;
 	console.log(
-		`song   ${SONG} seed ${seed} (${((Date.now() - t0) / 1000).toFixed(0)} s)`,
+		`song   ${SONG} take ${take} (${((Date.now() - t0) / 1000).toFixed(0)} s)`,
 	);
 }
 
@@ -325,7 +308,7 @@ async function generate(): Promise<void> {
 
 if (step === "cost") {
 	const usd =
-		PRICING["fal-ai/elevenlabs/music/v2.5"].usd * SONG_COMPUTE_SEC +
+		PRICING["seed-audio/1.0"].usd * PLAN_SEC +
 		PRICING["fal-ai/demucs"].usd * PLAN_SEC +
 		PRICING["fal-ai/elevenlabs/speech-to-text/scribe-v2"].usd * (PLAN_SEC / 60);
 	console.log(

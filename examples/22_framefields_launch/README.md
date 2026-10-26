@@ -20,7 +20,7 @@ pnpm test
 
 | Step | Model / tool | Writes |
 | --- | --- | --- |
-| Song | `fal-ai/elevenlabs/music/v2.5`, one chunk per section: its lyric lines and styles; the first chunk carries the song-wide styles | `assets/song.mp3` |
+| Song | `seed-audio/1.0`, one prompt: the song-wide styles, then each section's start and end time, styles and lyric lines | `assets/song.mp3` |
 | Stems | `fal-ai/demucs` (`htdemucs_ft`): vocals, drums | `assets/stems/` |
 | Words | `fal-ai/elevenlabs/speech-to-text/scribe-v2` on the vocal stem, word timestamps, product names as key terms | `assets/words.json` |
 | Take check | a take whose transcript misses most of a written line is set aside (`scratch/rejected-takes/`) and the next seed is generated | — |
@@ -28,7 +28,7 @@ pnpm test
 | Lyrics | `music/align.ts`: written words timed by heard words (splits, merges, numerals spelled out: "120" ↔ "a hundred twenty"); a word nobody heard is placed just before the next heard one | `assets/lyrics.json` |
 | Chapters | the first word of each chapter's line (`music/chapters.ts`), the final hit (`music/structure.ts`) | `assets/structure.json` |
 | Envelopes | kick / snare from the drum stem, vocal level, per frame | `assets/envelopes.json` |
-| Images | `fal-ai/flux-2-pro`: a backdrop, a camera on a green screen, a light leak on black, a paper grain (`images.ts`) | `assets/images/` |
+| Images | `seedream/5.0-pro`: a backdrop, a camera on a green screen, a light leak on black, a paper grain (`images.ts`) | `assets/images/` |
 
 The soundtrack is `assets/song.mp3` exactly as generated: nothing stretches, shifts or re-masters it, so
 the film's clock is the take's clock. `FRAMEFIELDS_API_KEY` is read from the repo root `.env`. The music model

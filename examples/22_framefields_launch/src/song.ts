@@ -214,3 +214,24 @@ export function sectionDurationsMs(): number[] {
 }
 
 export const LYRICS = SECTIONS.flatMap((s) => s.lines).join("\n");
+
+/**
+ * Seed Audio takes one prompt: the song-wide styles, then every section with its start and
+ * end time, its styles and its lyric lines, the way a producer would brief a session.
+ */
+export function songPrompt(): string {
+	const durations = sectionDurationsMs();
+	let at = 0;
+	const sections = SECTIONS.map((s, i) => {
+		const from = at / 1000;
+		at += durations[i];
+		const avoid = s.avoid.length ? `; no ${s.avoid.join(", no ")}` : "";
+		const head = `[${s.name}, ${from.toFixed(1)}-${(at / 1000).toFixed(1)} s: ${s.styles.join(", ")}${avoid}]`;
+		return [head, ...s.lines].join("\n");
+	});
+	return [
+		`A ${(at / 1000).toFixed(0)}-second song: ${GLOBAL_STYLES.join(", ")}. Avoid ${GLOBAL_AVOID.join(", ")}.`,
+		"Sing every lyric line below in order; each section starts exactly on its time.",
+		...sections,
+	].join("\n\n");
+}

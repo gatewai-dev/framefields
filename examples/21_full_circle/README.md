@@ -7,7 +7,7 @@ from one to the next. The edit is cut to a generated score whose beat grid is me
 ## Pipeline
 
 ```bash
-pnpm assets cost     # print the estimate (~$0.97), no calls
+pnpm assets cost     # print the estimate (~$6.5), no calls
 pnpm assets          # fonts, stills, shots, score, beat grid, circle tracks
 pnpm render frames 0 154 637
 pnpm render          # output/full-circle.mp4
@@ -16,9 +16,9 @@ pnpm test
 
 | Step | Model / tool | Cost |
 | --- | --- | --- |
-| Stills, 1920×1088 | `fal-ai/z-image/turbo` | $0.005 / MP |
-| Shots, 6 s at 1080P | `minimax/h3-max-turbo/image-to-video` (iris on `minimax/h3-max`) | $0.015 / s ($0.03 / s) |
-| Score, 36 s | `minimax/music-3` (structured caption, instrumental) | $0.002 / s |
+| Stills, 1920×1080 | `seedream/5.0-pro` | $0.072 / image |
+| Shots, 6 s at 720p | `seedance/2.0-mini` (still as first frame, no sound) | $0.121 / s |
+| Score, 36 s | `seed-audio/1.0` (one prompt, instrumental) | $0.003125 / s |
 | Beat grid → `assets/score.json` | `src/beat-grid.ts` (onset flux, autocorrelation, comb refinement, drop-anchored downbeat) | free |
 | Circle tracks → `assets/circles.json` | `src/circles.ts` (ffmpeg grey frames, seeded flood fill per frame) | free |
 

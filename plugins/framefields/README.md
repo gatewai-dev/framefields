@@ -17,7 +17,7 @@ This plugin contains only skills: Markdown instructions for your agent. It bundl
 
 ## Data and privacy
 
-The plugin sends no data anywhere. When code that uses framefields' on-device vision features runs, the SDK downloads pinned, Apache-2.0 model weights from Hugging Face the first time each model is used and verifies them by SHA-256. When code calls `ai` (AI generation), the request, its inputs and any files uploaded with `ai.storage` go to the framefields gateway at `api.framefields.dev` and on to the model provider that runs the model; the gateway records usage for billing but does not store prompts or outputs. Nothing else leaves your machine.
+The plugin sends no data anywhere. When code that uses framefields' on-device vision features runs, the SDK downloads pinned, Apache-2.0 model weights from Hugging Face the first time each model is used and verifies them by SHA-256. When code calls `ai` (AI generation), the request, its inputs and any files uploaded with `ai.storage` go to the framefields gateway at `api.framefields.dev` and on to the model provider that runs the model. Nothing else leaves your machine.
 
 ## License
 

@@ -8,10 +8,9 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** USD per unit, from https://framefields.dev/models (October 2026). */
 export const PRICING = {
-	"fal-ai/z-image/turbo": { usd: 0.005, per: "megapixel" },
-	"minimax/h3-max-turbo/image-to-video": { usd: 0.015, per: "second" },
-	"minimax/h3-max/image-to-video": { usd: 0.03, per: "second" },
-	"minimax/music-3": { usd: 0.002, per: "second" },
+	"seedream/5.0-pro": { usd: 0.072, per: "image" },
+	"seedance/2.0-mini": { usd: 0.121, per: "second at 720p" },
+	"seed-audio/1.0": { usd: 0.003125, per: "second" },
 } as const;
 
 export type GatewayModel = keyof typeof PRICING;

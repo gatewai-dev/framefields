@@ -1,6 +1,6 @@
 /**
  * pnpm images → assets/images/*.png: the layers the compositing chapter
- * stacks, generated with FLUX.2 [pro] on the AI gateway. Each is made for one
+ * stacks, generated with Seedream 5.0 Pro on the AI gateway. Each is made for one
  * compositing operation:
  *   backdrop  the plate everything sits on
  *   subject   a camera on a flat green screen, for ColorKey to pull
@@ -20,25 +20,24 @@ async function main() {
 	if (!key)
 		throw new Error("FRAMEFIELDS_API_KEY missing from the repo root .env");
 	let spent = 0;
-	const megapixels = (IMAGE_SIZE.width * IMAGE_SIZE.height) / 1e6;
 	for (const [name, prompt] of Object.entries(IMAGES) as [
 		ImageName,
 		string,
 	][]) {
 		if (await exists(image(name))) continue;
 		const { data: out } = await ai.subscribe<{ images: { url: string }[] }>(
-			"fal-ai/flux-2-pro",
+			"seedream/5.0-pro",
 			{
 				input: {
 					prompt,
-					image_size: IMAGE_SIZE,
+					size: `${IMAGE_SIZE.width}x${IMAGE_SIZE.height}`,
 					output_format: "png",
 					seed: 22,
 				},
 			},
 		);
 		await download(out.images[0].url, image(name));
-		spent += PRICING["fal-ai/flux-2-pro"].usd * megapixels;
+		spent += PRICING["seedream/5.0-pro"].usd;
 		console.log(`image  ${name}`);
 	}
 	if (spent > 0) console.log(`spent  ~$${spent.toFixed(3)}`);

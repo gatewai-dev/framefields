@@ -8,10 +8,10 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** USD per unit, from https://framefields.dev/models (October 2026). */
 export const PRICING = {
-	"fal-ai/elevenlabs/music/v2.5": { usd: 0.00007, per: "compute second" },
+	"seed-audio/1.0": { usd: 0.003125, per: "second" },
 	"fal-ai/elevenlabs/speech-to-text/scribe-v2": { usd: 0.008, per: "minute" },
 	"fal-ai/demucs": { usd: 0.0007, per: "second" },
-	"fal-ai/flux-2-pro": { usd: 0.03, per: "megapixel" },
+	"seedream/5.0-pro": { usd: 0.072, per: "image" },
 } as const;
 
 export type GatewayModel = keyof typeof PRICING;

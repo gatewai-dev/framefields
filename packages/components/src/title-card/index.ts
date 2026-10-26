@@ -179,7 +179,7 @@ export const titleCard = /* @__PURE__ */ defineComponent({
 			const kicker = reveal({
 				id: ctx.partId("kicker"),
 				text: kickerText,
-				style: "track",
+				style: "rise",
 				...place.kicker,
 				fontFamily,
 				fontSize: kickerSize,

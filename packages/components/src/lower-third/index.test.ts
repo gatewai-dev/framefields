@@ -37,6 +37,21 @@ describe("LowerThird", () => {
 		expect((plate?.x ?? 0) + (plate?.width ?? 0)).toBeCloseTo(1920 * 0.94, 5);
 	});
 
+	it("scales a one-line tag down to fit the safe area", () => {
+		const tag = find(
+			make()({
+				id: "l",
+				layout: "tag",
+				canvas: { width: 640, height: 360 },
+				name: "Ada Lovelace",
+				role: "Engineer, Analytical Engine",
+			}),
+			"l-tag",
+		);
+		// Safe area: 6 % insets each side.
+		expect(tag?.width).toBeCloseTo(640 * 0.88, 5);
+	});
+
 	it("leaves on its own after the hold, or stays", () => {
 		const l = make()({ name: "Ada", hold: 30 });
 		const inAt = l.cues.in[0]?.frame ?? 0;

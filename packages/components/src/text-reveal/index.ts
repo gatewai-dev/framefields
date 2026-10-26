@@ -5,7 +5,6 @@
  * node and its final frame is exactly the static text.
  */
 import {
-	type AnimatableProp,
 	type KeyframeTuple,
 	LayerAnimation,
 	type LayoutNode,
@@ -24,6 +23,7 @@ import {
 	glyphAnimator,
 	rendererChars,
 	scheduleExpression,
+	stepExpression,
 	type UnitSchedule,
 } from "../core/glyphs.js";
 import type { Animatable } from "../core/host.js";
@@ -49,7 +49,6 @@ import {
 export const REVEAL_STYLES = [
 	"rise",
 	"blur",
-	"track",
 	"mask",
 	"slam",
 	"scatter",
@@ -65,7 +64,6 @@ export type RevealStyle = (typeof REVEAL_STYLES)[number];
 export const EXIT_STYLES = [
 	"rise",
 	"blur",
-	"track",
 	"mask",
 	"scatter",
 	"type",
@@ -101,13 +99,6 @@ const STYLE: Record<RevealStyle, StyleDefaults> = {
 		speed: "slow",
 		length: 1,
 		ease: "power3.out",
-	},
-	track: {
-		by: "line",
-		stagger: 0,
-		speed: "slow",
-		length: 1.5,
-		ease: "expo.out",
 	},
 	mask: {
 		by: "line",
@@ -330,20 +321,11 @@ export const textReveal = /* @__PURE__ */ defineComponent({
 				text: u.text,
 			}));
 
-		// Tracking widens a line: unwrapped text gets a box with room for it,
-		// placed so `align` holds while it grows.
-		const tracks =
-			wrap === undefined &&
-			(props.style === "track" || props.exitStyle === "track");
-		const room = tracks ? 0.5 * fs * Math.max(0, text.length - 1) : 0;
-		const shift =
-			props.align === "center" ? 0.5 : props.align === "end" ? 1 : 0;
 		const textNode = host.text(text, {
 			...textProps,
-			...(tracks && { width: W + room }),
 			id: ctx.partId("text"),
 			position: "absolute",
-			x: -room * shift,
+			x: 0,
 			y: 0,
 		});
 		parts.text = textNode;
@@ -401,6 +383,7 @@ export const textReveal = /* @__PURE__ */ defineComponent({
 					return piece;
 				});
 				const landed = Math.max(0, ...unitCues.map((u) => u.settled));
+				// Words land from 2.4×: neither box may clip them on the way in.
 				const group = host.box({
 					id: ctx.partId("units"),
 					position: "absolute",
@@ -408,6 +391,7 @@ export const textReveal = /* @__PURE__ */ defineComponent({
 					y: 0,
 					width: W,
 					height: H,
+					overflow: "visible",
 					children: pieces,
 				});
 				group.animate(
@@ -430,6 +414,7 @@ export const textReveal = /* @__PURE__ */ defineComponent({
 					y: 0,
 					width: W,
 					height: H,
+					overflow: "visible",
 					children: [group, textNode],
 				});
 				shake.animate(...slamShake(unitCues, fs, ctx.rng("slam")));
@@ -523,11 +508,14 @@ export const textReveal = /* @__PURE__ */ defineComponent({
 				break;
 			}
 			case "type": {
+				// Each glyph switches on at its keystroke inside the full layout,
+				// so centred or wrapped lines never reflow while typing.
 				const frames = typingFrames(text, props.cps, fps, ctx.rng("type"));
-				textNode.animate(
-					LayerAnimation.keys(
-						"text" as AnimatableProp,
-						countKeys(text.length, frames),
+				animators.push(
+					glyphAnimator(
+						"enter",
+						stepExpression("char", rendererChars(text, frames)),
+						{ opacity: 0 },
 					),
 				);
 				frames.forEach((f, i) => {
@@ -551,24 +539,6 @@ export const textReveal = /* @__PURE__ */ defineComponent({
 					children.push(caret);
 					parts.caret = caret;
 				}
-				break;
-			}
-			case "track": {
-				const ls = props.letterSpacing ?? 0;
-				const wide = ls + 0.5 * fs;
-				const fade = Math.round(duration * 0.5);
-				const keys: KeyframeTuple[] = [
-					[0, wide],
-					[duration, ls, ease],
-				];
-				const anim = LayerAnimation.create()
-					.keys("letterSpacing", keys)
-					.keys("opacity", [
-						[0, 0],
-						[fade, 1, "power2.out"],
-					]);
-				textNode.animate(anim);
-				unitCues = [{ frame: 0, settled: duration, index: 0, text }];
 				break;
 			}
 			case "mask": {
@@ -693,33 +663,20 @@ export const textReveal = /* @__PURE__ */ defineComponent({
 					);
 					break;
 				case "type": {
-					// Backspace, twice as fast as typing.
+					// Backspace, twice as fast as typing: the last glyph goes first.
 					const per = Math.max(1, Math.round(fps / (props.cps * 2)));
-					const keys: KeyframeTuple[] = [];
-					for (
-						let c = text.length - 1, f = exitStart + per;
-						c >= 0;
-						c--, f += per
-					)
-						keys.push([f, c === 1 ? 1 / text.length : c, "hold"]);
-					textNode.animate(LayerAnimation.keys("text" as AnimatableProp, keys));
-					afterHold = per * text.length + 1;
-					break;
-				}
-				case "track": {
-					const ls = props.letterSpacing ?? 0;
-					textNode.animate(
-						LayerAnimation.create()
-							.keys("letterSpacing", [
-								[exitStart, ls],
-								[exitStart + outDur, ls + 0.4 * fs, outEase],
-							])
-							.keys("opacity", [
-								[exitStart, 1],
-								[exitStart + outDur, 0, outEase],
-							]),
+					const gone = Array.from(
+						{ length: text.length },
+						(_, c) => exitStart + per * (text.length - c),
 					);
-					afterHold = outDur;
+					animators.push(
+						glyphAnimator(
+							"exit",
+							`(1-${stepExpression("char", rendererChars(text, gone))})`,
+							{ opacity: 0 },
+						),
+					);
+					afterHold = per * text.length + 1;
 					break;
 				}
 				case "wipe": {
@@ -824,16 +781,6 @@ function emphasisWeights(
 		}
 	}
 	return w.some((v) => v > 0) ? w : null;
-}
-
-/** Text-reveal count keys: ≤ 1 is a fraction, > 1 a character count. */
-function countKeys(length: number, frames: readonly number[]): KeyframeTuple[] {
-	const keys: KeyframeTuple[] = [[0, 0]];
-	frames.forEach((f, i) => {
-		const c = i + 1;
-		keys.push([f, c === 1 ? 1 / length : c, "hold"]);
-	});
-	return keys;
 }
 
 /** Landing shake, per frame after a unit lands (× 0.045 em). */

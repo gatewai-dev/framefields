@@ -77,15 +77,43 @@ describe("TextReveal", () => {
 		expect(t.span.duration).toBeGreaterThan(exitStart);
 	});
 
-	it("types with key cues, a caret, and count keys", () => {
-		const t = make()({ id: "t", text: "ab c", style: "type" });
+	it("types glyph by glyph inside the full layout, and backspaces out", () => {
+		const t = make()({
+			id: "t",
+			text: "ab c",
+			style: "type",
+			exitStyle: "type",
+			emphasis: ["c"],
+		});
 		expect(t.cues.keystrokes).toHaveLength(3);
-		const keys = track(find(t, "t-text"), "text");
-		expect(keys[keys.length - 1]?.[1]).toBe(4);
-		// One character is a fraction (1 would mean "all of it").
-		expect(keys.map((k) => k[1])).toContain(0.25);
-		expect(keys.map((k) => k[1])).not.toContain(1);
 		expect(find(t, "t-caret")).toBeDefined();
+		const text = find(t, "t-text");
+		// The node always holds the whole string: nothing reflows while typing.
+		expect(track(text, "text")).toEqual([]);
+		const enter = text?.animators?.find((a) => a.name === "enter");
+		expect(enter?.props).toEqual({ opacity: 0 });
+		const [first, , last] = t.cues.keystrokes;
+		const c = last?.index ?? 0;
+		expect(weight(enter as GlyphAnimator, (first?.frame ?? 0) - 1, 0)).toBe(1);
+		expect(weight(enter as GlyphAnimator, first?.frame ?? 0, 0)).toBe(0);
+		expect(weight(enter as GlyphAnimator, (last?.frame ?? 0) - 1, c)).toBe(1);
+		expect(weight(enter as GlyphAnimator, last?.frame ?? 0, c)).toBe(0);
+		// Backspace removes the last glyph first.
+		const exit = text?.animators?.find((a) => a.name === "exit");
+		const exitStart = t.cues.exitStart[0]?.frame ?? 0;
+		expect(weight(exit as GlyphAnimator, exitStart, c)).toBe(0);
+		const lastGone = t.span.duration;
+		expect(weight(exit as GlyphAnimator, lastGone, 0)).toBe(1);
+		expect(weight(exit as GlyphAnimator, lastGone - 2, 0)).toBe(0);
+		expect(weight(exit as GlyphAnimator, lastGone - 2, c)).toBe(1);
+	});
+
+	it("lets slammed words overflow their box while they land", () => {
+		const t = make()({ id: "t", text: "one two", style: "slam" });
+		const overflow = (id: string) =>
+			(find(t, id) as { overflow?: string } | undefined)?.overflow;
+		for (const id of ["t", "t-stage", "t-units", "t-shake"])
+			expect(overflow(id)).toBe("visible");
 	});
 
 	it("masks line by line, and only a split text can exit by mask", () => {

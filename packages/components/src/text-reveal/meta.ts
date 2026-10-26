@@ -3,7 +3,7 @@ import { defineMeta } from "../core/meta.js";
 export default defineMeta({
 	name: "TextReveal",
 	summary:
-		"Headlines and body copy that animate in and out by character, word or line: rise, blur, track, mask, slam, scatter, scramble, type, stream, wipe and flip, each ending on exactly the static text.",
+		"Headlines and body copy that animate in and out by character, word or line: rise, blur, mask, slam, scatter, scramble, type, stream, wipe and flip, each ending on exactly the static text.",
 	tags: ["text", "typography", "kinetic type", "title", "reveal", "typewriter"],
 	parts: ["text", "shake", "caret", "matte", "reels", "units", "line-<n>"],
 	cues: ["units", "revealed", "exitStart", "keystrokes"],

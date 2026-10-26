@@ -298,21 +298,25 @@ export const lowerThird = /* @__PURE__ */ defineComponent({
 			}
 			case "tag": {
 				// One line, one node: bold name, a dot, the role a size down.
+				// Too long for the safe area, the whole pill scales down: text
+				// width is linear in font size, so one ratio fits it exactly.
 				const sep = "  ·  ";
 				const sepW = props.role
 					? host.measure(sep, { fontFamily, fontSize: roleSize }).width
 					: 0;
-				const h = nameM.height + padY * 1.4;
-				const w = nameM.width + (roleM ? sepW + roleM.width : 0) + h;
+				const h0 = nameM.height + padY * 1.4;
+				const w0 = nameM.width + (roleM ? sepW + roleM.width : 0) + h0;
+				const k = Math.min(1, safe.width / w0);
+				const [h, w] = [h0 * k, w0 * k];
 				const line = host.text(
 					props.role ? `${props.name}${sep}${props.role}` : props.name,
 					{
 						id: ctx.partId("name"),
 						position: "absolute",
 						x: h / 2,
-						y: padY * 0.7,
+						y: padY * 0.7 * k,
 						fontFamily,
-						fontSize: nameSize,
+						fontSize: nameSize * k,
 						fill: theme.color.ink,
 						spans: [
 							{
@@ -324,12 +328,13 @@ export const lowerThird = /* @__PURE__ */ defineComponent({
 								? [
 										{
 											text: `${sep}${props.role}`,
-											fontSize: roleSize,
+											fontSize: roleSize * k,
 											fontWeight: theme.weight.medium,
 											fill: theme.color.muted,
 											// Centred on the name's capitals, not on its baseline: one
 											// line in a pill reads as aligned when the caps share a middle.
-											baselineShift: -(nameSize - roleSize) * CAP_HEIGHT * 0.5,
+											baselineShift:
+												-(nameSize - roleSize) * k * CAP_HEIGHT * 0.5,
 										},
 									]
 								: []),

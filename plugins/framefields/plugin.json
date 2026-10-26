@@ -4,8 +4,8 @@
 	"version": "2.6.2",
 	"description": "Author, render and verify video compositions with the framefields WebGPU SDK.",
 	"author": {
-		"name": "Framefields",
-		"url": "https://github.com/gatewai-dev"
+		"name": "Gatewai Studio",
+		"url": "https://framefields.dev"
 	},
 	"homepage": "https://github.com/gatewai-dev/framefields",
 	"repository": "https://github.com/gatewai-dev/framefields",
@@ -22,16 +22,16 @@
 			"interface": {
 				"displayName": "Framefields",
 				"shortDescription": "Code-first video on WebGPU",
-				"longDescription": "Framefields teaches your coding agent to make videos with code. The skills cover setting up a project with the framefields npm package, building compositions (layout, typography, keyframed animation, 3D scenes, audio), applying effects and color grading, on-device vision such as subject cutouts and tracking, and rendering: single frames, contact sheets, and MP4 export with built-in QA. Everything renders natively on WebGPU in Node.js, without a browser or desktop creative suite.\n\nIntended for developers and agents producing motion graphics, product videos, and programmatic films. Limitations: the plugin contains skills only; rendering needs Node.js 22 or later and a WebGPU-capable GPU (Metal or Vulkan), or a CPU renderer (Mesa lavapipe, Windows WARP) for slower rendering without one, and the vision features download open model weights from Hugging Face on first use. framefields is in beta, so APIs may change.",
-				"developerName": "Framefields",
-				"category": "Design",
+				"longDescription": "Framefields helps coding agents create videos with code. Set up projects, compose scenes with layout, typography, animation, 3D and audio, apply visual effects, and inspect or export rendered frames and video.\n\nDesigned for developers making motion graphics, product videos and programmatic films. The SDK runs in Node.js and uses WebGPU or a supported software renderer. On-device vision features download model weights on first use. Framefields is in beta and APIs may change.\n\nThe Framefields gateway also supports generating image, video and audio assets for use in a project.",
+				"developerName": "Gatewai Studio",
+				"category": "Creativity",
 				"capabilities": [
 					"Set up a framefields project",
 					"Compose and animate video",
 					"Apply effects and color grading",
 					"Render frames, grids, and MP4"
 				],
-				"websiteURL": "https://github.com/gatewai-dev/framefields",
+				"websiteURL": "https://framefields.dev",
 				"supportURL": "https://github.com/gatewai-dev/framefields/issues",
 				"defaultPrompt": [
 					"Set up framefields in this project and render a 3-second title card.",
@@ -41,12 +41,25 @@
 				"brandColor": "#3B82F6",
 				"brandColorDark": "#7DD3FC",
 				"composerIcon": "./assets/logo.png",
-				"logo": "./assets/logo.png"
+				"logo": "./assets/logo.png",
+				"privacyPolicyURL": "https://framefields.dev/privacy/",
+				"termsOfServiceURL": "https://framefields.dev/terms/"
 			},
 			"onboardingSkill": "./skills/framefields/SKILL.md",
+			"review": {
+				"prompts": [
+					"Set up framefields in this project and render a 3-second title card.",
+					"Add film grain and a vignette to my framefields composition.",
+					"Render a frame grid of my intro so I can check the motion."
+				],
+				"commerce": true,
+				"commerce_description": "Optional AI asset generation uses prepaid credits purchased on framefields.dev. Local composition and rendering do not require a purchase."
+			},
 			"publication": {
-				"release_notes": "Adds the framefields onboarding skill for setting up a project and a first verified render, and fixes the frame-grid example in framefields-render."
-			}
+				"release_notes": "Updates the skills for Codex credential handling and adds public listing and review metadata.",
+				"countries": []
+			},
+			"requires_local_executor": true
 		}
 	}
 }

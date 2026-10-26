@@ -18,13 +18,5 @@
 		"skills"
 	],
 	"homepage": "https://github.com/gatewai-dev/framefields#agent-skills--plugins",
-	"repository": "https://github.com/gatewai-dev/framefields",
-	"userConfig": {
-		"framefields_api_key": {
-			"type": "string",
-			"title": "Framefields API key",
-			"description": "API key for the Framefields AI gateway (https://framefields.dev/dashboard/keys)",
-			"sensitive": true
-		}
-	}
+	"repository": "https://github.com/gatewai-dev/framefields"
 }

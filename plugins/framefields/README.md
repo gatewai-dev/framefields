@@ -13,11 +13,11 @@ Skills load automatically when a task matches, for example *"add a film-grain pa
 
 ## How it works
 
-This plugin contains only skills: Markdown instructions for your agent. It bundles no executables, MCP servers, hooks, or package launchers. The engine itself is the [`framefields`](https://www.npmjs.com/package/framefields) npm package, which the skills tell your agent to add to your project (`npm install framefields`, Node.js 22 or later).
+This plugin contains skills and a connection to the hosted Framefields MCP server. It bundles no executables, hooks, or package launchers. The engine itself is the [`framefields`](https://www.npmjs.com/package/framefields) npm package, which the skills tell your agent to add to your project (`npm install framefields`, Node.js 22 or later).
 
 ## Data and privacy
 
-The plugin sends no data anywhere. When code that uses framefields' on-device vision features runs, the SDK downloads pinned, Apache-2.0 model weights from Hugging Face the first time each model is used and verifies them by SHA-256. When code calls `ai` (AI generation), the request, its inputs and any files uploaded with `ai.storage` go to the framefields gateway at `api.framefields.dev` and on to the model provider that runs the model; the gateway records usage for billing but does not store prompts or outputs. Nothing else leaves your machine.
+When you connect the MCP server and request generation, prompts and other inputs are sent to the Framefields gateway and the provider running the selected model. The gateway stores generated outputs and usage records. Standalone code using `ai` sends generation requests and uploaded files through the gateway as well. On-device vision downloads model weights on first use and verifies them by SHA-256. See the [privacy policy](https://framefields.dev/privacy/) for details.
 
 ## License
 

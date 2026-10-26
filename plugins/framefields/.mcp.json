@@ -1,0 +1,9 @@
+{
+	"mcpServers": {
+		"framefields": {
+			"type": "http",
+			"url": "https://framefields.dev/api/mcp",
+			"oauth": { "scopes": "framefields:media" }
+		}
+	}
+}

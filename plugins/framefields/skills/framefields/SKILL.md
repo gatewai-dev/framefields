@@ -274,7 +274,7 @@ Show the user the frame PNGs or the grid before the full render. `framefields-re
 `npm run preview` serves a localhost player (picture, sound, timeline) and prints its URL. The page runs `film.ts` itself and renders with WebGPU in real time, so the user sees the real film; a slow device skips frames to keep up with the sound.
 
 - Run it as a background command and read its output: it says when the page opened, prints errors from the page (a failed build, a frame that threw, a missing font), and says why it stopped. It stops 5 s after its last tab closes; just run it again.
-- It doesn't open anything. If your app has a built-in browser (Claude Code, Codex), open the URL there; otherwise give the user the link. `startPreview(..., { open: true })` opens their default browser.
+- It doesn't open anything. If your app has a built-in browser, open the URL there; otherwise give the user the link. `startPreview(..., { open: true })` opens their default browser.
 - **Reference assets from the file's URL.** The page runs `film.ts` itself, so asset paths must resolve in the browser too: build them from the module's own URL, `path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../assets/fonts")`, rather than `process.cwd()` or a bare relative path. The preview serves any file inside the project (the folder with `package.json`); pass `root` (one or more paths) to `startPreview` for fonts or media kept elsewhere.
 - After changing the film, run it again. It takes over the same URL, and the open tab reloads by itself at the same moment.
 - Link to a moment with `#t=12.5` (seconds). In a browser you can script, `window.framefieldsPreview` has `seek(seconds)`, `play()`, `pause()` and `state()`; `seek` resolves once the frame is drawn, so screenshot after it.
@@ -293,10 +293,16 @@ A failed job returns `{ code, hint, retryable }`; resubmit unchanged only when `
 
 ## 6. Generate assets with AI
 
+When the connected Framefields MCP server is available, use its model search and schema tools to choose inputs, then its generation and status/result tools to produce assets. The connection uses account sign-in; do not ask for or expose an API key. Generation may consume credits, so tell the user the intended model, number of calls, and applicable cost and obtain their approval before a paid request. Save results to the project before using them in a film. The code-based gateway workflow below is an alternative for standalone scripts.
+
 `framefields` exports `ai`: hundreds of AI models (images, video, music, sound effects, voice, upscaling, background removal) through the framefields AI gateway, each named by its catalog id and billed to the user's framefields account. `run`, `subscribe`, `stream`, `queue` and `storage` cover every model.
 
 ```typescript
 import { ai } from "framefields";
+
+const apiKey = process.env.FRAMEFIELDS_API_KEY;
+if (!apiKey) throw new Error("Set FRAMEFIELDS_API_KEY before generating assets.");
+ai.config({ apiKey });
 
 const { data, requestId } = await ai.subscribe<{ images: { url: string }[] }>("flux/schnell", {
   input: { prompt: "Neon street at night, rain, 35mm", image_size: "landscape_16_9" },
@@ -304,7 +310,7 @@ const { data, requestId } = await ai.subscribe<{ images: { url: string }[] }>("f
 console.log(data.images[0].url);
 ```
 
-**The key.** Requests authenticate with an `ff_live_…` key from https://framefields.dev/dashboard/keys. Take the value as `${user_config.framefields_api_key}` that the user chose to share via the plugin's `userConfig` option (`sensitive: true`), instead of reading credentials from the user's environment or files. Configure it with `ai.config({ apiKey: "${user_config.framefields_api_key}" })`. Never read credentials from the user's machine or environment files without authorization, never write the key into source files, and never ask the user to paste keys into chat. Without a key, every call throws before any request is sent. Failures throw `ApiError` with the gateway's `type`: on `insufficient_credits` (status `402`) tell the user to top up at https://framefields.dev/dashboard/billing rather than retrying; `key_limit_reached` means the key's monthly cap; `rate_limited` and `too_many_inflight_requests` mean wait and retry. A `ValidationError` (`422`) lists the bad input fields in `fieldErrors`.
+**The key.** Requests authenticate with an `ff_live_…` key from https://framefields.dev/dashboard/keys. For local execution, ask the user to set `FRAMEFIELDS_API_KEY` in the process environment themselves; never ask them to paste a key into chat. The script reads `process.env.FRAMEFIELDS_API_KEY` and fails with an actionable message when it is missing. Do not inspect or print environment variables or credential files, embed the key in source, or commit it. AI generation is optional and does not affect local composition and rendering. Without a key, gateway calls cannot run. Failures throw `ApiError` with the gateway's `type`: on `insufficient_credits` (status `402`) tell the user to top up at https://framefields.dev/dashboard/billing rather than retrying; `key_limit_reached` means the key's monthly cap; `rate_limited` and `too_many_inflight_requests` mean wait and retry. A `ValidationError` (`422`) lists the bad input fields in `fieldErrors`.
 
 **Generate once, into `assets/`, in its own script.** Generation costs money and is not deterministic, so it never runs inside `buildFilm()`, the preview, tests or the render worker. Write `src/generate.ts`, run it on purpose, download every output into `assets/generated/` (tracked in Git LFS, as above), and reference the local file from the film. Generated output URLs expire, and the worker renders from the repository.
 
@@ -314,7 +320,9 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { ai } from "framefields";
 
-ai.config({ apiKey: "${user_config.framefields_api_key}" });
+const apiKey = process.env.FRAMEFIELDS_API_KEY;
+if (!apiKey) throw new Error("Set FRAMEFIELDS_API_KEY before generating assets.");
+ai.config({ apiKey });
 
 const OUT = path.resolve(import.meta.dirname, "../assets/generated");
 await fs.mkdir(OUT, { recursive: true });
@@ -355,7 +363,7 @@ Then `Layer.image("assets/generated/street.jpg")` / `Layer.video("assets/generat
 Coding agents interacting with the AI gateway can discover endpoints, inspect credit runway, and handle top-ups programmatically:
 
 - **Manifest discovery:** Read `GET https://framefields.dev/.well-known/agent-payment.json` for live auth schemes, pack amounts, and endpoint paths.
-- **Runway check:** `GET https://framefields.dev/api/v1/agent/balance` with `Authorization: Bearer ${user_config.framefields_api_key}` returns `{ balance_usd, held_usd, available_usd }`. Query this before expensive generation batches.
+- **Runway check:** `GET https://framefields.dev/api/v1/agent/balance` using the `FRAMEFIELDS_API_KEY` process environment variable as the bearer credential (never print it) returns `{ balance_usd, held_usd, available_usd }`. Query this before expensive generation batches.
 - **Autonomous 402 flow:** When credits are exhausted, the gateway returns HTTP `402 Payment Required` with a dynamic Dodo checkout link:
   ```json
   {

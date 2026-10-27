@@ -106,6 +106,26 @@ All `Layer.*` builders return `AnimatableNode<T>` instances with chainable `.ani
 
 ---
 
+## Media time remapping
+
+Video and audio layers accept `timeRemap` with an explicit `durationFrames`. Map frames are layer-local; `sourceSec` is absolute source time. Increasing source times play forward; decreasing source times play in reverse; equal source times hold the picture and silence the audio. Rate changes also change audio pitch. Do not combine this with `trimStartSec`.
+
+```ts
+const clip = Layer.video("assets/clip.mp4", {
+  durationFrames: 90,
+  timeRemap: { kind: "keyframes", keyframes: [
+    { frame: 0, sourceSec: 1, interpolation: "smooth" },
+    { frame: 30, sourceSec: 2 }, { frame: 45, sourceSec: 2 },
+    { frame: 90, sourceSec: 1 },
+  ] },
+});
+comp.add(clip);
+const vision = comp.vision(clip);
+// Or: timeRemap: { kind: "rate", sourceStartSec: 3, rate: -0.5 }
+```
+
+Keyframes must start at frame 0, end at `durationFrames`, and increase in frame. `interpolation` belongs to the starting key of a segment: `"linear"` (default), `"ease-in"`, `"ease-out"`, or `"smooth"`. These curves are monotonic and do not overshoot; `smooth` starts and ends at zero speed. Adjacent segments may have different speeds at their join. `comp.vision(layer)` requires the layer to have already been added; clip analysis runs in source order and is sampled on the mapped clock. Effects stay on the composition clock. Source ranges are checked before rendering. Audio uses resampling rather than pitch-preserving time stretch. Reverse video can render more slowly due to source seeking; headless decoding retains at most 48 MiB of cached frames per decoder.
+
 ## Animation System (`LayerAnimation`)
 
 Create animations using `LayerAnimation.create()` or fluent factory methods. Animations are composed of keyframed tracks or procedural drivers.

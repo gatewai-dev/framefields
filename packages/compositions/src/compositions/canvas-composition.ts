@@ -589,6 +589,7 @@ export async function drawCompositionTree(
 							accumulatedSeekOffsetSec,
 					);
 					const rawTimestampSec =
+						props.sourceTimeSec ??
 						(segmentLocalFrame / fps) * finalPlaybackRate + effectiveTrimSec;
 					const timestampSec = Math.max(
 						0,
@@ -597,7 +598,7 @@ export async function drawCompositionTree(
 
 					await drawVideoNode(ctx, pass, {
 						nodeId: props.renderId,
-						frameKey: `${props.renderId ?? "video"}-${params.sourceUrl}-${Math.round(timestampSec * fps)}`,
+						frameKey: `${props.renderId ?? "video"}-${params.sourceUrl}-${timestampSec}`,
 						sourceUrl: params.sourceUrl,
 						timestampSec,
 						dstRect: {

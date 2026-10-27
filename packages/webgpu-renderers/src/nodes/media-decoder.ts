@@ -86,6 +86,11 @@ export class VideoDecoder extends BaseMediaDecoder<
 	private currentSample: VideoSample | null = null;
 	private nextSample: VideoSample | null = null;
 	private headlessQueue: VideoSample[] = [];
+	/** Recently decoded source frames for backwards access, bounded by RGBA size. */
+	private backwardFrames: VideoSample[] = [];
+	private backwardBytes = 0;
+	private backwardEnd: number | undefined;
+	private lastHeadlessTimestamp: number | undefined;
 	private isDecoding = false;
 	/**
 	 * Reused RGBA staging array for headless decode. Only one decode is in
@@ -157,8 +162,103 @@ export class VideoDecoder extends BaseMediaDecoder<
 			} catch (_) {}
 		}
 		this.headlessQueue = [];
+		this.clearBackwardFrames();
+		this.lastHeadlessTimestamp = undefined;
 		this.decodeBuffer = null;
 		this.iteratorStartTimestamp = -1;
+	}
+
+	private clearBackwardFrames(): void {
+		for (const sample of this.backwardFrames) sample.close();
+		this.backwardFrames = [];
+		this.backwardBytes = 0;
+		this.backwardEnd = undefined;
+	}
+
+	private async copyHeadlessSample(
+		sample: VideoSample,
+		fetchId: number,
+	): Promise<VideoFrameData | null> {
+		const width = sample.displayWidth;
+		const height = sample.displayHeight;
+		const byteLength = width * height * 4;
+		let buffer = this.decodeBuffer;
+		if (!buffer || buffer.length !== byteLength) {
+			buffer = new Uint8Array(byteLength);
+			this.decodeBuffer = buffer;
+		}
+		await sample.copyTo(buffer, { format: "RGBA" });
+		if (this.currentFetchId !== fetchId || this.destroyed || !this.input)
+			return null;
+		premultiplyPixels(buffer);
+		return { width, height, buffer };
+	}
+
+	private cachedBackwardFrame(timestamp: number): VideoSample | undefined {
+		let selected: VideoSample | undefined;
+		let index = -1;
+		for (const [i, sample] of this.backwardFrames.entries()) {
+			if (sample.timestamp > timestamp + 0.0001) break;
+			selected = sample;
+			index = i;
+		}
+		const next = this.backwardFrames[index + 1]?.timestamp ?? this.backwardEnd;
+		if (
+			!selected ||
+			!(selected.duration > 0) ||
+			timestamp + 0.0001 >=
+				Math.min(selected.timestamp + selected.duration, next ?? Infinity)
+		)
+			return undefined;
+		return selected;
+	}
+
+	/** Decode a small forward window once and retain its last frames for reverse playback. */
+	private async fillBackwardFrames(
+		timestamp: number,
+		fetchId: number,
+	): Promise<void> {
+		if (!this.videoSampleSink) return;
+		await this.closeIterator(this.iterator);
+		this.iterator = null;
+		for (const sample of this.headlessQueue) sample.close();
+		this.headlessQueue = [];
+		this.clearBackwardFrames();
+		const iterator = this.videoSampleSink.samples(Math.max(0, timestamp - 0.5));
+		try {
+			for await (const sample of iterator) {
+				if (sample.timestamp > timestamp + 0.0001)
+					this.backwardEnd = sample.timestamp;
+				if (
+					this.destroyed ||
+					this.currentFetchId !== fetchId ||
+					sample.timestamp > timestamp + 0.0001
+				) {
+					sample.close();
+					break;
+				}
+				const sampleBytes = sample.displayWidth * sample.displayHeight * 4;
+				if (sampleBytes > 48 * 1024 * 1024) {
+					sample.close();
+					break;
+				}
+				this.backwardFrames.push(sample);
+				this.backwardBytes += sampleBytes;
+				while (
+					this.backwardBytes > 48 * 1024 * 1024 &&
+					this.backwardFrames.length > 1
+				) {
+					const oldest = this.backwardFrames.shift();
+					if (oldest) {
+						this.backwardBytes -=
+							oldest.displayWidth * oldest.displayHeight * 4;
+						oldest.close();
+					}
+				}
+			}
+		} finally {
+			await this.closeIterator(iterator);
+		}
 	}
 
 	protected onDestroy(): void {
@@ -275,6 +375,16 @@ export class VideoDecoder extends BaseMediaDecoder<
 		const eps = 0.0001;
 		const forwardSeekThreshold = 1.0;
 		const backwardSeekThreshold = 0.01;
+		const backwards =
+			this.lastHeadlessTimestamp !== undefined &&
+			safeTimestamp < this.lastHeadlessTimestamp - 0.0001;
+		this.lastHeadlessTimestamp = safeTimestamp;
+		let cached = this.cachedBackwardFrame(safeTimestamp);
+		if (!cached && backwards) {
+			await this.fillBackwardFrames(safeTimestamp, fetchId);
+			cached = this.cachedBackwardFrame(safeTimestamp);
+		}
+		if (cached) return this.copyHeadlessSample(cached, fetchId);
 
 		if (
 			!this.iterator ||
@@ -309,20 +419,7 @@ export class VideoDecoder extends BaseMediaDecoder<
 		const currentSample = this.headlessQueue[0];
 		if (!currentSample) return null;
 
-		const width = currentSample.displayWidth;
-		const height = currentSample.displayHeight;
-		const byteLength = width * height * 4;
-		let buffer = this.decodeBuffer;
-		if (!buffer || buffer.length !== byteLength) {
-			buffer = new Uint8Array(byteLength);
-			this.decodeBuffer = buffer;
-		}
-		await currentSample.copyTo(buffer, { format: "RGBA" });
-		if (this.currentFetchId !== fetchId || this.destroyed || !this.input)
-			return null;
-		// WebCodecs RGBA is straight alpha; the compositor expects premultiplied.
-		premultiplyPixels(buffer);
-		return { width, height, buffer };
+		return this.copyHeadlessSample(currentSample, fetchId);
 	}
 
 	private async performDecodeInternal(

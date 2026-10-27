@@ -68,6 +68,92 @@ const cutout = (clip: string, vision: Record<string, unknown> = {}) =>
 	});
 
 describe("matte reuses comp.vision", () => {
+	it("follows a clip's subject while its media plays in reverse", async () => {
+		const file = await greenClip();
+		const c = stage("#0000ff");
+		const layer = Layer.video(file, {
+			position: "absolute",
+			x: 0,
+			y: 0,
+			width: SIZE,
+			height: SIZE,
+			durationFrames: 2,
+			muted: true,
+			timeRemap: { kind: "rate", sourceStartSec: 2 / FPS, rate: -1 },
+		}).withVision({ mode: "matte", baseUrl: "http://127.0.0.1:9/" });
+		c.add(layer);
+		const clip = c.vision(layer, { cacheDir: false, smoothing: 0 });
+		const right = leftHalf().map((v) => 255 - v);
+		seedClipVision(
+			clip,
+			{ width: SIZE, height: SIZE },
+			Array.from({ length: 40 }, (_, i) => ({
+				kp: null,
+				mask: null,
+				subject: i === 2 ? right : leftHalf(),
+			})),
+		);
+		const first = await decodePngPixels(await c.renderFrame({ frame: 0 }));
+		const next = await decodePngPixels(await c.renderFrame({ frame: 1 }));
+		expect(getPixel(first, 150, 100).g).toBeGreaterThan(240);
+		expect(getPixel(next, 50, 100).g).toBeGreaterThan(240);
+	});
+	it("uses mapped source time to select the rendered matte", async () => {
+		const file = await greenClip();
+		const c = stage("#0000ff");
+		const layer = Layer.video(file, {
+			position: "absolute",
+			x: 0,
+			y: 0,
+			width: SIZE,
+			height: SIZE,
+			durationFrames: 4,
+			muted: true,
+			timeRemap: {
+				kind: "keyframes",
+				keyframes: [
+					{ frame: 0, sourceSec: 1 / FPS },
+					{ frame: 4, sourceSec: 1 / FPS },
+				],
+			},
+		}).withVision({ mode: "matte", baseUrl: "http://127.0.0.1:9/" });
+		c.add(layer);
+		const clip = c.vision(layer, { cacheDir: false, smoothing: 0 });
+		const right = leftHalf().map((v) => 255 - v);
+		seedClipVision(
+			clip,
+			{ width: SIZE, height: SIZE },
+			Array.from({ length: 40 }, (_, i) => ({
+				kp: null,
+				mask: null,
+				subject: i === 0 ? leftHalf() : right,
+			})),
+		);
+		const img = await decodePngPixels(await c.renderFrame({ frame: 0 }));
+		expect(getPixel(img, 50, 100).b).toBeGreaterThan(240);
+		expect(getPixel(img, 150, 100).g).toBeGreaterThan(240);
+	});
+	it("links each remapped layer to its own vision clock", () => {
+		const c = stage();
+		const first = Layer.video("clip.mp4", {
+			durationFrames: 10,
+			timeRemap: { kind: "rate", sourceStartSec: 0, rate: 0.5 },
+		}).withVision({ mode: "matte" });
+		const second = Layer.video("clip.mp4", {
+			durationFrames: 10,
+			timeRemap: { kind: "rate", sourceStartSec: 1, rate: 1 },
+		}).withVision({ mode: "matte" });
+		c.add([first, second]);
+		const a = c.vision(first, { cacheDir: false });
+		const b = c.vision(second, { cacheDir: false });
+		(c as unknown as { linkClipMattes(): void }).linkClipMattes();
+		expect((first.vision as { [CLIP_SUBJECT]?: unknown })[CLIP_SUBJECT]).toBe(
+			a,
+		);
+		expect((second.vision as { [CLIP_SUBJECT]?: unknown })[CLIP_SUBJECT]).toBe(
+			b,
+		);
+	});
 	it("cuts the layer out with the clip's cached subject, from the first frame", async () => {
 		const file = await greenClip();
 		const c = stage("#0000ff");

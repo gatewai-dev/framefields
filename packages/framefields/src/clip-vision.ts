@@ -1,4 +1,10 @@
-import { type FrameSignal, Signal } from "@framefields/core";
+import {
+	type FrameSignal,
+	type MediaTimeRemap,
+	mediaSourceRange,
+	mediaSourceTime,
+	Signal,
+} from "@framefields/core";
 import {
 	type ClipSubjectSource,
 	COCO17_KEYPOINT_NAMES,
@@ -16,6 +22,10 @@ export interface ClipVisionOptions {
 	startFrame?: number;
 	/** Seconds trimmed off the clip's start, as on its media layer (default 0). */
 	trimStartSec?: number;
+	/** The media layer's source-time mapping. */
+	timeRemap?: MediaTimeRemap;
+	/** Media layer duration in composition frames, when known. */
+	durationFrames?: number;
 	/** Analysis frame rate (default: the composition's). */
 	fps?: number;
 	/** Track 17 COCO keypoints (default true). */
@@ -91,6 +101,7 @@ const CACHE_VERSION = 1;
 export class ClipVision implements ClipSubjectSource {
 	readonly source: string;
 	readonly fps: number;
+	readonly compositionFps: number;
 	readonly startFrame: number;
 	readonly trimStartSec: number;
 	readonly smoothing: number;
@@ -119,6 +130,7 @@ export class ClipVision implements ClipSubjectSource {
 	constructor(source: string, fps: number, options: ClipVisionOptions = {}) {
 		this.source = source;
 		this.options = options;
+		this.compositionFps = fps;
 		this.fps = options.fps ?? fps;
 		this.startFrame = Math.round(options.startFrame ?? 0);
 		this.trimStartSec = options.trimStartSec ?? 0;
@@ -166,8 +178,12 @@ export class ClipVision implements ClipSubjectSource {
 	 */
 	subject(frame: number, fps: number): InstanceMask | null | undefined {
 		const c = (frame * this.fps) / fps;
-		if (Math.abs(c - Math.round(c)) > 1e-6) return undefined;
-		const s = this.subjects.get(Math.round(c));
+		if (!this.options.timeRemap && Math.abs(c - Math.round(c)) > 1e-6)
+			return undefined;
+		const sourceFrame = this.options.timeRemap
+			? Math.floor(c + 1e-6)
+			: Math.round(c);
+		const s = this.subjects.get(sourceFrame);
 		if (s === undefined) return s;
 		if (s === null || !this.sourceWidth) return null;
 		const width = this.sourceWidth;
@@ -185,12 +201,42 @@ export class ClipVision implements ClipSubjectSource {
 
 	/** Composition frame → clip frame (fractional). */
 	clipFrame(frame: number): number {
-		return frame - this.startFrame + this.trimStartSec * this.fps;
+		if (this.options.timeRemap)
+			return (
+				mediaSourceTime(
+					this.options.timeRemap,
+					this.localFrame(frame),
+					this.compositionFps,
+				) * this.fps
+			);
+		return (
+			((frame - this.startFrame) / this.compositionFps + this.trimStartSec) *
+			this.fps
+		);
+	}
+
+	private localFrame(frame: number): number {
+		const local = Math.max(0, frame - this.startFrame);
+		return this.options.durationFrames === undefined
+			? local
+			: Math.min(local, Math.max(0, this.options.durationFrames - 1));
 	}
 
 	private window(frame: number, toFrame: number): [number, number] {
-		const a = Math.floor(this.clipFrame(Math.min(frame, toFrame)));
-		const b = Math.ceil(this.clipFrame(Math.max(frame, toFrame)));
+		const range = this.options.timeRemap
+			? mediaSourceRange(
+					this.options.timeRemap,
+					this.localFrame(Math.min(frame, toFrame)),
+					this.localFrame(Math.max(frame, toFrame)),
+					this.compositionFps,
+				)
+			: undefined;
+		const a = Math.floor(
+			range ? range.min * this.fps : this.clipFrame(Math.min(frame, toFrame)),
+		);
+		const b = Math.ceil(
+			range ? range.max * this.fps : this.clipFrame(Math.max(frame, toFrame)),
+		);
 		return [
 			Math.max(0, a - HOLD - this.smoothing),
 			Math.max(0, b + this.smoothing),

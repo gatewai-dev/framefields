@@ -4,6 +4,7 @@ import {
 	EaseRefSchema,
 	type FlexNode,
 	type LayoutNode,
+	LayoutNodeSchema,
 } from "./schema.js";
 import {
 	collectMediaBindings,
@@ -1083,5 +1084,44 @@ describe("validateLayoutProgram (E-code pre-parse scan)", () => {
 				expect(textNode.spans?.[3].mark?.borderRadius).toBe(6);
 			}
 		}
+	});
+});
+
+describe("media time remapping schema", () => {
+	it("accepts forward and reverse maps and rejects malformed layer timing", () => {
+		const node = {
+			id: "clip",
+			kind: "media",
+			inputHandleId: "a.mp4",
+			dataType: "Video",
+			durationFrames: 30,
+			timeRemap: {
+				kind: "keyframes",
+				keyframes: [
+					{ frame: 0, sourceSec: 1 },
+					{ frame: 15, sourceSec: 1 },
+					{ frame: 30, sourceSec: 2 },
+				],
+			},
+		};
+		expect(LayoutNodeSchema.safeParse(node).success).toBe(true);
+		expect(
+			LayoutNodeSchema.safeParse({ ...node, trimStartSec: 1 }).success,
+		).toBe(false);
+		expect(
+			LayoutNodeSchema.safeParse({ ...node, durationFrames: 29 }).success,
+		).toBe(false);
+		expect(
+			LayoutNodeSchema.safeParse({
+				...node,
+				timeRemap: {
+					kind: "keyframes",
+					keyframes: [
+						{ frame: 0, sourceSec: 1 },
+						{ frame: 30, sourceSec: 0 },
+					],
+				},
+			}).success,
+		).toBe(true);
 	});
 });

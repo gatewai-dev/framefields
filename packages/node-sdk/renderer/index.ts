@@ -28,6 +28,8 @@ export interface NodeRenderProps<
 	opacity?: number;
 	frame?: number;
 	compositionFrame?: number;
+	/** Absolute source time for a remapped media leaf; effect clocks stay unchanged. */
+	sourceTimeSec?: number;
 	fps?: number;
 	elapsedMs?: number;
 	durationMs?: number;

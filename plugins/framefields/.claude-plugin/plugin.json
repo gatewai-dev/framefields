@@ -18,5 +18,10 @@
 		"skills"
 	],
 	"homepage": "https://github.com/gatewai-dev/framefields#agent-skills--plugins",
-	"repository": "https://github.com/gatewai-dev/framefields"
+	"repository": "https://github.com/gatewai-dev/framefields",
+	"icon": "./assets/logo.png",
+	"documentationUrl": "https://framefields.dev/docs/",
+	"supportUrl": "https://github.com/gatewai-dev/framefields/issues",
+	"privacyPolicyUrl": "https://framefields.dev/privacy/",
+	"termsOfServiceUrl": "https://framefields.dev/terms/"
 }

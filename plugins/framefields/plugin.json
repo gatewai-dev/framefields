@@ -22,7 +22,7 @@
 			"interface": {
 				"displayName": "Framefields",
 				"shortDescription": "Turn ideas into videos",
-				"longDescription": "Framefields helps coding agents create videos with code. Set up projects, compose scenes with layout, typography, animation, 3D and audio, apply visual effects, and inspect or export rendered frames and video.\n\nDesigned for developers making motion graphics, product videos and programmatic films. The SDK runs in Node.js and uses WebGPU or a supported software renderer. On-device vision features download model weights on first use.\n\nThe Framefields gateway also supports generating image, video and audio assets for use in a project.",
+				"longDescription": "Framefields helps coding agents create videos with code. Set up projects, compose scenes with layout, typography, animation, 3D and audio, apply visual effects, and inspect or export rendered frames and video.\n\nDesigned for developers making motion graphics, product videos and programmatic films. The SDK runs in Node.js and uses WebGPU or a supported software renderer. On-device vision features download model weights on first use.\n\nGenerate image, video and audio assets through the Framefields SDK. The connected server provides model information and price estimates.",
 				"developerName": "Gatewai Studio",
 				"category": "Creativity",
 				"capabilities": [
@@ -56,7 +56,7 @@
 				"commerce_description": "Optional AI asset generation uses prepaid credits purchased on framefields.dev. Local composition and rendering do not require a purchase."
 			},
 			"publication": {
-				"release_notes": "Updates the skills for Codex credential handling and adds public listing and review metadata.",
+				"release_notes": "Uses the SDK for media creation and keeps the connected server focused on model information and cost estimates.",
 				"countries": []
 			},
 			"requires_local_executor": true

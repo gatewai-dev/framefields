@@ -293,9 +293,13 @@ A failed job returns `{ code, hint, retryable }`; resubmit unchanged only when `
 
 ## 6. Generate assets with AI
 
-When the connected Framefields MCP server is available, use its model search and schema tools to choose inputs, then its generation and status/result tools to produce assets. The connection uses account sign-in; do not ask for or expose an API key. Generation may consume credits, so tell the user the intended model, number of calls, and applicable cost and obtain their approval before a paid request. Save results to the project before using them in a film. The code-based gateway workflow below is an alternative for standalone scripts.
+Use the connected Framefields MCP server for `list_models`, `get_model_schema`, and `estimate_generation_cost` when available (in Claude Code sessions, these are exposed as `mcp__plugin_framefields_framefields__list_models`, `mcp__plugin_framefields_framefields__get_model_schema`, and `mcp__plugin_framefields_framefields__estimate_generation_cost`). Use `import { ai } from "framefields"` in a local script to generate, edit, or process media; MCP does not submit or retrieve generation jobs. The SDK authenticates with a separate gateway API key (`FRAMEFIELDS_API_KEY`), not the MCP OAuth connection. Use only the currently supported catalog models and the input fields from the selected model's schema.
 
-`framefields` exports `ai`: hundreds of AI models (images, video, music, sound effects, voice, upscaling, background removal) through the framefields AI gateway, each named by its catalog id and billed to the user's framefields account. `run`, `subscribe`, `stream`, `queue` and `storage` cover every model.
+- `list_models`: inspect catalog models and category tasks (`text-to-image`, `text-to-video`, `speech-to-text`, etc.).
+- `get_model_schema`: check required and optional inputs for the model before writing the script.
+- `estimate_generation_cost`: check published rates or request cost estimates before running paid generation.
+
+`framefields` exports `ai` for image, video and audio operations through the Framefields gateway. Each request uses a model ID and account credits. `run`, `subscribe`, `stream`, `queue`, and `storage` support the gateway workflow.
 
 ```typescript
 import { ai } from "framefields";
@@ -304,7 +308,7 @@ const apiKey = process.env.FRAMEFIELDS_API_KEY;
 if (!apiKey) throw new Error("Set FRAMEFIELDS_API_KEY before generating assets.");
 ai.config({ apiKey });
 
-const { data, requestId } = await ai.subscribe<{ images: { url: string }[] }>("flux/schnell", {
+const { data, requestId } = await ai.subscribe<{ images: { url: string }[] }>("seedream/4.5", {
   input: { prompt: "Neon street at night, rain, 35mm", image_size: "landscape_16_9" },
 });
 console.log(data.images[0].url);
@@ -333,7 +337,7 @@ async function save(url: string, name: string): Promise<string> {
   return file;
 }
 
-const still = await ai.subscribe<{ images: { url: string }[] }>("flux/schnell", {
+const still = await ai.subscribe<{ images: { url: string }[] }>("seedream/4.5", {
   input: { prompt: "Neon street at night, rain, 35mm", image_size: "landscape_16_9", seed: 7 },
 });
 await save(still.data.images[0].url, "street.jpg");
@@ -341,7 +345,7 @@ await save(still.data.images[0].url, "street.jpg");
 // Feed a local file to a model: put a Blob in the input and it is uploaded for you
 // (or call ai.storage.upload(blob) yourself and pass the URL).
 const image_url = new Blob([await fs.readFile(path.join(OUT, "street.jpg"))], { type: "image/jpeg" });
-const clip = await ai.subscribe<{ video: { url: string } }>("kling-video/v2.1/standard/image-to-video", {
+const clip = await ai.subscribe<{ video: { url: string } }>("seedance/2.0/image-to-video", {
   input: { prompt: "slow push in, rain falling", image_url, duration: "5" },
   logs: true,
   onQueueUpdate: (u) => u.status === "IN_PROGRESS" && u.logs.forEach((l) => console.log(l.message)),
@@ -354,7 +358,7 @@ Then `Layer.image("assets/generated/street.jpg")` / `Layer.video("assets/generat
 
 - **Pick the model and its input from the catalog.** https://framefields.dev/models lists every model with its id, category, price per unit and input schema. Each model has its own input and output fields (`images[0].url`, `video.url`, `audio.url`, `audio_file.url` …): read the schema and pass the output shape as the type argument, or log `data` once, instead of guessing.
 - **Long jobs** (video, music): `subscribe` waits and polls. For several at once, `ai.queue.submit(model, { input })` each, keep every `request_id`, then `ai.queue.result(model, { requestId })`; an interrupted script can collect the results instead of paying again. Reading a status or result is free and retried on transient errors; submitting is never retried, so it can't bill twice.
-- **Ask before spending.** Before a batch, or before any video model, tell the user which models you will call, how many times, and the catalog price; generate a single draft first and show it.
+- **Costs:** Generation consumes credits. When useful, use the MCP price-estimate tool or the model catalog to report an estimate or unit rate; actual charges can vary. Do not invent a total when only a unit rate is known.
 - Pass a fixed `seed` where the model accepts one, and keep the prompts in `generate.ts`, so a result can be regenerated.
 - Frame-rate and size: generated clips rarely match the composition's `fps` or aspect. Use `fit: "cover"` on the layer, and check the clip's real duration before cutting to it.
 

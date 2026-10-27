@@ -21,7 +21,7 @@
 		"com.openai": {
 			"interface": {
 				"displayName": "Framefields",
-				"shortDescription": "Code-first video on WebGPU",
+				"shortDescription": "Turn ideas into videos",
 				"longDescription": "Framefields helps coding agents create videos with code. Set up projects, compose scenes with layout, typography, animation, 3D and audio, apply visual effects, and inspect or export rendered frames and video.\n\nDesigned for developers making motion graphics, product videos and programmatic films. The SDK runs in Node.js and uses WebGPU or a supported software renderer. On-device vision features download model weights on first use.\n\nThe Framefields gateway also supports generating image, video and audio assets for use in a project.",
 				"developerName": "Gatewai Studio",
 				"category": "Creativity",

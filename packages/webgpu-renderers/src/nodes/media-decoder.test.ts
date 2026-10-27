@@ -14,20 +14,15 @@ vi.mock("mediabunny", () => {
 	});
 
 	const mockSamples = vi.fn().mockImplementation(async function* (ts: number) {
-		yield {
-			timestamp: ts,
-			displayWidth: 100,
-			displayHeight: 100,
-			copyTo: vi.fn().mockResolvedValue(undefined),
-			close: vi.fn(),
-		};
-		yield {
-			timestamp: ts + 0.1,
-			displayWidth: 100,
-			displayHeight: 100,
-			copyTo: vi.fn().mockResolvedValue(undefined),
-			close: vi.fn(),
-		};
+		for (let i = Math.floor(ts * 10); i < 30; i++)
+			yield {
+				timestamp: i / 10,
+				duration: 0.2,
+				displayWidth: 100,
+				displayHeight: 100,
+				copyTo: vi.fn().mockResolvedValue(undefined),
+				close: vi.fn(),
+			};
 	});
 
 	const mockBuffers = vi.fn().mockImplementation(async function* (ts: number) {
@@ -104,6 +99,29 @@ describe("Media Decoder", () => {
 			expect(frame?.buffer).toBeDefined();
 			expect(frame?.canvas).toBeUndefined();
 			decoder.destroy();
+		});
+
+		it("reuses and releases the bounded cache for reverse frames", async () => {
+			const decoder = new VideoDecoder("test-url", true);
+			await decoder.getFrame(1);
+			await decoder.getFrame(0.9);
+			const internals = decoder as unknown as {
+				backwardFrames: { close: ReturnType<typeof vi.fn> }[];
+				videoSampleSink: { samples: ReturnType<typeof vi.fn> };
+				backwardBytes: number;
+			};
+			const frames = [...internals.backwardFrames];
+			expect(frames.length).toBeGreaterThan(1);
+			const calls = internals.videoSampleSink.samples.mock.calls.length;
+			await decoder.getFrame(0.8);
+			expect(internals.videoSampleSink.samples.mock.calls.length).toBe(calls);
+			expect(internals.backwardBytes).toBeLessThanOrEqual(48 * 1024 * 1024);
+			await decoder.getFrame(1);
+			expect(
+				internals.videoSampleSink.samples.mock.calls.length,
+			).toBeGreaterThan(calls);
+			decoder.destroy();
+			for (const frame of frames) expect(frame.close).toHaveBeenCalledOnce();
 		});
 
 		it("should queue concurrent decode requests", async () => {

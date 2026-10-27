@@ -13,6 +13,7 @@ import type { MeshAudioDeformConfig, TextSpan } from "@framefields/core";
 import {
 	DEFAULT_DURATION_MS,
 	getActiveMediaMetadata,
+	mediaSourceTime,
 	type VirtualMediaData,
 } from "@framefields/core";
 import {
@@ -3871,14 +3872,26 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 							// or the raw frame lands there wherever the clip does not cover it.
 							excludeTextures: [activeTex, targetTexture, ...excludes],
 							isVideoMode: isVideoMode && !contentIsImageCompositor,
+							...(isVideoMode &&
+								lop.timeRemap &&
+								kind === "media" &&
+								lop.dataType === "Video" && {
+									sourceTimeSec: mediaSourceTime(
+										lop.timeRemap,
+										Math.max(0, shiftedFrame - (lop.startFrame ?? 0)),
+										fps ?? 24,
+									),
+								}),
 							...(isVideoMode && {
 								frame:
-									Math.max(0, shiftedFrame - (lop.startFrame ?? 0)) +
-									(lop.mediaStartFrame ??
-										lop.trimStartFrames ??
-										(lop.trimStartSec != null
-											? Math.round(lop.trimStartSec * (fps ?? 24))
-											: 0)),
+									lop.timeRemap && kind === "media" && lop.dataType === "Video"
+										? Math.max(0, shiftedFrame - (lop.startFrame ?? 0))
+										: Math.max(0, shiftedFrame - (lop.startFrame ?? 0)) +
+											(lop.mediaStartFrame ??
+												lop.trimStartFrames ??
+												(lop.trimStartSec != null
+													? Math.round(lop.trimStartSec * (fps ?? 24))
+													: 0)),
 							}),
 							compositionFrame,
 							...(isCaption && {

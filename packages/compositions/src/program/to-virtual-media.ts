@@ -17,7 +17,9 @@ import {
 	type DataType,
 	type FrameContext,
 	getActiveMediaMetadata,
+	MediaTimeRemapSchema,
 	type VirtualMediaData,
+	validateMediaTimeRemap,
 } from "@framefields/core";
 import { collectInlineSignals } from "./inline-signals.js";
 import { hoistMattes } from "./mattes.js";
@@ -54,6 +56,26 @@ function nodeToVirtualMedia(
 	compDurationMs?: number,
 	inheritedDurationFrames?: number,
 ): VirtualMediaData {
+	if (node.kind === "media" && node.timeRemap !== undefined) {
+		const parsed = MediaTimeRemapSchema.safeParse(node.timeRemap);
+		if (!parsed.success)
+			throw new Error(
+				`Invalid timeRemap on '${node.id}': ${parsed.error.message}`,
+			);
+		const problem = validateMediaTimeRemap(
+			parsed.data,
+			node.durationFrames ?? 0,
+		);
+		if (problem)
+			throw new Error(`Invalid timeRemap on '${node.id}': ${problem}`);
+		if (
+			node.trimStartSec !== undefined ||
+			(node.dataType !== "Video" && node.dataType !== "Audio")
+		)
+			throw new Error(
+				`Invalid timeRemap on '${node.id}': use audio or video without trimStartSec`,
+			);
+	}
 	let children: VirtualMediaData[] = [];
 	const sourceRef =
 		node.kind === "media"
@@ -256,6 +278,7 @@ function nodeToVirtualMedia(
 		} else if (dur !== undefined) {
 			if (
 				(dataType === "Video" || dataType === "Audio") &&
+				!(node.kind === "media" && node.timeRemap) &&
 				limit !== undefined &&
 				limit > 0
 			) {

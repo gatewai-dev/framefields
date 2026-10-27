@@ -134,6 +134,7 @@ Per-kind fields:
 - **Charts**: there is no chart node kind. `Layer.chart` in the `framefields` SDK expands a chart into `box`, `shape` (`"path"`/`"circle"`) and `text` nodes, so a program document describes a chart with those kinds.
 - **`media`**: `inputHandleId` (string, required — must match a connected input handle).
   - **Standard Media (`Video`, `Image`, `GIF`, `SVG`, `Lottie`)**: `fit` (`"cover"` | `"contain"` | `"fill"` | `"none"`, default `"contain"`), `volume` (0–1), `muted`, `borderRadius`, `borderColor`, `borderWidth`.
+  - **Video and audio timing**: `timeRemap` maps layer-local frames to source seconds, with an explicit `durationFrames`. Use `{ kind: "rate", sourceStartSec, rate }` with a nonzero rate (negative plays in reverse), or `{ kind: "keyframes", keyframes: [{ frame, sourceSec, interpolation? }, ...] }`. Keyframes span frame 0 through `durationFrames` and increase by frame; source time may increase, decrease, or hold. `interpolation` on the starting key applies to the following segment: `linear`, `ease-in`, `ease-out`, or `smooth`; all are monotonic. Equal source times hold video and silence audio. Rate changes alter audio pitch. Do not combine with `trimStartSec`; effects retain the composition clock.
   - **Captions & Subtitles (`Caption` DataType)**: When bound to a `Caption` input (SRT source), `kind: "media"` renders time-synchronized subtitle cues:
     - `fontSize` (number, default `48`): Font size in pixels.
     - `fontFamily` (string, default `"Inter"`): Font family.

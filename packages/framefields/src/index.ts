@@ -136,6 +136,7 @@ export {
 
 import fs from "node:fs/promises";
 import path from "node:path";
+import { preflightMediaTime } from "@framefields/compositions";
 import {
 	type AnimatableProp,
 	type AnimatablePropsFor,
@@ -144,6 +145,7 @@ import {
 	type CameraNode,
 	type CompositorProgramConfig,
 	type CompositorToProgramOptions,
+	collectNodeOps,
 	compositorToProgram,
 	type EnvironmentPreset,
 	type FlexNode,
@@ -172,12 +174,16 @@ import {
 	type MediaMetadata,
 	type MediaOperation,
 	type MediaSourceInput,
+	type MediaTimeRemap,
 	type MeshAudioDeformConfig,
 	ProgrammaticSignal,
 	type RenderDiagnostic,
 	type Signal,
 	type VirtualMediaData,
 } from "@framefields/core";
+
+export type { MediaTimeRemap } from "@framefields/core";
+
 import {
 	analyzeSequence as analyzeVisionFrames,
 	CLIP_SUBJECT,
@@ -1238,7 +1244,32 @@ export class Composition {
 	 * analysed just before it renders, so nothing runs up front. Results
 	 * persist on disk in Node. The same clip and options return one instance.
 	 */
-	public vision(source: string, options: ClipVisionOptions = {}): ClipVision {
+	public vision(
+		sourceOrLayer: string | MediaNode,
+		options: ClipVisionOptions = {},
+	): ClipVision {
+		const source =
+			typeof sourceOrLayer === "string"
+				? sourceOrLayer
+				: (sourceOrLayer.src ?? sourceOrLayer.inputHandleId);
+		if (typeof sourceOrLayer !== "string") {
+			const layer = collectNodeOps(this.toVirtualMedia().children).find(
+				(node) =>
+					(node.operation as unknown as { id?: string }).id ===
+					sourceOrLayer.id,
+			);
+			if (!layer)
+				throw new Error(
+					"Add the media layer to the composition before calling comp.vision(layer)",
+				);
+			options = {
+				startFrame: layer.operation.startFrame ?? sourceOrLayer.startFrame,
+				trimStartSec: sourceOrLayer.trimStartSec,
+				timeRemap: sourceOrLayer.timeRemap,
+				durationFrames: sourceOrLayer.durationFrames,
+				...options,
+			};
+		}
 		const key = `${source}\u0000${JSON.stringify(options)}`;
 		let clip = this._clipVision.get(key);
 		if (!clip) {
@@ -1268,12 +1299,18 @@ export class Composition {
 	 */
 	private linkClipMattes(): void {
 		if (this._clipVision.size === 0) return;
+		let starts: Map<string | undefined, number | undefined> | undefined;
 		const walk = (node: unknown): void => {
 			if (!node || typeof node !== "object") return;
 			const n = node as {
+				id?: string;
 				kind?: string;
 				dataType?: string;
 				inputHandleId?: unknown;
+				src?: string;
+				startFrame?: number;
+				trimStartSec?: number;
+				timeRemap?: MediaTimeRemap;
 				vision?: unknown;
 				children?: unknown;
 			};
@@ -1284,7 +1321,16 @@ export class Composition {
 				n.vision instanceof Vision &&
 				!(CLIP_SUBJECT in n.vision)
 			) {
-				const clip = this.clipForMatte(n.inputHandleId, n.vision);
+				starts ??= new Map(
+					collectNodeOps(this.toVirtualMedia().children).map((node) => [
+						(node.operation as unknown as { id?: string }).id,
+						node.operation.startFrame,
+					]),
+				);
+				const clip = this.clipForMatte(n.src ?? n.inputHandleId, n.vision, {
+					...n,
+					startFrame: starts.get(n.id) ?? n.startFrame,
+				});
 				if (clip) {
 					clip.keepSubjects();
 					Object.defineProperty(n.vision, CLIP_SUBJECT, {
@@ -1299,7 +1345,15 @@ export class Composition {
 		for (const child of this.children) walk(child);
 	}
 
-	private clipForMatte(source: string, v: Vision): ClipVision | undefined {
+	private clipForMatte(
+		source: string,
+		v: Vision,
+		layer: {
+			startFrame?: number;
+			trimStartSec?: number;
+			timeRemap?: MediaTimeRemap;
+		},
+	): ClipVision | undefined {
 		const mode = v.mode ?? "passthrough";
 		if (mode !== "matte" && mode !== "mask" && mode !== "crop") return;
 		// Anything that changes the subject, or needs results the clip lacks.
@@ -1319,6 +1373,9 @@ export class Composition {
 			const o = clip.options;
 			if (
 				clip.source === source &&
+				clip.startFrame === (layer.startFrame ?? 0) &&
+				clip.trimStartSec === (layer.trimStartSec ?? 0) &&
+				JSON.stringify(o.timeRemap) === JSON.stringify(layer.timeRemap) &&
 				(o.variant ?? "s") === (v.variant ?? "s") &&
 				(o.confidence ?? 0.3) === (v.confidence ?? 0.3)
 			) {
@@ -2013,7 +2070,7 @@ export class Composition {
 		const durationMs =
 			options.durationMs ?? this.durationMs ?? (await this.computeDuration());
 		this.durationMs = durationMs;
-		return compositorToProgram(this.toSpec(), {
+		const vm = compositorToProgram(this.toSpec(), {
 			isVideoMode: true,
 			fps: this.fps,
 			durationMs,
@@ -2022,6 +2079,8 @@ export class Composition {
 			...(this._visionConfig && { vision: this._visionConfig }),
 			...options,
 		});
+		await preflightMediaTime(vm, this.fps);
+		return vm;
 	}
 
 	/**

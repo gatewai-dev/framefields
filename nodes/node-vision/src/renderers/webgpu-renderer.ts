@@ -634,7 +634,15 @@ export const VisionWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 		!wantsPose &&
 		!wantsSelfie &&
 		op.keyBackground !== true
-			? clipSubjectFor(effectKey, frameIdx, fps, targetWidth, targetHeight)
+			? clipSubjectFor(
+					effectKey,
+					props.sourceTimeSec === undefined
+						? frameIdx
+						: props.sourceTimeSec * fps,
+					fps,
+					targetWidth,
+					targetHeight,
+				)
 			: undefined;
 	const fromClip = clipSubject !== undefined;
 

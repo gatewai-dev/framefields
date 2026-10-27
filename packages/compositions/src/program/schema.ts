@@ -17,9 +17,12 @@
 import {
 	Effect,
 	type EffectDomain,
+	type MediaTimeRemap,
+	MediaTimeRemapSchema,
 	type MeshAudioDeformConfig,
 	type TextSpan,
 	type TextSpanMark,
+	validateMediaTimeRemap,
 } from "@framefields/core";
 import { ColorSchema } from "@framefields/node-sdk";
 export type { TextSpan, TextSpanMark };
@@ -1123,6 +1126,8 @@ export interface MediaNode extends CompositionNodeBase {
 	muted?: boolean;
 	/** Source in-point: seconds into the clip that play at the layer's startFrame. */
 	trimStartSec?: number;
+	/** Layer-local frame to absolute source time mapping. */
+	timeRemap?: MediaTimeRemap;
 	// Caption styling
 	fontFamily?: string;
 	fontSize?: number;
@@ -1640,6 +1645,7 @@ export const MediaNodeSchema: z.ZodType<MediaNode> = z
 		volume: z.number().min(0).max(1).default(1),
 		muted: z.boolean().default(false),
 		trimStartSec: z.number().min(0).optional(),
+		timeRemap: MediaTimeRemapSchema.optional(),
 		// Caption styling
 		fontFamily: z.string().optional(),
 		fontSize: z.number().positive().optional(),
@@ -1659,7 +1665,28 @@ export const MediaNodeSchema: z.ZodType<MediaNode> = z
 		shadows: z.array(TextShadowSchema).optional(),
 		maxWidth: z.number().optional(),
 	})
-	.strict() as unknown as z.ZodType<MediaNode>;
+	.strict()
+	.superRefine((node, ctx) => {
+		if (!node.timeRemap) return;
+		if (node.trimStartSec !== undefined)
+			ctx.addIssue({
+				code: "custom",
+				path: ["timeRemap"],
+				message: "timeRemap cannot be combined with trimStartSec",
+			});
+		if (node.dataType !== "Video" && node.dataType !== "Audio")
+			ctx.addIssue({
+				code: "custom",
+				path: ["timeRemap"],
+				message: "timeRemap requires video or audio media",
+			});
+		const error = validateMediaTimeRemap(
+			node.timeRemap,
+			node.durationFrames ?? 0,
+		);
+		if (error)
+			ctx.addIssue({ code: "custom", path: ["timeRemap"], message: error });
+	}) as unknown as z.ZodType<MediaNode>;
 
 export const ShapeFields = {
 	shapeType: ShapeTypeSchema.default("rect"),

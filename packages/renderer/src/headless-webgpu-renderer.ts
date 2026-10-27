@@ -7,6 +7,7 @@ import {
 	compositionStateStore,
 	drawCompositionTree,
 	mixAudioTracks,
+	preflightMediaTime,
 } from "@framefields/compositions";
 import {
 	getMediaType,
@@ -599,6 +600,8 @@ export class HeadlessWebGPURenderer {
 	): Promise<Buffer> {
 		await HeadlessWebGPURenderer.initialize();
 
+		await preflightMediaTime(virtualMedia, fps);
+
 		const width = toEvenDimension(virtualMedia.metadata.width ?? 0);
 		const height = toEvenDimension(virtualMedia.metadata.height ?? 0);
 		if (!width || !height)
@@ -802,6 +805,7 @@ export class HeadlessWebGPURenderer {
 	): Promise<{ channels: Float32Array[]; sampleRate: number }> {
 		await HeadlessWebGPURenderer.initialize();
 		const fps = options.fps ?? (virtualMedia.metadata?.fps || 30);
+		await preflightMediaTime(virtualMedia, fps);
 		await renderSemaphore.acquire();
 		try {
 			const device = await ensureDevice();
@@ -1091,6 +1095,7 @@ export class HeadlessWebGPURenderer {
 				`FPS is missing from virtualMedia metadata (dataType: "${dataType}", operation: "${op}")`,
 			);
 		}
+		await preflightMediaTime(virtualMedia, fps);
 
 		const width = toEvenDimension(
 			virtualMedia.metadata.width ?? (isAudioOnly ? 1280 : 0),

@@ -40,6 +40,36 @@ const mediaVM = (id: string): VirtualMediaData =>
 	}) as unknown as VirtualMediaData;
 
 describe("compositorToProgram", () => {
+	it("preserves the remapped layer duration when the resolved source is shorter", () => {
+		const video = {
+			metadata: { durationMs: 1000 },
+			operation: { op: "source", dataType: "Video" },
+			children: [],
+		} as unknown as VirtualMediaData;
+		const config = {
+			width: 64,
+			height: 64,
+			fps: 30,
+			mode: "Video",
+			layout: [
+				{
+					id: "slow",
+					kind: "media",
+					inputHandleId: "source",
+					dataType: "Video",
+					durationFrames: 60,
+					timeRemap: { kind: "rate", sourceStartSec: 0, rate: 0.5 },
+				},
+			],
+		} as unknown as CompositorProgramConfig;
+		const vm = compositorToProgram(config, {
+			isVideoMode: true,
+			fps: 30,
+			resolveMedia: () => video,
+		});
+		expect(vm.children[0].operation.durationFrames).toBe(60);
+		expect(vm.children[0].metadata.durationMs).toBe(2000);
+	});
 	it("builds the render tree 1:1 from the document", () => {
 		const vm = compositorToProgram(doc, { isVideoMode: true, fps: 30 });
 		const op = vm.operation as any;

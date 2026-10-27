@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { clipVisionFromResults } from "./clip-vision.js";
+import { Composition, Layer } from "./index.js";
 
 /** A 160×80 clip: frame f has the left wrist at (20 + 20f, 10) and a 40×40 square silhouette moving right. */
 function clip(frames = 4, options = {}) {
@@ -90,5 +91,73 @@ describe("ClipVision", () => {
 		expect(() => clip(2).person.point("leftWrist", 30)).toThrow(
 			/not analysed yet/,
 		);
+	});
+});
+
+describe("remapped clip vision", () => {
+	it("samples reverse motion and covers intermediate turns in a readiness window", () => {
+		const c = clip(4, {
+			timeRemap: {
+				kind: "keyframes",
+				keyframes: [
+					{ frame: 0, sourceSec: 0 },
+					{ frame: 3, sourceSec: 3 / 24, interpolation: "smooth" },
+					{ frame: 6, sourceSec: 1 / 24 },
+				],
+			},
+		});
+		expect(c.person.point("leftWrist", 3).x).toBe(80);
+		expect(c.person.point("leftWrist", 6).x).toBe(40);
+		const range = (
+			c as unknown as { window(from: number, to: number): [number, number] }
+		).window(0, 6);
+		expect(range[1]).toBeGreaterThanOrEqual(3);
+	});
+	it("requires a layer to be in the composition before binding vision", () => {
+		const comp = new Composition({
+			width: 64,
+			height: 64,
+			fps: 24,
+			durationFrames: 24,
+		});
+		expect(() =>
+			comp.vision(Layer.video("clip.mp4", { durationFrames: 24 })),
+		).toThrow(/Add the media layer/);
+	});
+	it("binds to the absolute start of a nested media layer", () => {
+		const comp = new Composition({
+			width: 64,
+			height: 64,
+			fps: 24,
+			durationFrames: 100,
+		});
+		const layer = Layer.video("clip.mp4", {
+			startFrame: 7,
+			durationFrames: 24,
+			timeRemap: { kind: "rate", sourceStartSec: 1, rate: 0.5 },
+		});
+		comp.add(
+			Layer.box({ startFrame: 10, durationFrames: 60, children: [layer] }),
+		);
+		const vision = comp.vision(layer);
+		expect(vision.startFrame).toBe(17);
+		expect(vision.clipFrame(19)).toBe(25);
+	});
+	it("samples the same source clock as the media layer", () => {
+		const c = clip(4, {
+			startFrame: 10,
+			timeRemap: {
+				kind: "keyframes",
+				keyframes: [
+					{ frame: 0, sourceSec: 0 },
+					{ frame: 2, sourceSec: 1 / 24 },
+					{ frame: 4, sourceSec: 1 / 24 },
+					{ frame: 6, sourceSec: 3 / 24 },
+				],
+			},
+		});
+		expect(c.person.point("leftWrist", 12).x).toBe(40);
+		expect(c.person.point("leftWrist", 13).x).toBe(40);
+		expect(c.person.point("leftWrist", 16).x).toBe(80);
 	});
 });

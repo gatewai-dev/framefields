@@ -1,6 +1,10 @@
 import {
 	getActiveMediaMetadata,
 	getMediaType,
+	type MediaTimeRemap,
+	mediaSourceIsHold,
+	mediaSourceRange,
+	mediaSourceTime,
 	type VirtualMediaData,
 } from "@framefields/core";
 import { type AudioProcessor, audioRegistry } from "@framefields/node-sdk";
@@ -439,6 +443,31 @@ async function decodeAudioRange(
 	}
 }
 
+/** Samples the mapped source at the audio clock; holds are silent. */
+async function resampleMappedPCM(
+	input: Float32Array,
+	sourceRate: number,
+	outputRate: number,
+	length: number,
+	inputStart: number,
+	map: MediaTimeRemap,
+	startFrame: number,
+	fps: number,
+): Promise<Float32Array> {
+	const output = new Float32Array(length);
+	for (let i = 0; i < length; i++) {
+		if (i > 0 && i % 100_000 === 0) await yieldToMain();
+		const frame = startFrame + (i / outputRate) * fps;
+		if (mediaSourceIsHold(map, frame)) continue;
+		const position = mediaSourceTime(map, frame, fps) * sourceRate - inputStart;
+		const index = Math.floor(position);
+		if (index < 0 || index >= input.length) continue;
+		const a = input[index];
+		output[i] = a + ((input[index + 1] ?? a) - a) * (position - index);
+	}
+	return output;
+}
+
 /**
  * Resamples a PCM buffer using linear interpolation to target sample rate & speed.
  * `trimOffsetSamples` is a whole-file index; `inputStartIndex` is the
@@ -612,24 +641,93 @@ export async function mixAudioTracks(
 		url: string,
 		startSec: number,
 		endSec: number,
+		cache = true,
 	): Promise<DecodedAudioRange | null> {
 		if (undecodable.has(url)) return null;
 		let ranges = decodedCache.get(url);
-		const hit = ranges?.find(
-			(r) => r.validFromSec <= startSec && r.validToSec >= endSec,
-		);
+		const hit = cache
+			? ranges?.find(
+					(r) => r.validFromSec <= startSec && r.validToSec >= endSec,
+				)
+			: undefined;
 		if (hit) return hit;
 		const decoded = await decodeAudioRange(url, { startSec, endSec });
 		if (!decoded) {
 			undecodable.add(url);
 			return null;
 		}
+		if (!cache) return decoded;
 		if (!ranges) {
 			ranges = [];
 			decodedCache.set(url, ranges);
 		}
 		ranges.push(decoded);
 		return decoded;
+	}
+
+	// Limit each remapped decode by both output and source duration; never retain
+	// the temporary ranges after the output chunk has been sampled.
+	async function mappedChannels(
+		url: string,
+		length: number,
+		map: MediaTimeRemap,
+		startFrame: number,
+	): Promise<Float32Array[] | null> {
+		const left = new Float32Array(length),
+			right = new Float32Array(length);
+		for (let offset = 0; offset < length; ) {
+			let count = Math.min(length - offset, targetSampleRate * 2);
+			const first = startFrame + (offset / targetSampleRate) * fps;
+			let range = mediaSourceRange(
+				map,
+				first,
+				first + ((count - 1) / targetSampleRate) * fps,
+				fps,
+			);
+			while (range.max - range.min > 3 && count > 1) {
+				count = Math.max(1, Math.floor(count / 2));
+				range = mediaSourceRange(
+					map,
+					first,
+					first + ((count - 1) / targetSampleRate) * fps,
+					fps,
+				);
+			}
+			const decoded = await getDecodedRange(
+				url,
+				range.min,
+				range.max + RANGE_MARGIN_SEC,
+				false,
+			);
+			if (!decoded) return null;
+			const a = await resampleMappedPCM(
+				decoded.channels[0],
+				decoded.sampleRate,
+				targetSampleRate,
+				count,
+				decoded.startIndex,
+				map,
+				first,
+				fps,
+			);
+			const b =
+				decoded.channels.length > 1
+					? await resampleMappedPCM(
+							decoded.channels[1],
+							decoded.sampleRate,
+							targetSampleRate,
+							count,
+							decoded.startIndex,
+							map,
+							first,
+							fps,
+						)
+					: a;
+			left.set(a, offset);
+			right.set(b, offset);
+			offset += count;
+		}
+		return [left, right];
 	}
 
 	// A subtree without a source or a sound-producing processor mixes to
@@ -665,6 +763,7 @@ export async function mixAudioTracks(
 		inheritedVolume: number,
 		inheritedSpeed: number,
 		inheritedDurationFrames: number | null,
+		inheritedRemap?: { map: MediaTimeRemap; offsetFrames: number },
 	): Promise<Float32Array[] | null> {
 		if (!node || !isAudible(node)) return null;
 		const op = node.operation;
@@ -672,11 +771,13 @@ export async function mixAudioTracks(
 			const durationMs = getActiveMediaMetadata(node)?.durationMs ?? 0;
 			const durationFrames = Math.round((durationMs / 1000) * fps);
 			const actualDurationFrames =
-				inheritedDurationFrames !== null
-					? durationFrames > 0
-						? Math.min(inheritedDurationFrames, durationFrames)
-						: inheritedDurationFrames
-					: durationFrames;
+				inheritedRemap && inheritedDurationFrames !== null
+					? inheritedDurationFrames
+					: inheritedDurationFrames !== null
+						? durationFrames > 0
+							? Math.min(inheritedDurationFrames, durationFrames)
+							: inheritedDurationFrames
+						: durationFrames;
 
 			const localSamplesCount = Math.ceil(
 				(actualDurationFrames / fps) * targetSampleRate,
@@ -693,6 +794,7 @@ export async function mixAudioTracks(
 					inheritedVolume,
 					inheritedSpeed,
 					actualDurationFrames,
+					inheritedRemap,
 				);
 				if (childChannels) {
 					const childOp = child.operation;
@@ -715,7 +817,20 @@ export async function mixAudioTracks(
 		const speedMultiplier = inheritedSpeed;
 
 		const nodeStartFrame = op.startFrame ?? op.timeline?.startFrame ?? 0;
-		const localClockFrames = inheritedClockFrames + nodeStartFrame;
+		const ownRemap = (op as { timeRemap?: MediaTimeRemap }).timeRemap;
+		const remap = ownRemap
+			? { map: ownRemap, offsetFrames: 0 }
+			: inheritedRemap
+				? {
+						map: inheritedRemap.map,
+						offsetFrames: inheritedRemap.offsetFrames + nodeStartFrame,
+					}
+				: undefined;
+		// Compositor layer starts are flattened to composition frames by the compiler.
+		const localClockFrames =
+			op.op === "CompositorLayer"
+				? nodeStartFrame
+				: inheritedClockFrames + nodeStartFrame;
 
 		const segments = op.timeline?.segments || [];
 
@@ -738,11 +853,13 @@ export async function mixAudioTracks(
 		const nodeDurationMs = getActiveMediaMetadata(node)?.durationMs ?? 0;
 		const nodeDurationFrames = Math.round((nodeDurationMs / 1000) * fps);
 		const nodeActualDurationFrames =
-			inheritedDurationFrames !== null
-				? nodeDurationFrames > 0
-					? Math.min(inheritedDurationFrames, nodeDurationFrames)
-					: inheritedDurationFrames
-				: nodeDurationFrames;
+			inheritedRemap && !ownRemap && inheritedDurationFrames !== null
+				? inheritedDurationFrames
+				: inheritedDurationFrames !== null
+					? nodeDurationFrames > 0
+						? Math.min(inheritedDurationFrames, nodeDurationFrames)
+						: inheritedDurationFrames
+					: nodeDurationFrames;
 		const localSamplesCount = Math.ceil(
 			(nodeActualDurationFrames / fps) * targetSampleRate,
 		);
@@ -769,9 +886,11 @@ export async function mixAudioTracks(
 			}
 
 			const actualDurationFrames =
-				inheritedDurationFrames !== null
-					? Math.min(inheritedDurationFrames, segDurationFrames)
-					: segDurationFrames;
+				inheritedRemap && !ownRemap && !seg && inheritedDurationFrames !== null
+					? inheritedDurationFrames
+					: inheritedDurationFrames !== null
+						? Math.min(inheritedDurationFrames, segDurationFrames)
+						: segDurationFrames;
 
 			const segmentStartSample = Math.round(
 				(windowStartFrameOffset / fps) * targetSampleRate,
@@ -801,9 +920,19 @@ export async function mixAudioTracks(
 						Math.ceil(clipDurationSec * targetSampleRate),
 					);
 
-					// Decode (or reuse) only the stretch of the source this clip plays
+					const mapped =
+						remap && clipSamplesCount > 0
+							? await mappedChannels(
+									params.sourceUrl,
+									clipSamplesCount,
+									remap.map,
+									remap.offsetFrames + windowStartFrameOffset,
+								)
+							: null;
 					const decoded =
-						clipSamplesCount > 0 && segmentStartSample < localSamplesCount
+						!remap &&
+						clipSamplesCount > 0 &&
+						segmentStartSample < localSamplesCount
 							? await getDecodedRange(
 									params.sourceUrl,
 									effectiveTrimSec,
@@ -812,37 +941,39 @@ export async function mixAudioTracks(
 										RANGE_MARGIN_SEC,
 								)
 							: null;
-
-					if (decoded) {
-						const trimOffsetSamples = Math.round(
-							effectiveTrimSec * decoded.sampleRate,
-						);
-
-						// Resample left & right channels
-						const stretchedLeft = await resampleAndStretchPCM(
-							decoded.channels[0],
-							decoded.sampleRate,
-							targetSampleRate,
-							finalSpeed,
-							clipSamplesCount,
-							trimOffsetSamples,
-							decoded.startIndex,
-						);
-
-						// A mono source plays the same samples on both sides
-						const stretchedRight =
-							decoded.channels.length > 1
-								? await resampleAndStretchPCM(
-										decoded.channels[1],
-										decoded.sampleRate,
-										targetSampleRate,
-										finalSpeed,
-										clipSamplesCount,
-										trimOffsetSamples,
-										decoded.startIndex,
-									)
-								: stretchedLeft;
-
+					if (mapped || decoded) {
+						let stretchedLeft: Float32Array;
+						let stretchedRight: Float32Array;
+						if (mapped) {
+							[stretchedLeft, stretchedRight] = mapped;
+						} else if (decoded) {
+							const trimOffsetSamples = Math.round(
+								effectiveTrimSec * decoded.sampleRate,
+							);
+							stretchedLeft = await resampleAndStretchPCM(
+								decoded.channels[0],
+								decoded.sampleRate,
+								targetSampleRate,
+								finalSpeed,
+								clipSamplesCount,
+								trimOffsetSamples,
+								decoded.startIndex,
+							);
+							stretchedRight =
+								decoded.channels.length > 1
+									? await resampleAndStretchPCM(
+											decoded.channels[1],
+											decoded.sampleRate,
+											targetSampleRate,
+											finalSpeed,
+											clipSamplesCount,
+											trimOffsetSamples,
+											decoded.startIndex,
+										)
+									: stretchedLeft;
+						} else {
+							throw new Error("No decoded audio");
+						}
 						const stretched = [stretchedLeft, stretchedRight];
 						if (bus.canAdopt(stretched, segmentStartSample)) {
 							// The clip fills the silent bus: scale it in place and keep it
@@ -894,13 +1025,18 @@ export async function mixAudioTracks(
 						volume,
 						speedMultiplier,
 						actualDurationFrames,
+						remap,
 					);
 					if (childChannels) {
 						const childOp = child.operation;
 						const childStartFrame =
 							childOp?.startFrame ?? childOp?.timeline?.startFrame ?? 0;
+						const relativeStartFrame =
+							op.op === "CompositorLayer" && childOp?.op === "CompositorLayer"
+								? childStartFrame - nodeStartFrame
+								: childStartFrame;
 						const childStartSample = Math.round(
-							(childStartFrame / fps) * targetSampleRate,
+							(relativeStartFrame / fps) * targetSampleRate,
 						);
 						bus.add(childChannels, segmentStartSample + childStartSample);
 					}

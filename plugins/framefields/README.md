@@ -13,11 +13,11 @@ Skills load automatically when a task matches, for example *"add a film-grain pa
 
 ## How it works
 
-This plugin contains skills and a connection to the hosted Framefields MCP server. It bundles no executables, hooks, or package launchers. The engine itself is the [`framefields`](https://www.npmjs.com/package/framefields) npm package, which the skills tell your agent to add to your project (`npm install framefields`, Node.js 22 or later).
+This plugin contains skills and a read-only connection to the hosted Framefields MCP server for model information and price estimates. Generate media through the Framefields SDK using a separately configured gateway API key. It bundles no executables, hooks, or package launchers. The engine itself is the [`framefields`](https://www.npmjs.com/package/framefields) npm package, which the skills tell your agent to add to your project (`npm install framefields`, Node.js 22 or later).
 
 ## Data and privacy
 
-When you connect the MCP server and request generation, prompts and other inputs are sent to the Framefields gateway and the provider running the selected model. The gateway stores generated outputs and usage records. Standalone code using `ai` sends generation requests and uploaded files through the gateway as well. On-device vision downloads model weights on first use and verifies them by SHA-256. See the [privacy policy](https://framefields.dev/privacy/) for details.
+When you run code using `ai`, prompts, inputs and uploaded files are sent to the Framefields gateway and the provider running the selected model. The gateway stores generated outputs and usage records. The MCP connection provides model information and price estimates; it does not generate media. On-device vision downloads model weights on first use and verifies them by SHA-256. See the [privacy policy](https://framefields.dev/privacy/) for details.
 
 ## License
 

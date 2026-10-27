@@ -11,9 +11,22 @@ Agent skills for [framefields](https://github.com/gatewai-dev/framefields), a co
 
 Skills load automatically when a task matches, for example *"add a film-grain pass to this scene"* or *"render a frame grid of intro.ts"*.
 
+## Installation
+
+Install into Claude Code via the marketplace:
+
+```bash
+/plugin install framefields --marketplace gatewai-dev/framefields
+```
+
 ## How it works
 
 This plugin contains skills and a read-only connection to the hosted Framefields MCP server for model information and price estimates. Generate media through the Framefields SDK using a separately configured gateway API key. It bundles no executables, hooks, or package launchers. The engine itself is the [`framefields`](https://www.npmjs.com/package/framefields) npm package, which the skills tell your agent to add to your project (`npm install framefields`, Node.js 22 or later).
+
+The connected MCP server exposes read-only tools to assist in selecting models and inputs:
+- `list_models`: List supported AI models, identifiers, and tasks
+- `get_model_schema`: Get the input and output JSON schema for any catalog model
+- `estimate_generation_cost`: Check published rates and estimated costs before running a script
 
 ## Data and privacy
 

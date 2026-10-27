@@ -293,7 +293,11 @@ A failed job returns `{ code, hint, retryable }`; resubmit unchanged only when `
 
 ## 6. Generate assets with AI
 
-Use the connected Framefields MCP server for `list_models`, `get_model_schema`, and `estimate_generation_cost` when available. Use `import { ai } from "framefields"` in a local script to generate, edit, or process media; MCP does not submit or retrieve generation jobs. The SDK authenticates with a separate gateway API key, not the MCP OAuth connection. Use only the currently supported catalog models and the input fields from the selected model's schema.
+Use the connected Framefields MCP server for `list_models`, `get_model_schema`, and `estimate_generation_cost` when available (in Claude Code sessions, these are exposed as `mcp__plugin_framefields_framefields__list_models`, `mcp__plugin_framefields_framefields__get_model_schema`, and `mcp__plugin_framefields_framefields__estimate_generation_cost`). Use `import { ai } from "framefields"` in a local script to generate, edit, or process media; MCP does not submit or retrieve generation jobs. The SDK authenticates with a separate gateway API key (`FRAMEFIELDS_API_KEY`), not the MCP OAuth connection. Use only the currently supported catalog models and the input fields from the selected model's schema.
+
+- `list_models`: inspect catalog models and category tasks (`text-to-image`, `text-to-video`, `speech-to-text`, etc.).
+- `get_model_schema`: check required and optional inputs for the model before writing the script.
+- `estimate_generation_cost`: check published rates or request cost estimates before running paid generation.
 
 `framefields` exports `ai` for image, video and audio operations through the Framefields gateway. Each request uses a model ID and account credits. `run`, `subscribe`, `stream`, `queue`, and `storage` support the gateway workflow.
 

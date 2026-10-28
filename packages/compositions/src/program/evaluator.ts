@@ -138,7 +138,7 @@ export function evaluateSpringOvershoot(
 
 // ── Signal Sampler & Filter ───────────────────────────────────────────
 
-function extractRawSignalSample(
+export function extractRawSignalSample(
 	signalData: SignalDataSource,
 	frame: number,
 	fps: number,

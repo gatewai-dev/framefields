@@ -17,12 +17,18 @@ import {
 	type DataType,
 	type FrameContext,
 	getActiveMediaMetadata,
-	MediaTimeRemapSchema,
+	MediaTimeRemapInputSchema,
+	type MediaTimeSignalRemap,
+	type ResolvedMediaTimeRemap,
 	type VirtualMediaData,
 	validateMediaTimeRemap,
 } from "@framefields/core";
 import { collectInlineSignals } from "./inline-signals.js";
 import { hoistMattes } from "./mattes.js";
+import {
+	type MediaSignalLayer,
+	sampleMediaTimeSignal,
+} from "./media-signal.js";
 import type {
 	CompositorProgramConfig,
 	LayoutNode,
@@ -46,7 +52,17 @@ export interface CompositorToProgramOptions {
 	effects?: ProgramEffect[];
 	/** Composition-wide vision config or bundle. */
 	vision?: unknown;
+	/**
+	 * Resolve a signal `timeRemap` to the history its consumers read. By
+	 * default the signal is sampled up front on the composition clock.
+	 */
+	resolveMediaSignal?: MediaSignalResolver;
 }
+
+export type MediaSignalResolver = (
+	binding: MediaTimeSignalRemap,
+	layer: MediaSignalLayer,
+) => ResolvedMediaTimeRemap;
 
 function nodeToVirtualMedia(
 	node: LayoutNode,
@@ -55,9 +71,10 @@ function nodeToVirtualMedia(
 	inheritedOffset = 0,
 	compDurationMs?: number,
 	inheritedDurationFrames?: number,
+	resolveSignal?: MediaSignalResolver,
 ): VirtualMediaData {
 	if (node.kind === "media" && node.timeRemap !== undefined) {
-		const parsed = MediaTimeRemapSchema.safeParse(node.timeRemap);
+		const parsed = MediaTimeRemapInputSchema.safeParse(node.timeRemap);
 		if (!parsed.success)
 			throw new Error(
 				`Invalid timeRemap on '${node.id}': ${parsed.error.message}`,
@@ -222,6 +239,7 @@ function nodeToVirtualMedia(
 				childOffset,
 				compDurationMs,
 				c.durationFrames === undefined ? nodeDuration : undefined,
+				resolveSignal,
 			);
 		});
 	}
@@ -315,6 +333,12 @@ function nodeToVirtualMedia(
 		}
 	}
 
+	const signalRemap =
+		node.kind === "media" && node.timeRemap?.kind === "signal"
+			? node.timeRemap
+			: undefined;
+	if (signalRemap && !resolveSignal)
+		throw new Error(`Signal timeRemap on '${node.id}' has no resolver`);
 	return {
 		metadata: {
 			durationMs,
@@ -325,6 +349,14 @@ function nodeToVirtualMedia(
 			startFrame,
 			durationFrames: dur,
 			dataType,
+			...(signalRemap &&
+				resolveSignal && {
+					timeRemap: resolveSignal(signalRemap, {
+						id: node.id,
+						startFrame,
+						durationFrames: dur,
+					}),
+				}),
 		},
 		children,
 	} as unknown as VirtualMediaData;
@@ -335,6 +367,18 @@ export function compositorToProgram(
 	options: CompositorToProgramOptions,
 ): VirtualMediaData {
 	const { isVideoMode, fps, durationMs, resolveMedia, signals } = options;
+	const programSignals = {
+		...collectInlineSignals(config.layout),
+		...(signals ?? config.signals ?? {}),
+	};
+	const resolveMediaSignal: MediaSignalResolver =
+		options.resolveMediaSignal ??
+		((binding, layer) =>
+			sampleMediaTimeSignal(binding, layer, {
+				fps,
+				compositionDurationFrames: Math.round(((durationMs ?? 0) / 1000) * fps),
+				signals: programSignals,
+			}));
 
 	let rootMedia: VirtualMediaData = {
 		metadata: {
@@ -364,10 +408,7 @@ export function compositorToProgram(
 			layout: config.layout,
 			// Signal objects passed straight to `LayerAnimation.signal` ride on
 			// their tracks; fold them in under their generated handle ids.
-			signals: {
-				...collectInlineSignals(config.layout),
-				...(signals ?? config.signals ?? {}),
-			},
+			signals: programSignals,
 			...(config.onRequestFrame || options.onRequestFrame
 				? {
 						onRequestFrame: config.onRequestFrame ?? options.onRequestFrame,
@@ -375,7 +416,15 @@ export function compositorToProgram(
 				: {}),
 		},
 		children: hoistMattes(config.layout).map((n) =>
-			nodeToVirtualMedia(n, resolveMedia, fps, 0, durationMs),
+			nodeToVirtualMedia(
+				n,
+				resolveMedia,
+				fps,
+				0,
+				durationMs,
+				undefined,
+				resolveMediaSignal,
+			),
 		),
 	} as unknown as VirtualMediaData;
 

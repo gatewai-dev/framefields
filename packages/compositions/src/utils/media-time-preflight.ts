@@ -1,4 +1,5 @@
 import {
+	type MediaSourceRange,
 	mediaSourceRange,
 	type ResolvedMediaTimeRemap,
 	type VirtualMediaData,
@@ -35,7 +36,7 @@ export async function preflightMediaTime(
 			const source = sourceOf(node);
 			if (!source)
 				throw new Error(`Time remap on '${op.id}' has no media source`);
-			const range = mediaSourceRange(op.timeRemap, 0, op.durationFrames, fps);
+			const bounds: Array<{ first: number; last: number }> = [];
 			const input = await inputStore.acquire(source);
 			try {
 				const video =
@@ -54,8 +55,16 @@ export async function preflightMediaTime(
 					);
 				for (const track of [video, audio]) {
 					if (!track) continue;
-					const first = await input.getFirstTimestamp([track]);
-					const last = await track.computeDuration();
+					bounds.push({
+						first: await input.getFirstTimestamp([track]),
+						last: await track.computeDuration(),
+					});
+				}
+			} finally {
+				inputStore.release(source);
+			}
+			const check = (range: MediaSourceRange) => {
+				for (const { first, last } of bounds) {
 					if (
 						range.min < first - 1e-8 ||
 						range.max > last + 1e-8 ||
@@ -66,9 +75,11 @@ export async function preflightMediaTime(
 						);
 					}
 				}
-			} finally {
-				inputStore.release(source);
-			}
+			};
+			// A live history is checked interval by interval as it is recorded.
+			if (op.timeRemap.kind === "recorded")
+				op.timeRemap.recorder.checkRange(check);
+			else check(mediaSourceRange(op.timeRemap, 0, op.durationFrames, fps));
 		}
 		for (const child of node.children ?? []) await walk(child);
 	};

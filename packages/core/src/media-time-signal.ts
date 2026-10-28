@@ -53,19 +53,28 @@ export function sampleFrameMediaSignal(options: {
 		throw new Error("Invalid composition duration");
 	return sampleMediaSignal({
 		...options,
-		sample(frame) {
-			const context: FrameContext = {
-				frame,
-				fps,
-				time: frame / fps,
-				duration: compositionDurationFrames / fps,
-				durationMs: (compositionDurationFrames / fps) * 1000,
-				progress: frame / compositionDurationFrames,
-				deltaTime: 1 / fps,
-			};
-			return signal.get(context);
-		},
+		sample: (frame) =>
+			signal.get(
+				compositionFrameContext(frame, fps, compositionDurationFrames),
+			),
 	});
+}
+
+/** The frame context a composition-clock signal sees at a composition frame. */
+export function compositionFrameContext(
+	frame: number,
+	fps: number,
+	compositionDurationFrames: number,
+): FrameContext {
+	return {
+		frame,
+		fps,
+		time: frame / fps,
+		duration: compositionDurationFrames / fps,
+		durationMs: (compositionDurationFrames / fps) * 1000,
+		progress: Math.min(1, frame / compositionDurationFrames),
+		deltaTime: 1 / fps,
+	};
 }
 
 /** Evaluate at any fractional local frame, independent of query order. */
@@ -86,12 +95,19 @@ export function sampledMediaSourceTime(
 	);
 }
 
+/** Source-time bounds over a layer interval; `max` is exclusive unless included. */
+export interface MediaSourceRange {
+	min: number;
+	max: number;
+	maxIncluded: boolean;
+}
+
 /** Range includes direction changes inside a speed-signal interval. */
 export function sampledMediaSourceRange(
 	map: SampledMediaSignal,
 	from: number,
 	to: number,
-): { min: number; max: number; maxIncluded: boolean } {
+): MediaSourceRange {
 	if (!Number.isFinite(from) || !Number.isFinite(to))
 		throw new Error("Invalid media signal range");
 	const endFrame = map.values.length - 1;
@@ -127,14 +143,19 @@ export function sampledMediaSourceRange(
 }
 
 /**
- * Records values after frame preparation, so live signal history can be replayed
- * for audio and seeks without evaluating the signal a second time.
+ * Records a live signal at each composition-frame boundary, so its history can
+ * be replayed for audio, seeks and vision without evaluating it a second time.
+ * With a sampler, boundaries are evaluated on demand, but never past the
+ * frame the composition has reached ({@link advance}): no look-ahead.
  */
 export class MediaSignalRecorder {
 	private readonly values: Float64Array;
 	private readonly positions: Float64Array | undefined;
 	private recorded = 0;
 	private evaluating = false;
+	private horizon = -1;
+	private sampler: ((frame: number) => number) | undefined;
+	private check: ((range: MediaSourceRange) => void) | undefined;
 	readonly startFrame: number;
 	readonly durationFrames: number;
 	readonly fps: number;
@@ -146,6 +167,7 @@ export class MediaSignalRecorder {
 		startFrame: number;
 		durationFrames: number;
 		sourceStartSec?: number;
+		sample?: (compositionFrame: number) => number;
 	}) {
 		if (
 			!Number.isFinite(options.fps) ||
@@ -163,11 +185,35 @@ export class MediaSignalRecorder {
 		this.fps = options.fps;
 		this.startFrame = options.startFrame;
 		this.durationFrames = options.durationFrames;
+		this.sampler = options.sample;
 		this.values = new Float64Array(options.durationFrames + 1);
 		if (options.mode === "speed") {
 			this.positions = new Float64Array(options.durationFrames + 1);
 			this.positions[0] = start;
 		}
+	}
+
+	/** The first composition frame whose boundary is not yet recorded. */
+	get nextFrame(): number {
+		return this.startFrame + this.recorded;
+	}
+
+	get complete(): boolean {
+		return this.recorded === this.values.length;
+	}
+
+	/** Allow on-demand sampling through a composition frame the clock has reached. */
+	advance(frame: number): void {
+		if (frame > this.horizon) this.horizon = frame;
+	}
+
+	/**
+	 * Validate source bounds as history arrives: the recorded part now, each
+	 * further interval as it is recorded.
+	 */
+	checkRange(check: (range: MediaSourceRange) => void): void {
+		this.check = check;
+		if (this.recorded > 1) check(this.range(0, this.recorded - 1));
 	}
 
 	/** Each boundary is recorded once in composition-frame order. */
@@ -197,15 +243,20 @@ export class MediaSignalRecorder {
 				);
 			this.positions[index] = position;
 		}
+		if (this.check && index > 0) this.check(this.interval(index - 1));
 		this.recorded++;
 	}
 
-	/** Evaluate after frame preparation, reporting recursive time dependencies. */
+	/**
+	 * Evaluate a boundary once, reporting recursive time dependencies. A
+	 * boundary already recorded is kept, and `sample` is not called again.
+	 */
 	recordFrom(frame: number, sample: () => number): void {
 		if (this.evaluating)
 			throw new Error(
 				`Circular media signal dependency at composition frame ${frame}`,
 			);
+		if (frame - this.startFrame < this.recorded) return;
 		this.evaluating = true;
 		try {
 			this.record(frame, sample());
@@ -214,8 +265,37 @@ export class MediaSignalRecorder {
 		}
 	}
 
+	/** Sample every boundary through `frame` that the clock has reached. */
+	ensure(frame: number): void {
+		const sampler = this.sampler;
+		if (!sampler) return;
+		const last = Math.min(
+			frame,
+			this.horizon,
+			this.startFrame + this.durationFrames,
+		);
+		if (this.evaluating && frame >= this.nextFrame)
+			throw new Error(
+				`Circular media signal dependency at composition frame ${this.nextFrame}`,
+			);
+		for (let f = this.nextFrame; f <= last; f++)
+			this.recordFrom(f, () => sampler(f));
+	}
+
+	/**
+	 * Close a layer that outlives the clock: the boundaries past the last
+	 * rendered frame hold the last recorded value.
+	 */
+	close(): void {
+		if (this.recorded === 0)
+			throw new Error("Media signal history has no recorded frames");
+		const last = this.values[this.recorded - 1];
+		while (!this.complete) this.record(this.nextFrame, last);
+	}
+
 	/** The known source position at an already-recorded frame boundary. */
 	at(frame: number): number {
+		this.ensure(frame);
 		const index = frame - this.startFrame;
 		if (!Number.isInteger(frame) || index < 0 || index >= this.recorded)
 			throw new Error(`Media signal frame ${frame} has not been recorded`);
@@ -224,6 +304,8 @@ export class MediaSignalRecorder {
 
 	/** Read a recorded local frame, including fractional audio sample positions. */
 	sourceTime(localFrame: number): number {
+		if (Number.isFinite(localFrame))
+			this.ensure(this.startFrame + Math.ceil(localFrame));
 		if (
 			!Number.isFinite(localFrame) ||
 			localFrame < 0 ||
@@ -246,11 +328,7 @@ export class MediaSignalRecorder {
 
 	/** Read the instantaneous speed for an interval whose endpoints are known. */
 	rate(localFrame: number): number {
-		const i = Math.floor(localFrame);
-		if (!Number.isFinite(localFrame) || i < 0 || i + 1 >= this.recorded)
-			throw new Error(
-				`Media signal interval ${localFrame} has not been recorded`,
-			);
+		const i = this.knownInterval(localFrame);
 		const a = this.values[i];
 		const b = this.values[i + 1];
 		const t = localFrame - i;
@@ -258,20 +336,15 @@ export class MediaSignalRecorder {
 	}
 
 	isHold(localFrame: number): boolean {
-		const i = Math.floor(localFrame);
-		if (!Number.isFinite(localFrame) || i < 0 || i + 1 >= this.recorded)
-			throw new Error(
-				`Media signal interval ${localFrame} has not been recorded`,
-			);
+		const i = this.knownInterval(localFrame);
 		return this.positions
 			? this.values[i] === 0 && this.values[i + 1] === 0
 			: this.values[i] === this.values[i + 1];
 	}
 
-	range(
-		from: number,
-		to: number,
-	): { min: number; max: number; maxIncluded: boolean } {
+	range(from: number, to: number): MediaSourceRange {
+		if (Number.isFinite(from) && Number.isFinite(to))
+			this.ensure(this.startFrame + Math.ceil(Math.max(from, to)));
 		if (
 			!Number.isFinite(from) ||
 			!Number.isFinite(to) ||
@@ -284,22 +357,12 @@ export class MediaSignalRecorder {
 			const value = this.sourceTime(0);
 			return { min: value, max: value, maxIncluded: false };
 		}
-		const values = this.values.subarray(0, this.recorded);
-		const history: SampledMediaSignal = this.positions
-			? {
-					mode: "speed",
-					fps: this.fps,
-					values,
-					positions: this.positions.subarray(0, this.recorded),
-				}
-			: { mode: "source-time", fps: this.fps, values };
-		return sampledMediaSourceRange(history, from, to);
+		return sampledMediaSourceRange(this.history(0, this.recorded), from, to);
 	}
 
 	/** A self-contained snapshot, available only when every boundary was recorded. */
 	finish(): SampledMediaSignal {
-		if (this.recorded !== this.values.length)
-			throw new Error("Media signal history is incomplete");
+		if (!this.complete) throw new Error("Media signal history is incomplete");
 		const values = this.values.slice();
 		return this.positions
 			? {
@@ -307,6 +370,33 @@ export class MediaSignalRecorder {
 					fps: this.fps,
 					values,
 					positions: this.positions.slice(),
+				}
+			: { mode: "source-time", fps: this.fps, values };
+	}
+
+	private knownInterval(localFrame: number): number {
+		const i = Math.floor(localFrame);
+		if (Number.isFinite(localFrame)) this.ensure(this.startFrame + i + 1);
+		if (!Number.isFinite(localFrame) || i < 0 || i + 1 >= this.recorded)
+			throw new Error(
+				`Media signal interval ${localFrame} has not been recorded`,
+			);
+		return i;
+	}
+
+	/** Bounds of the interval starting at boundary `i`, its end exclusive. */
+	private interval(i: number): MediaSourceRange {
+		return sampledMediaSourceRange(this.history(i, i + 2), 0, 1);
+	}
+
+	private history(from: number, to: number): SampledMediaSignal {
+		const values = this.values.subarray(from, to);
+		return this.positions
+			? {
+					mode: "speed",
+					fps: this.fps,
+					values,
+					positions: this.positions.subarray(from, to),
 				}
 			: { mode: "source-time", fps: this.fps, values };
 	}

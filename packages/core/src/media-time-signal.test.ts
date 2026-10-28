@@ -273,6 +273,68 @@ describe("live media signal history", () => {
 		speed.set(20);
 		expect(sampledMediaSourceTime(history, 2)).toBe(1.5);
 	});
+	it("samples live boundaries on demand up to the clock, never ahead", () => {
+		const speed = Signal.state(2);
+		const reads: number[] = [];
+		const recorder = new MediaSignalRecorder({
+			mode: "speed",
+			fps: 2,
+			startFrame: 4,
+			durationFrames: 3,
+			sample: (frame) => {
+				reads.push(frame);
+				return speed.get();
+			},
+		});
+		const map = { kind: "recorded" as const, recorder };
+		expect(() => mediaSourceTime(map, 0, 2)).toThrow(/not been recorded/);
+		recorder.advance(5);
+		expect(mediaSourceTime(map, 1, 2)).toBe(1);
+		expect(() => mediaSourceTime(map, 1.5, 2)).toThrow(/not been recorded/);
+		speed.set(0);
+		recorder.advance(6);
+		recorder.ensure(6);
+		expect(mediaSourceTime(map, 2, 2)).toBe(1.5);
+		expect(reads).toEqual([4, 5, 6]);
+		recorder.close();
+		expect(recorder.complete).toBe(true);
+		expect(mediaSourceTime(map, 3, 2)).toBe(1.5);
+		expect(mediaSourceIsHold(map, 2.5)).toBe(true);
+	});
+	it("reports a signal that reads its own layer's current source time", () => {
+		const recorder: MediaSignalRecorder = new MediaSignalRecorder({
+			mode: "source-time",
+			fps: 24,
+			startFrame: 0,
+			durationFrames: 2,
+			sample: (frame) => (frame === 0 ? 0 : recorder.at(frame) + 1),
+		});
+		recorder.advance(1);
+		expect(recorder.at(0)).toBe(0);
+		expect(() => recorder.at(1)).toThrow(/Circular media signal dependency/);
+	});
+	it("validates source bounds interval by interval as history arrives", () => {
+		const recorder = new MediaSignalRecorder({
+			mode: "source-time",
+			fps: 1,
+			startFrame: 0,
+			durationFrames: 3,
+		});
+		recorder.record(0, 1);
+		recorder.record(1, 2);
+		const ranges: Array<{ min: number; max: number; maxIncluded: boolean }> =
+			[];
+		recorder.checkRange((range) => {
+			ranges.push(range);
+			if (range.max > 2.5) throw new Error("outside the source");
+		});
+		recorder.record(2, 2.5);
+		expect(ranges).toEqual([
+			{ min: 1, max: 2, maxIncluded: false },
+			{ min: 2, max: 2.5, maxIncluded: false },
+		]);
+		expect(() => recorder.record(3, 3)).toThrow(/outside the source/);
+	});
 	it("rejects missing, reordered, and conflicting frame samples", () => {
 		const recorder = new MediaSignalRecorder({
 			mode: "source-time",

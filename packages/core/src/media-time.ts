@@ -1,10 +1,12 @@
 import { z } from "zod";
 import {
 	type MediaSignalRecorder,
+	type MediaSourceRange,
 	type SampledMediaSignal,
 	sampledMediaSourceRange,
 	sampledMediaSourceTime,
 } from "./media-time-signal.js";
+import { isSignal, type Signal } from "./signals/index.js";
 
 /** Maps layer-local frames to absolute source seconds. */
 export const MediaTimeRemapSchema = z.discriminatedUnion("kind", [
@@ -40,6 +42,43 @@ export const MediaTimeRemapSchema = z.discriminatedUnion("kind", [
 
 export type MediaTimeRemap = z.infer<typeof MediaTimeRemapSchema>;
 
+/**
+ * Drives source time from a signal on the composition clock: `"speed"` is
+ * playback rate (source seconds per second, integrated from `sourceStartSec`),
+ * `"source-time"` is absolute source seconds. `signal` is a signal instance or
+ * the name of a composition signal. The signal is read at every frame
+ * boundary of the layer, after that frame's hooks have run.
+ */
+export interface MediaTimeSignalRemap {
+	kind: "signal";
+	mode: "speed" | "source-time";
+	signal: Signal<number> | string;
+	sourceStartSec?: number;
+}
+
+export const MediaTimeSignalRemapSchema = z
+	.object({
+		kind: z.literal("signal"),
+		mode: z.enum(["speed", "source-time"]),
+		signal: z.union([
+			z.string().min(1),
+			z.custom<Signal<number>>(
+				isSignal,
+				"signal must be a Signal or the name of a composition signal",
+			),
+		]),
+		sourceStartSec: z.number().finite().nonnegative().optional(),
+	})
+	.strict();
+
+/** Every `timeRemap` an author can write: a fixed map or a signal binding. */
+export type MediaTimeRemapInput = MediaTimeRemap | MediaTimeSignalRemap;
+
+export const MediaTimeRemapInputSchema = z.discriminatedUnion("kind", [
+	...MediaTimeRemapSchema.options,
+	MediaTimeSignalRemapSchema,
+]);
+
 /** A per-render signal history resolved by the media timing scheduler. */
 export type ResolvedMediaTimeRemap =
 	| MediaTimeRemap
@@ -55,11 +94,15 @@ function assertSampledFps(history: SampledMediaSignal, fps: number): void {
 
 /** Validate the map against its explicit, exclusive layer duration. */
 export function validateMediaTimeRemap(
-	map: MediaTimeRemap,
+	map: MediaTimeRemapInput,
 	durationFrames: number,
 ): string | undefined {
 	if (!Number.isInteger(durationFrames) || durationFrames <= 0)
 		return "durationFrames must be a positive integer";
+	if (map.kind === "signal")
+		return map.mode === "source-time" && map.sourceStartSec !== undefined
+			? "sourceStartSec applies only to speed signals"
+			: undefined;
 	if (map.kind === "rate") return;
 	const keys = map.keyframes;
 	if (
@@ -206,7 +249,7 @@ export function mediaSourceRange(
 	fromFrame: number,
 	toFrame: number,
 	fps: number,
-): { min: number; max: number; maxIncluded: boolean } {
+): MediaSourceRange {
 	if (map.kind === "recorded") {
 		if (map.recorder.fps !== fps)
 			throw new Error(

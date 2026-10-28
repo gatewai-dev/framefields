@@ -1,4 +1,9 @@
-import type { VirtualMediaData } from "@framefields/core";
+import {
+	mediaSourceTime,
+	type ResolvedMediaTimeRemap,
+	Signal,
+	type VirtualMediaData,
+} from "@framefields/core";
 import { describe, expect, it } from "vitest";
 import type { CompositorProgramConfig, LayoutNode } from "./schema.js";
 import { compositorToProgram } from "./to-virtual-media.js";
@@ -69,6 +74,90 @@ describe("compositorToProgram", () => {
 		});
 		expect(vm.children[0].operation.durationFrames).toBe(60);
 		expect(vm.children[0].metadata.durationMs).toBe(2000);
+	});
+	it("resolves signal time remaps on the composition clock", () => {
+		const video = {
+			metadata: { durationMs: 10000 },
+			operation: { op: "source", dataType: "Video" },
+			children: [],
+		} as unknown as VirtualMediaData;
+		const layer = (timeRemap: unknown) => ({
+			width: 64,
+			height: 64,
+			fps: 4,
+			mode: "Video",
+			layout: [
+				{
+					id: "wrap",
+					kind: "box",
+					startFrame: 2,
+					children: [
+						{
+							id: "clip",
+							kind: "media",
+							inputHandleId: "source",
+							dataType: "Video",
+							startFrame: 1,
+							durationFrames: 4,
+							timeRemap,
+						},
+					],
+				},
+			],
+		});
+		const remapOf = (vm: VirtualMediaData) =>
+			(
+				vm.children[0].children[0].operation as unknown as {
+					timeRemap: ResolvedMediaTimeRemap;
+				}
+			).timeRemap;
+		const options = {
+			isVideoMode: true,
+			fps: 4,
+			durationMs: 2500,
+			resolveMedia: () => video,
+		};
+		const instance = compositorToProgram(
+			layer({
+				kind: "signal",
+				mode: "source-time",
+				signal: Signal.builder({ type: "custom", fn: (ctx) => ctx.time }),
+			}) as unknown as CompositorProgramConfig,
+			options,
+		);
+		// The layer starts at composition frame 3: its frame 1 reads frame 4.
+		expect(mediaSourceTime(remapOf(instance), 1, 4)).toBe(1);
+		const named = compositorToProgram(
+			layer({
+				kind: "signal",
+				mode: "speed",
+				signal: "pace",
+				sourceStartSec: 2,
+			}) as unknown as CompositorProgramConfig,
+			{ ...options, signals: { pace: [0, 0, 0, 2, 2, 2, 2, 2] } },
+		);
+		expect(mediaSourceTime(remapOf(named), 4, 4)).toBe(4);
+		expect(() =>
+			compositorToProgram(
+				layer({
+					kind: "signal",
+					mode: "speed",
+					signal: "missing",
+				}) as unknown as CompositorProgramConfig,
+				options,
+			),
+		).toThrow(/not a composition signal/);
+		expect(() =>
+			compositorToProgram(
+				layer({
+					kind: "signal",
+					mode: "source-time",
+					signal: "pace",
+					sourceStartSec: 1,
+				}) as unknown as CompositorProgramConfig,
+				{ ...options, signals: { pace: [0] } },
+			),
+		).toThrow(/only to speed signals/);
 	});
 	it("builds the render tree 1:1 from the document", () => {
 		const vm = compositorToProgram(doc, { isVideoMode: true, fps: 30 });

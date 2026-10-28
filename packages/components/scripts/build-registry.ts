@@ -15,7 +15,7 @@ import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { ComponentMeta, FontNeed } from "../src/core/meta.js";
-import { collectMeta } from "./build-meta.js";
+import { type CollectedMeta, collectMeta } from "./build-meta.js";
 
 const SRC = fileURLToPath(new URL("../src", import.meta.url));
 const NOT_COMPONENTS = new Set(["core", "test"]);
@@ -39,6 +39,7 @@ export interface RegistryEntry
 }
 
 export interface RegistryItem extends RegistryEntry {
+	props?: CollectedMeta["props"];
 	parts: readonly string[];
 	cues: readonly string[];
 	/** Fonts to install with it (`framefields add` fetches them). */
@@ -193,14 +194,17 @@ export function registryItem(
 
 /** Every component folder under `src`, sorted by name. */
 export async function buildRegistry(src = SRC): Promise<RegistryItem[]> {
-	await collectMeta(src); // every folder has a meta, names are unique
+	const metas = await collectMeta(src); // every folder has a meta, names are unique
 	const items: RegistryItem[] = [];
 	for (const entry of readdirSync(src, { withFileTypes: true })) {
 		if (!entry.isDirectory() || NOT_COMPONENTS.has(entry.name)) continue;
 		const mod = (await import(
 			pathToFileURL(join(src, entry.name, "meta.ts")).href
 		)) as { default: ComponentMeta };
-		items.push(registryItem(src, entry.name, mod.default));
+		items.push({
+			...registryItem(src, entry.name, mod.default),
+			props: metas.find((meta) => meta.name === mod.default?.name)?.props,
+		});
 	}
 	const names = new Set(items.map((i) => i.name));
 	for (const item of items)

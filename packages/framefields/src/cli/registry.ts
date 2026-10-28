@@ -20,6 +20,14 @@ export interface RegistryEntry {
 }
 
 export interface RegistryItem extends RegistryEntry {
+	/** Generated from the component schema and JSDoc. */
+	props?: ReadonlyArray<{
+		name: string;
+		type: string;
+		required: boolean;
+		default?: unknown;
+		description?: string;
+	}>;
 	parts: readonly string[];
 	cues: readonly string[];
 	/** Fonts to install with it, by role (see `cli/fonts.ts`). */

@@ -44,6 +44,10 @@ Typecheck the project:
 npx tsc --noEmit -p .
 ```
 
+In projects initialized with the current CLI, `pnpm check` runs typechecking and document preflight. For another entry, run `pnpm exec framefields check src/film.ts --export buildFilm --json`. The export is a `Composition` or a builder returning one; importing it executes project code, so keep rendering, generation and writes out of the builder. The CLI runs it in an isolated process, routes builder logs to stderr and writes one versioned JSON result to stdout. Errors fail the command; warnings fail with `--warnings-as-errors`. `--timeout 60000` bounds the worker lifetime.
+
+`pnpm check:render` adds GPU verification, a frame and a three-point grid under `output/check`; `--output <dir>` changes the location. This smoke check does not replace targeted pixel assertions or video QA. A failed or unavailable GPU check is reported as a failure. Use `pnpm exec framefields api` for timing, grid and preflight type declarations generated from this SDK version.
+
 ---
 
 ### Step 2: Single Frame Inspection (`renderFrame`)
@@ -64,6 +68,8 @@ const pngBuffer = await comp.renderFrame({
 
 await fs.writeFile("output/frame-45.png", pngBuffer);
 ```
+
+`atMs` takes precedence when both `frame` and `atMs` are supplied, including for frame hooks. Frame indices must be nonnegative safe integers; fractional timestamps and FPS are supported. A composition's FPS is authoritative: a different render/grid FPS override throws. Media pipelines can still select their rendering FPS.
 
 ---
 
@@ -89,6 +95,8 @@ Contact sheets immediately reveal:
 - Motion hitches and non-smooth easing deceleration.
 - Text clipping or wrapping jumps across keyframe boundaries.
 - Bad layer z-indexing or missing cut transitions.
+
+Grid frame ranges are inclusive, but the composition's duration is exclusive. Automatic sampling stops before the exported frame count (`max(1, round(durationMs * fps / 1000))`). Explicit points may sample beyond the export window for diagnostics. Sample order and duplicates are preserved. Frame steps must be positive safe integers, timestamp steps finite and positive. The sample limit is checked while generating points (64 by default, at most 120); invalid or excessive requests fail before creating a large list. Labels describe the actual selected frame, with timestamps formatted for display only.
 
 ---
 

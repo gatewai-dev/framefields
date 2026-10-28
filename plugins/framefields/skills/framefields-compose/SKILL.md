@@ -49,6 +49,8 @@ For commercials, films, and multi-shot videos, break the project into discrete, 
 - **Scene modules (`scenes/hero.ts`):** Each scene returns a full-frame root box with `startFrame` and `durationFrames`. Children position themselves relative to scene start (`frame: 0` = scene onset).
 - **Master assembly (`film.ts`):** Imports scenes, mounts them to `comp.add(scene())`, attaches the master soundtrack and composition-level grading/grain.
 
+For the exported `Scene` / `Sequence` builder, scene windows are half-open: `[startFrame, startFrame + durationFrames)`. A root layer starting at local frame 30 in a 60-frame scene defaults to 30 frames of duration. Explicit root-layer windows must fit their scene; invalid starts or overflow throw with the scene and layer IDs. Children and their keyframes remain local to their parent. Outgoing overlaps place the next scene and cannot exceed either adjacent scene's duration. The final scene's outgoing overlap has no destination and does not shorten the timeline. `calculateTimeline().totalFrames` is the maximum exclusive scene end.
+
 ```typescript
 // theme.ts
 export const W = 1920;

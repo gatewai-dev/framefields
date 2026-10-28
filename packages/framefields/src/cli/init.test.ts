@@ -121,6 +121,8 @@ describe("framefields init", () => {
 		});
 		expect(Object.keys(pkg.scripts)).toEqual([
 			"typecheck",
+			"check",
+			"check:render",
 			"frames",
 			"grid",
 			"preview",

@@ -338,7 +338,7 @@ function record(report: InitReport, path: string, result: "written" | boolean) {
 }
 
 /** This package's version, from the nearest `package.json` named framefields. */
-function ownVersion(): string {
+export function ownVersion(): string {
 	let dir = dirname(fileURLToPath(import.meta.url));
 	for (;;) {
 		const file = join(dir, "package.json");

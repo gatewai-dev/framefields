@@ -1,3 +1,5 @@
+import { resolveFrameRequest } from "@framefields/core";
+
 export {
 	type Ai,
 	type AiConfig,
@@ -2189,18 +2191,21 @@ export class Composition {
 	public async renderFrame(
 		options: {
 			atMs?: number;
+			fps?: number;
 			frame?: number;
 			renderer?: HeadlessMediaRenderer;
 		} = {},
 	): Promise<Buffer> {
+		const { frame } = resolveFrameRequest(options, this.fps);
+		if (options.fps !== undefined && options.fps !== this.fps)
+			throw new Error(
+				`Composition fps is ${this.fps}; cannot render at fps ${options.fps}.`,
+			);
+
 		// Compile first: the frame's hooks then record its live signal time.
 		const vm = this.toVirtualMedia();
 		if (this.hasFrameHooks()) {
-			const targetFrame =
-				options.frame ??
-				(options.atMs !== undefined
-					? Math.round((options.atMs / 1000) * this.fps)
-					: 0);
+			const targetFrame = frame;
 			await this.notifyFrame({
 				frame: targetFrame,
 				fps: this.fps,
@@ -2223,7 +2228,7 @@ export class Composition {
 		const renderer = options.renderer ?? new HeadlessMediaRenderer();
 		return renderer.renderFrame(vm, {
 			fps: this.fps,
-			...options,
+			frame,
 		});
 	}
 

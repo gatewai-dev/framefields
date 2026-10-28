@@ -1,10 +1,16 @@
 import fs from "node:fs/promises";
-import type { VirtualMediaData } from "@framefields/core";
+import {
+	assertFps,
+	frameCount,
+	resolveFrameRequest,
+	type VirtualMediaData,
+} from "@framefields/core";
 import { Canvas, loadImage } from "skia-canvas";
 import { HeadlessMediaRenderer } from "./index.js";
 
 export interface FrameSamplePoint {
 	frame: number;
+	/** Exact timestamp of the selected frame; round only when displaying labels. */
 	timeMs: number;
 }
 
@@ -50,7 +56,8 @@ export interface FrameGridOptions {
 	timesMs?: number[];
 
 	/**
-	 * Frames per second override. If omitted, reads from media/composition metadata or defaults to 24.
+	 * Media pipeline FPS override. Composition FPS is authoritative; a mismatch throws.
+	 * If omitted, reads from media/composition metadata or defaults to 24.
 	 */
 	fps?: number;
 
@@ -130,103 +137,113 @@ export interface FrameGridOptions {
 /**
  * Resolves and validates the list of sample points from the provided options.
  */
+function samplingLimit(requested = 64): number {
+	if (!Number.isSafeInteger(requested) || requested < 1)
+		throw new Error("[FrameGrid] maxFrames must be a positive safe integer.");
+	return Math.min(requested, 120);
+}
+
+function checkSampleCount(count: number, limit: number): void {
+	if (count > limit)
+		throw new Error(
+			`[FrameGrid] Requested frames exceeds the safety threshold of ${limit}. Increase stepFrames/stepMs or narrow the start/end range.`,
+		);
+}
+
+function sampleRange(
+	start: number,
+	end: number,
+	step: number,
+	limit: number,
+	unit: "frame" | "millisecond",
+): number[] {
+	if (
+		!Number.isFinite(start) ||
+		!Number.isFinite(end) ||
+		start < 0 ||
+		end < start
+	)
+		throw new Error(
+			`[FrameGrid] Invalid ${unit} range: start${unit === "frame" ? "Frame" : "Ms"} must be <= end${unit === "frame" ? "Frame" : "Ms"}; bounds must be finite and nonnegative.`,
+		);
+	if (!Number.isFinite(step) || step <= 0)
+		throw new Error(
+			`[FrameGrid] Invalid ${unit === "frame" ? "stepFrames" : "stepMs"}: ${step}. Must be > 0 and finite.`,
+		);
+	if (unit === "frame" && ![start, end, step].every(Number.isSafeInteger))
+		throw new Error(
+			"[FrameGrid] Frame bounds and stepFrames must be safe integers.",
+		);
+	const values: number[] = [];
+	for (let i = 0; ; i++) {
+		const value = start + i * step;
+		if (!Number.isFinite(value))
+			throw new Error("[FrameGrid] Range arithmetic overflow.");
+		if (i > 0 && value <= values[i - 1])
+			throw new Error("[FrameGrid] Step does not advance the sampling range.");
+		if (value > end) break;
+		checkSampleCount(i + 1, limit);
+		values.push(value);
+	}
+	return values;
+}
+
+/** Resolve bounded samples. Explicit endpoints may lie outside the export window. */
 export function resolveSamplePoints(
 	options: FrameGridOptions,
 	defaultFps = 24,
 	durationMs?: number,
 ): { samples: FrameSamplePoint[]; fps: number } {
 	const fps = options.fps ?? defaultFps;
-	if (fps <= 0) {
-		throw new Error(`[FrameGrid] Invalid fps: ${fps}. Must be > 0.`);
+	assertFps(fps);
+	const limit = samplingLimit(options.maxFrames);
+	let samples: FrameSamplePoint[];
+	if (options.frames?.length) {
+		checkSampleCount(options.frames.length, limit);
+		samples = options.frames.map((frame) =>
+			resolveFrameRequest({ frame }, fps),
+		);
+	} else if (options.timesMs?.length) {
+		checkSampleCount(options.timesMs.length, limit);
+		samples = options.timesMs.map((atMs) => resolveFrameRequest({ atMs }, fps));
+	} else {
+		samples = rangeSamples(options, fps, durationMs, limit);
 	}
+	if (!samples.length)
+		throw new Error("[FrameGrid] Zero frames were resolved for sampling.");
+	return { samples, fps };
+}
 
-	const samples: FrameSamplePoint[] = [];
-
-	if (Array.isArray(options.frames) && options.frames.length > 0) {
-		for (const f of options.frames) {
-			if (typeof f !== "number" || f < 0 || !Number.isFinite(f)) {
-				throw new Error(`[FrameGrid] Invalid frame index in frames list: ${f}`);
-			}
-			samples.push({
-				frame: Math.round(f),
-				timeMs: Math.round((f / fps) * 1000),
-			});
-		}
-	} else if (Array.isArray(options.timesMs) && options.timesMs.length > 0) {
-		for (const ms of options.timesMs) {
-			if (typeof ms !== "number" || ms < 0 || !Number.isFinite(ms)) {
-				throw new Error(`[FrameGrid] Invalid timestamp in timesMs list: ${ms}`);
-			}
-			samples.push({
-				frame: Math.round((ms / 1000) * fps),
-				timeMs: Math.round(ms),
-			});
-		}
-	} else if (
+function rangeSamples(
+	options: FrameGridOptions,
+	fps: number,
+	durationMs: number | undefined,
+	limit: number,
+): FrameSamplePoint[] {
+	const lastFrame =
+		durationMs === undefined ? undefined : frameCount(durationMs, fps) - 1;
+	if (
 		options.startMs !== undefined ||
 		options.endMs !== undefined ||
 		options.stepMs !== undefined
 	) {
-		const startMs = options.startMs ?? 0;
-		const endMs = options.endMs ?? durationMs ?? startMs + 1000;
-		const stepMs = options.stepMs ?? Math.round((5 / fps) * 1000);
-
-		if (startMs < 0 || endMs < startMs) {
-			throw new Error(
-				`[FrameGrid] Invalid millisecond range: startMs=${startMs}, endMs=${endMs}. startMs must be <= endMs.`,
-			);
-		}
-		if (stepMs <= 0) {
-			throw new Error(`[FrameGrid] Invalid stepMs: ${stepMs}. Must be > 0.`);
-		}
-
-		for (let ms = startMs; ms <= endMs; ms += stepMs) {
-			samples.push({
-				frame: Math.round((ms / 1000) * fps),
-				timeMs: Math.round(ms),
-			});
-		}
-	} else {
-		const startFrame = options.startFrame ?? 0;
-		const endFrame =
-			options.endFrame ??
-			(durationMs
-				? Math.min(startFrame + 30, Math.floor((durationMs / 1000) * fps))
-				: startFrame + 30);
-		const stepFrames = options.stepFrames ?? 5;
-
-		if (startFrame < 0 || endFrame < startFrame) {
-			throw new Error(
-				`[FrameGrid] Invalid frame range: startFrame=${startFrame}, endFrame=${endFrame}. startFrame must be <= endFrame.`,
-			);
-		}
-		if (stepFrames <= 0) {
-			throw new Error(
-				`[FrameGrid] Invalid stepFrames: ${stepFrames}. Must be > 0.`,
-			);
-		}
-
-		for (let f = startFrame; f <= endFrame; f += stepFrames) {
-			samples.push({
-				frame: Math.round(f),
-				timeMs: Math.round((f / fps) * 1000),
-			});
-		}
+		const start = options.startMs ?? 0;
+		const end =
+			options.endMs ??
+			(lastFrame === undefined ? start + 1000 : (lastFrame / fps) * 1000);
+		return sampleRange(
+			start,
+			end,
+			options.stepMs ?? 5000 / fps,
+			limit,
+			"millisecond",
+		).map((atMs) => resolveFrameRequest({ atMs }, fps));
 	}
-
-	const maxFramesLimit = Math.min(options.maxFrames ?? 64, 120);
-	if (samples.length > maxFramesLimit) {
-		throw new Error(
-			`[FrameGrid] Requested ${samples.length} frames exceeds the safety threshold of ${maxFramesLimit}. ` +
-				`Increase stepFrames/stepMs or narrow the start/end range to prevent oversized images.`,
-		);
-	}
-
-	if (samples.length === 0) {
-		throw new Error("[FrameGrid] Zero frames were resolved for sampling.");
-	}
-
-	return { samples, fps };
+	const start = options.startFrame ?? 0;
+	const end = options.endFrame ?? Math.min(start + 30, lastFrame ?? start + 30);
+	return sampleRange(start, end, options.stepFrames ?? 5, limit, "frame").map(
+		(frame) => resolveFrameRequest({ frame }, fps),
+	);
 }
 
 /**
@@ -352,7 +369,6 @@ export async function renderFrameGrid(
 	for (const sample of samples) {
 		const buf = await target.renderFrame({
 			frame: sample.frame,
-			atMs: sample.timeMs,
 			fps,
 			renderer,
 		});
@@ -421,7 +437,7 @@ export async function renderFrameGrid(
 
 		// Sleek metadata pill badge
 		if (showLabels) {
-			const label = `F:${sample.frame} • ${sample.timeMs}ms`;
+			const label = `F:${sample.frame} • ${Math.round(sample.timeMs)}ms`;
 
 			ctx.font = "bold 11px sans-serif";
 			const textWidth = ctx.measureText(label).width;

@@ -217,6 +217,7 @@ class FrameArraySignalImpl implements FrameSignal<number> {
 	public readonly fps: number;
 	private _samples: ArrayLike<number>;
 	private _cachedFrame = -1;
+	private _cachedFps = 0;
 	private _cachedValue = 0;
 	private _seekedFrame = -1;
 	private _subscribers = new Set<ComputedImpl<unknown>>();
@@ -248,17 +249,18 @@ class FrameArraySignalImpl implements FrameSignal<number> {
 		const currentFrame =
 			ctx?.frame ??
 			(this._seekedFrame >= 0 ? this._seekedFrame : frameSignal.value);
-		if (this._cachedFrame === currentFrame) {
+		const compFps = ctx?.fps ?? this.fps;
+		if (this._cachedFrame === currentFrame && this._cachedFps === compFps) {
 			return this._cachedValue;
 		}
 		this._cachedFrame = currentFrame;
+		this._cachedFps = compFps;
 
 		if (!this._samples || this._samples.length === 0) {
 			this._cachedValue = 0;
 			return 0;
 		}
 
-		const compFps = ctx?.fps ?? this.fps;
 		const targetFrame =
 			compFps !== this.fps && compFps > 0
 				? (currentFrame / compFps) * this.fps
@@ -279,6 +281,7 @@ class FrameArraySignalImpl implements FrameSignal<number> {
 	seekFrame(frame: number): void {
 		this._seekedFrame = frame;
 		this._cachedFrame = frame;
+		this._cachedFps = this.fps;
 		if (!this._samples || this._samples.length === 0) {
 			this._cachedValue = 0;
 		} else {

@@ -1,3 +1,5 @@
+import type { FrameContext, Signal } from "./signals/index.js";
+
 /** A sampled source-time curve or the integral of a sampled playback rate. */
 export type SampledMediaSignal =
 	| {
@@ -60,6 +62,39 @@ export function sampleMediaSignal(options: {
 	return { mode, values, positions, fps };
 }
 
+/** Sample an engine signal with its composition clock and full frame context. */
+export function sampleFrameMediaSignal(options: {
+	mode: "source-time" | "speed";
+	fps: number;
+	startFrame: number;
+	durationFrames: number;
+	compositionDurationFrames: number;
+	sourceStartSec?: number;
+	signal: Signal<number>;
+}): SampledMediaSignal {
+	const { fps, compositionDurationFrames, signal } = options;
+	if (
+		!Number.isInteger(compositionDurationFrames) ||
+		compositionDurationFrames <= 0
+	)
+		throw new Error("Invalid composition duration");
+	return sampleMediaSignal({
+		...options,
+		sample(frame) {
+			const context: FrameContext = {
+				frame,
+				fps,
+				time: frame / fps,
+				duration: compositionDurationFrames / fps,
+				durationMs: (compositionDurationFrames / fps) * 1000,
+				progress: frame / compositionDurationFrames,
+				deltaTime: 1 / fps,
+			};
+			return signal.get(context);
+		},
+	});
+}
+
 /** Evaluate at any fractional local frame, independent of query order. */
 export function sampledMediaSourceTime(
 	map: SampledMediaSignal,
@@ -72,8 +107,10 @@ export function sampledMediaSourceTime(
 	const t = f - i;
 	const a = map.values[i];
 	const b = map.values[i + 1];
-	if (map.mode === "source-time") return a + (b - a) * t;
-	return map.positions[i] + (a * t + ((b - a) * t * t) / 2) / map.fps;
+	if (map.mode === "source-time") return a * (1 - t) + b * t;
+	return (
+		map.positions[i] + (a * (t - (t * t) / 2) + b * ((t * t) / 2)) / map.fps
+	);
 }
 
 /** Range includes direction changes inside a speed-signal interval. */
@@ -81,7 +118,7 @@ export function sampledMediaSourceRange(
 	map: SampledMediaSignal,
 	from: number,
 	to: number,
-): { min: number; max: number } {
+): { min: number; max: number; maxIncluded: boolean } {
 	if (!Number.isFinite(from) || !Number.isFinite(to))
 		throw new Error("Invalid media signal range");
 	const endFrame = map.values.length - 1;
@@ -89,10 +126,16 @@ export function sampledMediaSourceRange(
 	const end = Math.max(0, Math.min(endFrame, Math.max(from, to)));
 	let min = sampledMediaSourceTime(map, start);
 	let max = min;
+	let maxIncluded = start < end;
 	const add = (frame: number) => {
 		const value = sampledMediaSourceTime(map, frame);
 		min = Math.min(min, value);
-		max = Math.max(max, value);
+		if (value > max) {
+			max = value;
+			maxIncluded = frame < end;
+		} else if (value === max && frame < end) {
+			maxIncluded = true;
+		}
 	};
 	add(end);
 	for (let i = Math.floor(start); i < end; i++) {
@@ -100,11 +143,12 @@ export function sampledMediaSourceRange(
 		if (map.mode === "speed") {
 			const a = map.values[i],
 				b = map.values[i + 1];
-			if (a * b < 0) {
-				const turn = i - a / (b - a);
+			if ((a < 0 && b > 0) || (a > 0 && b < 0)) {
+				const halfA = Math.abs(a) / 2;
+				const turn = i + halfA / (halfA + Math.abs(b) / 2);
 				if (turn > start && turn < end) add(turn);
 			}
 		}
 	}
-	return { min, max };
+	return { min, max, maxIncluded };
 }

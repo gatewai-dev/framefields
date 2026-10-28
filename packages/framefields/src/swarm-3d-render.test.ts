@@ -113,7 +113,7 @@ describe("Layer3D.swarm GPU compute simulation", () => {
 		);
 
 		// Render frame 20 (particles swirling and hitting the floor)
-		const png20 = await comp.renderFrame(20);
+		const png20 = await comp.renderFrame({ frame: 20 });
 		const { data: d20 } = await decode(png20);
 
 		let nonBlack20 = 0;
@@ -135,8 +135,8 @@ describe("Layer3D.swarm GPU compute simulation", () => {
 		expect(hasGlowingHotPixels).toBeGreaterThan(50);
 
 		// Deterministic scrubbing check: render frame 30, then scrub back to frame 20
-		await comp.renderFrame(30);
-		const png20Scrubbed = await comp.renderFrame(20);
+		await comp.renderFrame({ frame: 30 });
+		const png20Scrubbed = await comp.renderFrame({ frame: 20 });
 		const { data: d20Scrubbed } = await decode(png20Scrubbed);
 
 		let diffPixels = 0;

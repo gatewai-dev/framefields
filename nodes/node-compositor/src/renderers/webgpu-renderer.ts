@@ -2604,6 +2604,87 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 						heatColorStops[2] = [c2.r, c2.g, c2.b];
 					}
 
+					const rawVariants = Array.isArray(swarmOpt.meshVariants)
+						? swarmOpt.meshVariants
+						: swarmOpt.mesh
+							? [swarmOpt.mesh]
+							: [];
+					const variants: Model3DData[] = [];
+					for (const m of rawVariants) {
+						let vModel: Model3DData | undefined;
+						if (m && typeof m === "object") {
+							if ("meshes" in m && Array.isArray((m as any).meshes)) {
+								vModel = m as Model3DData;
+							} else if (m.modelData && "meshes" in m.modelData) {
+								vModel = m.modelData as Model3DData;
+							} else if (m.primitive3d) {
+								vModel = getPrimitiveGeometry(
+									m.primitive3d as PrimitiveGeometryOptions,
+								);
+							} else if (m.src) {
+								try {
+									vModel = r3d.loadModel(m.src, m.modelFormat ?? "auto", {
+										center: m.center,
+										normalizeSize: m.normalizeSize,
+									});
+								} catch {}
+							}
+						}
+						if (vModel && vModel.meshes && vModel.meshes.length > 0) {
+							variants.push(vModel);
+						}
+					}
+					if (variants.length === 0 && model) {
+						variants.push(model);
+					}
+
+					let meshRadius = 20;
+					const primaryBounds = variants[0]?.bounds;
+					if (primaryBounds) {
+						const dx = primaryBounds.max[0] - primaryBounds.min[0];
+						const dy = primaryBounds.max[1] - primaryBounds.min[1];
+						const dz = primaryBounds.max[2] - primaryBounds.min[2];
+						const maxExtent = Math.max(dx, dy, dz) * 0.5;
+						if (Number.isFinite(maxExtent) && maxExtent > 0.1) {
+							meshRadius = maxExtent;
+						}
+					}
+
+					let sparksConfig: Swarm3DStaticConfig["sparks"] | undefined;
+					if (swarmOpt.sparks && typeof swarmOpt.sparks === "object") {
+						const sp = swarmOpt.sparks;
+						const spSize = Array.isArray(sp.size)
+							? [sp.size[0] ?? 3.2, sp.size[1] ?? 1.2]
+							: [sp.size ?? 3.2, (sp.size ?? 3.2) * 0.35];
+						const spLife = Array.isArray(sp.lifetime)
+							? [sp.lifetime[0] ?? 0.35, sp.lifetime[1] ?? 0.9]
+							: [sp.lifetime ?? 0.35, (sp.lifetime ?? 0.6) * 1.4];
+						const spSpeed = Array.isArray(sp.speed)
+							? [sp.speed[0] ?? 60, sp.speed[1] ?? 260]
+							: [60, sp.speed ?? 260];
+						let spColor: [number, number, number] = [1, 0.9, 1];
+						if (Array.isArray(sp.color) && sp.color.length >= 1) {
+							const sc = parseColor(
+								sp.color[Math.floor(sp.color.length / 2)],
+							) ??
+								parseColor(sp.color[0]) ?? { r: 1, g: 0.9, b: 1 };
+							spColor = [sc.r, sc.g, sc.b];
+						} else if (typeof sp.color === "string") {
+							const sc = parseColor(sp.color) ?? { r: 1, g: 0.9, b: 1 };
+							spColor = [sc.r, sc.g, sc.b];
+						}
+						sparksConfig = {
+							max: sp.max ?? 2000,
+							rate: sp.rate ?? 600,
+							threshold: sp.threshold ?? 0.25,
+							size: [spSize[0], spSize[1]],
+							lifetime: [spLife[0], spLife[1]],
+							speed: [spSpeed[0], spSpeed[1]],
+							intensity: sp.intensity ?? 9.0,
+							color: spColor,
+						};
+					}
+
 					const staticConfig: Swarm3DStaticConfig = {
 						max,
 						seed,
@@ -2636,7 +2717,9 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 							intensity: heatOpt.intensity ?? 5.0,
 							colors: heatColorStops,
 						},
-						variants: 1,
+						variants: Math.max(1, variants.length),
+						meshRadius,
+						sparks: sparksConfig,
 					};
 
 					let swarmState = swarmStateMap.get(lop);
@@ -2770,62 +2853,95 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 						frameSampler,
 					);
 
-					const swarmMesh =
-						model ??
-						(Array.isArray(swarmOpt.meshVariants) &&
-						swarmOpt.meshVariants[0]?.modelData
-							? swarmOpt.meshVariants[0].modelData
-							: undefined);
-					if (swarmMesh && swarmMesh.meshes && swarmMesh.meshes.length > 0) {
-						for (const mesh of swarmMesh.meshes) {
-							const mat = mesh.materialName
-								? swarmMesh.materials[mesh.materialName]
-								: undefined;
-							const meshOpts: DrawMesh3DOpts = {
-								modelMatrix: finalModelMatrix,
-								opacity: modelOpacity,
-								colorTint,
-								transparent: false,
-								twoSided: target?.twoSided ?? lop.twoSided ?? true,
-								wireframe: Boolean(target?.wireframe ?? lop.wireframe),
-								material:
-									target?.material ??
-									lop.material ??
-									swarmOpt.material ??
-									mat?.shading ??
-									"lit",
-								roughness:
-									target?.roughness ??
-									lop.roughness ??
-									swarmOpt.roughness ??
-									mat?.roughness ??
-									0.35,
-								specularIntensity:
-									target?.specularIntensity ??
-									lop.specularIntensity ??
-									swarmOpt.specularIntensity ??
-									0.5,
-								ambientIntensity:
-									target?.ambientIntensity ??
-									lop.ambientIntensity ??
-									swarmOpt.ambientIntensity ??
-									1.0,
-								metallic:
-									target?.metallic ??
-									lop.metallic ??
-									swarmOpt.metallic ??
-									mat?.metallic ??
-									0.7,
-								...surfaceProps(target, lop, mat),
-								instanceBuffer: swarmState.instances,
-								instanceCount: max,
-							};
-							pending3DItems.push({
-								kind: "mesh",
-								mesh,
-								texture: mat ? await r3d.materialTexture(mat) : undefined,
-								opts: meshOpts,
-							});
+					if (variants.length > 0) {
+						const sliceCount = swarmState.sliceCount;
+						for (let vIdx = 0; vIdx < variants.length; vIdx++) {
+							const vModel = variants[vIdx];
+							const firstInstance = vIdx * sliceCount;
+							for (const mesh of vModel.meshes) {
+								const mat = mesh.materialName
+									? vModel.materials[mesh.materialName]
+									: undefined;
+								const meshOpts: DrawMesh3DOpts = {
+									modelMatrix: finalModelMatrix,
+									opacity: modelOpacity,
+									colorTint,
+									transparent: false,
+									twoSided: target?.twoSided ?? lop.twoSided ?? true,
+									wireframe: Boolean(target?.wireframe ?? lop.wireframe),
+									material:
+										target?.material ??
+										lop.material ??
+										swarmOpt.material ??
+										mat?.shading ??
+										"lit",
+									roughness:
+										target?.roughness ??
+										lop.roughness ??
+										swarmOpt.roughness ??
+										mat?.roughness ??
+										0.35,
+									specularIntensity:
+										target?.specularIntensity ??
+										lop.specularIntensity ??
+										swarmOpt.specularIntensity ??
+										0.5,
+									ambientIntensity:
+										target?.ambientIntensity ??
+										lop.ambientIntensity ??
+										swarmOpt.ambientIntensity ??
+										1.0,
+									metallic:
+										target?.metallic ??
+										lop.metallic ??
+										swarmOpt.metallic ??
+										mat?.metallic ??
+										0.7,
+									...surfaceProps(target, lop, mat),
+									instanceBuffer: swarmState.instances,
+									instanceCount: sliceCount,
+									firstInstance,
+								};
+								pending3DItems.push({
+									kind: "mesh",
+									mesh,
+									texture: mat ? await r3d.materialTexture(mat) : undefined,
+									opts: meshOpts,
+								});
+							}
+						}
+
+						if (sparksConfig && sparksConfig.max > 0) {
+							const sparkModel = variants[0];
+							const sparkFirst = variants.length * sliceCount;
+							for (const mesh of sparkModel.meshes) {
+								const mat = mesh.materialName
+									? sparkModel.materials[mesh.materialName]
+									: undefined;
+								const sparkOpts: DrawMesh3DOpts = {
+									modelMatrix: finalModelMatrix,
+									opacity: modelOpacity,
+									colorTint,
+									transparent: false,
+									twoSided: true,
+									wireframe: false,
+									material: "lit",
+									roughness: 0.2,
+									specularIntensity: 0.8,
+									ambientIntensity: 1.0,
+									metallic: 0.9,
+									...surfaceProps(target, lop, mat),
+									instanceBuffer: swarmState.instances,
+									instanceCount: sparksConfig.max,
+									firstInstance: sparkFirst,
+								};
+								pending3DItems.push({
+									kind: "mesh",
+									mesh,
+									texture: mat ? await r3d.materialTexture(mat) : undefined,
+									opts: sparkOpts,
+								});
+							}
 						}
 					}
 					return { finalTex: destTex, finalView: destView };

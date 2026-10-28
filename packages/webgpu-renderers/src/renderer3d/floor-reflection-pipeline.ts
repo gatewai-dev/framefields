@@ -48,27 +48,19 @@ fn fs(in : VsOut) -> @location(0) vec4<f32> {
     if (u.radius <= 0.01) {
         return textureSampleLevel(src, samp, in.uv, 0.0);
     }
-    let w0 = 0.227027;
-    let w1 = 0.1945946;
-    let w2 = 0.1216216;
-    let w3 = 0.054054;
-    let w4 = 0.016216;
-
-    let step1 = u.texelStep * (1.0 * u.radius * 0.25);
-    let step2 = u.texelStep * (2.0 * u.radius * 0.25);
-    let step3 = u.texelStep * (3.0 * u.radius * 0.25);
-    let step4 = u.texelStep * (4.0 * u.radius * 0.25);
-
-    var col = textureSampleLevel(src, samp, in.uv, 0.0) * w0;
-    col += textureSampleLevel(src, samp, in.uv + step1, 0.0) * w1;
-    col += textureSampleLevel(src, samp, in.uv - step1, 0.0) * w1;
-    col += textureSampleLevel(src, samp, in.uv + step2, 0.0) * w2;
-    col += textureSampleLevel(src, samp, in.uv - step2, 0.0) * w2;
-    col += textureSampleLevel(src, samp, in.uv + step3, 0.0) * w3;
-    col += textureSampleLevel(src, samp, in.uv - step3, 0.0) * w3;
-    col += textureSampleLevel(src, samp, in.uv + step4, 0.0) * w4;
-    col += textureSampleLevel(src, samp, in.uv - step4, 0.0) * w4;
-    return col;
+    var col = vec4<f32>(0.0);
+    var totalW = 0.0;
+    let sigma = max(0.5, u.radius * 0.45);
+    let inv2Sigma2 = 0.5 / (sigma * sigma);
+    for (var k = -8; k <= 8; k = k + 1) {
+        let fk = f32(k);
+        let offsetFrac = fk * 0.125 * u.radius;
+        let w = exp(-(offsetFrac * offsetFrac) * inv2Sigma2);
+        let sampleUV = clamp(in.uv + u.texelStep * offsetFrac, vec2<f32>(0.001), vec2<f32>(0.999));
+        col += textureSampleLevel(src, samp, sampleUV, 0.0) * w;
+        totalW += w;
+    }
+    return col / max(totalW, 0.0001);
 }
 `;
 
@@ -151,6 +143,11 @@ fn shadeFloor(in: VsOut) -> FloorShaded {
     let F0 = floorU.params0.y;
     let fresnel = F0 + (1.0 - F0) * pow(1.0 - NdotV, 5.0);
 
+    let fadeDist = max(floorU.params0.w, 1.0);
+    let distFade = clamp(1.0 - dist / (fadeDist * 2.2), 0.0, 1.0);
+    let horizonFade = smoothstep(0.015, 0.14, NdotV);
+    let smoothFade = distFade * distFade * (3.0 - 2.0 * distFade) * horizonFade;
+
     let reflUV = vec2<f32>(in.uv.x, 1.0 - in.uv.y);
     let reflSample = textureSample(reflectionTexture, reflectionSampler, reflUV);
     let reflRgb = reflSample.rgb;
@@ -158,31 +155,28 @@ fn shadeFloor(in: VsOut) -> FloorShaded {
     let baseColor = floorU.baseColor.rgb;
     let opacity = floorU.params1.x;
 
-    var litBase = baseColor;
-    if (lights.params.z >= 0.5) {
-        litBase = shadePhysical(worldP, N, baseColor, floorU.params0.z, 0.0, 1.0);
-    } else if (lights.params.y >= 0.5) {
-        litBase = applyLighting3D(worldP, N, baseColor, vec4<f32>(32.0, 0.5, 0.3, 1.0));
-    }
+    let baseSrgb = linearToSrgb(baseColor);
+    let reflWeight = fresnel * floorU.params0.y * smoothFade;
+    let reflSrgb = reflRgb * reflWeight;
 
-    let floorDisplay = mix(litBase, reflRgb, fresnel * floorU.params0.y);
-    let finalDisplay = select(floorDisplay, reflRgb * fresnel, opacity <= 0.001);
+    var displaySrgb = select(
+        clamp(baseSrgb + reflSrgb, vec3<f32>(0.0), vec3<f32>(1.0)),
+        reflSrgb,
+        opacity <= 0.001,
+    );
 
-    var display = finalDisplay;
-    if (lights.params.z >= 0.5 && opacity > 0.001) {
-        display = toneMap(finalDisplay);
-    }
-
-    var hdr = reflRgb * fresnel * lights.ambientLinear.w;
+    let reflLin = pow(max(reflRgb, vec3<f32>(0.0)), vec3<f32>(2.2));
+    let reflLum = max(reflLin.r, max(reflLin.g, reflLin.b));
+    var hdr = reflLin * max(0.0, reflLum - 0.25) * 3.0 * reflWeight;
 
     if (lights.fog.w > 0.5) {
         let f = smoothstep(lights.fogRange.x, max(lights.fogRange.y, lights.fogRange.x + 1.0), dist) * lights.fogRange.z;
-        display = mix(display, lights.fog.rgb, f);
+        displaySrgb = mix(displaySrgb, linearToSrgb(lights.fog.rgb), f);
         hdr = hdr * (1.0 - f);
     }
 
-    let a = select(opacity, clamp(fresnel * floorU.params0.y, 0.0, 1.0), opacity <= 0.001);
-    out.display = linearToSrgb(display);
+    let a = select(opacity * smoothFade, clamp(reflSample.a * reflWeight, 0.0, 1.0), opacity <= 0.001);
+    out.display = displaySrgb;
     out.hdr = hdr;
     out.alpha = a;
     return out;
@@ -409,8 +403,8 @@ export class FloorReflectionPipeline {
 		height: number,
 		roughness: number,
 	): void {
-		const sigmaX = roughness * 12.0;
-		const sigmaY = sigmaX * 3.5;
+		const sigmaX = roughness * 24.0;
+		const sigmaY = roughness * 130.0;
 
 		// Pass 1: Horizontal blur (src -> temp)
 		{

@@ -20,9 +20,9 @@ import {
 	HEAT_COLD,
 	HEAT_HOT,
 	HEAT_INCANDESCENT,
-	HEAT_WARM,
 	registerFonts,
 	SHARD_BASE,
+	SHARD_DARK,
 	TEXT_MAIN,
 	TEXT_MUTED,
 	W,
@@ -37,27 +37,27 @@ export { DURATION };
 function camera() {
 	const half = Math.round(DURATION * 0.45);
 	const cameraAnim = CameraAnimation.camera()
-		.fromTo("orbitAzimuth", -48, 65, {
+		.fromTo("orbitAzimuth", -42, 58, {
 			from: 0,
 			to: DURATION,
 			ease: "sine.inOut",
 		})
-		.fromTo("orbitElevation", 24, 11, {
+		.fromTo("orbitElevation", 22, 11, {
 			from: 0,
 			to: half,
 			ease: "power2.out",
 		})
-		.fromTo("orbitElevation", 11, 26, {
+		.fromTo("orbitElevation", 11, 24, {
 			from: half,
 			to: DURATION,
 			ease: "power2.inOut",
 		})
-		.fromTo("orbitRadius", 1850, 1380, {
+		.fromTo("orbitRadius", 1360, 1080, {
 			from: 0,
 			to: half,
 			ease: "power2.out",
 		})
-		.fromTo("orbitRadius", 1380, 1720, {
+		.fromTo("orbitRadius", 1080, 1300, {
 			from: half,
 			to: DURATION,
 			ease: "power2.in",
@@ -67,7 +67,7 @@ function camera() {
 		id: "main-camera",
 		mode: "orbit",
 		targetX: 0,
-		targetY: 85,
+		targetY: 135,
 		targetZ: 0,
 		lens: {
 			focalLength: 50,
@@ -75,7 +75,7 @@ function camera() {
 			near: 1,
 			far: 20000,
 			zoom: 1,
-			fov: 44,
+			fov: 42,
 		},
 		animation: cameraAnim,
 	});
@@ -91,7 +91,7 @@ function createShardVariants() {
 			facets: 12,
 			irregularity: 0.35,
 			seed: 101,
-			color: SHARD_BASE,
+			color: "#ffffff",
 			roughness: 0.32,
 			metallic: 0.25,
 		}),
@@ -100,7 +100,7 @@ function createShardVariants() {
 			facets: 16,
 			irregularity: 0.48,
 			seed: 202,
-			color: SHARD_BASE,
+			color: "#ffffff",
 			roughness: 0.28,
 			metallic: 0.3,
 		}),
@@ -109,7 +109,7 @@ function createShardVariants() {
 			facets: 10,
 			irregularity: 0.28,
 			seed: 303,
-			color: SHARD_BASE,
+			color: "#ffffff",
 			roughness: 0.38,
 			metallic: 0.2,
 		}),
@@ -118,7 +118,7 @@ function createShardVariants() {
 			facets: 18,
 			irregularity: 0.52,
 			seed: 404,
-			color: SHARD_BASE,
+			color: "#ffffff",
 			roughness: 0.3,
 			metallic: 0.28,
 		}),
@@ -127,7 +127,7 @@ function createShardVariants() {
 			facets: 14,
 			irregularity: 0.4,
 			seed: 505,
-			color: SHARD_BASE,
+			color: "#ffffff",
 			roughness: 0.34,
 			metallic: 0.22,
 		}),
@@ -136,7 +136,7 @@ function createShardVariants() {
 			facets: 12,
 			irregularity: 0.44,
 			seed: 606,
-			color: SHARD_BASE,
+			color: "#ffffff",
 			roughness: 0.36,
 			metallic: 0.2,
 		}),
@@ -196,7 +196,8 @@ function hudOverlay() {
 				Layer.flex({
 					id: "telemetry-row-1",
 					dir: "row",
-					gap: 12,
+					align: "center",
+					gap: 10,
 					children: [
 						Layer.box({
 							id: "indicator-dot",
@@ -204,9 +205,8 @@ function hudOverlay() {
 							height: 8,
 							borderRadius: 4,
 							background: ACCENT,
-							y: 5,
 						}),
-						Layer.text("VORTEX 880 RPM // COULOMB μ 0.76", {
+						Layer.text("VORTEX 760 RPM // COULOMB μ 1.10", {
 							id: "stat-1",
 							fontSize: 12,
 							fontFamily: FONT_MONO,
@@ -216,7 +216,7 @@ function hudOverlay() {
 						}),
 					],
 				}),
-				Layer.text("SHARDS 750 // CONTACT HEAT BLOOM // 60 FPS", {
+				Layer.text("SHARDS 1600 // SPARKS 2400 // CONTACT HEAT BLOOM", {
 					id: "stat-2",
 					fontSize: 11,
 					fontFamily: FONT_MONO,
@@ -283,19 +283,19 @@ export async function buildFilm(): Promise<Composition> {
 	// 2. Physically-based environment with glossy planar floor reflection
 	comp.add(
 		Layer.environment("night", {
-			exposure: 0.32,
+			exposure: 0.42,
 			rotation: 20,
 			bloom: {
-				intensity: 0.78,
-				threshold: 1.35,
-				radius: 8,
+				intensity: 0.46,
+				threshold: 1.55,
+				radius: 7,
 			},
 			floor: {
 				y: FLOOR_Y,
 				color: FLOOR_COLOR,
-				reflectivity: 0.88,
-				roughness: 0.22,
-				fadeDistance: 1350,
+				reflectivity: 0.9,
+				roughness: 0.26,
+				fadeDistance: 1200,
 				opacity: 1.0,
 			},
 		}),
@@ -304,27 +304,27 @@ export async function buildFilm(): Promise<Composition> {
 	// 3. Cinematic 3D lights
 	comp.add([
 		Layer.directionalLight({
-			x: 650,
-			y: -1300,
-			z: -850,
+			x: 550,
+			y: -1100,
+			z: -750,
 			targetX: 0,
-			targetY: 100,
+			targetY: 110,
 			targetZ: 0,
-			color: "#e4e0f4",
-			intensity: 2.3,
+			color: "#eeeaf8",
+			intensity: 2.8,
 			castShadow: true,
 			shadowSoftness: 1.4,
 		}),
 		Layer.pointLight({
-			x: -720,
-			y: 120,
-			z: -320,
-			color: "#ff2266",
-			intensity: 1.8,
+			x: -560,
+			y: 90,
+			z: -280,
+			color: "#ff1166",
+			intensity: 2.4,
 		}),
 		Layer.ambientLight({
-			color: "#181524",
-			intensity: 0.45,
+			color: "#221e34",
+			intensity: 0.7,
 		}),
 	]);
 
@@ -333,51 +333,62 @@ export async function buildFilm(): Promise<Composition> {
 	comp.add(
 		Layer3D.swarm({
 			id: "shard-vortex-swarm",
-			max: 750,
+			max: 1600,
 			seed: 42,
-			prewarm: 2,
+			prewarm: 3.5,
 			mesh: shardVariants,
-			size: [14, 28],
-			sizeJitter: 0.55,
-			lifetime: [4.5, 7.0],
+			size: [16, 10],
+			sizeJitter: 0.5,
+			lifetime: [4.2, 6.8],
+			color: [SHARD_BASE, SHARD_DARK],
 			emitter: {
 				shape: "ring",
-				radius: 340,
-				height: 340,
-				rate: 230,
-				y: -80,
+				radius: 310,
+				height: 220,
+				rate: 360,
+				y: 60,
 			},
-			gravity: [0, 540, 0],
-			drag: 0.38,
-			speed: [50, 200],
+			gravity: [0, 420, 0],
+			drag: 0.25,
+			speed: [80, 260],
 			noise: {
-				strength: 270,
-				scale: 190,
-				speed: 0.32,
+				strength: 220,
+				scale: 180,
+				speed: 0.35,
 			},
 			vortex: {
-				swirl: 880,
-				pull: 240,
-				axial: -170,
+				x: 0,
+				y: 120,
+				z: 0,
+				swirl: 760,
+				pull: 260,
+				axial: -120,
+				radius: 760,
 				axis: [0, 1, 0],
 			},
 			floor: {
 				y: FLOOR_Y,
-				friction: 1.8,
-				heatGain: 1.4,
-				heatDecay: 0.45,
+				bounce: 0.32,
+				friction: 1.1,
+				heatGain: 1.35,
+				heatDecay: 0.42,
 			},
 			heat: {
 				source: "both",
-				maxSpeed: 1000,
-				color: [HEAT_COLD, HEAT_WARM, HEAT_HOT, HEAT_INCANDESCENT],
-				intensity: 5.8,
+				maxSpeed: 880,
+				curve: 1.8,
+				color: [HEAT_COLD, HEAT_HOT, HEAT_INCANDESCENT],
+				intensity: 4.8,
 			},
 			sparks: {
-				rate: 550,
-				speed: [80, 290],
-				lifetime: [0.6, 1.3],
-				color: ["#ffffff", "#ff8833", "#ff1166"],
+				max: 2400,
+				rate: 900,
+				threshold: 0.28,
+				size: [3.0, 0.9],
+				speed: [90, 320],
+				lifetime: [0.35, 0.9],
+				intensity: 8.5,
+				color: [HEAT_INCANDESCENT, HEAT_HOT],
 			},
 		}),
 	);

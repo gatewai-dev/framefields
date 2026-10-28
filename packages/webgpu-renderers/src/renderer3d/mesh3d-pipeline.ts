@@ -484,6 +484,7 @@ export class Mesh3DPipeline {
 		useMrt = false,
 		useBloom = false,
 		instanceCount = 1,
+		firstInstance = 0,
 	): void {
 		const modelBindGroup = this.packModel(data);
 		const white = this.defaultWhiteTexture;
@@ -542,6 +543,9 @@ export class Mesh3DPipeline {
 			pass.drawIndexed(
 				wireframe ? meshBuffers.wireIndexCount! : meshBuffers.indexCount,
 				instanceCount,
+				0,
+				0,
+				firstInstance,
 			);
 		} else {
 			pass.drawIndexed(
@@ -557,6 +561,7 @@ export class Mesh3DPipeline {
 		meshBuffers: GPUMeshBuffers,
 		data: MeshUniformData,
 		instanceCount = 1,
+		firstInstance = 0,
 	): void {
 		const wireframe = data.wireframe === true;
 		if (wireframe && !meshBuffers.wireIndexBuffer) {
@@ -575,6 +580,9 @@ export class Mesh3DPipeline {
 			pass.drawIndexed(
 				wireframe ? meshBuffers.wireIndexCount! : meshBuffers.indexCount,
 				instanceCount,
+				0,
+				0,
+				firstInstance,
 			);
 		} else {
 			pass.drawIndexed(

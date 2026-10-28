@@ -201,6 +201,8 @@ export interface DrawMesh3DOpts extends SurfaceParams {
 	};
 	/** Hardware instancing: number of instances to draw in a single draw call. */
 	instanceCount?: number;
+	/** Starting instance index in `instanceBuffer` (default 0). */
+	firstInstance?: number;
 	/** Storage buffer holding `InstanceData` structs (64 bytes per instance). */
 	instanceBuffer?: GPUBuffer;
 	/** Optional overall bounding box (e.g. for instanced clusters or swarms) for shadow frustum fitting. */
@@ -847,6 +849,7 @@ export class Renderer3D {
 						instanceBuffer: c.opts.instanceBuffer,
 					},
 					c.opts.instanceCount ?? 1,
+					c.opts.firstInstance ?? 0,
 				);
 			} else {
 				const m = this.quadModelMatrix(c.opts);
@@ -1626,6 +1629,7 @@ export class Renderer3D {
 			useMrt,
 			this.passWritesHdr,
 			opts.instanceCount ?? 1,
+			opts.firstInstance ?? 0,
 		);
 	}
 

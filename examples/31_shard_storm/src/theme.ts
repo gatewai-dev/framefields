@@ -17,14 +17,15 @@ export const CY = H / 2;
 export const FLOOR_Y = 220;
 
 /** Sci-fi dark void palette */
-export const BG = "#08060c";
-export const FLOOR_COLOR = "#0b0911";
-export const SHARD_BASE = "#1a1724";
+export const BG = "#07060b";
+export const FLOOR_COLOR = "#07060b";
+export const SHARD_BASE = "#383c4e";
+export const SHARD_DARK = "#232634";
 
-/** Kinetic heat ramp */
-export const HEAT_COLD = "#241f33";
-export const HEAT_WARM = "#ff4411";
-export const HEAT_HOT = "#ff1166";
+/** Kinetic heat ramp (deep magenta -> neon pink -> white-hot) */
+export const HEAT_COLD = "#3b0022";
+export const HEAT_WARM = "#ff0055";
+export const HEAT_HOT = "#ff1177";
 export const HEAT_INCANDESCENT = "#ffffff";
 
 /** Interface & typography palette */

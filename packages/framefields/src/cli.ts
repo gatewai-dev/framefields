@@ -10,8 +10,10 @@
  */
 import { readFileSync } from "node:fs";
 import { relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { type AddReport, add } from "./cli/add.js";
+import { runCheck } from "./cli/check.js";
 import { readConfig } from "./cli/config.js";
 import {
 	FONTS,
@@ -23,6 +25,7 @@ import {
 import {
 	type InitReport,
 	init,
+	ownVersion,
 	PACKAGE_MANAGERS,
 	type PackageManager,
 	shownPath,
@@ -33,6 +36,9 @@ import { AI_DASHBOARD } from "./cli/templates.js";
 const HELP = `Usage: framefields <command> [options]
 
 Commands:
+  api             JSON reference generated from timing, grid and check types.
+  check <entry>   Build, validate and lint a composition; --render also writes a
+                  representative frame and grid. --export defaults to buildFilm.
   init [dir]      Start a framefields project in dir (default: here), or add
                   framefields to the project there: package.json, tsconfig,
                   src/theme.ts, film.ts, render.ts, assets/, .gitignore,
@@ -45,6 +51,14 @@ Commands:
                   Install fonts (pinned, hash-checked, with their license)
                   and register them in the generated <components>/fonts.ts.
   fonts list      List the fonts you can install.
+
+Options for check:
+  --export <name>   Composition or builder export (default buildFilm).
+  --render          Also verify the GPU and render a small frame/grid.
+  --output <dir>    Inspection artifacts (default output/check).
+  --timeout <ms>    Worker timeout in milliseconds (default 60000).
+  --warnings-as-errors  Fail on lint warnings.
+  --json            Machine-readable check, component list, or font list result.
 
 Options for init:
   --name <name>     Package name (default: the folder's name).
@@ -91,6 +105,12 @@ async function main(argv: string[]): Promise<number> {
 			emoji: { type: "boolean" },
 			"no-git": { type: "boolean" },
 			registry: { type: "string" },
+			json: { type: "boolean" },
+			export: { type: "string" },
+			render: { type: "boolean" },
+			output: { type: "string" },
+			timeout: { type: "string" },
+			"warnings-as-errors": { type: "boolean" },
 			help: { type: "boolean", short: "h" },
 		},
 	});
@@ -101,6 +121,48 @@ async function main(argv: string[]): Promise<number> {
 	}
 	const cwd = process.cwd();
 	const log = (line: string) => process.stdout.write(`${line}\n`);
+	if (command === "api") {
+		const catalog = JSON.parse(
+			readFileSync(
+				fileURLToPath(
+					new URL(
+						import.meta.url.endsWith(".ts") ? "../dist/api.json" : "./api.json",
+						import.meta.url,
+					),
+				),
+				"utf8",
+			),
+		) as object;
+		log(JSON.stringify({ ...catalog, sdkVersion: ownVersion() }));
+		return 0;
+	}
+	if (command === "check") {
+		if (names.length !== 1) {
+			process.stderr.write(
+				"Usage: framefields check <entry> [--export buildFilm] [--render] [--json]\n",
+			);
+			return 2;
+		}
+		const report = await runCheck({
+			entry: names[0],
+			exportName: values.export,
+			render: values.render,
+			outputDir: values.output,
+			timeoutMs:
+				values.timeout === undefined ? undefined : Number(values.timeout),
+			warningsAsErrors: values["warnings-as-errors"],
+		});
+		if (values.json) log(JSON.stringify(report));
+		else {
+			log(`Check ${report.status}: ${report.entry} (${report.exportName})`);
+			for (const d of report.diagnostics)
+				log(
+					`${d.severity} ${d.code}${d.path ? ` at ${d.path}` : ""}: ${d.message}`,
+				);
+			for (const file of report.artifacts) log(`Wrote ${file}`);
+		}
+		return report.status === "passed" ? 0 : 1;
+	}
 	if (command === "fonts") return fonts(names, cwd, values, log);
 	if (command === "init") {
 		if (names.length > 1) {
@@ -134,6 +196,23 @@ async function main(argv: string[]): Promise<number> {
 
 	if (command === "list") {
 		const index = await registry.index();
+		if (values.json) {
+			log(
+				JSON.stringify({
+					schemaVersion: 1,
+					sdkVersion: ownVersion(),
+					components: await Promise.all(
+						index.map(async (entry) => {
+							const { files: _files, ...item } = await registry.item(
+								entry.name,
+							);
+							return item;
+						}),
+					),
+				}),
+			);
+			return 0;
+		}
 		const width = Math.max(...index.map((e) => e.name.length));
 		for (const e of index)
 			process.stdout.write(`${e.name.padEnd(width)}  ${e.summary}\n`);
@@ -221,11 +300,30 @@ function logFontsModule(
 async function fonts(
 	[sub, ...roles]: string[],
 	cwd: string,
-	values: { overwrite?: boolean; "fonts-dir"?: string; dir?: string },
+	values: {
+		overwrite?: boolean;
+		"fonts-dir"?: string;
+		dir?: string;
+		json?: boolean;
+	},
 	log: (s: string) => void,
 ): Promise<number> {
 	if (sub === "list") {
 		const { config } = readConfig(cwd);
+		if (values.json) {
+			log(
+				JSON.stringify({
+					schemaVersion: 1,
+					sdkVersion: ownVersion(),
+					fonts: Object.entries(FONTS).map(([role, spec]) => ({
+						role,
+						...spec,
+						configuredPath: config.fonts?.[role],
+					})),
+				}),
+			);
+			return 0;
+		}
 		for (const [role, spec] of Object.entries(FONTS))
 			log(
 				`${role.padEnd(6)}  ${spec.label}${config.fonts?.[role] ? `  (installed: ${config.fonts[role]})` : ""}`,

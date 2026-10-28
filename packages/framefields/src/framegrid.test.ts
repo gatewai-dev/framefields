@@ -1,3 +1,5 @@
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { loadImage } from "skia-canvas";
 import { describe, expect, it } from "vitest";
 import {
@@ -23,7 +25,7 @@ describe("FrameGrid Rendering Conformance & Validations", () => {
 
 		expect(fps).toBe(30);
 		expect(samples.length).toBe(5); // 10, 15, 20, 25, 30
-		expect(samples[0]).toEqual({ frame: 10, timeMs: 333 });
+		expect(samples[0]).toEqual({ frame: 10, timeMs: 1000 / 3 });
 		expect(samples[4]).toEqual({ frame: 30, timeMs: 1000 });
 	});
 
@@ -171,5 +173,80 @@ describe("FrameGrid Rendering Conformance & Validations", () => {
 		});
 		expect(standalonePng).toBeInstanceOf(Buffer);
 		expect(standalonePng.length).toBeGreaterThan(1000);
+	});
+});
+
+describe("bounded canonical grid sampling", () => {
+	it("bounds work before allocating an enormous range", async () => {
+		const source = new URL("./renderer/framegrid.ts", import.meta.url).href;
+		const script = `import { resolveSamplePoints } from ${JSON.stringify(source)};
+		for (const endFrame of [1_000_000_000, Infinity, NaN]) {
+		 let rejected = false;
+		 try { resolveSamplePoints({ endFrame, stepFrames: 1 }); } catch { rejected = true; }
+		 if (!rejected) process.exit(1);
+		}
+		process.exit(0);`;
+		await promisify(execFile)(
+			process.execPath,
+			[
+				"--import",
+				"tsx",
+				"--conditions=development",
+				"--input-type=module",
+				"-e",
+				script,
+			],
+			{ timeout: 10000 },
+		);
+	});
+	it("validates steps, frame indices and limits", () => {
+		for (const stepFrames of [NaN, Infinity, 0.1])
+			expect(() => resolveSamplePoints({ stepFrames })).toThrow();
+		for (const maxFrames of [0, -1, 1.5, NaN, Infinity])
+			expect(() => resolveSamplePoints({ maxFrames })).toThrow(/maxFrames/);
+		expect(() => resolveSamplePoints({ frames: [0.5] })).toThrow(/frame/);
+		expect(() =>
+			resolveSamplePoints({ startMs: 1e20, endMs: 1e20, stepMs: 0.1 }),
+		).toThrow(/advance/);
+	});
+	it("preserves explicit ordering and duplicates while enforcing the cap", () => {
+		expect(
+			resolveSamplePoints({ frames: [5, 0, 5] }).samples.map((s) => s.frame),
+		).toEqual([5, 0, 5]);
+		expect(
+			resolveSamplePoints({
+				startFrame: 0,
+				endFrame: 119,
+				stepFrames: 1,
+				maxFrames: 200,
+			}).samples,
+		).toHaveLength(120);
+		expect(() =>
+			resolveSamplePoints({ endFrame: 120, stepFrames: 1, maxFrames: 200 }),
+		).toThrow(/120/);
+	});
+	it("keeps automatic samples inside rounded export duration", () => {
+		expect(
+			resolveSamplePoints({}, 30, 1000).samples.map((s) => s.frame),
+		).toEqual([0, 5, 10, 15, 20, 25]);
+		expect(resolveSamplePoints({}, 30, 1).samples.map((s) => s.frame)).toEqual([
+			0,
+		]);
+		expect(
+			resolveSamplePoints({ stepFrames: 1 }, 30, 50).samples.map(
+				(s) => s.frame,
+			),
+		).toEqual([0, 1]);
+		expect(
+			resolveSamplePoints({ stepMs: 100 }, 30, 1000).samples.at(-1)?.frame,
+		).toBeLessThan(30);
+		expect(
+			resolveSamplePoints({ frames: [30] }, 30, 1000).samples[0].frame,
+		).toBe(30);
+	});
+	it("does not round-trip timestamp labels into another frame", () => {
+		expect(resolveSamplePoints({ timesMs: [16.6], fps: 30 }).samples).toEqual([
+			{ frame: 0, timeMs: 0 },
+		]);
 	});
 });

@@ -6,6 +6,7 @@
  * Complies with specs/cinematic-sequencing.ts.
  */
 
+import { assertFps } from "@framefields/core";
 import { z } from "zod";
 import type { CompositorProgramConfig, LayoutNode } from "./schema.js";
 
@@ -151,32 +152,83 @@ export function calculateSequenceTimeline(
 	}>,
 	fps = 60,
 ): SequenceTimelineResult {
-	let accumulatedFrame = 0;
-	const offsets: Array<{
-		sceneId: string;
-		startFrame: number;
-		durationFrames: number;
-	}> = [];
-
-	for (const scene of scenes) {
-		const startFrame = accumulatedFrame;
-		const dur =
-			scene.durationFrames ??
-			(scene.durationMs ? Math.round((scene.durationMs / 1000) * fps) : 60);
-
-		offsets.push({ sceneId: scene.id, startFrame, durationFrames: dur });
+	assertFps(fps);
+	const durations = scenes.map((scene) => sceneDuration(scene, fps));
+	let startFrame = 0;
+	let totalFrames = 0;
+	const sceneOffsets: SequenceTimelineResult["sceneOffsets"] = [];
+	for (const [i, scene] of scenes.entries()) {
+		const durationFrames = durations[i];
+		const endFrame = startFrame + durationFrames;
+		if (!Number.isSafeInteger(endFrame))
+			throw new Error(`Scene '${scene.id}' exceeds the safe frame range`);
+		sceneOffsets.push({ sceneId: scene.id, startFrame, durationFrames });
+		totalFrames = Math.max(totalFrames, endFrame);
 		const overlap =
 			scene.transitionOverlap ?? scene.transitionOut?.durationFrames ?? 0;
-		accumulatedFrame += Math.max(1, dur - overlap);
+		if (!Number.isSafeInteger(overlap) || overlap < 0)
+			throw new Error(
+				`Scene '${scene.id}' overlap must be a nonnegative safe integer`,
+			);
+		if (
+			i + 1 < scenes.length &&
+			overlap > Math.min(durationFrames, durations[i + 1])
+		)
+			throw new Error(
+				`Scene '${scene.id}' overlap exceeds an adjacent scene duration`,
+			);
+		startFrame = endFrame - (i + 1 < scenes.length ? overlap : 0);
 	}
-
-	const totalFrames = accumulatedFrame;
 	const totalDurationMs = Math.round((totalFrames / fps) * 1000);
+	if (!Number.isFinite(totalDurationMs))
+		throw new Error("Sequence duration exceeds the finite range");
+	return { totalFrames, totalDurationMs, sceneOffsets };
+}
 
+function sceneDuration(
+	scene: { id: string; durationFrames?: number; durationMs?: number },
+	fps: number,
+): number {
+	if (
+		scene.durationMs !== undefined &&
+		(!Number.isFinite(scene.durationMs) || scene.durationMs <= 0)
+	)
+		throw new Error(
+			`Scene '${scene.id}' durationMs must be finite and positive`,
+		);
+	const duration =
+		scene.durationFrames ??
+		(scene.durationMs === undefined
+			? 60
+			: Math.round((scene.durationMs / 1000) * fps));
+	if (!Number.isSafeInteger(duration) || duration <= 0)
+		throw new Error(
+			`Scene '${scene.id}' duration must resolve to a positive safe integer frame count`,
+		);
+	return duration;
+}
+
+function compileSceneLayer(
+	node: LayoutNode,
+	sceneId: string,
+	offset: SequenceTimelineResult["sceneOffsets"][number],
+): LayoutNode {
+	const start = node.startFrame ?? 0;
+	const duration = node.durationFrames ?? offset.durationFrames - start;
+	if (
+		!Number.isSafeInteger(start) ||
+		start < 0 ||
+		!Number.isSafeInteger(duration) ||
+		duration <= 0 ||
+		start + duration > offset.durationFrames
+	)
+		throw new Error(
+			`Scene '${sceneId}', layer '${node.id}': window must fit within frames [0, ${offset.durationFrames})`,
+		);
 	return {
-		totalFrames,
-		totalDurationMs,
-		sceneOffsets: offsets,
+		...node,
+		startFrame: offset.startFrame + start,
+		durationFrames: duration,
 	};
 }
 
@@ -189,7 +241,9 @@ export interface SceneOptions {
 		| "feature_spotlight"
 		| "outro"
 		| "custom";
+	/** Scene duration in milliseconds; rounded to frames using sequence FPS. */
 	durationMs?: number;
+	/** Positive integer frame count, taking precedence over durationMs. Defaults to 60. */
 	durationFrames?: number;
 	transitionOut?: {
 		type?: SceneTransitionType;
@@ -220,6 +274,7 @@ export class Scene {
 	public layout: LayoutNode[];
 
 	constructor(options: SceneOptions) {
+		SceneDefinitionSchema.parse(options);
 		this.id = options.id;
 		this.chapter = options.chapter ?? "custom";
 		this.durationMs = options.durationMs;
@@ -298,14 +353,8 @@ export class Sequence {
 			const offset = timeline.sceneOffsets[i];
 			if (!offset) continue;
 
-			// Wrap scene elements inside a temporal container or offset their startFrames
 			for (const node of scene.layout) {
-				const cloned = { ...node } as LayoutNode;
-				cloned.startFrame = (cloned.startFrame ?? 0) + offset.startFrame;
-				if (cloned.durationFrames === undefined) {
-					cloned.durationFrames = offset.durationFrames;
-				}
-				rootLayout.push(cloned);
+				rootLayout.push(compileSceneLayer(node, scene.id, offset));
 			}
 		}
 

@@ -1,5 +1,6 @@
 import { cpSync, existsSync } from "node:fs";
 import { defineConfig } from "tsdown";
+import { writeApiCatalog } from "./scripts/build-api-catalog.ts";
 import { fixDtsAliases } from "./scripts/fix-dts-aliases.mjs";
 import { buildEngine } from "./src/preview/bundle.ts";
 
@@ -14,6 +15,7 @@ export default defineConfig({
 		"src/preview/index.ts",
 		"src/components/index.ts",
 		"src/cli.ts",
+		"src/cli/check-worker.ts",
 	],
 	format: ["esm"],
 	clean: true,
@@ -28,6 +30,7 @@ export default defineConfig({
 			);
 		cpSync(registry, "dist/registry", { recursive: true });
 		fixDtsAliases("dist");
+		writeApiCatalog("dist/api.json");
 	},
 	dts: { resolve: [/^@framefields\//] },
 	target: "es2022",

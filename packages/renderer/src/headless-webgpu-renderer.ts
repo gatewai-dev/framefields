@@ -10,7 +10,9 @@ import {
 	preflightMediaTime,
 } from "@framefields/compositions";
 import {
+	frameCount,
 	getMediaType,
+	resolveFrameRequest,
 	takeRenderDiagnostics,
 	updateClockSignals,
 	type VirtualMediaData,
@@ -785,10 +787,7 @@ export class HeadlessWebGPURenderer {
 				? (source as { toVirtualMedia(): VirtualMediaData }).toVirtualMedia()
 				: (source as VirtualMediaData);
 		const fps = options.fps ?? (vm.metadata?.fps || 30);
-		const frame =
-			options.atMs !== undefined
-				? Math.round((options.atMs / 1000) * fps)
-				: (options.frame ?? 0);
+		const { frame } = resolveFrameRequest(options, fps);
 		return this.renderImage(vm, frame, fps, {
 			renderId: options.renderId,
 			format: options.format,
@@ -1111,7 +1110,7 @@ export class HeadlessWebGPURenderer {
 			durationMs = await this.resolveMediaDuration(virtualMedia, fps);
 			virtualMedia.metadata.durationMs = durationMs;
 		}
-		const totalFrames = Math.max(1, Math.round((durationMs / 1000) * fps));
+		const totalFrames = frameCount(durationMs, fps);
 
 		const renderId = `vid-${randomUUID()}`;
 		const qaOptions: VideoQaOptions | undefined =

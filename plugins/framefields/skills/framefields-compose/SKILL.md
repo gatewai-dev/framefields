@@ -49,6 +49,8 @@ For commercials, films, and multi-shot videos, break the project into discrete, 
 - **Scene modules (`scenes/hero.ts`):** Each scene returns a full-frame root box with `startFrame` and `durationFrames`. Children position themselves relative to scene start (`frame: 0` = scene onset).
 - **Master assembly (`film.ts`):** Imports scenes, mounts them to `comp.add(scene())`, attaches the master soundtrack and composition-level grading/grain.
 
+For the exported `Scene` / `Sequence` builder, scene windows are half-open: `[startFrame, startFrame + durationFrames)`. A root layer starting at local frame 30 in a 60-frame scene defaults to 30 frames of duration. Explicit root-layer windows must fit their scene; invalid starts or overflow throw with the scene and layer IDs. Children and their keyframes remain local to their parent. Outgoing overlaps place the next scene and cannot exceed either adjacent scene's duration. The final scene's outgoing overlap has no destination and does not shorten the timeline. `calculateTimeline().totalFrames` is the maximum exclusive scene end.
+
 ```typescript
 // theme.ts
 export const W = 1920;
@@ -107,6 +109,8 @@ All `Layer.*` builders return `AnimatableNode<T>` instances with chainable `.ani
 ---
 
 ## Media time remapping
+
+`Layer.ambientLight({ color, intensity, id })` and `Light.ambient({ color, intensity, id })` accept options objects like the other light helpers; the positional `(color, intensity, options)` form remains supported. Animation-builder instances passed through a layer's `animation` option are normalized to program specs, including `CameraAnimation`.
 
 Video and audio layers accept `timeRemap` with an explicit `durationFrames`. Map frames are layer-local; `sourceSec` is absolute source time. Increasing source times play forward; decreasing source times play in reverse; equal source times hold the picture and silence the audio. Rate changes also change audio pitch. Do not combine this with `trimStartSec`.
 

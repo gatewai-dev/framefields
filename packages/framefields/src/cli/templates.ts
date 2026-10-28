@@ -27,6 +27,9 @@ export const DEV_DEPENDENCIES: Record<string, string> = {
 
 export const SCRIPTS: Record<string, string> = {
 	typecheck: "tsc --noEmit -p .",
+	check: "tsc --noEmit -p . && framefields check src/film.ts --json",
+	"check:render":
+		"tsc --noEmit -p . && framefields check src/film.ts --render --json",
 	frames: "tsx src/render.ts frames",
 	grid: "tsx src/render.ts grid",
 	preview: "tsx src/render.ts preview",
@@ -179,7 +182,7 @@ export async function buildFilm(): Promise<Composition> {
 export const RENDER_TS = `import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { HeadlessMediaRenderer, startPreview } from "framefields";
+import { HeadlessMediaRenderer, frameCount, startPreview } from "framefields";
 import { buildFilm } from "./film.js";
 
 // Optional settings such as FRAMEFIELDS_API_KEY (see .env.example).
@@ -216,7 +219,7 @@ if (mode === "frames") {
 	}
 } else if (mode === "grid") {
 	const png = await film.renderFrameGrid({
-		frames: args.length ? args.map(Number) : [0, 10, 20, 30, 45, 60, 75, 89],
+		frames: args.length ? args.map(Number) : [...new Set([0, Math.floor((frameCount(film.durationMs ?? await film.computeDuration(), film.fps) - 1) / 2), frameCount(film.durationMs ?? await film.computeDuration(), film.fps) - 1])],
 		columns: 4,
 		cellWidth: 480,
 		showLabels: true,

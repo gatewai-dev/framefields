@@ -1,5 +1,6 @@
 export * from "./effects/index.js";
 export * from "./errors.js";
+export * from "./frame-time.js";
 export * from "./id-gen.js";
 export * from "./media-time.js";
 export * from "./media-time-signal.js";

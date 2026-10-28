@@ -1,3 +1,5 @@
+import { resolveFrameRequest } from "@framefields/core";
+
 export {
 	type Ai,
 	type AiConfig,
@@ -2189,18 +2191,21 @@ export class Composition {
 	public async renderFrame(
 		options: {
 			atMs?: number;
+			fps?: number;
 			frame?: number;
 			renderer?: HeadlessMediaRenderer;
 		} = {},
 	): Promise<Buffer> {
+		const { frame } = resolveFrameRequest(options, this.fps);
+		if (options.fps !== undefined && options.fps !== this.fps)
+			throw new Error(
+				`Composition fps is ${this.fps}; cannot render at fps ${options.fps}.`,
+			);
+
 		// Compile first: the frame's hooks then record its live signal time.
 		const vm = this.toVirtualMedia();
 		if (this.hasFrameHooks()) {
-			const targetFrame =
-				options.frame ??
-				(options.atMs !== undefined
-					? Math.round((options.atMs / 1000) * this.fps)
-					: 0);
+			const targetFrame = frame;
 			await this.notifyFrame({
 				frame: targetFrame,
 				fps: this.fps,
@@ -2223,7 +2228,7 @@ export class Composition {
 		const renderer = options.renderer ?? new HeadlessMediaRenderer();
 		return renderer.renderFrame(vm, {
 			fps: this.fps,
-			...options,
+			frame,
 		});
 	}
 
@@ -2407,6 +2412,10 @@ function withAnimation<
 	TCap extends NodeCapability = "visual",
 >(node: T): AnimatableNode<T, TCap> {
 	const target = node as AnimatableNode<T, TCap>;
+	// Animation builders are structurally valid inputs, but carry enumerable
+	// authoring defaults that are not fields of the strict program schema.
+	if (target.animation instanceof LayerAnimation)
+		target.animation = target.animation.toSpec();
 	Object.defineProperty(target, "animate", {
 		value: (
 			...anims: (
@@ -3206,7 +3215,7 @@ export const Layer = {
 			...options,
 		}),
 	ambientLight: (
-		color: string = "#ffffff",
+		color: string | Partial<LightNode> = "#ffffff",
 		intensity: number = 0.5,
 		options: Partial<LightNode> = {},
 	): AnimatableNode<LightNode> => Light.ambient(color, intensity, options),
@@ -3385,7 +3394,7 @@ export const Light = {
 		});
 	},
 	ambient: (
-		color: string = "#ffffff",
+		color: string | Partial<LightNode> = "#ffffff",
 		intensity: number = 0.5,
 		options: Partial<LightNode> = {},
 	): AnimatableNode<LightNode> =>
@@ -3393,8 +3402,9 @@ export const Light = {
 			id: options.id ?? autoId("light-ambient"),
 			kind: "light",
 			lightType: "ambient",
-			color,
+			color: typeof color === "string" ? color : (color.color ?? "#ffffff"),
 			intensity,
+			...(typeof color === "object" && color),
 			...options,
 		}),
 	directional: (options: Partial<LightNode> = {}): AnimatableNode<LightNode> =>

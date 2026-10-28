@@ -392,9 +392,14 @@ framefields has a registry of parametric motion components: a mouse pointer with
 
 ```bash
 npx framefields list                            # every component, one line each
+npx framefields list --json                     # generated props, dependencies, fonts and examples
+npx framefields fonts list --json               # pinned font catalog and configured paths
+npx framefields api                             # generated timing/grid/preflight reference
 npx framefields add mouse-pointer focus-zoom    # writes src/components/<name>/
 npx framefields fonts add emoji                 # color emoji (chat-thread and captions add it themselves)
 ```
+
+The generated project also has `check` (TypeScript plus schema/lint/timeline preflight) and `check:render` (adds a GPU frame/grid smoke check) scripts. They produce versioned JSON for agents and terminate with a failure code on errors. For a custom entry, use `framefields check src/film.ts --export buildFilm --json`; add `--render` to write inspection artifacts under `output/check`. Keep the builder free of generation, rendering and writes, because preflight imports and executes it.
 
 ```typescript
 import { MousePointer } from "./components/mouse-pointer/index.js";

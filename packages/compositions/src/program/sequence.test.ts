@@ -122,6 +122,73 @@ describe("Cinematic Sequencing & Carrier Match Cuts", () => {
 		// scene 2 node should be offset by 60 frames
 		expect(program.layout[1]?.id).toBe("card-2");
 		expect(program.layout[1]?.startFrame).toBe(65);
-		expect(program.layout[1]?.durationFrames).toBe(90);
+		expect(program.layout[1]?.durationFrames).toBe(85);
+	});
+});
+
+describe("sequence window boundaries", () => {
+	it("does not subtract a final outgoing overlap", () => {
+		const result = calculateSequenceTimeline(
+			[{ id: "a", durationFrames: 60, transitionOut: { durationFrames: 10 } }],
+			30,
+		);
+		expect(result.totalFrames).toBe(60);
+		expect(result.totalDurationMs).toBe(2000);
+	});
+	it("measures the union of fully overlapping scenes", () => {
+		const result = calculateSequenceTimeline(
+			[
+				{ id: "a", durationFrames: 60, transitionOverlap: 30 },
+				{ id: "b", durationFrames: 30, transitionOverlap: 10 },
+			],
+			30,
+		);
+		expect(result.sceneOffsets[1].startFrame).toBe(30);
+		expect(result.totalFrames).toBe(60);
+	});
+	it("rejects overlap longer than either adjacent scene", () => {
+		expect(() =>
+			calculateSequenceTimeline([
+				{ id: "a", durationFrames: 60, transitionOverlap: 31 },
+				{ id: "b", durationFrames: 30 },
+			]),
+		).toThrow(/a.*overlap/);
+	});
+	it("validates numeric boundaries and empty sequences", () => {
+		expect(calculateSequenceTimeline([]).totalFrames).toBe(0);
+		for (const durationFrames of [0, -1, 1.5, Infinity, NaN])
+			expect(() =>
+				calculateSequenceTimeline([{ id: "bad", durationFrames }]),
+			).toThrow(/bad/);
+		expect(() =>
+			calculateSequenceTimeline([{ id: "tiny", durationMs: 0.1 }], 30),
+		).toThrow(/tiny/);
+		expect(() => calculateSequenceTimeline([], NaN)).toThrow(/fps/);
+	});
+	it("ends delayed layers at their scene boundary without mutating inputs", () => {
+		const layer = { id: "late", kind: "box" as const, startFrame: 30 };
+		const sequence = Sequence.create().addScene({
+			id: "a",
+			durationFrames: 60,
+			layout: [layer],
+		});
+		expect(sequence.toProgram().layout[0]).toMatchObject({
+			startFrame: 30,
+			durationFrames: 30,
+		});
+		expect(sequence.toProgram()).toEqual(sequence.toProgram());
+		expect(layer).not.toHaveProperty("durationFrames");
+	});
+	it("rejects explicit windows outside their owning scene", () => {
+		for (const node of [
+			{ id: "late", kind: "box" as const, startFrame: 60 },
+			{ id: "long", kind: "box" as const, startFrame: 30, durationFrames: 31 },
+		]) {
+			expect(() =>
+				Sequence.create()
+					.addScene({ id: "a", durationFrames: 60, layout: [node] })
+					.toProgram(),
+			).toThrow(/a.*window/);
+		}
 	});
 });

@@ -110,6 +110,8 @@ All `Layer.*` builders return `AnimatableNode<T>` instances with chainable `.ani
 
 ## Media time remapping
 
+`Layer.ambientLight({ color, intensity, id })` and `Light.ambient({ color, intensity, id })` accept options objects like the other light helpers; the positional `(color, intensity, options)` form remains supported. Animation-builder instances passed through a layer's `animation` option are normalized to program specs, including `CameraAnimation`.
+
 Video and audio layers accept `timeRemap` with an explicit `durationFrames`. Map frames are layer-local; `sourceSec` is absolute source time. Increasing source times play forward; decreasing source times play in reverse; equal source times hold the picture and silence the audio. Rate changes also change audio pitch. Do not combine this with `trimStartSec`.
 
 ```ts

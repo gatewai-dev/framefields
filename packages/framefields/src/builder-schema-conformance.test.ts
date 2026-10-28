@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+	CameraAnimation,
 	Composition,
 	CompositorProgramSchema,
 	Layer,
@@ -29,7 +30,22 @@ const builders = {
 	flex: () => Layer.flex({ children: [Layer.text("a")] }),
 	box: () => Layer.box({ width: 100, height: 100 }),
 	camera: () => Layer.camera({ z: -800 }),
+	cameraAnimationInput: () =>
+		Layer.camera({
+			animation: CameraAnimation.camera().dolly({
+				fromDistance: -2000,
+				toDistance: -1000,
+				start: 0,
+				end: 30,
+			}),
+		}),
 	ambientLight: () => Layer.ambientLight(),
+	ambientLightOptions: () =>
+		Layer.ambientLight({
+			id: "ambient-options",
+			color: "#f00",
+			intensity: 0.6,
+		}),
 	pointLight: () => Layer.pointLight({ x: 0, y: 0, z: -200 }),
 	cube: () => Layer.cube({ size: 10 }),
 	cubeWithFaces: () =>
@@ -95,6 +111,22 @@ const builders = {
 };
 
 describe("Layer builders conform to CompositorProgramSchema", () => {
+	it("preserves ambient options and the existing positional call form", () => {
+		expect(
+			Layer.ambientLight({ id: "fill", color: "#123456", intensity: 0.7 }),
+		).toMatchObject({
+			id: "fill",
+			color: "#123456",
+			intensity: 0.7,
+			lightType: "ambient",
+		});
+		expect(Layer.ambientLight("#123456", 0.7, { id: "fill" })).toMatchObject({
+			id: "fill",
+			color: "#123456",
+			intensity: 0.7,
+			lightType: "ambient",
+		});
+	});
 	for (const [name, build] of Object.entries(builders)) {
 		it(name, () => {
 			const comp = new Composition({

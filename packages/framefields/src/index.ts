@@ -2412,6 +2412,10 @@ function withAnimation<
 	TCap extends NodeCapability = "visual",
 >(node: T): AnimatableNode<T, TCap> {
 	const target = node as AnimatableNode<T, TCap>;
+	// Animation builders are structurally valid inputs, but carry enumerable
+	// authoring defaults that are not fields of the strict program schema.
+	if (target.animation instanceof LayerAnimation)
+		target.animation = target.animation.toSpec();
 	Object.defineProperty(target, "animate", {
 		value: (
 			...anims: (
@@ -3211,7 +3215,7 @@ export const Layer = {
 			...options,
 		}),
 	ambientLight: (
-		color: string = "#ffffff",
+		color: string | Partial<LightNode> = "#ffffff",
 		intensity: number = 0.5,
 		options: Partial<LightNode> = {},
 	): AnimatableNode<LightNode> => Light.ambient(color, intensity, options),
@@ -3390,7 +3394,7 @@ export const Light = {
 		});
 	},
 	ambient: (
-		color: string = "#ffffff",
+		color: string | Partial<LightNode> = "#ffffff",
 		intensity: number = 0.5,
 		options: Partial<LightNode> = {},
 	): AnimatableNode<LightNode> =>
@@ -3398,8 +3402,9 @@ export const Light = {
 			id: options.id ?? autoId("light-ambient"),
 			kind: "light",
 			lightType: "ambient",
-			color,
+			color: typeof color === "string" ? color : (color.color ?? "#ffffff"),
 			intensity,
+			...(typeof color === "object" && color),
 			...options,
 		}),
 	directional: (options: Partial<LightNode> = {}): AnimatableNode<LightNode> =>

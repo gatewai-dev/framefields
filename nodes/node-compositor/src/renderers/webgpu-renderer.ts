@@ -70,6 +70,7 @@ import {
 	type Swarm3DFrameInput,
 	type Swarm3DState,
 	type Swarm3DStaticConfig,
+	sampleMorphWeights,
 	spansText,
 	srtLoader,
 	Vector3Math,
@@ -1374,14 +1375,24 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				sampleCount3d,
 			);
 
-			// Execute audio mesh deformation compute passes before beginning render pass
+			// Morph targets are applied in object space before audio deformation and skinning.
 			for (const item of pending3DItems) {
-				if (item.kind === "mesh" && item.opts.audioDeform) {
+				if (item.kind !== "mesh") continue;
+				if (item.opts.morphWeights?.length) {
+					item.meshBuffers = r3d.morphMesh(
+						encoder,
+						item.mesh,
+						item.opts.morphWeights,
+						item.opts.wireframe,
+					);
+				}
+				if (item.opts.audioDeform) {
 					item.meshBuffers = r3d.deformMesh(
 						encoder,
 						item.mesh,
 						item.opts.audioDeform,
 						item.opts.wireframe,
+						item.meshBuffers,
 					);
 				}
 			}
@@ -2059,13 +2070,15 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 						modelSrc !== null &&
 						"meshes" in modelSrc
 							? (modelSrc as Model3DData)
-							: r3d.loadModel(modelSrc, lop.modelFormat ?? "auto", {
+							: await r3d.loadModelAsync(modelSrc, lop.modelFormat ?? "auto", {
 									center: lop.center,
 									normalizeSize: lop.normalizeSize,
 								});
 				} catch (err) {
-					console.error("Failed to load 3D model:", err);
-					return;
+					throw new Error(
+						`Failed to load 3D model ${lop.id ?? "(unnamed)"}: ${err instanceof Error ? err.message : String(err)}`,
+						{ cause: err },
+					);
 				}
 
 				if (!model || model.meshes.length === 0) return;
@@ -3239,6 +3252,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 
 					const meshOpts: DrawMesh3DOpts = {
 						modelMatrix: placed.matrix,
+						morphWeights: sampleMorphWeights(mesh, clip, clipSec),
 						opacity: modelOpacity * (mat?.opacity ?? 1.0),
 						colorTint: meshColorTint,
 						transparent:

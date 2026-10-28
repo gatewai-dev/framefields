@@ -3,6 +3,7 @@ import path from "node:path";
 
 /** The texture formats the renderer decodes (sharp); others (TGA, BMP, PSD, DDS, …) are skipped. */
 const MIME_BY_EXT: Record<string, string> = {
+	".ktx2": "image/ktx2",
 	".png": "image/png",
 	".jpg": "image/jpeg",
 	".jpeg": "image/jpeg",

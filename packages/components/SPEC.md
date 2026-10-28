@@ -2049,7 +2049,7 @@ the project layout the setup skill describes, so a project starts the same way e
   the built-in themes name. Both are pinned to google/fonts commit `e7db6ca` and match the
   repo's `assets/fonts` byte for byte. Their entries register as text families
   (`FontManager.register({ family, source })`), and Terminal and CodeBlock declare `mono`.
-  `init` installs both (`--no-fonts` skips them, `--emoji` adds emoji), and the generated
+  `init` installs all three by default (`--no-fonts` skips them, `--no-emoji` skips emoji), and the generated
   `src/components/fonts.ts`, which `theme.ts` calls, is the project's one registration
   point.
 - **Never overwrites.** Existing files are reported `unchanged`. `package.json` gains only

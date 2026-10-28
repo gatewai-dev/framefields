@@ -30,13 +30,13 @@ This skill takes a project from nothing to a verified first render. For anything
 
 ## 2. Install
 
-**Fastest path: `npx framefields init`.** It writes everything in sections 2 and 3 for you: `package.json` (with the install-script approvals below, scripts, dependencies, `packageManager`), `tsconfig.json`, `src/theme.ts` / `film.ts` / `render.ts`, `assets/`, the LFS `.gitattributes` and `.gitignore`. It also downloads Inter and JetBrains Mono (pinned, with their OFL licenses), registers them in the generated `src/components/fonts.ts` that `theme.ts` calls, and runs `git init`.
+**Fastest path: `npx framefields init`.** It writes everything in sections 2 and 3 for you: `package.json` (with the install-script approvals below, scripts, dependencies, `packageManager`), `tsconfig.json`, `src/theme.ts` / `film.ts` / `render.ts`, `assets/`, the LFS `.gitattributes` and `.gitignore`. It also downloads Inter, JetBrains Mono, and Noto Color Emoji (pinned, with their OFL licenses), registers them in the generated `src/components/fonts.ts` that `theme.ts` calls, and runs `git init`.
 
 ```bash
 npx framefields init my-film --install      # a new project; or `init` inside an existing one
 ```
 
-In an existing project it never overwrites: existing files are left alone, and `package.json`, `.gitignore` and `.gitattributes` only gain what they lack (a `"type": "commonjs"` package is refused). Options: `--pm npm|pnpm|yarn|bun` (default: the one running it), `--emoji` (also the color emoji font), `--no-fonts`, `--no-git`, `--name`. It asks no questions, so it runs unattended in CI. The AI gateway key is optional: `init` writes `.env.example` and git-ignores `.env`, and `render.ts` loads `.env` when it exists; the user sets `FRAMEFIELDS_API_KEY` there themselves (never write a key for them). Then go to section 4. The rest of this section and section 3 describe what it writes, for doing it by hand or merging into an unusual setup.
+In an existing project it never overwrites: existing files are left alone, and `package.json`, `.gitignore` and `.gitattributes` only gain what they lack (a `"type": "commonjs"` package is refused). Options: `--pm npm|pnpm|yarn|bun` (default: the one running it), `--no-fonts`, `--no-emoji`, `--no-git`, `--name`. It asks no questions, so it runs unattended in CI. The AI gateway key is optional: `init` writes `.env.example` and git-ignores `.env`, and `render.ts` loads `.env` when it exists; the user sets `FRAMEFIELDS_API_KEY` there themselves (never write a key for them). Then go to section 4. The rest of this section and section 3 describe what it writes, for doing it by hand or merging into an unusual setup.
 
 Use the package manager the project already uses (look for `pnpm-lock.yaml`, `yarn.lock`, `bun.lock`, or `package-lock.json`).
 

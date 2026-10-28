@@ -589,6 +589,53 @@ function effectsReach(effects: unknown[]): number | null {
 	return reach;
 }
 
+function quatFromEulerAngles(
+	rx: number,
+	ry: number,
+	rz: number,
+): [number, number, number, number] {
+	const DEG = Math.PI / 180;
+	const halfX = (rx * DEG) / 2;
+	const halfY = (ry * DEG) / 2;
+	const halfZ = (rz * DEG) / 2;
+	const cx = Math.cos(halfX);
+	const sx = Math.sin(halfX);
+	const cy = Math.cos(halfY);
+	const sy = Math.sin(halfY);
+	const cz = Math.cos(halfZ);
+	const sz = Math.sin(halfZ);
+	return [
+		cz * cy * sx - sz * sy * cx,
+		cz * sy * cx + sz * cy * sx,
+		sz * cy * cx - cz * sy * sx,
+		cz * cy * cx + sz * sy * sx,
+	];
+}
+
+function sampleColorRamp(
+	ramp: string | string[],
+	factor: number,
+): [number, number, number] {
+	if (!Array.isArray(ramp) || ramp.length === 0) {
+		const p = parseColor((ramp as string) || "#ffffff") ?? { r: 1, g: 1, b: 1 };
+		return [p.r, p.g, p.b];
+	}
+	if (ramp.length === 1) {
+		const p = parseColor(ramp[0]) ?? { r: 1, g: 1, b: 1 };
+		return [p.r, p.g, p.b];
+	}
+	const t = Math.max(0, Math.min(1, factor)) * (ramp.length - 1);
+	const idx = Math.min(Math.floor(t), ramp.length - 2);
+	const frac = t - idx;
+	const c0 = parseColor(ramp[idx]) ?? { r: 1, g: 1, b: 1 };
+	const c1 = parseColor(ramp[idx + 1]) ?? { r: 1, g: 1, b: 1 };
+	return [
+		c0.r + (c1.r - c0.r) * frac,
+		c0.g + (c1.g - c0.g) * frac,
+		c0.b + (c1.b - c0.b) * frac,
+	];
+}
+
 function expandRect(r: Rect, by: number): Rect {
 	return {
 		x: r.x - by,
@@ -2011,6 +2058,395 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 
 				const modelOpacity =
 					(target?.opacity ?? lop.opacity ?? 1) * accumulatedOpacity;
+
+				if (lop.instances3d) {
+					const instOpt = lop.instances3d as Record<string, any>;
+					const rawMeshes = Array.isArray(instOpt.mesh)
+						? instOpt.mesh
+						: instOpt.mesh
+							? [instOpt.mesh]
+							: lop.modelData
+								? [lop.modelData]
+								: lop.primitive3d
+									? [
+											getPrimitiveGeometry(
+												lop.primitive3d as PrimitiveGeometryOptions,
+											),
+										]
+									: [];
+
+					const variants: Model3DData[] = [];
+					for (const m of rawMeshes) {
+						let vModel: Model3DData | undefined;
+						if (typeof m === "object" && m !== null) {
+							if ("meshes" in m && Array.isArray((m as any).meshes)) {
+								vModel = m as Model3DData;
+							} else if (m.modelData && "meshes" in m.modelData) {
+								vModel = m.modelData as Model3DData;
+							} else if (m.primitive3d) {
+								vModel = getPrimitiveGeometry(
+									m.primitive3d as PrimitiveGeometryOptions,
+								);
+							} else if (m.src) {
+								try {
+									vModel = r3d.loadModel(m.src, m.modelFormat ?? "auto", {
+										center: m.center,
+										normalizeSize: m.normalizeSize,
+									});
+								} catch {}
+							}
+						}
+						if (vModel && vModel.meshes && vModel.meshes.length > 0) {
+							variants.push(vModel);
+						}
+					}
+					if (variants.length === 0 && model) {
+						variants.push(model);
+					}
+					if (variants.length > 0) {
+						const count =
+							instOpt.bodies &&
+							Array.isArray(instOpt.bodies) &&
+							instOpt.bodies.length > 0
+								? instOpt.bodies.length
+								: (instOpt.count ??
+									(Array.isArray(instOpt.transforms)
+										? instOpt.transforms.length
+										: 0));
+
+						if (count > 0) {
+							const numVariants = variants.length;
+							const bucketCounts = new Uint32Array(numVariants);
+							for (let i = 0; i < count; i++) {
+								bucketCounts[i % numVariants]++;
+							}
+							const bucketItems: Float32Array[] = [];
+							const bucketBounds: Array<{
+								min: [number, number, number];
+								max: [number, number, number];
+							}> = [];
+							for (let k = 0; k < numVariants; k++) {
+								bucketItems.push(new Float32Array(bucketCounts[k] * 16));
+								bucketBounds.push({
+									min: [Infinity, Infinity, Infinity],
+									max: [-Infinity, -Infinity, -Infinity],
+								});
+							}
+							const bucketCursors = new Uint32Array(numVariants);
+
+							const frameCtx = {
+								frame: shiftedFrame ?? 0,
+								fps: fps || 30,
+								time: (shiftedFrame ?? 0) / (fps || 30),
+								duration: 0,
+								durationMs: 0,
+								progress: 0,
+								deltaTime: 1 / (fps || 30),
+							};
+
+							for (let i = 0; i < count; i++) {
+								const k = i % numVariants;
+								const cursor = bucketCursors[k];
+								const bData = bucketItems[k];
+								const bBox = bucketBounds[k];
+								const off = cursor * 16;
+								bucketCursors[k]++;
+
+								let ix = 0;
+								let iy = 0;
+								let iz = 0;
+								let iscale = 1.0;
+								let iqx = 0;
+								let iqy = 0;
+								let iqz = 0;
+								let iqw = 1.0;
+								let icr = 1.0;
+								let icg = 1.0;
+								let icb = 1.0;
+								let ica = 1.0;
+								let ier = 0.0;
+								let ieg = 0.0;
+								let ieb = 0.0;
+								let iew = 0.0;
+
+								if (instOpt.bodies && instOpt.bodies[i]) {
+									const b = instOpt.bodies[i];
+									ix =
+										typeof b.x?.get === "function"
+											? Number(b.x.get(frameCtx))
+											: Number(b.x ?? 0);
+									iy =
+										typeof b.y?.get === "function"
+											? Number(b.y.get(frameCtx))
+											: Number(b.y ?? 0);
+									iz =
+										typeof b.z?.get === "function"
+											? Number(b.z.get(frameCtx))
+											: Number(b.z ?? 0);
+									const rx =
+										typeof b.rotateX?.get === "function"
+											? Number(b.rotateX.get(frameCtx))
+											: Number(b.rotateX ?? 0);
+									const ry =
+										typeof b.rotateY?.get === "function"
+											? Number(b.rotateY.get(frameCtx))
+											: Number(b.rotateY ?? 0);
+									const rz =
+										typeof b.rotateZ?.get === "function"
+											? Number(b.rotateZ.get(frameCtx))
+											: Number(b.rotateZ ?? 0);
+									const q = quatFromEulerAngles(rx, ry, rz);
+									iqx = q[0];
+									iqy = q[1];
+									iqz = q[2];
+									iqw = q[3];
+
+									if (instOpt.emissiveBySpeed) {
+										const spd =
+											typeof b.speed?.get === "function"
+												? Number(b.speed.get(frameCtx))
+												: Number(b.speed ?? 0);
+										const maxSpd = instOpt.emissiveBySpeed.maxSpeed || 1000;
+										const factor = Math.min(1, Math.max(0, spd / maxSpd));
+										if (factor > 0.001) {
+											const ramp = sampleColorRamp(
+												instOpt.emissiveBySpeed.color,
+												factor,
+											);
+											ier = ramp[0];
+											ieg = ramp[1];
+											ieb = ramp[2];
+											iew = factor * (instOpt.emissiveBySpeed.intensity ?? 3.0);
+										}
+									}
+									if (instOpt.emissiveByImpact) {
+										const imp =
+											typeof b.impact?.get === "function"
+												? Number(b.impact.get(frameCtx))
+												: Number(b.impact ?? 0);
+										if (imp > 0.01) {
+											const impCol = parseColor(
+												instOpt.emissiveByImpact.color ?? "#ffffff",
+											) ?? { r: 1, g: 1, b: 1, a: 1 };
+											ier = Math.max(ier, impCol.r);
+											ieg = Math.max(ieg, impCol.g);
+											ieb = Math.max(ieb, impCol.b);
+											iew = Math.max(
+												iew,
+												imp * (instOpt.emissiveByImpact.intensity ?? 4.0),
+											);
+										}
+									}
+								} else if (typeof instOpt.instanceAt === "function") {
+									const t = instOpt.instanceAt(i, shiftedFrame ?? 0, fps || 30);
+									if (t) {
+										ix = t.x ?? 0;
+										iy = t.y ?? 0;
+										iz = t.z ?? 0;
+										if (typeof t.scale === "number") iscale = t.scale;
+										if (t.rotation) {
+											if (t.rotation.length === 4) {
+												iqx = t.rotation[0];
+												iqy = t.rotation[1];
+												iqz = t.rotation[2];
+												iqw = t.rotation[3];
+											} else {
+												const q = quatFromEulerAngles(
+													t.rotation[0],
+													t.rotation[1],
+													t.rotation[2],
+												);
+												iqx = q[0];
+												iqy = q[1];
+												iqz = q[2];
+												iqw = q[3];
+											}
+										}
+										if (t.color) {
+											const p =
+												typeof t.color === "string"
+													? parseColor(t.color)
+													: {
+															r: t.color[0],
+															g: t.color[1],
+															b: t.color[2],
+															a: t.color[3] ?? 1,
+														};
+											if (p) {
+												icr = p.r;
+												icg = p.g;
+												icb = p.b;
+												ica = p.a;
+											}
+										}
+										if (t.emissive) {
+											const p =
+												typeof t.emissive === "string"
+													? parseColor(t.emissive)
+													: {
+															r: t.emissive[0],
+															g: t.emissive[1],
+															b: t.emissive[2],
+														};
+											if (p) {
+												ier = p.r;
+												ieg = p.g;
+												ieb = p.b;
+											}
+											iew = t.emissiveIntensity ?? 1.0;
+										}
+									}
+								} else if (
+									Array.isArray(instOpt.transforms) &&
+									instOpt.transforms[i]
+								) {
+									const t = instOpt.transforms[i];
+									ix = t.x ?? 0;
+									iy = t.y ?? 0;
+									iz = t.z ?? 0;
+									if (typeof t.scale === "number") iscale = t.scale;
+									if (t.rotation) {
+										if (t.rotation.length === 4) {
+											iqx = t.rotation[0];
+											iqy = t.rotation[1];
+											iqz = t.rotation[2];
+											iqw = t.rotation[3];
+										} else {
+											const q = quatFromEulerAngles(
+												t.rotation[0],
+												t.rotation[1],
+												t.rotation[2],
+											);
+											iqx = q[0];
+											iqy = q[1];
+											iqz = q[2];
+											iqw = q[3];
+										}
+									}
+									if (t.color) {
+										const p =
+											typeof t.color === "string"
+												? parseColor(t.color)
+												: {
+														r: t.color[0],
+														g: t.color[1],
+														b: t.color[2],
+														a: t.color[3] ?? 1,
+													};
+										if (p) {
+											icr = p.r;
+											icg = p.g;
+											icb = p.b;
+											ica = p.a;
+										}
+									}
+									if (t.emissive) {
+										const p =
+											typeof t.emissive === "string"
+												? parseColor(t.emissive)
+												: {
+														r: t.emissive[0],
+														g: t.emissive[1],
+														b: t.emissive[2],
+													};
+										if (p) {
+											ier = p.r;
+											ieg = p.g;
+											ieb = p.b;
+										}
+										iew = t.emissiveIntensity ?? 1.0;
+									}
+								}
+
+								bData[off + 0] = ix;
+								bData[off + 1] = iy;
+								bData[off + 2] = iz;
+								bData[off + 3] = iscale;
+								bData[off + 4] = iqx;
+								bData[off + 5] = iqy;
+								bData[off + 6] = iqz;
+								bData[off + 7] = iqw;
+								bData[off + 8] = icr;
+								bData[off + 9] = icg;
+								bData[off + 10] = icb;
+								bData[off + 11] = ica;
+								bData[off + 12] = ier;
+								bData[off + 13] = ieg;
+								bData[off + 14] = ieb;
+								bData[off + 15] = iew;
+
+								const rad = 50 * iscale;
+								bBox.min[0] = Math.min(bBox.min[0], ix - rad);
+								bBox.min[1] = Math.min(bBox.min[1], iy - rad);
+								bBox.min[2] = Math.min(bBox.min[2], iz - rad);
+								bBox.max[0] = Math.max(bBox.max[0], ix + rad);
+								bBox.max[1] = Math.max(bBox.max[1], iy + rad);
+								bBox.max[2] = Math.max(bBox.max[2], iz + rad);
+							}
+
+							for (let k = 0; k < numVariants; k++) {
+								const bCount = bucketCounts[k];
+								if (bCount === 0) continue;
+								const v = variants[k];
+								const instanceBuffer = r3d.uploadInstanceData(bucketItems[k]);
+								const bounds = Number.isFinite(bucketBounds[k].min[0])
+									? bucketBounds[k]
+									: undefined;
+
+								for (const mesh of v.meshes) {
+									const mat = mesh.materialName
+										? v.materials[mesh.materialName]
+										: undefined;
+									const meshOpts: DrawMesh3DOpts = {
+										modelMatrix: finalModelMatrix,
+										opacity: modelOpacity * (mat?.opacity ?? 1.0),
+										colorTint,
+										transparent: false,
+										twoSided: target?.twoSided ?? lop.twoSided ?? true,
+										wireframe: Boolean(target?.wireframe ?? lop.wireframe),
+										material:
+											target?.material ??
+											lop.material ??
+											instOpt.material ??
+											mat?.shading ??
+											"lit",
+										roughness:
+											target?.roughness ??
+											lop.roughness ??
+											instOpt.roughness ??
+											mat?.roughness,
+										specularIntensity:
+											target?.specularIntensity ??
+											lop.specularIntensity ??
+											instOpt.specularIntensity ??
+											0.5,
+										ambientIntensity:
+											target?.ambientIntensity ??
+											lop.ambientIntensity ??
+											instOpt.ambientIntensity ??
+											1.0,
+										metallic:
+											target?.metallic ??
+											lop.metallic ??
+											instOpt.metallic ??
+											mat?.metallic,
+										...surfaceProps(target, lop, mat),
+										instanceBuffer,
+										instanceCount: bCount,
+										bounds,
+									};
+									pending3DItems.push({
+										kind: "mesh",
+										mesh,
+										texture: mat ? await r3d.materialTexture(mat) : undefined,
+										opts: meshOpts,
+									});
+								}
+							}
+							return { finalTex: destTex, finalView: destView };
+						}
+					}
+				}
 
 				// Animation evaluation
 				let skinningMatrices: Float32Array | undefined;

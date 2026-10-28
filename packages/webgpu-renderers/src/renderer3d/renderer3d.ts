@@ -196,6 +196,12 @@ export interface DrawMesh3DOpts extends SurfaceParams {
 		timeMs?: number;
 		sampleRate?: number;
 	};
+	/** Hardware instancing: number of instances to draw in a single draw call. */
+	instanceCount?: number;
+	/** Storage buffer holding `InstanceData` structs (64 bytes per instance). */
+	instanceBuffer?: GPUBuffer;
+	/** Optional overall bounding box (e.g. for instanced clusters or swarms) for shadow frustum fitting. */
+	bounds?: Aabb;
 }
 
 /** Scene-wide world settings for a 3D pass. */
@@ -236,6 +242,7 @@ export class Renderer3D {
 	private dofBindGroupLayout: GPUBindGroupLayout;
 	private cameraPool: BufferPool;
 	private lightsPool: BufferPool;
+	private instancePool: BufferPool;
 	private cameraUniformBindGroupCache = new UniformBindGroupCache();
 	private samplerCache = new SamplerCache();
 	private depthTexture: GPUTexture | null = null;
@@ -312,6 +319,11 @@ export class Renderer3D {
 			GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
 		);
 
+		this.instancePool = new BufferPool(
+			65536,
+			GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+		);
+
 		// Initialize DoF Bokeh Pipeline
 		const dofModule = device.createShaderModule({
 			label: "dof-bokeh.wgsl",
@@ -373,6 +385,7 @@ export class Renderer3D {
 		this.lastCameraPose = null;
 		this.lastCameraBuffer = null;
 		this.lightsPool.reset();
+		this.instancePool.reset();
 		this.quad3dPipeline.resetPools();
 		this.slug3dPipeline.resetPools();
 		this.mesh3dPipeline.resetPools();
@@ -614,6 +627,7 @@ export class Renderer3D {
 	/** World bounds of a mesh or quad draw, for fitting shadow frusta. */
 	worldBounds(item: ShadowCaster3D): Aabb {
 		if (item.kind === "mesh") {
+			if (item.opts.bounds) return item.opts.bounds;
 			return transformAabb(
 				this.meshAabb(item.mesh),
 				this.meshModelMatrix(item.opts),
@@ -714,7 +728,13 @@ export class Renderer3D {
 						wireframe: c.opts.wireframe,
 						isSkinned: c.opts.isSkinned,
 						skinningMatrices: c.opts.skinningMatrices,
+						isInstanced: Boolean(
+							c.opts.instanceBuffer ||
+								(c.opts.instanceCount && c.opts.instanceCount > 1),
+						),
+						instanceBuffer: c.opts.instanceBuffer,
 					},
+					c.opts.instanceCount ?? 1,
 				);
 			} else {
 				const m = this.quadModelMatrix(c.opts);
@@ -1364,9 +1384,14 @@ export class Renderer3D {
 				emissiveIntensity: opts.emissiveIntensity,
 				matte: opts.matte,
 				maps: opts.maps,
+				isInstanced: Boolean(
+					opts.instanceBuffer || (opts.instanceCount && opts.instanceCount > 1),
+				),
+				instanceBuffer: opts.instanceBuffer,
 			},
 			useMrt,
 			this.passWritesHdr,
+			opts.instanceCount ?? 1,
 		);
 	}
 
@@ -1561,6 +1586,38 @@ export class Renderer3D {
 		pass.end();
 	}
 
+	/** Uploads raw `InstanceData` float buffer to a GPU storage buffer from the instance pool. */
+	uploadInstanceData(data: Float32Array): GPUBuffer {
+		return this.instancePool.getBuffer(this.device, data);
+	}
+
+	/** Draws instanced 3D meshes in a single hardware-instanced draw call. */
+	drawMesh3DInstanced(
+		pass: GPURenderPassEncoder,
+		cameraBindGroup: GPUBindGroup,
+		lightsBindGroup: GPUBindGroup,
+		meshOrBuffers: Mesh3DData | GPUMeshBuffers,
+		instanceBuffer: GPUBuffer,
+		instanceCount: number,
+		texture: GPUTexture | undefined = undefined,
+		opts: DrawMesh3DOpts = {},
+		useMrt = false,
+	): void {
+		this.drawMesh3D(
+			pass,
+			cameraBindGroup,
+			lightsBindGroup,
+			meshOrBuffers,
+			texture,
+			{
+				...opts,
+				instanceBuffer,
+				instanceCount,
+			},
+			useMrt,
+		);
+	}
+
 	destroy(): void {
 		this.bloomPipeline?.destroy();
 		this.depthTexture?.destroy();
@@ -1576,6 +1633,7 @@ export class Renderer3D {
 		this.mesh3dPipeline.destroy();
 		this.cameraPool.destroy();
 		this.lightsPool.destroy();
+		this.instancePool.destroy();
 		this.cameraUniformBindGroupCache.destroy();
 	}
 }

@@ -928,6 +928,8 @@ export {
 	type Cylinder3DOptions,
 	type ExtrudedText3DOptions,
 	type Grid3DOptions,
+	type Instances3DOptions,
+	type InstanceTransform3D,
 	Layer3D,
 	type Plane3DOptions,
 	type Primitive3DNodeOptions,

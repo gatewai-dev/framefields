@@ -1447,6 +1447,10 @@ export interface Model3DNode {
 	text3dOptions?: unknown;
 	/** Layer3D primitive options (roundedBox, sphere, cylinder, shard) the mesh is rebuilt from when modelData is lost. */
 	primitive3d?: unknown;
+	/** Layer3D.instances hardware-instancing options. */
+	instances3d?: unknown;
+	/** Layer3D.swarm GPU simulation and instancing options. */
+	swarm3d?: unknown;
 }
 
 export type LayoutNode =
@@ -1769,6 +1773,8 @@ export const Model3DNodeSchema: z.ZodType<Model3DNode> = z
 		colorTint: ColorSchema.optional(),
 		text3dOptions: z.unknown().optional(),
 		primitive3d: z.unknown().optional(),
+		instances3d: z.unknown().optional(),
+		swarm3d: z.unknown().optional(),
 	})
 	.strict() as unknown as z.ZodType<Model3DNode>;
 

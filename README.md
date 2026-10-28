@@ -70,6 +70,9 @@ Every frame is rendered by framefields directly from TypeScript in [`examples/`]
       <br><sub><a href="examples/19_framefields_film"><code>19_framefields_film</code></a></sub>
     </td>
     <td width="50%" align="center">
+      <a href="https://youtu.be/xSowU7X48J8"><img src="assets/showcase/shard-storm.jpg" alt="Shard storm vision dancer showcase film" width="100%"></a>
+      <br><a href="https://youtu.be/xSowU7X48J8"><b>Shard storm</b></a>
+      <br><sub><a href="examples/31_shard_storm"><code>31_shard_storm</code></a></sub>
     </td>
   </tr>
 </table>

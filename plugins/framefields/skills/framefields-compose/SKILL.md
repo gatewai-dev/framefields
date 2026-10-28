@@ -124,6 +124,19 @@ const vision = comp.vision(clip);
 // Or: timeRemap: { kind: "rate", sourceStartSec: 3, rate: -0.5 }
 ```
 
+A signal can drive the clock instead: `{ kind: "signal", mode: "speed", signal, sourceStartSec }` integrates playback rate (source seconds per second; negative reverses, 0 holds), and `mode: "source-time"` reads absolute source seconds. `signal` is a `Signal` or the name of a composition signal (`comp.addSignal`), read on the composition clock at every layer frame boundary and interpolated between them, so picture, audio and `comp.vision` share one clock.
+
+```ts
+const speed = Signal.state(1);
+comp.onRequestFrame((ctx) => speed.set(ctx.frame < 48 ? 1 : 0.25));
+comp.add(Layer.video("assets/clip.mp4", {
+  durationFrames: 96,
+  timeRemap: { kind: "signal", mode: "speed", signal: speed },
+}));
+```
+
+Without frame hooks (`onRequestFrame`, `onPrepareFrame`, `comp.vision`, physics) the signal is sampled up front. With them it is live: each boundary is recorded once, after that frame's `onRequestFrame` hooks, and never ahead of the frame being rendered. A seek forward runs the skipped frames' hooks in order; a seek back reuses the recorded history. Source bounds are checked as each frame records, and a layer that outlives the composition holds its last value. A signal that reads its own layer's current source time is reported as a circular dependency.
+
 Keyframes must start at frame 0, end at `durationFrames`, and increase in frame. `interpolation` belongs to the starting key of a segment: `"linear"` (default), `"ease-in"`, `"ease-out"`, or `"smooth"`. These curves are monotonic and do not overshoot; `smooth` starts and ends at zero speed. Adjacent segments may have different speeds at their join. `comp.vision(layer)` requires the layer to have already been added; clip analysis runs in source order and is sampled on the mapped clock. Effects stay on the composition clock. Source ranges are checked before rendering. Audio uses resampling rather than pitch-preserving time stretch. Reverse video can render more slowly due to source seeking; headless decoding retains at most 48 MiB of cached frames per decoder.
 
 ## Animation System (`LayerAnimation`)

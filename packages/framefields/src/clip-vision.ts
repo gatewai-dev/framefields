@@ -1,8 +1,8 @@
 import {
 	type FrameSignal,
-	type MediaTimeRemap,
 	mediaSourceRange,
 	mediaSourceTime,
+	type ResolvedMediaTimeRemap,
 	Signal,
 } from "@framefields/core";
 import {
@@ -23,7 +23,7 @@ export interface ClipVisionOptions {
 	/** Seconds trimmed off the clip's start, as on its media layer (default 0). */
 	trimStartSec?: number;
 	/** The media layer's source-time mapping. */
-	timeRemap?: MediaTimeRemap;
+	timeRemap?: ResolvedMediaTimeRemap;
 	/** Media layer duration in composition frames, when known. */
 	durationFrames?: number;
 	/** Analysis frame rate (default: the composition's). */

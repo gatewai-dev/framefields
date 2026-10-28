@@ -34,6 +34,7 @@ interface PreviewTarget {
 	toVirtualMedia?(): VirtualMediaData;
 	toVirtualMediaAsync?(): Promise<VirtualMediaData>;
 	computeDuration?(): Promise<number>;
+	prepareMediaTime?(): Promise<void>;
 	fps?: number;
 	durationMs?: number;
 	width?: number;
@@ -245,6 +246,8 @@ export async function startPreview(
 			const vm = target.toVirtualMediaAsync
 				? await target.toVirtualMediaAsync()
 				: (target.toVirtualMedia as () => VirtualMediaData)();
+			// Live signal time is recorded frame by frame; finish it before mixing.
+			await target.prepareMediaTime?.();
 			return renderer.renderAudio(vm, { fps: meta.fps });
 		})().then(
 			({ channels, sampleRate }) => {

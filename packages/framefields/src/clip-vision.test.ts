@@ -1,6 +1,12 @@
+import { collectNodeOps } from "@framefields/compositions/program";
+import {
+	type MediaSignalRecorder,
+	type ResolvedMediaTimeRemap,
+	sampleMediaSignal,
+} from "@framefields/core";
 import { describe, expect, it } from "vitest";
 import { clipVisionFromResults } from "./clip-vision.js";
-import { Composition, Layer } from "./index.js";
+import { Composition, Layer, Signal } from "./index.js";
 
 /** A 160×80 clip: frame f has the left wrist at (20 + 20f, 10) and a 40×40 square silhouette moving right. */
 function clip(frames = 4, options = {}) {
@@ -95,6 +101,17 @@ describe("ClipVision", () => {
 });
 
 describe("remapped clip vision", () => {
+	it("uses recorded signal history for the same source clock", () => {
+		const history = sampleMediaSignal({
+			mode: "source-time",
+			fps: 24,
+			startFrame: 0,
+			durationFrames: 2,
+			sample: (frame) => frame / 24,
+		});
+		const c = clip(4, { timeRemap: { kind: "sampled", history } });
+		expect(c.person.point("leftWrist", 1).x).toBe(40);
+	});
 	it("samples reverse motion and covers intermediate turns in a readiness window", () => {
 		const c = clip(4, {
 			timeRemap: {
@@ -142,6 +159,30 @@ describe("remapped clip vision", () => {
 		const vision = comp.vision(layer);
 		expect(vision.startFrame).toBe(17);
 		expect(vision.clipFrame(19)).toBe(25);
+	});
+	it("shares a layer's live signal time with its render", () => {
+		const comp = new Composition({
+			width: 64,
+			height: 64,
+			fps: 24,
+			durationFrames: 48,
+		});
+		const speed = Signal.state(2);
+		const layer = Layer.video("clip.mp4", {
+			startFrame: 4,
+			durationFrames: 24,
+			timeRemap: { kind: "signal", mode: "speed", signal: speed },
+		});
+		comp.add(layer);
+		const vision = comp.vision(layer);
+		const op = collectNodeOps(comp.toVirtualMedia().children).find(
+			(node) => node.operation.dataType === "Video",
+		)?.operation as unknown as { timeRemap: ResolvedMediaTimeRemap };
+		expect(vision.options.timeRemap).toBe(op.timeRemap);
+		// No look-ahead: the clip's time is known once the clock reaches it.
+		expect(() => vision.clipFrame(5)).toThrow(/not been recorded/);
+		(op.timeRemap as { recorder: MediaSignalRecorder }).recorder.advance(5);
+		expect(vision.clipFrame(5)).toBe(2);
 	});
 	it("samples the same source clock as the media layer", () => {
 		const c = clip(4, {

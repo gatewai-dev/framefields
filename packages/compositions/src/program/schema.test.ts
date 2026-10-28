@@ -1,3 +1,4 @@
+import { Signal } from "@framefields/core";
 import { describe, expect, it } from "vitest";
 import {
 	CompositorProgramSchema,
@@ -1123,5 +1124,34 @@ describe("media time remapping schema", () => {
 				},
 			}).success,
 		).toBe(true);
+	});
+	it("accepts signal bindings by instance or composition signal name", () => {
+		const node = {
+			id: "clip",
+			kind: "media",
+			inputHandleId: "a.mp4",
+			dataType: "Video",
+			durationFrames: 30,
+			timeRemap: { kind: "signal", mode: "speed", signal: "pace" },
+		};
+		expect(LayoutNodeSchema.safeParse(node).success).toBe(true);
+		expect(
+			LayoutNodeSchema.safeParse({
+				...node,
+				timeRemap: {
+					kind: "signal",
+					mode: "source-time",
+					signal: Signal.state(1),
+				},
+			}).success,
+		).toBe(true);
+		for (const timeRemap of [
+			{ kind: "signal", mode: "speed", signal: 3 },
+			{ kind: "signal", mode: "source-time", signal: "p", sourceStartSec: 1 },
+			{ kind: "signal", mode: "reverse", signal: "p" },
+		])
+			expect(LayoutNodeSchema.safeParse({ ...node, timeRemap }).success).toBe(
+				false,
+			);
 	});
 });

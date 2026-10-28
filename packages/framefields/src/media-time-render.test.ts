@@ -3,6 +3,11 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { decodeAudioSource } from "@framefields/compositions";
+import {
+	MediaSignalRecorder,
+	type ResolvedMediaTimeRemap,
+	sampleMediaSignal,
+} from "@framefields/core";
 import { beforeAll, describe, expect, it } from "vitest";
 import {
 	Blur,
@@ -137,6 +142,265 @@ beforeAll(async () => {
 });
 
 describe.skipIf(!hasFfmpeg)("remapped video", () => {
+	it("drives video and audio from a public signal timeRemap", async () => {
+		const comp = new Composition({
+			width: 16,
+			height: 16,
+			fps: 4,
+			durationFrames: 4,
+		});
+		comp.add(
+			Layer.video(sourceAv, {
+				width: 16,
+				height: 16,
+				durationFrames: 4,
+				timeRemap: {
+					kind: "signal",
+					mode: "speed",
+					signal: Signal.builder({ type: "custom", fn: () => 0.5 }),
+				},
+			}),
+		);
+		const third = getPixel(
+			await decodePngPixels(await comp.renderFrame({ frame: 2 })),
+			8,
+			8,
+		);
+		expect(third.g).toBeGreaterThan(200);
+		const { channels } = await new HeadlessMediaRenderer().renderAudio(
+			comp.toVirtualMedia(),
+			{ fps: 4, sampleRate: 48000 },
+		);
+		const original = await decodeAudioSource(sourceAv);
+		if (!original) throw new Error("embedded audio did not decode");
+		expect(channels[0][24000]).toBeCloseTo(
+			Math.tanh(original.channels[0][12000]),
+			4,
+		);
+	});
+	it("records a live signal after each frame hook, through seeks and audio", async () => {
+		const comp = new Composition({
+			width: 16,
+			height: 16,
+			fps: 4,
+			durationFrames: 4,
+		});
+		const speed = Signal.state(1);
+		const hooked: number[] = [];
+		comp.onRequestFrame((ctx) => {
+			hooked.push(ctx.frame);
+			speed.set(ctx.frame < 2 ? 1 : 0);
+		});
+		comp.addSignal("speed", speed);
+		comp.add(
+			Layer.video(sourceAv, {
+				width: 16,
+				height: 16,
+				durationFrames: 4,
+				timeRemap: { kind: "signal", mode: "speed", signal: "speed" },
+			}),
+		);
+		const at = async (frame: number) =>
+			getPixel(await decodePngPixels(await comp.renderFrame({ frame })), 8, 8);
+		// A seek forward runs the skipped frames' hooks in order: the source
+		// stops at 0.375s, inside the green frame.
+		const last = await at(3);
+		expect(hooked.slice(0, 4)).toEqual([0, 1, 2, 3]);
+		expect(last.g).toBeGreaterThan(200);
+		// Seeking back replays the recorded history.
+		speed.set(5);
+		const first = await at(0);
+		expect(first.r).toBeGreaterThan(200);
+		const { channels } = await new HeadlessMediaRenderer().renderAudio(
+			comp.toVirtualMedia(),
+			{ fps: 4, sampleRate: 48000 },
+		);
+		const original = await decodeAudioSource(sourceAv);
+		if (!original) throw new Error("embedded audio did not decode");
+		expect(channels[0][6000]).toBeCloseTo(
+			Math.tanh(original.channels[0][6000]),
+			4,
+		);
+		// The held tail is silent.
+		expect(channels[0][42000]).toBe(0);
+	});
+	it("finishes a live history before mixing audio ahead of any frame", async () => {
+		const comp = new Composition({
+			width: 16,
+			height: 16,
+			fps: 4,
+			durationFrames: 4,
+		});
+		const speed = Signal.state(0);
+		comp.onRequestFrame((ctx) => speed.set(ctx.frame < 2 ? 1 : 0));
+		comp.add(
+			Layer.video(sourceAv, {
+				width: 16,
+				height: 16,
+				durationFrames: 4,
+				timeRemap: { kind: "signal", mode: "speed", signal: speed },
+			}),
+		);
+		const vm = await comp.toVirtualMediaAsync();
+		const renderer = new HeadlessMediaRenderer();
+		await expect(renderer.renderAudio(vm, { fps: 4 })).rejects.toThrow(
+			/not been recorded/,
+		);
+		await comp.prepareMediaTime();
+		const { channels } = await renderer.renderAudio(vm, {
+			fps: 4,
+			sampleRate: 48000,
+		});
+		const original = await decodeAudioSource(sourceAv);
+		if (!original) throw new Error("embedded audio did not decode");
+		expect(channels[0][6000]).toBeCloseTo(
+			Math.tanh(original.channels[0][6000]),
+			4,
+		);
+		expect(channels[0][42000]).toBe(0);
+	});
+	it("encodes a live signal timeRemap and validates its bounds as it records", async () => {
+		const make = (rate: number) => {
+			const comp = new Composition({
+				width: 16,
+				height: 16,
+				fps: 4,
+				durationFrames: 8,
+			});
+			const speed = Signal.state(0);
+			comp.onRequestFrame((ctx) => speed.set(ctx.frame < 4 ? rate : 0));
+			comp.add(
+				Layer.video(sourceAv, {
+					width: 16,
+					height: 16,
+					durationFrames: 8,
+					timeRemap: { kind: "signal", mode: "speed", signal: speed },
+				}),
+			);
+			return comp;
+		};
+		await expect(make(2).renderVideo()).rejects.toThrow(/outside/);
+		const result = await make(1).renderVideo();
+		try {
+			const bytes = execFileSync("ffmpeg", [
+				"-v",
+				"error",
+				"-i",
+				result.filePath,
+				"-f",
+				"rawvideo",
+				"-pix_fmt",
+				"rgb24",
+				"pipe:1",
+			]);
+			const pixel = (frame: number, channel: number) =>
+				bytes[(frame * 16 * 16 + 8 * 16 + 8) * 3 + channel];
+			expect(bytes.length).toBe(8 * 16 * 16 * 3);
+			expect(pixel(0, 0)).toBeGreaterThan(200);
+			expect(pixel(2, 2)).toBeGreaterThan(200);
+			// Speed 1 then 0 from frame 4: the source holds at 0.875s (white).
+			for (const frame of [5, 7])
+				for (const channel of [0, 1, 2])
+					expect(pixel(frame, channel)).toBeGreaterThan(200);
+		} finally {
+			await fs.rm(result.filePath, { force: true });
+		}
+	});
+	it("replays a completed live signal history through video and audio", async () => {
+		const comp = new Composition({
+			width: 16,
+			height: 16,
+			fps: 4,
+			durationFrames: 4,
+		});
+		comp.add(
+			Layer.video(sourceAv, { width: 16, height: 16, durationFrames: 4 }),
+		);
+		const recorder = new MediaSignalRecorder({
+			mode: "speed",
+			fps: 4,
+			startFrame: 0,
+			durationFrames: 4,
+		});
+		for (let frame = 0; frame <= 4; frame++) recorder.record(frame, 0.5);
+		const vm = comp.toVirtualMedia();
+		(
+			vm.children[0].operation as unknown as {
+				timeRemap: ResolvedMediaTimeRemap;
+			}
+		).timeRemap = { kind: "recorded", recorder };
+		const renderer = new HeadlessMediaRenderer();
+		const frame = getPixel(
+			await decodePngPixels(
+				await renderer.renderFrame(vm, { frame: 2, fps: 4 }),
+			),
+			8,
+			8,
+		);
+		expect(frame.g).toBeGreaterThan(200);
+		const { channels } = await renderer.renderAudio(vm, {
+			fps: 4,
+			sampleRate: 48000,
+		});
+		const original = await decodeAudioSource(sourceAv);
+		if (!original) throw new Error("embedded audio did not decode");
+		expect(channels[0][24000]).toBeCloseTo(
+			Math.tanh(original.channels[0][12000]),
+			4,
+		);
+	});
+	it("uses recorded signal history for both rendered video and audio", async () => {
+		const comp = new Composition({
+			width: 16,
+			height: 16,
+			fps: 4,
+			durationFrames: 4,
+		});
+		comp.add(
+			Layer.video(sourceAv, { width: 16, height: 16, durationFrames: 4 }),
+		);
+		const vm = comp.toVirtualMedia();
+		const history = sampleMediaSignal({
+			mode: "speed",
+			fps: 4,
+			startFrame: 0,
+			durationFrames: 4,
+			sample: () => 0.5,
+		});
+		(
+			vm.children[0].operation as unknown as {
+				timeRemap: ResolvedMediaTimeRemap;
+			}
+		).timeRemap = { kind: "sampled", history };
+		const renderer = new HeadlessMediaRenderer();
+		const first = getPixel(
+			await decodePngPixels(
+				await renderer.renderFrame(vm, { frame: 0, fps: 4 }),
+			),
+			8,
+			8,
+		);
+		const third = getPixel(
+			await decodePngPixels(
+				await renderer.renderFrame(vm, { frame: 2, fps: 4 }),
+			),
+			8,
+			8,
+		);
+		expect(first.r).toBeGreaterThan(200);
+		expect(third.g).toBeGreaterThan(200);
+		const { channels } = await renderer.renderAudio(vm, {
+			fps: 4,
+			sampleRate: 48000,
+		});
+		const original = await decodeAudioSource(sourceAv);
+		if (!original) throw new Error("embedded audio did not decode");
+		for (const i of [10000, 24000, 36000])
+			expect(channels[0][i]).toBeCloseTo(
+				Math.tanh(original.channels[0][i / 2]),
+				4,
+			);
+	});
 	it("selects reverse variable-frame-rate samples by their presentation timestamps", async () => {
 		const comp = new Composition({
 			width: 16,

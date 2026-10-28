@@ -17,8 +17,8 @@
 import {
 	Effect,
 	type EffectDomain,
-	type MediaTimeRemap,
-	MediaTimeRemapSchema,
+	type MediaTimeRemapInput,
+	MediaTimeRemapInputSchema,
 	type MeshAudioDeformConfig,
 	type TextSpan,
 	type TextSpanMark,
@@ -1127,7 +1127,7 @@ export interface MediaNode extends CompositionNodeBase {
 	/** Source in-point: seconds into the clip that play at the layer's startFrame. */
 	trimStartSec?: number;
 	/** Layer-local frame to absolute source time mapping. */
-	timeRemap?: MediaTimeRemap;
+	timeRemap?: MediaTimeRemapInput;
 	// Caption styling
 	fontFamily?: string;
 	fontSize?: number;
@@ -1645,7 +1645,7 @@ export const MediaNodeSchema: z.ZodType<MediaNode> = z
 		volume: z.number().min(0).max(1).default(1),
 		muted: z.boolean().default(false),
 		trimStartSec: z.number().min(0).optional(),
-		timeRemap: MediaTimeRemapSchema.optional(),
+		timeRemap: MediaTimeRemapInputSchema.optional(),
 		// Caption styling
 		fontFamily: z.string().optional(),
 		fontSize: z.number().positive().optional(),

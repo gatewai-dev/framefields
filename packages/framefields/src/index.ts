@@ -156,6 +156,7 @@ import {
 	type MatteMode,
 	type MediaAnimatableProp,
 	type MediaNode,
+	type MediaSignalResolver,
 	type Model3DAnimatableProp,
 	type Model3DNode,
 	mergeAnimationTracks,
@@ -174,15 +175,19 @@ import {
 	type MediaMetadata,
 	type MediaOperation,
 	type MediaSourceInput,
-	type MediaTimeRemap,
 	type MeshAudioDeformConfig,
 	ProgrammaticSignal,
 	type RenderDiagnostic,
+	type ResolvedMediaTimeRemap,
 	type Signal,
 	type VirtualMediaData,
 } from "@framefields/core";
 
-export type { MediaTimeRemap } from "@framefields/core";
+export type {
+	MediaTimeRemap,
+	MediaTimeRemapInput,
+	MediaTimeSignalRemap,
+} from "@framefields/core";
 
 import {
 	analyzeSequence as analyzeVisionFrames,
@@ -272,6 +277,11 @@ import {
 	Vision,
 	type VisionProps,
 } from "./effects/index.js";
+import {
+	contextAtFrame,
+	MediaSignalTimeline,
+	remapKey,
+} from "./media-signals.js";
 import { Particles, type ParticlesOptions } from "./particles.js";
 import {
 	type FrameGridOptions,
@@ -1200,6 +1210,7 @@ export class Composition {
 	private _prepareHooks: Array<(ctx: FrameContext) => Promise<void> | void> =
 		[];
 	private readonly _clipVision = new Map<string, ClipVision>();
+	private _mediaSignals?: MediaSignalTimeline;
 	private _visionConfig?: VisionProps;
 	private _visionBundle?: VisionBundle;
 	private _effects: AnyEffect[] = [];
@@ -1253,7 +1264,11 @@ export class Composition {
 				? sourceOrLayer
 				: (sourceOrLayer.src ?? sourceOrLayer.inputHandleId);
 		if (typeof sourceOrLayer !== "string") {
-			const layer = collectNodeOps(this.toVirtualMedia().children).find(
+			// A clip is analysed frame by frame, so its signal time is live.
+			const vm = this.toVirtualMedia({
+				resolveMediaSignal: this.mediaSignalResolver(true),
+			});
+			const layer = collectNodeOps(vm.children).find(
 				(node) =>
 					(node.operation as unknown as { id?: string }).id ===
 					sourceOrLayer.id,
@@ -1265,12 +1280,14 @@ export class Composition {
 			options = {
 				startFrame: layer.operation.startFrame ?? sourceOrLayer.startFrame,
 				trimStartSec: sourceOrLayer.trimStartSec,
-				timeRemap: sourceOrLayer.timeRemap,
+				timeRemap: (
+					layer.operation as unknown as { timeRemap?: ResolvedMediaTimeRemap }
+				).timeRemap,
 				durationFrames: sourceOrLayer.durationFrames,
 				...options,
 			};
 		}
-		const key = `${source}\u0000${JSON.stringify(options)}`;
+		const key = `${source}\u0000${JSON.stringify({ ...options, timeRemap: remapKey(options.timeRemap) })}`;
 		let clip = this._clipVision.get(key);
 		if (!clip) {
 			clip = new ClipVision(source, this.fps, options);
@@ -1299,7 +1316,12 @@ export class Composition {
 	 */
 	private linkClipMattes(): void {
 		if (this._clipVision.size === 0) return;
-		let starts: Map<string | undefined, number | undefined> | undefined;
+		let layers:
+			| Map<
+					string | undefined,
+					{ startFrame?: number; timeRemap?: ResolvedMediaTimeRemap }
+			  >
+			| undefined;
 		const walk = (node: unknown): void => {
 			if (!node || typeof node !== "object") return;
 			const n = node as {
@@ -1310,7 +1332,6 @@ export class Composition {
 				src?: string;
 				startFrame?: number;
 				trimStartSec?: number;
-				timeRemap?: MediaTimeRemap;
 				vision?: unknown;
 				children?: unknown;
 			};
@@ -1321,15 +1342,21 @@ export class Composition {
 				n.vision instanceof Vision &&
 				!(CLIP_SUBJECT in n.vision)
 			) {
-				starts ??= new Map(
-					collectNodeOps(this.toVirtualMedia().children).map((node) => [
-						(node.operation as unknown as { id?: string }).id,
-						node.operation.startFrame,
-					]),
+				layers ??= new Map(
+					collectNodeOps(this.toVirtualMedia().children).map((node) => {
+						const op = node.operation as unknown as {
+							id?: string;
+							startFrame?: number;
+							timeRemap?: ResolvedMediaTimeRemap;
+						};
+						return [op.id, op];
+					}),
 				);
+				const layer = layers.get(n.id);
 				const clip = this.clipForMatte(n.src ?? n.inputHandleId, n.vision, {
-					...n,
-					startFrame: starts.get(n.id) ?? n.startFrame,
+					trimStartSec: n.trimStartSec,
+					startFrame: layer?.startFrame ?? n.startFrame,
+					timeRemap: layer?.timeRemap,
 				});
 				if (clip) {
 					clip.keepSubjects();
@@ -1351,7 +1378,7 @@ export class Composition {
 		layer: {
 			startFrame?: number;
 			trimStartSec?: number;
-			timeRemap?: MediaTimeRemap;
+			timeRemap?: ResolvedMediaTimeRemap;
 		},
 	): ClipVision | undefined {
 		const mode = v.mode ?? "passthrough";
@@ -1375,7 +1402,7 @@ export class Composition {
 				clip.source === source &&
 				clip.startFrame === (layer.startFrame ?? 0) &&
 				clip.trimStartSec === (layer.trimStartSec ?? 0) &&
-				JSON.stringify(o.timeRemap) === JSON.stringify(layer.timeRemap) &&
+				remapKey(o.timeRemap) === remapKey(layer.timeRemap) &&
 				(o.variant ?? "s") === (v.variant ?? "s") &&
 				(o.confidence ?? 0.3) === (v.confidence ?? 0.3)
 			) {
@@ -1488,16 +1515,75 @@ export class Composition {
 	}
 
 	public notifyFrame(ctx: FrameContext): Promise<void> | undefined {
+		const skipped = this._mediaSignals?.framesBefore(ctx.frame) ?? [];
+		if (skipped.length === 0) return this.runFrame(ctx);
+		// Live signal time has no gaps: a seek forward runs the frames it skips.
+		return (async () => {
+			for (const frame of skipped)
+				await this.runFrame(contextAtFrame(ctx, frame));
+			await this.runFrame(ctx);
+		})();
+	}
+
+	private runFrame(ctx: FrameContext): Promise<void> | undefined {
 		for (const hook of this._frameHooks) {
 			hook(ctx);
 		}
+		const signals = this._mediaSignals;
+		signals?.advance(ctx.frame);
 		if (this._clipVision.size === 0 && this._prepareHooks.length === 0) {
+			signals?.reach(ctx.frame);
 			return undefined;
 		}
 		return (async () => {
 			await this.prepareVision(ctx.frame);
 			for (const hook of this._prepareHooks) await hook(ctx);
+			signals?.reach(ctx.frame);
 		})();
+	}
+
+	/**
+	 * @internal Runs the frame clock through the last frame while a live
+	 * signal `timeRemap` history is incomplete, so audio can be mixed before
+	 * any frame renders (the preview does). Compile the composition first.
+	 */
+	public async prepareMediaTime(): Promise<void> {
+		const durationMs = this.durationMs ?? (await this.computeDuration());
+		const last = Math.round((durationMs / 1000) * this.fps) - 1;
+		if (!this._mediaSignals?.pending || last < 0) return;
+		await this.notifyFrame(
+			contextAtFrame(
+				{
+					frame: 0,
+					fps: this.fps,
+					time: 0,
+					duration: durationMs / 1000,
+					durationMs,
+					progress: 0,
+					deltaTime: 1 / this.fps,
+				},
+				last,
+			),
+		);
+	}
+
+	/**
+	 * Resolves signal `timeRemap`s to one shared history per layer: sampled
+	 * when nothing can change a signal mid-render, recorded live otherwise.
+	 */
+	private mediaSignalResolver(
+		live = this.hasFrameHooks(),
+		durationMs = this.durationMs,
+		signals = this.signals,
+	): MediaSignalResolver {
+		this._mediaSignals ??= new MediaSignalTimeline(this.fps);
+		return this._mediaSignals.resolver({
+			live,
+			compositionDurationFrames: Math.round(
+				((durationMs ?? 0) / 1000) * this.fps,
+			),
+			signals,
+		});
 	}
 
 	private hasFrameHooks(): boolean {
@@ -2050,11 +2136,18 @@ export class Composition {
 	public toVirtualMedia(
 		options: Partial<CompositorToProgramOptions> = {},
 	): VirtualMediaData {
+		const durationMs = options.durationMs ?? this.durationMs;
+		const signals = options.signals ?? this.signals;
 		return compositorToProgram(this.toSpec(), {
 			isVideoMode: true,
 			fps: this.fps,
-			durationMs: options.durationMs ?? this.durationMs,
-			signals: options.signals ?? this.signals,
+			durationMs,
+			signals,
+			resolveMediaSignal: this.mediaSignalResolver(
+				undefined,
+				durationMs,
+				signals,
+			),
 			...(this._effects.length > 0 && { effects: this._effects }),
 			...(this._visionConfig && { vision: this._visionConfig }),
 			...options,
@@ -2070,11 +2163,17 @@ export class Composition {
 		const durationMs =
 			options.durationMs ?? this.durationMs ?? (await this.computeDuration());
 		this.durationMs = durationMs;
+		const signals = options.signals ?? this.signals;
 		const vm = compositorToProgram(this.toSpec(), {
 			isVideoMode: true,
 			fps: this.fps,
 			durationMs,
-			signals: options.signals ?? this.signals,
+			signals,
+			resolveMediaSignal: this.mediaSignalResolver(
+				undefined,
+				durationMs,
+				signals,
+			),
 			...(this._effects.length > 0 && { effects: this._effects }),
 			...(this._visionConfig && { vision: this._visionConfig }),
 			...options,
@@ -2094,6 +2193,8 @@ export class Composition {
 			renderer?: HeadlessMediaRenderer;
 		} = {},
 	): Promise<Buffer> {
+		// Compile first: the frame's hooks then record its live signal time.
+		const vm = this.toVirtualMedia();
 		if (this.hasFrameHooks()) {
 			const targetFrame =
 				options.frame ??
@@ -2120,7 +2221,7 @@ export class Composition {
 			});
 		}
 		const renderer = options.renderer ?? new HeadlessMediaRenderer();
-		return renderer.renderFrame(this.toVirtualMedia(), {
+		return renderer.renderFrame(vm, {
 			fps: this.fps,
 			...options,
 		});

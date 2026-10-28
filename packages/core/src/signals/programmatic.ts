@@ -33,6 +33,7 @@ export class ProgrammaticSignal implements FrameSignal<number> {
 	private _fps: number;
 	private _durationFrames?: number;
 	private _cachedFrame = -1;
+	private _cachedContext?: FrameContext;
 	private _cachedValue = 0;
 	private _seekedFrame = -1;
 	// Holds the computeds that read this signal (registerSignalDependency adds them).
@@ -96,15 +97,12 @@ export class ProgrammaticSignal implements FrameSignal<number> {
 			ctx?.frame ??
 			(this._seekedFrame >= 0 ? this._seekedFrame : frameSignal.value);
 
-		if (this._cachedFrame === currentFrame) {
-			return this._cachedValue;
-		}
-
 		const fps = ctx?.fps ?? this._fps;
 		const time = ctx?.time ?? (fps > 0 ? currentFrame / fps : 0);
 		const duration = ctx?.duration ?? this._durationFrames ?? 100;
 		const durationMs = ctx?.durationMs ?? (duration / fps) * 1000;
-		const progress = duration > 0 ? currentFrame / duration : 0;
+		const progress =
+			ctx?.progress ?? (duration > 0 ? currentFrame / duration : 0);
 		const deltaTime = ctx?.deltaTime ?? (fps > 0 ? 1 / fps : 0.0416);
 
 		const resolvedCtx: FrameContext = {
@@ -116,8 +114,21 @@ export class ProgrammaticSignal implements FrameSignal<number> {
 			progress,
 			deltaTime,
 		};
+		const cached = this._cachedContext;
+		if (
+			this._cachedFrame === currentFrame &&
+			cached &&
+			cached.fps === fps &&
+			cached.time === time &&
+			cached.duration === duration &&
+			cached.durationMs === durationMs &&
+			cached.progress === progress &&
+			cached.deltaTime === deltaTime
+		)
+			return this._cachedValue;
 
 		this._cachedFrame = currentFrame;
+		this._cachedContext = resolvedCtx;
 		this._cachedValue = this._evaluator(resolvedCtx);
 		return this._cachedValue;
 	}

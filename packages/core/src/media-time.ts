@@ -1,4 +1,12 @@
 import { z } from "zod";
+import {
+	type MediaSignalRecorder,
+	type MediaSourceRange,
+	type SampledMediaSignal,
+	sampledMediaSourceRange,
+	sampledMediaSourceTime,
+} from "./media-time-signal.js";
+import { isSignal, type Signal } from "./signals/index.js";
 
 /** Maps layer-local frames to absolute source seconds. */
 export const MediaTimeRemapSchema = z.discriminatedUnion("kind", [
@@ -34,13 +42,67 @@ export const MediaTimeRemapSchema = z.discriminatedUnion("kind", [
 
 export type MediaTimeRemap = z.infer<typeof MediaTimeRemapSchema>;
 
+/**
+ * Drives source time from a signal on the composition clock: `"speed"` is
+ * playback rate (source seconds per second, integrated from `sourceStartSec`),
+ * `"source-time"` is absolute source seconds. `signal` is a signal instance or
+ * the name of a composition signal. The signal is read at every frame
+ * boundary of the layer, after that frame's hooks have run.
+ */
+export interface MediaTimeSignalRemap {
+	kind: "signal";
+	mode: "speed" | "source-time";
+	signal: Signal<number> | string;
+	sourceStartSec?: number;
+}
+
+export const MediaTimeSignalRemapSchema = z
+	.object({
+		kind: z.literal("signal"),
+		mode: z.enum(["speed", "source-time"]),
+		signal: z.union([
+			z.string().min(1),
+			z.custom<Signal<number>>(
+				isSignal,
+				"signal must be a Signal or the name of a composition signal",
+			),
+		]),
+		sourceStartSec: z.number().finite().nonnegative().optional(),
+	})
+	.strict();
+
+/** Every `timeRemap` an author can write: a fixed map or a signal binding. */
+export type MediaTimeRemapInput = MediaTimeRemap | MediaTimeSignalRemap;
+
+export const MediaTimeRemapInputSchema = z.discriminatedUnion("kind", [
+	...MediaTimeRemapSchema.options,
+	MediaTimeSignalRemapSchema,
+]);
+
+/** A per-render signal history resolved by the media timing scheduler. */
+export type ResolvedMediaTimeRemap =
+	| MediaTimeRemap
+	| { readonly kind: "sampled"; readonly history: SampledMediaSignal }
+	| { readonly kind: "recorded"; readonly recorder: MediaSignalRecorder };
+
+function assertSampledFps(history: SampledMediaSignal, fps: number): void {
+	if (history.fps !== fps)
+		throw new Error(
+			`Media signal history fps ${history.fps} does not match composition fps ${fps}`,
+		);
+}
+
 /** Validate the map against its explicit, exclusive layer duration. */
 export function validateMediaTimeRemap(
-	map: MediaTimeRemap,
+	map: MediaTimeRemapInput,
 	durationFrames: number,
 ): string | undefined {
 	if (!Number.isInteger(durationFrames) || durationFrames <= 0)
 		return "durationFrames must be a positive integer";
+	if (map.kind === "signal")
+		return map.mode === "source-time" && map.sourceStartSec !== undefined
+			? "sourceStartSec applies only to speed signals"
+			: undefined;
 	if (map.kind === "rate") return;
 	const keys = map.keyframes;
 	if (
@@ -90,12 +152,23 @@ function shapeTime(
 
 /** Absolute source seconds at a fractional layer-local frame. */
 export function mediaSourceTime(
-	map: MediaTimeRemap,
+	map: ResolvedMediaTimeRemap,
 	localFrame: number,
 	fps: number,
 ): number {
 	if (!Number.isFinite(localFrame) || !Number.isFinite(fps) || fps <= 0)
 		throw new Error("Invalid media time or fps");
+	if (map.kind === "recorded") {
+		if (map.recorder.fps !== fps)
+			throw new Error(
+				"Media signal recorder fps does not match composition fps",
+			);
+		return map.recorder.sourceTime(localFrame);
+	}
+	if (map.kind === "sampled") {
+		assertSampledFps(map.history, fps);
+		return sampledMediaSourceTime(map.history, localFrame);
+	}
 	if (map.kind === "rate")
 		return map.sourceStartSec + (localFrame / fps) * map.rate;
 	const keys = map.keyframes;
@@ -115,19 +188,46 @@ export function mediaSourceTime(
 }
 
 /** True only for a constant source-time interval, not a ramp with zero instantaneous velocity. */
-export function mediaSourceIsHold(map: MediaTimeRemap, frame: number): boolean {
+export function mediaSourceIsHold(
+	map: ResolvedMediaTimeRemap,
+	frame: number,
+): boolean {
 	if (map.kind === "rate") return false;
+	if (map.kind === "recorded") return map.recorder.isHold(frame);
+	if (map.kind === "sampled") {
+		const values = map.history.values;
+		const i = Math.max(0, Math.min(values.length - 2, Math.floor(frame)));
+		return map.history.mode === "speed"
+			? values[i] === 0 && values[i + 1] === 0
+			: values[i] === values[i + 1];
+	}
 	const i = segmentIndex(map, frame);
 	return map.keyframes[i].sourceSec === map.keyframes[i + 1].sourceSec;
 }
 
 /** Source seconds per output second at a layer-local frame. */
 export function mediaSourceRate(
-	map: MediaTimeRemap,
+	map: ResolvedMediaTimeRemap,
 	frame: number,
 	fps: number,
 ): number {
 	if (map.kind === "rate") return map.rate;
+	if (map.kind === "recorded") {
+		if (map.recorder.fps !== fps)
+			throw new Error(
+				"Media signal recorder fps does not match composition fps",
+			);
+		return map.recorder.rate(frame);
+	}
+	if (map.kind === "sampled") {
+		assertSampledFps(map.history, fps);
+		const values = map.history.values;
+		const i = Math.max(0, Math.min(values.length - 2, Math.floor(frame)));
+		const t = Math.max(0, Math.min(1, frame - i));
+		return map.history.mode === "speed"
+			? values[i] * (1 - t) + values[i + 1] * t
+			: (values[i + 1] - values[i]) * map.history.fps;
+	}
 	const i = segmentIndex(map, frame);
 	const a = map.keyframes[i];
 	const b = map.keyframes[i + 1];
@@ -145,11 +245,22 @@ export function mediaSourceRate(
 
 /** Bounds over a local-frame interval, including intermediate turns. */
 export function mediaSourceRange(
-	map: MediaTimeRemap,
+	map: ResolvedMediaTimeRemap,
 	fromFrame: number,
 	toFrame: number,
 	fps: number,
-): { min: number; max: number; maxIncluded: boolean } {
+): MediaSourceRange {
+	if (map.kind === "recorded") {
+		if (map.recorder.fps !== fps)
+			throw new Error(
+				"Media signal recorder fps does not match composition fps",
+			);
+		return map.recorder.range(fromFrame, toFrame);
+	}
+	if (map.kind === "sampled") {
+		assertSampledFps(map.history, fps);
+		return sampledMediaSourceRange(map.history, fromFrame, toFrame);
+	}
 	const start = Math.min(fromFrame, toFrame),
 		end = Math.max(fromFrame, toFrame);
 	const first = mediaSourceTime(map, start, fps);

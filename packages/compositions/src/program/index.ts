@@ -11,6 +11,7 @@ export * from "./animation.js";
 export * from "./evaluator.js";
 export * from "./lint.js";
 export * from "./mattes.js";
+export * from "./media-signal.js";
 export * from "./path-morph.js";
 export * from "./schema.js";
 export * from "./sequence.js";

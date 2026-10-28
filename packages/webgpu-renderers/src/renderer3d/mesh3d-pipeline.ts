@@ -47,6 +47,8 @@ export interface MeshUniformData extends SurfaceParams {
 	opacity?: number;
 	twoSided?: boolean;
 	wireframe?: boolean;
+	/** Blend without writing depth; the caller draws transparent meshes back to front. */
+	transparent?: boolean;
 	isSkinned?: boolean;
 	skinningMatrices?: Float32Array; // 128 * 16 floats
 	material?: "lit" | "unlit" | "toon";
@@ -92,6 +94,16 @@ export class Mesh3DPipeline {
 	private wireMrt: GPURenderPipeline;
 	private wireBloom: BloomPipelineVariants;
 	private wireShadow: GPURenderPipeline;
+	private transparentPipelines: {
+		single: GPURenderPipeline;
+		mrt: GPURenderPipeline;
+		bloom: BloomPipelineVariants;
+	};
+	private transparentWirePipelines: {
+		single: GPURenderPipeline;
+		mrt: GPURenderPipeline;
+		bloom: BloomPipelineVariants;
+	};
 	/** Depth only (skinning included): draws a caster into a shadow map. */
 	public pipelineShadow: GPURenderPipeline;
 	public cameraLayout: GPUBindGroupLayout;
@@ -246,6 +258,24 @@ export class Mesh3DPipeline {
 		this.wireSingle = wire.single;
 		this.wireMrt = wire.mrt;
 		this.wireBloom = new BloomPipelineVariants(device, wireBase);
+		const transparentBase: PipelineVariantBase = {
+			...base,
+			label: "Mesh3DTransparent",
+			depthStencil: { ...base.depthStencil, depthWriteEnabled: false },
+		};
+		const transparentWireBase: PipelineVariantBase = {
+			...transparentBase,
+			label: "Mesh3DTransparentWireframe",
+			primitive: wireBase.primitive,
+		};
+		this.transparentPipelines = {
+			...createBasePipelines(device, transparentBase),
+			bloom: new BloomPipelineVariants(device, transparentBase),
+		};
+		this.transparentWirePipelines = {
+			...createBasePipelines(device, transparentWireBase),
+			bloom: new BloomPipelineVariants(device, transparentWireBase),
+		};
 		this.wireShadow = device.createRenderPipeline({
 			label: "Mesh3DWireframeShadow",
 			layout: device.createPipelineLayout({
@@ -435,16 +465,23 @@ export class Mesh3DPipeline {
 		if (wireframe && !meshBuffers.wireIndexBuffer) {
 			throw new Error("Wireframe requires mesh buffers with edge indices");
 		}
+		const variants = data.transparent
+			? wireframe
+				? this.transparentWirePipelines
+				: this.transparentPipelines
+			: wireframe
+				? { single: this.wireSingle, mrt: this.wireMrt, bloom: this.wireBloom }
+				: {
+						single: this.pipelineSingle,
+						mrt: this.pipelineMrt,
+						bloom: this.bloomVariants,
+					};
 		pass.setPipeline(
 			useBloom
-				? (wireframe ? this.wireBloom : this.bloomVariants).get(useMrt)
-				: wireframe
-					? useMrt
-						? this.wireMrt
-						: this.wireSingle
-					: useMrt
-						? this.pipelineMrt
-						: this.pipelineSingle,
+				? variants.bloom.get(useMrt)
+				: useMrt
+					? variants.mrt
+					: variants.single,
 		);
 		pass.setBindGroup(0, cameraBindGroup);
 		pass.setBindGroup(1, modelBindGroup);

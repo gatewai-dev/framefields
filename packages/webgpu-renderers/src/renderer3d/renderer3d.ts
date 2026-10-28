@@ -150,6 +150,8 @@ export interface DrawMesh3DOpts extends SurfaceParams {
 	twoSided?: boolean;
 	/** Wireframe mode */
 	wireframe?: boolean;
+	/** Blend without writing depth; draw transparent meshes back to front. */
+	transparent?: boolean;
 	/** Whether vertex skinning is enabled */
 	isSkinned?: boolean;
 	/** Skinning matrices (128 * 16 floats) */
@@ -1346,6 +1348,7 @@ export class Renderer3D {
 				opacity,
 				twoSided,
 				wireframe,
+				transparent: opts.transparent ?? (opacity < 1 || colorTint[3] < 1),
 				isSkinned,
 				skinningMatrices,
 				material:

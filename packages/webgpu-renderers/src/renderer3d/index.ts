@@ -1,5 +1,6 @@
 export * from "./audio-mesh-deform-pipeline.js";
 export * from "./bloom-pipeline.js";
+export * from "./floor-reflection-pipeline.js";
 export * from "./glass-pipeline.js";
 export * from "./matte3d.js";
 export * from "./mesh3d-pipeline.js";

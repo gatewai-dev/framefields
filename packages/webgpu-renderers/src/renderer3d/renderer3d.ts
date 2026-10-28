@@ -23,6 +23,7 @@ import type {
 	Model3DData,
 } from "../loaders/types.js";
 import type {
+	Environment3DFloor,
 	Environment3DOptions,
 	ShadowUniformInfo,
 } from "../math3d/environment3d.js";
@@ -44,6 +45,7 @@ import { dofBokehWgsl } from "../shaders/dof-bokeh.js";
 import type { SlugGlyphBatch } from "../slug/slug-pipeline.js";
 import { AudioMeshDeformPipeline } from "./audio-mesh-deform-pipeline.js";
 import { type BloomOptions, BloomPipeline } from "./bloom-pipeline.js";
+import { FloorReflectionPipeline } from "./floor-reflection-pipeline.js";
 import {
 	type GPUMeshBuffers,
 	Mesh3DPipeline,
@@ -240,6 +242,7 @@ export class Renderer3D {
 	public mesh3dPipeline: Mesh3DPipeline;
 	public audioMeshDeformPipeline: AudioMeshDeformPipeline;
 	public swarm3dPipeline: Swarm3DPipeline;
+	public floorReflectionPipeline: FloorReflectionPipeline;
 	private dofPipeline: GPURenderPipeline;
 	private dofBindGroupLayout: GPUBindGroupLayout;
 	private cameraPool: BufferPool;
@@ -249,6 +252,11 @@ export class Renderer3D {
 	private samplerCache = new SamplerCache();
 	private depthTexture: GPUTexture | null = null;
 	private linearDepthTexture: GPUTexture | null = null;
+	private reflectionColorTexture: GPUTexture | null = null;
+	private reflectionMsaaColorTexture: GPUTexture | null = null;
+	private reflectionDepthTexture: GPUTexture | null = null;
+	private reflectionTempTexture: GPUTexture | null = null;
+	private reflectionBlurredTexture: GPUTexture | null = null;
 	// Multisampled targets the pass draws into; they resolve into the caller's views.
 	private msaaColorTexture: GPUTexture | null = null;
 	private msaaLinearDepthTexture: GPUTexture | null = null;
@@ -311,6 +319,14 @@ export class Renderer3D {
 		);
 		this.audioMeshDeformPipeline = new AudioMeshDeformPipeline(device);
 		this.swarm3dPipeline = new Swarm3DPipeline(device);
+		this.floorReflectionPipeline = new FloorReflectionPipeline(
+			device,
+			format,
+			sampleCount,
+			this.quad3dPipeline.cameraLayout,
+			this.quad3dPipeline.lightsLayout,
+			"depth24plus",
+		);
 
 		this.cameraPool = new BufferPool(
 			320,
@@ -472,6 +488,99 @@ export class Renderer3D {
 			});
 		}
 		return this.linearDepthTexture;
+	}
+
+	getOrCreateReflectionTexture(width: number, height: number): GPUTexture {
+		if (
+			!this.reflectionColorTexture ||
+			this.reflectionColorTexture.width !== width ||
+			this.reflectionColorTexture.height !== height
+		) {
+			this.reflectionColorTexture?.destroy();
+			this.reflectionColorTexture = this.device.createTexture({
+				label: "Renderer3DReflectionColor",
+				size: { width, height },
+				format: this.format,
+				usage:
+					GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+			});
+		}
+		return this.reflectionColorTexture;
+	}
+
+	getOrCreateReflectionMsaaTexture(width: number, height: number): GPUTexture {
+		if (
+			!this.reflectionMsaaColorTexture ||
+			this.reflectionMsaaColorTexture.width !== width ||
+			this.reflectionMsaaColorTexture.height !== height
+		) {
+			this.reflectionMsaaColorTexture?.destroy();
+			this.reflectionMsaaColorTexture = this.device.createTexture({
+				label: "Renderer3DReflectionMsaaColor",
+				size: { width, height },
+				format: this.format,
+				sampleCount: this.sampleCount,
+				usage: GPUTextureUsage.RENDER_ATTACHMENT,
+			});
+		}
+		return this.reflectionMsaaColorTexture;
+	}
+
+	getOrCreateReflectionDepthTexture(width: number, height: number): GPUTexture {
+		if (
+			!this.reflectionDepthTexture ||
+			this.reflectionDepthTexture.width !== width ||
+			this.reflectionDepthTexture.height !== height
+		) {
+			this.reflectionDepthTexture?.destroy();
+			this.reflectionDepthTexture = this.device.createTexture({
+				label: "Renderer3DReflectionDepth",
+				size: { width, height },
+				format: "depth24plus",
+				sampleCount: this.sampleCount,
+				usage: GPUTextureUsage.RENDER_ATTACHMENT,
+			});
+		}
+		return this.reflectionDepthTexture;
+	}
+
+	getOrCreateReflectionTempTexture(width: number, height: number): GPUTexture {
+		if (
+			!this.reflectionTempTexture ||
+			this.reflectionTempTexture.width !== width ||
+			this.reflectionTempTexture.height !== height
+		) {
+			this.reflectionTempTexture?.destroy();
+			this.reflectionTempTexture = this.device.createTexture({
+				label: "Renderer3DReflectionTemp",
+				size: { width, height },
+				format: this.format,
+				usage:
+					GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+			});
+		}
+		return this.reflectionTempTexture;
+	}
+
+	getOrCreateReflectionBlurredTexture(
+		width: number,
+		height: number,
+	): GPUTexture {
+		if (
+			!this.reflectionBlurredTexture ||
+			this.reflectionBlurredTexture.width !== width ||
+			this.reflectionBlurredTexture.height !== height
+		) {
+			this.reflectionBlurredTexture?.destroy();
+			this.reflectionBlurredTexture = this.device.createTexture({
+				label: "Renderer3DReflectionBlurred",
+				size: { width, height },
+				format: this.format,
+				usage:
+					GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+			});
+		}
+		return this.reflectionBlurredTexture;
 	}
 
 	packCameraUniforms(
@@ -902,6 +1011,128 @@ export class Renderer3D {
 		});
 
 		return { pass, cameraBindGroup, cameraBuffer, lightsBindGroup };
+	}
+
+	beginReflectionPass(
+		encoder: GPUCommandEncoder,
+		surfaceWidth: number,
+		surfaceHeight: number,
+		camera: Camera3DPose,
+		lights?: Light3DOptions[],
+		world?: Scene3DWorld,
+	): {
+		pass: GPURenderPassEncoder;
+		cameraBindGroup: GPUBindGroup;
+		lightsBindGroup: GPUBindGroup;
+		reflectionTexture: GPUTexture;
+	} {
+		this.passWritesHdr = false;
+		const reflWidth = Math.max(1, Math.floor(surfaceWidth / 2));
+		const reflHeight = Math.max(1, Math.floor(surfaceHeight / 2));
+		const colorTex = this.getOrCreateReflectionTexture(reflWidth, reflHeight);
+		const depthTex = this.getOrCreateReflectionDepthTexture(
+			reflWidth,
+			reflHeight,
+		);
+
+		const cameraBuffer = this.packCameraUniforms(camera, reflWidth, reflHeight);
+		const cameraBindGroup = this.createCameraBindGroup(cameraBuffer);
+
+		const lightsData = Light3D.packLightsUniforms(
+			lights ?? [],
+			world?.environment,
+			world?.shadow,
+			true,
+		);
+		const lightsBuffer = this.lightsPool.getBuffer(this.device, lightsData);
+		const lightsBindGroup = this.createLightsBindGroup(
+			lightsBuffer,
+			Boolean(world?.shadow),
+		);
+
+		const msaa = this.sampleCount > 1;
+		const msaaTex = msaa
+			? this.getOrCreateReflectionMsaaTexture(reflWidth, reflHeight)
+			: null;
+
+		const colorAttachments: GPURenderPassColorAttachment[] = [
+			msaaTex
+				? {
+						view: msaaTex.createView(),
+						resolveTarget: colorTex.createView(),
+						loadOp: "clear",
+						storeOp: "discard",
+						clearValue: { r: 0, g: 0, b: 0, a: 0 },
+					}
+				: {
+						view: colorTex.createView(),
+						loadOp: "clear",
+						storeOp: "store",
+						clearValue: { r: 0, g: 0, b: 0, a: 0 },
+					},
+		];
+
+		const pass = encoder.beginRenderPass({
+			colorAttachments,
+			depthStencilAttachment: {
+				view: depthTex.createView(),
+				depthClearValue: 1.0,
+				depthLoadOp: "clear",
+				depthStoreOp: msaa ? "discard" : "store",
+			},
+		});
+
+		return {
+			pass,
+			cameraBindGroup,
+			lightsBindGroup,
+			reflectionTexture: colorTex,
+		};
+	}
+
+	blurReflection(
+		encoder: GPUCommandEncoder,
+		reflectionTexture: GPUTexture,
+		roughness: number,
+	): GPUTexture {
+		if (roughness <= 0.001) {
+			return reflectionTexture;
+		}
+		const width = reflectionTexture.width;
+		const height = reflectionTexture.height;
+		const tempTex = this.getOrCreateReflectionTempTexture(width, height);
+		const blurredTex = this.getOrCreateReflectionBlurredTexture(width, height);
+
+		this.floorReflectionPipeline.applyBlur(
+			encoder,
+			reflectionTexture,
+			tempTex,
+			blurredTex,
+			width,
+			height,
+			roughness,
+		);
+		return blurredTex;
+	}
+
+	drawFloor(
+		pass: GPURenderPassEncoder,
+		cameraBindGroup: GPUBindGroup,
+		lightsBindGroup: GPUBindGroup,
+		reflectionTexture: GPUTexture,
+		floor: Environment3DFloor,
+		useMrt = false,
+		useBloom = false,
+	): void {
+		this.floorReflectionPipeline.draw(
+			pass,
+			cameraBindGroup,
+			lightsBindGroup,
+			reflectionTexture,
+			floor,
+			useMrt,
+			useBloom,
+		);
 	}
 
 	/**
@@ -1634,6 +1865,12 @@ export class Renderer3D {
 		this.quad3dPipeline.destroy();
 		this.slug3dPipeline.destroy();
 		this.mesh3dPipeline.destroy();
+		this.floorReflectionPipeline.destroy();
+		this.reflectionColorTexture?.destroy();
+		this.reflectionMsaaColorTexture?.destroy();
+		this.reflectionDepthTexture?.destroy();
+		this.reflectionTempTexture?.destroy();
+		this.reflectionBlurredTexture?.destroy();
 		this.cameraPool.destroy();
 		this.lightsPool.destroy();
 		this.instancePool.destroy();

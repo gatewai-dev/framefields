@@ -1314,6 +1314,25 @@ export const BloomConfigSchema = z
 	.strict();
 export type BloomConfig = z.infer<typeof BloomConfigSchema>;
 
+export const EnvironmentFloorSchema = z
+	.object({
+		/** World Y coordinate of the floor plane (px, y down). */
+		y: z.number(),
+		/** Base floor surface color (default "#08070a"). */
+		color: ColorSchema.optional(),
+		/** Mirror reflectivity at normal incidence / Fresnel scale, 0..1 (default 0.35). */
+		reflectivity: z.number().min(0).max(1).optional(),
+		/** Surface roughness 0..1: controls anisotropic vertical/horizontal reflection blur (default 0.35). */
+		roughness: z.number().min(0).max(1).optional(),
+		/** Reflection fade-out distance from the floor plane in world Y px (default 900). */
+		fadeDistance: z.number().min(0).optional(),
+		/** Optional overall opacity of the floor plane, 0..1 (default 1; 0 draws only additive reflection over background). */
+		opacity: z.number().min(0).max(1).optional(),
+	})
+	.strict();
+
+export type EnvironmentFloor = z.infer<typeof EnvironmentFloorSchema>;
+
 export interface LightNode {
 	id: string;
 	kind: "light";
@@ -1349,6 +1368,7 @@ export interface LightNode {
 	exposure?: number;
 	toneMapping?: ToneMapping;
 	fog?: EnvironmentFog;
+	floor?: EnvironmentFloor;
 	/** Glow around emissive surfaces and hot highlights: `true` or settings. */
 	bloom?: boolean | BloomConfig;
 	startFrame?: number;
@@ -1387,6 +1407,7 @@ export const LightNodeSchema: z.ZodType<LightNode> = z
 		exposure: z.number().min(-16).max(16).optional(),
 		toneMapping: ToneMappingSchema.optional(),
 		fog: EnvironmentFogSchema.optional(),
+		floor: EnvironmentFloorSchema.optional(),
 		bloom: z.union([z.boolean(), BloomConfigSchema]).optional(),
 		startFrame: z.number().int().min(0).default(0),
 		durationFrames: z.number().int().min(1).optional(),

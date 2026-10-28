@@ -517,6 +517,8 @@ export {
 	type EaseRef,
 	type EnhancedTextNode,
 	EnhancedTextNodeSchema,
+	type EnvironmentFloor,
+	EnvironmentFloorSchema,
 	type EnvironmentFog,
 	EnvironmentFogSchema,
 	type EnvironmentPreset,
@@ -3366,6 +3368,7 @@ export type EnvironmentOptions = Partial<
 		| "exposure"
 		| "toneMapping"
 		| "fog"
+		| "floor"
 		| "bloom"
 		| "startFrame"
 		| "durationFrames"

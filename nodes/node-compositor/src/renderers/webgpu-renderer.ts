@@ -1289,6 +1289,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 						exposure: target?.exposure ?? lop.exposure,
 						toneMapping: lop.toneMapping,
 						fog: lop.fog,
+						floor: lop.floor,
 						...(intensity !== undefined && { intensity }),
 					};
 					sceneBloom =
@@ -1452,25 +1453,6 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				}
 			}
 
-			const {
-				pass: pass3d,
-				cameraBindGroup,
-				cameraBuffer,
-				lightsBindGroup,
-			} = r3d.beginPass(
-				encoder,
-				scene3dView,
-				nativeWidth,
-				nativeHeight,
-				camera,
-				"clear",
-				{ r: 0, g: 0, b: 0, a: 0 },
-				linearDepthView,
-				sceneLights,
-				{ environment: sceneEnvironment, shadow },
-				Boolean(sceneBloom),
-			);
-
 			// Opaque objects establish depth first. Sort blended meshes across the
 			// whole batch by camera-space depth, then draw glass as before.
 			const isGlass = (item: Pending3DItem) =>
@@ -1504,6 +1486,108 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				...transparent.map(({ item }) => item),
 				...glass,
 			];
+
+			// Planar floor reflection pass (if environment.floor is active)
+			const floorSpec = sceneEnvironment?.floor;
+			let blurredReflectionTex: GPUTexture | null = null;
+			if (
+				floorSpec &&
+				typeof floorSpec.y === "number" &&
+				camera.eye[1] < floorSpec.y
+			) {
+				const reflectedCamera: Camera3DPose = {
+					...camera,
+					eye: [camera.eye[0], 2 * floorSpec.y - camera.eye[1], camera.eye[2]],
+					target: [
+						camera.target[0],
+						2 * floorSpec.y - camera.target[1],
+						camera.target[2],
+					],
+					up: [camera.up[0], camera.up[1], camera.up[2]],
+				};
+				const {
+					pass: reflPass,
+					cameraBindGroup: reflCamBind,
+					lightsBindGroup: reflLightsBind,
+					reflectionTexture: reflTex,
+				} = r3d.beginReflectionPass(
+					encoder,
+					nativeWidth,
+					nativeHeight,
+					reflectedCamera,
+					sceneLights,
+					{ environment: sceneEnvironment, shadow: null },
+				);
+				for (const item of ordered) {
+					if (item.kind === "quad") {
+						r3d.drawTextureQuad(
+							reflPass,
+							reflCamBind,
+							reflLightsBind,
+							item.texture,
+							item.opts,
+							false,
+						);
+					} else if (item.kind === "slug") {
+						r3d.drawSlugText(
+							reflPass,
+							reflCamBind,
+							reflLightsBind,
+							item.batches,
+							item.opts,
+							item.stackBase,
+							false,
+						);
+					} else if (item.kind === "mesh") {
+						r3d.drawMesh3D(
+							reflPass,
+							reflCamBind,
+							reflLightsBind,
+							item.meshBuffers ?? item.mesh,
+							item.texture,
+							item.opts,
+							false,
+						);
+					}
+				}
+				reflPass.end();
+				blurredReflectionTex = r3d.blurReflection(
+					encoder,
+					reflTex,
+					floorSpec.roughness ?? 0.35,
+				);
+			}
+
+			const {
+				pass: pass3d,
+				cameraBindGroup,
+				cameraBuffer,
+				lightsBindGroup,
+			} = r3d.beginPass(
+				encoder,
+				scene3dView,
+				nativeWidth,
+				nativeHeight,
+				camera,
+				"clear",
+				{ r: 0, g: 0, b: 0, a: 0 },
+				linearDepthView,
+				sceneLights,
+				{ environment: sceneEnvironment, shadow },
+				Boolean(sceneBloom),
+			);
+
+			if (floorSpec && blurredReflectionTex) {
+				r3d.drawFloor(
+					pass3d,
+					cameraBindGroup,
+					lightsBindGroup,
+					blurredReflectionTex,
+					floorSpec,
+					dofEnabled,
+					Boolean(sceneBloom),
+				);
+			}
 			for (const item of ordered) {
 				if (item.kind === "quad") {
 					r3d.drawTextureQuad(

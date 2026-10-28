@@ -1,5 +1,11 @@
 # @framefields/webgpu-renderers
 
+## 2.7.0
+
+### Minor Changes
+
+- 18aece7: Add forward and reverse media time remapping for video and audio layers, including smooth ramps, video holds, silent audio holds, source range checks and clip vision synchronization. Reverse video decoding uses a bounded frame cache.
+
 ## 2.6.2
 
 ## 2.6.1

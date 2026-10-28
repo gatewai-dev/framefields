@@ -1,5 +1,12 @@
 # @framefields/compositions
 
+## 2.7.0
+
+### Minor Changes
+
+- 18aece7: Add forward and reverse media time remapping for video and audio layers, including smooth ramps, video holds, silent audio holds, source range checks and clip vision synchronization. Reverse video decoding uses a bounded frame cache.
+- e56c7f5: Drive media `timeRemap` from a signal: `{ kind: "signal", mode: "speed" | "source-time", signal }` accepts a signal instance or a named composition signal. Without frame hooks the signal is sampled up front; with hooks it is recorded live after each frame's hooks, replayed for seeks, audio, vision and the preview, and its source bounds are checked as it records.
+
 ## 2.6.2
 
 ## 2.6.1

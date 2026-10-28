@@ -705,10 +705,11 @@ export class Renderer3D {
 				this.mesh3dPipeline.drawShadow(
 					pass,
 					lightCamBindGroup,
-					c.buffers ?? this.getOrCreateMeshBuffers(c.mesh),
+					c.buffers ?? this.getOrCreateMeshBuffers(c.mesh, c.opts.wireframe),
 					{
 						modelMatrix: m,
 						normalMatrix: c.opts.normalMatrix ?? Light3D.computeNormalMatrix(m),
+						wireframe: c.opts.wireframe,
 						isSkinned: c.opts.isSkinned,
 						skinningMatrices: c.opts.skinningMatrices,
 					},
@@ -1093,9 +1094,12 @@ export class Renderer3D {
 		);
 	}
 
-	getOrCreateMeshBuffers(mesh: Mesh3DData): GPUMeshBuffers {
+	getOrCreateMeshBuffers(mesh: Mesh3DData, wireframe = false): GPUMeshBuffers {
 		let cached = this.meshBuffersCache.get(mesh);
-		if (cached) return cached;
+		if (cached) {
+			if (wireframe) this.ensureWireIndices(mesh, cached);
+			return cached;
+		}
 
 		const numVerts = mesh.positions.length / 3;
 		// 16 floats per vertex: 3 (pos) + 2 (uv) + 3 (norm) + 4 (joints) + 4 (weights)
@@ -1193,7 +1197,46 @@ export class Renderer3D {
 			colorBuffer,
 		};
 		this.meshBuffersCache.set(mesh, cached);
+		if (wireframe) this.ensureWireIndices(mesh, cached);
 		return cached;
+	}
+
+	private ensureWireIndices(mesh: Mesh3DData, buffers: GPUMeshBuffers): void {
+		if (buffers.wireIndexBuffer) return;
+		const edges = new Set<string>();
+		const indices: number[] = [];
+		for (let i = 0; i + 2 < mesh.indices.length; i += 3) {
+			const triangle = [
+				mesh.indices[i]!,
+				mesh.indices[i + 1]!,
+				mesh.indices[i + 2]!,
+			];
+			for (let j = 0; j < 3; j++) {
+				const a = triangle[j]!;
+				const b = triangle[(j + 1) % 3]!;
+				if (a === b) continue;
+				const key = a < b ? `${a},${b}` : `${b},${a}`;
+				if (edges.has(key)) continue;
+				edges.add(key);
+				indices.push(a, b);
+			}
+		}
+		const data =
+			buffers.indexFormat === "uint32"
+				? new Uint32Array(indices)
+				: new Uint16Array(indices);
+		const buffer = this.device.createBuffer({
+			label: "Mesh3DWireIndices",
+			size: Math.max(4, Math.ceil(data.byteLength / 4) * 4),
+			usage: GPUBufferUsage.INDEX,
+			mappedAtCreation: true,
+		});
+		if (data instanceof Uint32Array)
+			new Uint32Array(buffer.getMappedRange()).set(data);
+		else new Uint16Array(buffer.getMappedRange()).set(data);
+		buffer.unmap();
+		buffers.wireIndexBuffer = buffer;
+		buffers.wireIndexCount = data.length;
 	}
 
 	deformMesh(
@@ -1205,8 +1248,9 @@ export class Renderer3D {
 			timeMs?: number;
 			sampleRate?: number;
 		},
+		wireframe = false,
 	): GPUMeshBuffers {
-		const meshBuffers = this.getOrCreateMeshBuffers(mesh);
+		const meshBuffers = this.getOrCreateMeshBuffers(mesh, wireframe);
 		const numVerts = mesh.positions.length / 3;
 		const deformedVertexBuffer = this.audioMeshDeformPipeline.execute(
 			encoder,
@@ -1225,6 +1269,8 @@ export class Renderer3D {
 			indexCount: meshBuffers.indexCount,
 			indexFormat: meshBuffers.indexFormat,
 			colorBuffer: meshBuffers.colorBuffer,
+			wireIndexBuffer: meshBuffers.wireIndexBuffer,
+			wireIndexCount: meshBuffers.wireIndexCount,
 		};
 	}
 
@@ -1240,7 +1286,7 @@ export class Renderer3D {
 		const meshBuffers =
 			"vertexBuffer" in meshOrBuffers
 				? meshOrBuffers
-				: this.getOrCreateMeshBuffers(meshOrBuffers);
+				: this.getOrCreateMeshBuffers(meshOrBuffers, opts.wireframe);
 
 		const {
 			opacity = 1.0,

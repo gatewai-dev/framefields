@@ -277,6 +277,8 @@ export interface Primitive3DNodeOptions extends Surface3DOptions {
 	scaleX?: number;
 	scaleY?: number;
 	scaleZ?: number;
+	/** Draw triangle edges instead of filled surfaces. */
+	wireframe?: boolean;
 	/** Surface color baked into the mesh (default white). */
 	color?: string;
 	/**
@@ -358,6 +360,7 @@ function primitiveNode(
 			castShadow: o.castShadow,
 		}),
 		twoSided: false,
+		wireframe: o.wireframe,
 		startFrame: o.startFrame,
 		durationFrames: o.durationFrames,
 	});

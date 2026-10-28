@@ -1309,6 +1309,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 						encoder,
 						item.mesh,
 						item.opts.audioDeform,
+						item.opts.wireframe,
 					);
 				}
 			}

@@ -41,6 +41,49 @@ function stage() {
 }
 
 describe("Layer3D mesh primitives", () => {
+	it("renders mesh triangle edges when wireframe is enabled", async () => {
+		const render = async (wireframe: boolean) => {
+			const comp = stage();
+			comp.add(
+				Layer.directionalLight({
+					color: "#ffffff",
+					intensity: 1,
+					x: 200,
+					y: -300,
+					z: -400,
+					targetX: 400,
+					targetY: 300,
+					targetZ: 0,
+					castShadow: true,
+				}),
+			);
+			comp.add(
+				Layer3D.roundedBox({
+					width: 220,
+					height: 180,
+					depth: 120,
+					x: 400,
+					y: 300,
+					color: "#ffffff",
+					material: "lit",
+					wireframe,
+				}),
+			);
+			return decode(await comp.renderFrame({ frame: 0 }));
+		};
+		const solid = await render(false);
+		const wire = await render(true);
+		const lit = (pixels: Uint8ClampedArray) => {
+			let count = 0;
+			for (let i = 0; i < pixels.length; i += 4) {
+				if (pixels[i]! > 50) count++;
+			}
+			return count;
+		};
+		expect(lit(wire.data)).toBeGreaterThan(100);
+		expect(lit(wire.data)).toBeLessThan(lit(solid.data) / 4);
+	});
+
 	it("draws a rounded box's top face from above, single-sided", async () => {
 		const comp = stage();
 		comp.add(

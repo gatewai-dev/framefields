@@ -1,6 +1,5 @@
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { Camera3D } from "../math3d/index.js";
-import { Renderer3D } from "./renderer3d.js";
 import {
 	createMockCommandEncoder,
 	createMockDevice,
@@ -8,6 +7,7 @@ import {
 	createMockTexture,
 	ensureDOMGlobals,
 } from "../renderer2d/test-helpers.js";
+import { Renderer3D } from "./renderer3d.js";
 
 describe("Renderer3D Subsystem", () => {
 	beforeAll(() => {
@@ -94,14 +94,20 @@ describe("Renderer3D Subsystem", () => {
 		const lightsBindGroup = {} as GPUBindGroup;
 		const texture = createMockTexture(500, 300) as any;
 
-		renderer3d.drawTextureQuad(pass as any, cameraBindGroup, lightsBindGroup, texture, {
-			position: [960, 540, 200],
-			width: 600,
-			height: 400,
-			rotation: [15, -20, 0],
-			opacity: 0.9,
-			twoSided: true,
-		});
+		renderer3d.drawTextureQuad(
+			pass as any,
+			cameraBindGroup,
+			lightsBindGroup,
+			texture,
+			{
+				position: [960, 540, 200],
+				width: 600,
+				height: 400,
+				rotation: [15, -20, 0],
+				opacity: 0.9,
+				twoSided: true,
+			},
+		);
 
 		expect(pass.setPipeline).toHaveBeenCalled();
 		expect(pass.setBindGroup).toHaveBeenCalledWith(0, cameraBindGroup);
@@ -148,6 +154,41 @@ describe("Renderer3D Subsystem", () => {
 		glass.destroy();
 	});
 
+	for (const IndexArray of [Uint16Array, Uint32Array]) {
+		it(`deduplicates shared wireframe edges and draws them with ${IndexArray.name}`, () => {
+			const mesh = {
+				positions: new Float32Array([0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0]),
+				normals: new Float32Array(12),
+				uvs: new Float32Array(8),
+				indices: new IndexArray([0, 1, 2, 0, 2, 3]),
+			};
+			const solid = renderer3d.getOrCreateMeshBuffers(mesh);
+			expect(solid.wireIndexBuffer).toBeUndefined();
+			const wire = renderer3d.getOrCreateMeshBuffers(mesh, true);
+			expect(wire).toBe(solid);
+			expect(wire.wireIndexCount).toBe(10);
+			if (!wire.wireIndexBuffer)
+				throw new Error("Missing wireframe index buffer");
+			expect(
+				Array.from(new IndexArray(wire.wireIndexBuffer.getMappedRange())),
+			).toEqual([0, 1, 1, 2, 2, 0, 2, 3, 3, 0]);
+			const pass = createMockRenderPassEncoder();
+			renderer3d.drawMesh3D(
+				pass,
+				{} as GPUBindGroup,
+				{} as GPUBindGroup,
+				mesh,
+				undefined,
+				{ wireframe: true },
+			);
+			expect(pass.setIndexBuffer).toHaveBeenCalledWith(
+				wire.wireIndexBuffer,
+				wire.indexFormat,
+			);
+			expect(pass.drawIndexed).toHaveBeenCalledWith(10);
+		});
+	}
+
 	it("deforms 3D mesh via deformMesh before draw dispatch", () => {
 		const encoder = createMockCommandEncoder();
 		const meshData = {
@@ -162,19 +203,25 @@ describe("Renderer3D Subsystem", () => {
 			usage: GPUBufferUsage.STORAGE,
 		});
 
-		const deformedBuffers = renderer3d.deformMesh(encoder as any, meshData, {
-			config: {
-				audioTrackId: "beat",
-				mode: "normal_extrusion",
-				amplitudeMultiplier: 1.5,
+		const deformedBuffers = renderer3d.deformMesh(
+			encoder as any,
+			meshData,
+			{
+				config: {
+					audioTrackId: "beat",
+					mode: "normal_extrusion",
+					amplitudeMultiplier: 1.5,
+				},
+				latentBuffer: latentBuffer as any,
+				timeMs: 250,
 			},
-			latentBuffer: latentBuffer as any,
-			timeMs: 250,
-		});
+			true,
+		);
 
+		expect(deformedBuffers.wireIndexCount).toBe(6);
+		expect(deformedBuffers.wireIndexBuffer).toBeDefined();
 		expect(deformedBuffers).toBeDefined();
 		expect(deformedBuffers.vertexBuffer).toBeDefined();
 		expect(encoder.beginComputePass).toHaveBeenCalled();
 	});
 });
-

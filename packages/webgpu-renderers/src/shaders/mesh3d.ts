@@ -17,7 +17,7 @@ struct ModelUniforms {
     modelMatrix    : mat4x4<f32>,
     normalMatrix   : mat4x4<f32>,
     colorTint      : vec4<f32>,
-    params         : vec4<f32>, // x = opacity, y = twoSided (1.0 = yes), z = isSkinned (1.0 = yes), w = wireframe
+    params         : vec4<f32>, // x = opacity, y = twoSided (1.0 = yes), z = isSkinned (1.0 = yes), w = reserved
     materialParams : vec4<f32>, // x = shininess, y = specularIntensity, z = ambientIntensity, w = materialMode (0=unlit, 1=lit, 2=toon)
     shade          : vec4<f32>, // rgb = toon shadow-side color multiplier, a = alpha cutoff (0 = none)
     pbr            : vec4<f32>, // x = roughness (<0 = default), y = metallic

@@ -3,6 +3,11 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { decodeAudioSource } from "@framefields/compositions";
+import {
+	MediaSignalRecorder,
+	type ResolvedMediaTimeRemap,
+	sampleMediaSignal,
+} from "@framefields/core";
 import { beforeAll, describe, expect, it } from "vitest";
 import {
 	Blur,
@@ -137,6 +142,101 @@ beforeAll(async () => {
 });
 
 describe.skipIf(!hasFfmpeg)("remapped video", () => {
+	it("replays a completed live signal history through video and audio", async () => {
+		const comp = new Composition({
+			width: 16,
+			height: 16,
+			fps: 4,
+			durationFrames: 4,
+		});
+		comp.add(
+			Layer.video(sourceAv, { width: 16, height: 16, durationFrames: 4 }),
+		);
+		const recorder = new MediaSignalRecorder({
+			mode: "speed",
+			fps: 4,
+			startFrame: 0,
+			durationFrames: 4,
+		});
+		for (let frame = 0; frame <= 4; frame++) recorder.record(frame, 0.5);
+		const vm = comp.toVirtualMedia();
+		(
+			vm.children[0].operation as unknown as {
+				timeRemap: ResolvedMediaTimeRemap;
+			}
+		).timeRemap = { kind: "recorded", recorder };
+		const renderer = new HeadlessMediaRenderer();
+		const frame = getPixel(
+			await decodePngPixels(
+				await renderer.renderFrame(vm, { frame: 2, fps: 4 }),
+			),
+			8,
+			8,
+		);
+		expect(frame.g).toBeGreaterThan(200);
+		const { channels } = await renderer.renderAudio(vm, {
+			fps: 4,
+			sampleRate: 48000,
+		});
+		const original = await decodeAudioSource(sourceAv);
+		if (!original) throw new Error("embedded audio did not decode");
+		expect(channels[0][24000]).toBeCloseTo(
+			Math.tanh(original.channels[0][12000]),
+			4,
+		);
+	});
+	it("uses recorded signal history for both rendered video and audio", async () => {
+		const comp = new Composition({
+			width: 16,
+			height: 16,
+			fps: 4,
+			durationFrames: 4,
+		});
+		comp.add(
+			Layer.video(sourceAv, { width: 16, height: 16, durationFrames: 4 }),
+		);
+		const vm = comp.toVirtualMedia();
+		const history = sampleMediaSignal({
+			mode: "speed",
+			fps: 4,
+			startFrame: 0,
+			durationFrames: 4,
+			sample: () => 0.5,
+		});
+		(
+			vm.children[0].operation as unknown as {
+				timeRemap: ResolvedMediaTimeRemap;
+			}
+		).timeRemap = { kind: "sampled", history };
+		const renderer = new HeadlessMediaRenderer();
+		const first = getPixel(
+			await decodePngPixels(
+				await renderer.renderFrame(vm, { frame: 0, fps: 4 }),
+			),
+			8,
+			8,
+		);
+		const third = getPixel(
+			await decodePngPixels(
+				await renderer.renderFrame(vm, { frame: 2, fps: 4 }),
+			),
+			8,
+			8,
+		);
+		expect(first.r).toBeGreaterThan(200);
+		expect(third.g).toBeGreaterThan(200);
+		const { channels } = await renderer.renderAudio(vm, {
+			fps: 4,
+			sampleRate: 48000,
+		});
+		const original = await decodeAudioSource(sourceAv);
+		if (!original) throw new Error("embedded audio did not decode");
+		for (const i of [10000, 24000, 36000])
+			expect(channels[0][i]).toBeCloseTo(
+				Math.tanh(original.channels[0][i / 2]),
+				4,
+			);
+	});
 	it("selects reverse variable-frame-rate samples by their presentation timestamps", async () => {
 		const comp = new Composition({
 			width: 16,

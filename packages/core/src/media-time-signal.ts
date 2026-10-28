@@ -222,6 +222,80 @@ export class MediaSignalRecorder {
 		return this.positions ? this.positions[index] : this.values[index];
 	}
 
+	/** Read a recorded local frame, including fractional audio sample positions. */
+	sourceTime(localFrame: number): number {
+		if (
+			!Number.isFinite(localFrame) ||
+			localFrame < 0 ||
+			localFrame > this.recorded - 1
+		)
+			throw new Error(
+				`Media signal local frame ${localFrame} has not been recorded`,
+			);
+		if (Number.isInteger(localFrame))
+			return this.at(this.startFrame + localFrame);
+		const i = Math.floor(localFrame);
+		const t = localFrame - i;
+		const a = this.values[i];
+		const b = this.values[i + 1];
+		return this.positions
+			? this.positions[i] +
+					(a * (t - (t * t) / 2) + b * ((t * t) / 2)) / this.fps
+			: a * (1 - t) + b * t;
+	}
+
+	/** Read the instantaneous speed for an interval whose endpoints are known. */
+	rate(localFrame: number): number {
+		const i = Math.floor(localFrame);
+		if (!Number.isFinite(localFrame) || i < 0 || i + 1 >= this.recorded)
+			throw new Error(
+				`Media signal interval ${localFrame} has not been recorded`,
+			);
+		const a = this.values[i];
+		const b = this.values[i + 1];
+		const t = localFrame - i;
+		return this.positions ? a * (1 - t) + b * t : (b - a) * this.fps;
+	}
+
+	isHold(localFrame: number): boolean {
+		const i = Math.floor(localFrame);
+		if (!Number.isFinite(localFrame) || i < 0 || i + 1 >= this.recorded)
+			throw new Error(
+				`Media signal interval ${localFrame} has not been recorded`,
+			);
+		return this.positions
+			? this.values[i] === 0 && this.values[i + 1] === 0
+			: this.values[i] === this.values[i + 1];
+	}
+
+	range(
+		from: number,
+		to: number,
+	): { min: number; max: number; maxIncluded: boolean } {
+		if (
+			!Number.isFinite(from) ||
+			!Number.isFinite(to) ||
+			from < 0 ||
+			to < 0 ||
+			Math.max(from, to) > this.recorded - 1
+		)
+			throw new Error("Media signal range has not been recorded");
+		if (this.recorded === 1) {
+			const value = this.sourceTime(0);
+			return { min: value, max: value, maxIncluded: false };
+		}
+		const values = this.values.subarray(0, this.recorded);
+		const history: SampledMediaSignal = this.positions
+			? {
+					mode: "speed",
+					fps: this.fps,
+					values,
+					positions: this.positions.subarray(0, this.recorded),
+				}
+			: { mode: "source-time", fps: this.fps, values };
+		return sampledMediaSourceRange(history, from, to);
+	}
+
 	/** A self-contained snapshot, available only when every boundary was recorded. */
 	finish(): SampledMediaSignal {
 		if (this.recorded !== this.values.length)

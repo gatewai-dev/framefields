@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+	mediaSourceIsHold,
+	mediaSourceRange,
+	mediaSourceRate,
+	mediaSourceTime,
+} from "./media-time.js";
+import {
 	MediaSignalRecorder,
 	sampledMediaSourceRange,
 	sampledMediaSourceTime,
@@ -176,6 +182,48 @@ describe("sampled media signals", () => {
 });
 
 describe("live media signal history", () => {
+	it("exposes recorded boundaries to the shared media evaluators without looking ahead", () => {
+		const recorder = new MediaSignalRecorder({
+			mode: "speed",
+			fps: 2,
+			startFrame: 10,
+			durationFrames: 2,
+			sourceStartSec: 1,
+		});
+		const map = { kind: "recorded" as const, recorder };
+		recorder.record(10, 1);
+		expect(mediaSourceTime(map, 0, 2)).toBe(1);
+		expect(() => mediaSourceTime(map, 0.5, 2)).toThrow(/not been recorded/);
+		recorder.record(11, -1);
+		expect(mediaSourceTime(map, 0.5, 2)).toBe(1.125);
+		expect(mediaSourceRange(map, 0, 1, 2)).toEqual({
+			min: 1,
+			max: 1.125,
+			maxIncluded: true,
+		});
+		expect(mediaSourceRate(map, 0.5, 2)).toBe(0);
+		expect(mediaSourceIsHold(map, 0)).toBe(false);
+		expect(() => mediaSourceRange(map, 0, 2, 2)).toThrow(/not been recorded/);
+	});
+	it("uses recorded history through the shared media timing evaluators", () => {
+		const history = sampleMediaSignal({
+			mode: "speed",
+			fps: 2,
+			startFrame: 0,
+			durationFrames: 2,
+			sourceStartSec: 1,
+			sample: (f) => 1 - f,
+		});
+		const map = { kind: "sampled" as const, history };
+		expect(mediaSourceTime(map, 1, 2)).toBe(1.25);
+		expect(mediaSourceRate(map, 0.5, 2)).toBe(0.5);
+		expect(mediaSourceIsHold(map, 0)).toBe(false);
+		expect(mediaSourceRange(map, 0, 2, 2)).toEqual({
+			min: 1,
+			max: 1.25,
+			maxIncluded: true,
+		});
+	});
 	it("reports a circular signal dependency and recovers after an error", () => {
 		const a = new MediaSignalRecorder({
 			mode: "source-time",

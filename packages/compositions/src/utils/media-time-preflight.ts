@@ -1,6 +1,6 @@
 import {
-	type MediaTimeRemap,
 	mediaSourceRange,
+	type ResolvedMediaTimeRemap,
 	type VirtualMediaData,
 } from "@framefields/core";
 import { inputStore } from "@framefields/webgpu-renderers";
@@ -29,7 +29,7 @@ export async function preflightMediaTime(
 			muted?: boolean;
 			volume?: number;
 			durationFrames?: number;
-			timeRemap?: MediaTimeRemap;
+			timeRemap?: ResolvedMediaTimeRemap;
 		};
 		if (op?.op === "CompositorLayer" && op.timeRemap && op.durationFrames) {
 			const source = sourceOf(node);

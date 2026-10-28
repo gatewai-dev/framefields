@@ -1,10 +1,10 @@
 import {
 	getActiveMediaMetadata,
 	getMediaType,
-	type MediaTimeRemap,
 	mediaSourceIsHold,
 	mediaSourceRange,
 	mediaSourceTime,
+	type ResolvedMediaTimeRemap,
 	type VirtualMediaData,
 } from "@framefields/core";
 import { type AudioProcessor, audioRegistry } from "@framefields/node-sdk";
@@ -450,7 +450,7 @@ async function resampleMappedPCM(
 	outputRate: number,
 	length: number,
 	inputStart: number,
-	map: MediaTimeRemap,
+	map: ResolvedMediaTimeRemap,
 	startFrame: number,
 	fps: number,
 ): Promise<Float32Array> {
@@ -670,7 +670,7 @@ export async function mixAudioTracks(
 	async function mappedChannels(
 		url: string,
 		length: number,
-		map: MediaTimeRemap,
+		map: ResolvedMediaTimeRemap,
 		startFrame: number,
 	): Promise<Float32Array[] | null> {
 		const left = new Float32Array(length),
@@ -763,7 +763,7 @@ export async function mixAudioTracks(
 		inheritedVolume: number,
 		inheritedSpeed: number,
 		inheritedDurationFrames: number | null,
-		inheritedRemap?: { map: MediaTimeRemap; offsetFrames: number },
+		inheritedRemap?: { map: ResolvedMediaTimeRemap; offsetFrames: number },
 	): Promise<Float32Array[] | null> {
 		if (!node || !isAudible(node)) return null;
 		const op = node.operation;
@@ -817,7 +817,7 @@ export async function mixAudioTracks(
 		const speedMultiplier = inheritedSpeed;
 
 		const nodeStartFrame = op.startFrame ?? op.timeline?.startFrame ?? 0;
-		const ownRemap = (op as { timeRemap?: MediaTimeRemap }).timeRemap;
+		const ownRemap = (op as { timeRemap?: ResolvedMediaTimeRemap }).timeRemap;
 		const remap = ownRemap
 			? { map: ownRemap, offsetFrames: 0 }
 			: inheritedRemap

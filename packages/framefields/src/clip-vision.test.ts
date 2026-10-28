@@ -1,3 +1,4 @@
+import { sampleMediaSignal } from "@framefields/core";
 import { describe, expect, it } from "vitest";
 import { clipVisionFromResults } from "./clip-vision.js";
 import { Composition, Layer } from "./index.js";
@@ -95,6 +96,17 @@ describe("ClipVision", () => {
 });
 
 describe("remapped clip vision", () => {
+	it("uses recorded signal history for the same source clock", () => {
+		const history = sampleMediaSignal({
+			mode: "source-time",
+			fps: 24,
+			startFrame: 0,
+			durationFrames: 2,
+			sample: (frame) => frame / 24,
+		});
+		const c = clip(4, { timeRemap: { kind: "sampled", history } });
+		expect(c.person.point("leftWrist", 1).x).toBe(40);
+	});
 	it("samples reverse motion and covers intermediate turns in a readiness window", () => {
 		const c = clip(4, {
 			timeRemap: {

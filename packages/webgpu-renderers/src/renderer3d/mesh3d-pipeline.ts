@@ -79,6 +79,8 @@ export interface GPUMeshBuffers {
 	indexFormat: GPUIndexFormat;
 	/** Per-vertex RGBA (display / sRGB), 4 floats each; absent = white. */
 	colorBuffer?: GPUBuffer;
+	wireIndexBuffer?: GPUBuffer;
+	wireIndexCount?: number;
 }
 
 export class Mesh3DPipeline {
@@ -86,6 +88,10 @@ export class Mesh3DPipeline {
 	public pipelineSingle: GPURenderPipeline;
 	public pipelineMrt: GPURenderPipeline;
 	private bloomVariants: BloomPipelineVariants;
+	private wireSingle: GPURenderPipeline;
+	private wireMrt: GPURenderPipeline;
+	private wireBloom: BloomPipelineVariants;
+	private wireShadow: GPURenderPipeline;
 	/** Depth only (skinning included): draws a caster into a shadow map. */
 	public pipelineShadow: GPURenderPipeline;
 	public cameraLayout: GPUBindGroupLayout;
@@ -231,6 +237,29 @@ export class Mesh3DPipeline {
 		this.pipelineSingle = single;
 		this.pipelineMrt = mrt;
 		this.bloomVariants = new BloomPipelineVariants(device, base);
+		const wireBase: PipelineVariantBase = {
+			...base,
+			label: "Mesh3DWireframe",
+			primitive: { topology: "line-list" },
+		};
+		const wire = createBasePipelines(device, wireBase);
+		this.wireSingle = wire.single;
+		this.wireMrt = wire.mrt;
+		this.wireBloom = new BloomPipelineVariants(device, wireBase);
+		this.wireShadow = device.createRenderPipeline({
+			label: "Mesh3DWireframeShadow",
+			layout: device.createPipelineLayout({
+				bindGroupLayouts: [this.cameraLayout, this.modelLayout],
+			}),
+			vertex: vertexState,
+			// WebGPU prohibits depth bias on line topology.
+			depthStencil: {
+				format: SHADOW_DEPTH_STENCIL.format,
+				depthWriteEnabled: true,
+				depthCompare: "less-equal",
+			},
+			primitive: { topology: "line-list" },
+		});
 
 		this.pipelineShadow = device.createRenderPipeline({
 			label: "Mesh3DPipelineShadow",
@@ -304,7 +333,7 @@ export class Mesh3DPipeline {
 		this.modelData[36] = data.opacity ?? 1.0;
 		this.modelData[37] = data.twoSided ? 1.0 : 0.0;
 		this.modelData[38] = data.isSkinned ? 1.0 : 0.0;
-		this.modelData[39] = data.wireframe ? 1.0 : 0.0;
+		this.modelData[39] = 0;
 
 		const shininess =
 			data.roughness !== undefined
@@ -402,12 +431,20 @@ export class Mesh3DPipeline {
 			],
 		});
 
+		const wireframe = data.wireframe === true;
+		if (wireframe && !meshBuffers.wireIndexBuffer) {
+			throw new Error("Wireframe requires mesh buffers with edge indices");
+		}
 		pass.setPipeline(
 			useBloom
-				? this.bloomVariants.get(useMrt)
-				: useMrt
-					? this.pipelineMrt
-					: this.pipelineSingle,
+				? (wireframe ? this.wireBloom : this.bloomVariants).get(useMrt)
+				: wireframe
+					? useMrt
+						? this.wireMrt
+						: this.wireSingle
+					: useMrt
+						? this.pipelineMrt
+						: this.pipelineSingle,
 		);
 		pass.setBindGroup(0, cameraBindGroup);
 		pass.setBindGroup(1, modelBindGroup);
@@ -415,8 +452,13 @@ export class Mesh3DPipeline {
 		pass.setBindGroup(3, lightsBindGroup);
 		pass.setVertexBuffer(0, meshBuffers.vertexBuffer);
 		pass.setVertexBuffer(1, this.colorsFor(meshBuffers));
-		pass.setIndexBuffer(meshBuffers.indexBuffer, meshBuffers.indexFormat);
-		pass.drawIndexed(meshBuffers.indexCount);
+		pass.setIndexBuffer(
+			wireframe ? meshBuffers.wireIndexBuffer! : meshBuffers.indexBuffer,
+			meshBuffers.indexFormat,
+		);
+		pass.drawIndexed(
+			wireframe ? meshBuffers.wireIndexCount! : meshBuffers.indexCount,
+		);
 	}
 
 	/** Draws the mesh into a shadow map (`lightCameraBindGroup` holds the light's view-projection). */
@@ -426,13 +468,22 @@ export class Mesh3DPipeline {
 		meshBuffers: GPUMeshBuffers,
 		data: MeshUniformData,
 	): void {
-		pass.setPipeline(this.pipelineShadow);
+		const wireframe = data.wireframe === true;
+		if (wireframe && !meshBuffers.wireIndexBuffer) {
+			throw new Error("Wireframe requires mesh buffers with edge indices");
+		}
+		pass.setPipeline(wireframe ? this.wireShadow : this.pipelineShadow);
 		pass.setBindGroup(0, lightCameraBindGroup);
 		pass.setBindGroup(1, this.packModel(data));
 		pass.setVertexBuffer(0, meshBuffers.vertexBuffer);
 		pass.setVertexBuffer(1, this.colorsFor(meshBuffers));
-		pass.setIndexBuffer(meshBuffers.indexBuffer, meshBuffers.indexFormat);
-		pass.drawIndexed(meshBuffers.indexCount);
+		pass.setIndexBuffer(
+			wireframe ? meshBuffers.wireIndexBuffer! : meshBuffers.indexBuffer,
+			meshBuffers.indexFormat,
+		);
+		pass.drawIndexed(
+			wireframe ? meshBuffers.wireIndexCount! : meshBuffers.indexCount,
+		);
 	}
 
 	private colorsFor(meshBuffers: GPUMeshBuffers): GPUBuffer {

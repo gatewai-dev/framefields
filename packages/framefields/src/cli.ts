@@ -64,8 +64,8 @@ Options for init:
   --name <name>     Package name (default: the folder's name).
   --pm <manager>    npm, pnpm, yarn or bun (default: the one running this).
   --install         Install dependencies afterwards.
-  --emoji           Also install the color emoji font.
-  --no-fonts        Skip Inter and JetBrains Mono.
+  --no-fonts        Skip fonts (Inter, JetBrains Mono, Noto Color Emoji).
+  --no-emoji        Skip the color emoji font.
   --no-git          Don't run \`git init\`.
 
 Options for add:
@@ -98,6 +98,7 @@ async function main(argv: string[]): Promise<number> {
 			dir: { type: "string" },
 			overwrite: { type: "boolean" },
 			"no-fonts": { type: "boolean" },
+			"no-emoji": { type: "boolean" },
 			"fonts-dir": { type: "string" },
 			name: { type: "string" },
 			pm: { type: "string" },
@@ -184,7 +185,7 @@ async function main(argv: string[]): Promise<number> {
 			packageManager: values.pm as PackageManager | undefined,
 			userAgent: process.env.npm_config_user_agent,
 			fonts: !values["no-fonts"],
-			emoji: values.emoji,
+			emoji: values["no-emoji"] ? false : values.emoji,
 			git: !values["no-git"],
 			install: values.install,
 			onDownload,

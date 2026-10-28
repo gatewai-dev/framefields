@@ -142,17 +142,26 @@ describe("framefields init", () => {
 		expect(read(root(".gitignore"))).toContain(".env\n");
 		expect(read(root("src/render.ts"))).toContain("process.loadEnvFile(ENV)");
 		expect(read(root("README.md"))).toContain("pnpm frames -- 0 30 60");
-		// The themes' fonts, recorded and registered where theme.ts imports them.
+		// The default fonts, recorded and registered where theme.ts imports them.
 		expect(report.fonts.map((f) => [f.role, f.path, f.status])).toEqual([
 			["sans", "assets/fonts/sans.ttf", "installed"],
 			["mono", "assets/fonts/mono.ttf", "installed"],
+			["emoji", "assets/fonts/emoji.ttf", "installed"],
 		]);
 		expect(readConfig(join(cwd, "My Film")).config).toEqual({
 			components: "src/components",
-			fonts: { sans: "assets/fonts/sans.ttf", mono: "assets/fonts/mono.ttf" },
+			fonts: {
+				sans: "assets/fonts/sans.ttf",
+				mono: "assets/fonts/mono.ttf",
+				emoji: "assets/fonts/emoji.ttf",
+			},
 		});
 		const fontsTs = read(root("src/components/fonts.ts"));
+		expect(fontsTs).toContain(
+			'registerEmojiFont(\n\t\tasset("../../assets/fonts/emoji.ttf"),',
+		);
 		expect(fontsTs).toContain('family: "Inter",');
+		expect(fontsTs).toContain('family: "JetBrains Mono",');
 		expect(fontsTs).toContain('source: asset("../../assets/fonts/sans.ttf"),');
 		expect(read(root("src/theme.ts"))).toContain(
 			'from "./components/fonts.js"',
@@ -219,22 +228,27 @@ describe("framefields init", () => {
 		await expect(init(opts())).rejects.toThrow(/"type": "module"/);
 	});
 
-	it("adds emoji on request, skips git when asked, and installs with the chosen manager", async () => {
+	it("skips emoji when asked via emoji: false, skips git when asked, and installs with the chosen manager", async () => {
 		const { run, calls } = runner();
 		const report = await init(
 			opts({
 				run,
-				emoji: true,
+				emoji: false,
 				git: false,
 				install: true,
 				packageManager: "bun",
 			}),
 		);
-		expect(report.fonts.map((f) => f.role)).toEqual(["sans", "mono", "emoji"]);
+		expect(report.fonts.map((f) => f.role)).toEqual(["sans", "mono"]);
 		expect(calls).toEqual(["bun install"]);
 		expect(report.installed).toBe(true);
 		expect(json("package.json").packageManager).toBeUndefined();
 		expect(report.runScript("frames")).toBe("bun run frames");
+	});
+
+	it("installs only emoji when fonts is false and emoji is true", async () => {
+		const report = await init(opts({ fonts: false, emoji: true }));
+		expect(report.fonts.map((f) => f.role)).toEqual(["emoji"]);
 	});
 
 	it("reports an existing repository and a failed install", async () => {

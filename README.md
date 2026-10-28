@@ -83,7 +83,7 @@ Every frame is rendered by framefields directly from TypeScript in [`examples/`]
 pnpm add framefields
 ```
 
-Starting a new film? `framefields init` sets up the whole project: `package.json`, TypeScript, a `film.ts` to edit and a `render.ts` to render it, `assets/` with Git LFS, and the Inter and JetBrains Mono fonts:
+Starting a new film? `framefields init` sets up the whole project: `package.json`, TypeScript, a `film.ts` to edit and a `render.ts` to render it, `assets/` with Git LFS, and the Inter, JetBrains Mono, and Noto Color Emoji fonts:
 
 ```bash
 pnpm dlx framefields init my-film --install   # or: npx framefields init my-film --install

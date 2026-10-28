@@ -3,8 +3,9 @@
  * to an existing one. Writes the layout the setup skill describes
  * (`package.json` with the install-script approvals framefields needs,
  * `tsconfig.json`, `src/theme.ts` / `film.ts` / `render.ts`, `assets/`,
- * LFS `.gitattributes`, `.gitignore`), installs the themes' fonts and keeps
- * them registered in `src/components/fonts.ts`.
+ * LFS `.gitattributes`, `.gitignore`), installs the default fonts
+ * (Inter, JetBrains Mono, and Noto Color Emoji) and keeps them registered
+ * in `src/components/fonts.ts`.
  *
  * It never overwrites: files that exist are left alone, and `package.json`,
  * `.gitignore` and `.gitattributes` gain only what they're missing.
@@ -55,9 +56,9 @@ export interface InitOptions {
 	packageManager?: PackageManager;
 	/** `npm_config_user_agent`, for detecting the package manager and its version. */
 	userAgent?: string;
-	/** Install the themes' fonts, Inter and JetBrains Mono (default true). */
+	/** Install the default fonts: Inter, JetBrains Mono, and Noto Color Emoji (default true). */
 	fonts?: boolean;
-	/** Also install the color emoji font. */
+	/** Also install the color emoji font (default true when fonts is true). */
 	emoji?: boolean;
 	/** `git init` when the folder isn't in a repository yet (default true). */
 	git?: boolean;
@@ -196,9 +197,11 @@ export async function init(options: InitOptions): Promise<InitReport> {
 		writeConfig(root, config);
 		report.written.push("framefields.json");
 	}
+	const installFonts = options.fonts !== false;
+	const installEmoji = options.emoji ?? installFonts;
 	const roles = [
-		...(options.fonts === false ? [] : ["sans", "mono"]),
-		...(options.emoji ? ["emoji"] : []),
+		...(installFonts ? ["sans", "mono"] : []),
+		...(installEmoji ? ["emoji"] : []),
 	];
 	for (const role of roles)
 		report.fonts.push(

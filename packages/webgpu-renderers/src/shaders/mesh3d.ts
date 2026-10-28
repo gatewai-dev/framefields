@@ -17,7 +17,7 @@ struct ModelUniforms {
     modelMatrix    : mat4x4<f32>,
     normalMatrix   : mat4x4<f32>,
     colorTint      : vec4<f32>,
-    params         : vec4<f32>, // x = opacity, y = twoSided (1.0 = yes), z = isSkinned (1.0 = yes), w = reserved
+    params         : vec4<f32>, // x = opacity, y = twoSided (1.0 = yes), z = isSkinned (1.0 = yes), w = hasMapUvs
     materialParams : vec4<f32>, // x = shininess, y = specularIntensity, z = ambientIntensity, w = materialMode (0=unlit, 1=lit, 2=toon)
     shade          : vec4<f32>, // rgb = toon shadow-side color multiplier, a = alpha cutoff (0 = none)
     pbr            : vec4<f32>, // x = roughness (<0 = default), y = metallic
@@ -48,6 +48,10 @@ struct VertexInput {
     @location(3) joints   : vec4<f32>,
     @location(4) weights  : vec4<f32>,
     @location(5) color    : vec4<f32>, // vertex color (display / sRGB), white when absent
+    @location(6) normalUv : vec2<f32>,
+    @location(7) mrUv     : vec2<f32>,
+    @location(8) aoUv     : vec2<f32>,
+    @location(9) emissiveUv : vec2<f32>,
 };
 
 struct VertexOutput {
@@ -57,6 +61,10 @@ struct VertexOutput {
     @location(2)       worldNormal : vec3<f32>,
     @location(3)       linearDepth : f32,
     @location(4)       color       : vec4<f32>,
+    @location(5)       normalUv    : vec2<f32>,
+    @location(6)       mrUv        : vec2<f32>,
+    @location(7)       aoUv        : vec2<f32>,
+    @location(8)       emissiveUv  : vec2<f32>,
 };
 
 @vertex
@@ -101,6 +109,10 @@ fn vs_main(in: VertexInput) -> VertexOutput {
 
     out.clipPos = cam.viewProjMatrix * worldPos4;
     out.uv = in.uv;
+    out.normalUv = select(in.uv, in.normalUv, model.params.w > 0.5);
+    out.mrUv = select(in.uv, in.mrUv, model.params.w > 0.5);
+    out.aoUv = select(in.uv, in.aoUv, model.params.w > 0.5);
+    out.emissiveUv = select(in.uv, in.emissiveUv, model.params.w > 0.5);
     out.color = in.color;
 
     out.linearDepth = dot(worldPos4.xyz - cam.cameraPos.xyz, cam.cameraDir.xyz);
@@ -230,14 +242,14 @@ fn shadeGlass(in: VertexOutput, Nin: vec3<f32>, tint: vec3<f32>, alpha: f32, rim
 fn shadeMesh(in: VertexOutput, isFront: bool) -> MeshFragment {
     // Every sample and derivative up front, in uniform control flow.
     var texColor = textureSample(mainTex, texSampler, in.uv);
-    let normalSample = textureSample(normalTex, texSampler, in.uv).xyz;
-    let mrSample = textureSample(metalRoughTex, texSampler, in.uv);
-    let aoSample = textureSample(occlusionTex, texSampler, in.uv).r;
-    let emissiveSample = textureSample(emissiveTex, texSampler, in.uv).rgb;
+    let normalSample = textureSample(normalTex, texSampler, in.normalUv).xyz;
+    let mrSample = textureSample(metalRoughTex, texSampler, in.mrUv);
+    let aoSample = textureSample(occlusionTex, texSampler, in.aoUv).r;
+    let emissiveSample = textureSample(emissiveTex, texSampler, in.emissiveUv).rgb;
     let dp1 = dpdx(in.worldPos);
     let dp2 = dpdy(in.worldPos);
-    let duv1 = dpdx(in.uv);
-    let duv2 = dpdy(in.uv);
+    let duv1 = dpdx(in.normalUv);
+    let duv2 = dpdy(in.normalUv);
     let rimWidth = fwidth(1.0 - abs(dot(normalize(in.worldNormal), normalize(cam.cameraPos.xyz - in.worldPos))));
 
     if (!isFront && model.params.y < 0.5) {
@@ -272,7 +284,7 @@ fn shadeMesh(in: VertexOutput, isFront: bool) -> MeshFragment {
         if (dot(Nf, cam.cameraPos.xyz - in.worldPos) < 0.0) {
             Nf = -Nf;
         }
-        N = perturbNormal(Nf, in.worldPos, in.uv, tn, dp1, dp2, duv1, duv2);
+        N = perturbNormal(Nf, in.worldPos, in.normalUv, tn, dp1, dp2, duv1, duv2);
     }
     var pbr = model.pbr;
     if (model.maps.z > 0.5) {

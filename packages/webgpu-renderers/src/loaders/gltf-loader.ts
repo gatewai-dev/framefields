@@ -1,5 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
+import draco from "draco3dgltf";
+import { MeshoptDecoder } from "meshoptimizer/decoder";
 import { type Mat4, Matrix4Math, type Vec3 } from "../math3d/index.js";
 import { MAX_JOINTS, poseNodes } from "./pose.js";
 import { textureMime } from "./texture-files.js";
@@ -69,6 +71,25 @@ interface GltfAccessor {
 	type: "SCALAR" | "VEC2" | "VEC3" | "VEC4" | "MAT2" | "MAT3" | "MAT4";
 	max?: number[];
 	min?: number[];
+	sparse?: {
+		count: number;
+		indices: {
+			bufferView: number;
+			byteOffset?: number;
+			componentType: 5121 | 5123 | 5125;
+		};
+		values: { bufferView: number; byteOffset?: number };
+	};
+}
+
+interface MeshoptExtension {
+	buffer: number;
+	byteOffset?: number;
+	byteLength: number;
+	byteStride: number;
+	count: number;
+	mode: "ATTRIBUTES" | "TRIANGLES" | "INDICES";
+	filter?: "NONE" | "OCTAHEDRAL" | "QUATERNION" | "EXPONENTIAL" | "COLOR";
 }
 
 interface GltfBufferView {
@@ -77,6 +98,10 @@ interface GltfBufferView {
 	byteLength: number;
 	byteStride?: number;
 	target?: number;
+	extensions?: {
+		EXT_meshopt_compression?: MeshoptExtension;
+		KHR_meshopt_compression?: MeshoptExtension;
+	};
 }
 
 interface GltfBuffer {
@@ -98,11 +123,22 @@ interface GltfPrimitive {
 	indices?: number;
 	material?: number;
 	mode?: number; // 4 = TRIANGLES
-	extensions?: { KHR_draco_mesh_compression?: unknown };
+	targets?: { POSITION?: number; NORMAL?: number; TANGENT?: number }[];
+	extensions?: {
+		KHR_draco_mesh_compression?: {
+			bufferView: number;
+			attributes: Record<string, number>;
+		};
+	};
+	decodedDraco?: {
+		attributes: Record<number, Float32Array>;
+		indices: Uint16Array | Uint32Array;
+	};
 }
 
 interface GltfMesh {
 	name?: string;
+	weights?: number[];
 	primitives: GltfPrimitive[];
 }
 
@@ -172,6 +208,7 @@ interface GltfNode {
 	skin?: number;
 	matrix?: number[];
 	mesh?: number;
+	weights?: number[];
 	rotation?: [number, number, number, number]; // [x, y, z, w] quaternion
 	scale?: [number, number, number];
 	translation?: [number, number, number];
@@ -223,19 +260,53 @@ interface GltfDocument {
 	buffers?: GltfBuffer[];
 }
 
-/** Mesh compression the loader cannot decode: a file that requires it fails with a clear error. */
-const UNSUPPORTED_REQUIRED_EXTENSIONS: Record<string, string> = {
-	KHR_draco_mesh_compression: "Draco mesh compression",
-	EXT_meshopt_compression: "meshopt compression",
-};
+/** Required extensions whose semantics this loader implements. */
+const SUPPORTED_REQUIRED_EXTENSIONS = new Set([
+	"KHR_materials_unlit",
+	"KHR_materials_emissive_strength",
+	"KHR_texture_transform",
+	"KHR_texture_basisu",
+	"EXT_texture_webp",
+]);
 
-/**
- * The UV set and transform a material's textures share: the mesh's UVs are
- * read from that set with the transform baked in.
- */
-interface UvPlan {
-	texCoord: number;
-	transform?: GltfTextureTransform;
+/** Converts glTF's strip, loop and fan modes to GPU list primitives. */
+function expandPrimitive(
+	indices: Uint16Array | Uint32Array,
+	mode: number,
+): {
+	indices: Uint16Array | Uint32Array;
+	topology: "triangle-list" | "line-list" | "point-list";
+} {
+	if (mode === 0) return { indices, topology: "point-list" };
+	if (mode === 1) {
+		if (indices.length % 2 !== 0)
+			throw new Error("glTF LINES index count must be even");
+		return { indices, topology: "line-list" };
+	}
+	if (mode === 4) return { indices, topology: "triangle-list" };
+	if (![2, 3, 5, 6].includes(mode))
+		throw new Error(`Invalid glTF primitive mode ${mode}`);
+	const out: number[] = [];
+	if (mode === 2 || mode === 3) {
+		for (let i = 1; i < indices.length; i++)
+			out.push(indices[i - 1]!, indices[i]!);
+		if (mode === 2 && indices.length > 1)
+			out.push(indices[indices.length - 1]!, indices[0]!);
+	} else {
+		for (let i = 2; i < indices.length; i++) {
+			if (mode === 6) out.push(indices[0]!, indices[i - 1]!, indices[i]!);
+			else if (i % 2 === 0)
+				out.push(indices[i - 2]!, indices[i - 1]!, indices[i]!);
+			else out.push(indices[i - 1]!, indices[i - 2]!, indices[i]!);
+		}
+	}
+	return {
+		indices:
+			indices instanceof Uint32Array
+				? Uint32Array.from(out)
+				: Uint16Array.from(out),
+		topology: mode <= 3 ? "line-list" : "triangle-list",
+	};
 }
 
 const GLB_MAGIC = 0x46546c67; // "glTF"
@@ -262,6 +333,258 @@ export class GltfLoader {
 		options: LoadModelOptions = {},
 		basePath?: string,
 	): Model3DData {
+		const { doc, binaryBuffers } = GltfLoader.readDocument(data, basePath);
+		GltfLoader.checkExtensions(doc);
+		for (const mesh of doc.meshes ?? []) {
+			for (const primitive of mesh.primitives) {
+				const compressed = primitive.extensions?.KHR_draco_mesh_compression;
+				if (!compressed) continue;
+				if (primitive.indices !== undefined) {
+					const indexAccessor = doc.accessors?.[primitive.indices];
+					if (
+						!indexAccessor ||
+						(indexAccessor.bufferView === undefined && !indexAccessor.sparse)
+					) {
+						throw new Error(
+							"Draco indices without an uncompressed fallback require GltfLoader.parseAsync",
+						);
+					}
+				}
+				for (const semantic of Object.keys(compressed.attributes)) {
+					const index = (
+						primitive.attributes as Record<string, number | undefined>
+					)[semantic];
+					const accessor =
+						index === undefined ? undefined : doc.accessors?.[index];
+					if (
+						!accessor ||
+						(accessor.bufferView === undefined && !accessor.sparse)
+					) {
+						throw new Error(
+							"Draco geometry without an uncompressed fallback requires GltfLoader.parseAsync",
+						);
+					}
+				}
+			}
+		}
+		return GltfLoader.buildModel(doc, binaryBuffers, options, basePath);
+	}
+
+	/** Asynchronous import initializes WASM decoders before reading compressed buffers. */
+	public static async parseAsync(
+		data: string | Uint8Array | ArrayBuffer,
+		options: LoadModelOptions = {},
+		basePath?: string,
+	): Promise<Model3DData> {
+		const { doc, binaryBuffers } = GltfLoader.readDocument(data, basePath);
+		GltfLoader.checkExtensions(
+			doc,
+			new Set([
+				"EXT_meshopt_compression",
+				"KHR_meshopt_compression",
+				"KHR_draco_mesh_compression",
+			]),
+		);
+		await GltfLoader.decodeMeshopt(doc, binaryBuffers);
+		await GltfLoader.decodeDraco(doc, binaryBuffers);
+		return GltfLoader.buildModel(doc, binaryBuffers, options, basePath);
+	}
+
+	private static checkExtensions(
+		doc: GltfDocument,
+		extra: Set<string> = new Set(),
+	): void {
+		for (const ext of doc.extensionsRequired ?? []) {
+			if (!SUPPORTED_REQUIRED_EXTENSIONS.has(ext) && !extra.has(ext)) {
+				throw new Error(
+					`glTF file requires ${ext}, which framefields cannot decode or render`,
+				);
+			}
+		}
+	}
+
+	private static async decodeMeshopt(
+		doc: GltfDocument,
+		buffers: Uint8Array[],
+	): Promise<void> {
+		const views = (doc.bufferViews ?? []).filter(
+			(view) =>
+				view.extensions?.EXT_meshopt_compression ||
+				view.extensions?.KHR_meshopt_compression,
+		);
+		if (!views.length) return;
+		await MeshoptDecoder.ready;
+		for (const view of views) {
+			if (
+				view.extensions?.EXT_meshopt_compression &&
+				view.extensions?.KHR_meshopt_compression
+			) {
+				throw new Error(
+					"A buffer view cannot use both EXT and KHR meshopt compression",
+				);
+			}
+			const ext =
+				view.extensions?.KHR_meshopt_compression ??
+				view.extensions?.EXT_meshopt_compression;
+			if (!ext) continue;
+			const source = buffers[ext.buffer];
+			if (!source) throw new Error(`meshopt buffer ${ext.buffer} not loaded`);
+			const offset = ext.byteOffset ?? 0;
+			if (
+				offset < 0 ||
+				ext.byteLength < 0 ||
+				offset + ext.byteLength > source.byteLength
+			)
+				throw new Error("Invalid meshopt compressed buffer range");
+			const length = ext.count * ext.byteStride;
+			if (
+				!Number.isSafeInteger(ext.count) ||
+				ext.count < 0 ||
+				!Number.isSafeInteger(ext.byteStride) ||
+				ext.byteStride < 1 ||
+				!Number.isSafeInteger(length) ||
+				length !== view.byteLength
+			) {
+				throw new Error("Invalid meshopt decoded buffer length");
+			}
+			if (
+				!["ATTRIBUTES", "TRIANGLES", "INDICES"].includes(ext.mode) ||
+				!["NONE", "OCTAHEDRAL", "QUATERNION", "EXPONENTIAL", "COLOR"].includes(
+					ext.filter ?? "NONE",
+				)
+			) {
+				throw new Error("Invalid meshopt compression mode or filter");
+			}
+			const decoded = new Uint8Array(length);
+			MeshoptDecoder.decodeGltfBuffer(
+				decoded,
+				ext.count,
+				ext.byteStride,
+				source.subarray(offset, offset + ext.byteLength),
+				ext.mode,
+				ext.filter ?? "NONE",
+			);
+			view.buffer = buffers.length;
+			view.byteOffset = 0;
+			buffers.push(decoded);
+		}
+	}
+
+	private static async decodeDraco(
+		doc: GltfDocument,
+		buffers: Uint8Array[],
+	): Promise<void> {
+		const primitives = (doc.meshes ?? [])
+			.flatMap((mesh) => mesh.primitives)
+			.filter((primitive) => primitive.extensions?.KHR_draco_mesh_compression);
+		if (!primitives.length) return;
+		const module = await draco.createDecoderModule({});
+		const decoder = new module.Decoder();
+		try {
+			for (const primitive of primitives) {
+				const ext = primitive.extensions?.KHR_draco_mesh_compression;
+				if (!ext) continue;
+				const view = doc.bufferViews?.[ext.bufferView];
+				if (!view)
+					throw new Error(`Draco bufferView ${ext.bufferView} not found`);
+				const source = buffers[view.buffer];
+				if (!source) throw new Error(`Draco buffer ${view.buffer} not loaded`);
+				const offset = view.byteOffset ?? 0;
+				if (offset < 0 || offset + view.byteLength > source.byteLength)
+					throw new Error("Invalid Draco buffer range");
+				const compressed = source.subarray(offset, offset + view.byteLength);
+				const input = new module.DecoderBuffer();
+				const mesh = new module.Mesh();
+				try {
+					input.Init(
+						new Int8Array(
+							compressed.buffer,
+							compressed.byteOffset,
+							compressed.byteLength,
+						),
+						compressed.byteLength,
+					);
+					if (decoder.GetEncodedGeometryType(input) !== module.TRIANGULAR_MESH)
+						throw new Error("Draco primitive is not a triangular mesh");
+					const status = decoder.DecodeBufferToMesh(input, mesh);
+					const success = status.ok();
+					const message = success ? "" : status.error_msg();
+					module.destroy(status);
+					if (!success) throw new Error(`Draco decode failed: ${message}`);
+					const attributes: Record<number, Float32Array> = {};
+					for (const [semantic, id] of Object.entries(ext.attributes)) {
+						const accessorIndex = (
+							primitive.attributes as Record<string, number | undefined>
+						)[semantic];
+						const accessor =
+							accessorIndex === undefined
+								? undefined
+								: doc.accessors?.[accessorIndex];
+						if (accessorIndex === undefined || !accessor)
+							throw new Error(`Draco ${semantic} accessor not found`);
+						const attribute = decoder.GetAttributeByUniqueId(mesh, id);
+						if (!attribute)
+							throw new Error(`Draco ${semantic} attribute ${id} not found`);
+						const array = new module.DracoFloat32Array();
+						try {
+							if (
+								!decoder.GetAttributeFloatForAllPoints(mesh, attribute, array)
+							)
+								throw new Error(`Failed to decode Draco ${semantic}`);
+							const count =
+								mesh.num_points() * (COMPONENTS[accessor.type] ?? 1);
+							if (
+								accessor.count !== mesh.num_points() ||
+								array.size() !== count
+							)
+								throw new Error(`Invalid Draco ${semantic} attribute size`);
+							const values = new Float32Array(count);
+							for (let i = 0; i < count; i++) {
+								let value = array.GetValue(i);
+								if (accessor.normalized) {
+									if (accessor.componentType === 5120)
+										value = Math.max(value / 127, -1);
+									else if (accessor.componentType === 5121) value /= 255;
+									else if (accessor.componentType === 5122)
+										value = Math.max(value / 32767, -1);
+									else if (accessor.componentType === 5123) value /= 65535;
+								}
+								values[i] = value;
+							}
+							attributes[accessorIndex] = values;
+						} finally {
+							module.destroy(array);
+						}
+					}
+					const indices =
+						mesh.num_points() > 65535
+							? new Uint32Array(mesh.num_faces() * 3)
+							: new Uint16Array(mesh.num_faces() * 3);
+					const face = new module.DracoInt32Array();
+					try {
+						for (let i = 0; i < mesh.num_faces(); i++) {
+							if (!decoder.GetFaceFromMesh(mesh, i, face))
+								throw new Error(`Failed to decode Draco face ${i}`);
+							for (let j = 0; j < 3; j++) indices[i * 3 + j] = face.GetValue(j);
+						}
+					} finally {
+						module.destroy(face);
+					}
+					primitive.decodedDraco = { attributes, indices };
+				} finally {
+					module.destroy(mesh);
+					module.destroy(input);
+				}
+			}
+		} finally {
+			module.destroy(decoder);
+		}
+	}
+
+	private static readDocument(
+		data: string | Uint8Array | ArrayBuffer,
+		basePath?: string,
+	): { doc: GltfDocument; binaryBuffers: Uint8Array[] } {
 		let doc: GltfDocument;
 		const binaryBuffers: Uint8Array[] = [];
 
@@ -320,15 +643,7 @@ export class GltfLoader {
 			}
 		}
 
-		for (const ext of doc.extensionsRequired ?? []) {
-			const what = UNSUPPORTED_REQUIRED_EXTENSIONS[ext];
-			if (what)
-				throw new Error(
-					`glTF file requires ${ext} (${what}), which framefields cannot decode. Re-export the model without mesh compression (in Blender's glTF exporter, turn off Compression).`,
-				);
-		}
-
-		return GltfLoader.buildModel(doc, binaryBuffers, options, basePath);
+		return { doc, binaryBuffers };
 	}
 
 	private static unpackGlb(bytes: Uint8Array): {
@@ -384,22 +699,62 @@ export class GltfLoader {
 		if (!accessor) throw new Error(`Accessor ${accessorIndex} not found`);
 		const itemSize = COMPONENTS[accessor.type] ?? 1;
 		const out = new Float32Array(accessor.count * itemSize);
-		if (accessor.bufferView === undefined)
-			return { data: out, itemSize, count: accessor.count };
-
-		const view = doc.bufferViews?.[accessor.bufferView];
-		if (!view) throw new Error(`BufferView ${accessor.bufferView} not found`);
-		const raw = binaryBuffers[view.buffer];
-		if (!raw) throw new Error(`Binary buffer ${view.buffer} not loaded`);
-
 		const bytes = COMPONENT_BYTES[accessor.componentType] ?? 4;
-		const stride = view.byteStride ?? bytes * itemSize;
-		const dv = new DataView(raw.buffer, raw.byteOffset, raw.byteLength);
-		const base = (view.byteOffset ?? 0) + (accessor.byteOffset ?? 0);
 		const read = componentReader(accessor.componentType, accessor.normalized);
-		for (let i = 0; i < accessor.count; i++) {
-			for (let c = 0; c < itemSize; c++) {
-				out[i * itemSize + c] = read(dv, base + i * stride + c * bytes);
+		if (accessor.bufferView !== undefined) {
+			const view = doc.bufferViews?.[accessor.bufferView];
+			if (!view) throw new Error(`BufferView ${accessor.bufferView} not found`);
+			const raw = binaryBuffers[view.buffer];
+			if (!raw) throw new Error(`Binary buffer ${view.buffer} not loaded`);
+			const stride = view.byteStride ?? bytes * itemSize;
+			const dv = new DataView(raw.buffer, raw.byteOffset, raw.byteLength);
+			const base = (view.byteOffset ?? 0) + (accessor.byteOffset ?? 0);
+			for (let i = 0; i < accessor.count; i++) {
+				for (let c = 0; c < itemSize; c++)
+					out[i * itemSize + c] = read(dv, base + i * stride + c * bytes);
+			}
+		}
+		if (accessor.sparse) {
+			const sparse = accessor.sparse;
+			const indexView = doc.bufferViews?.[sparse.indices.bufferView];
+			const valueView = doc.bufferViews?.[sparse.values.bufferView];
+			if (!indexView || !valueView)
+				throw new Error(
+					`Sparse accessor ${accessorIndex} references a missing buffer view`,
+				);
+			const indexData = binaryBuffers[indexView.buffer];
+			const valueData = binaryBuffers[valueView.buffer];
+			if (!indexData || !valueData)
+				throw new Error(
+					`Sparse accessor ${accessorIndex} references a missing buffer`,
+				);
+			const indexReader = componentReader(sparse.indices.componentType);
+			const indexBytes = COMPONENT_BYTES[sparse.indices.componentType];
+			const indexDv = new DataView(
+				indexData.buffer,
+				indexData.byteOffset,
+				indexData.byteLength,
+			);
+			const valueDv = new DataView(
+				valueData.buffer,
+				valueData.byteOffset,
+				valueData.byteLength,
+			);
+			const indexBase =
+				(indexView.byteOffset ?? 0) + (sparse.indices.byteOffset ?? 0);
+			const valueBase =
+				(valueView.byteOffset ?? 0) + (sparse.values.byteOffset ?? 0);
+			for (let i = 0; i < sparse.count; i++) {
+				const index = indexReader(indexDv, indexBase + i * indexBytes);
+				if (index >= accessor.count)
+					throw new Error(
+						`Sparse accessor ${accessorIndex} index ${index} is out of range`,
+					);
+				for (let c = 0; c < itemSize; c++)
+					out[index * itemSize + c] = read(
+						valueDv,
+						valueBase + (i * itemSize + c) * bytes,
+					);
 			}
 		}
 		return { data: out, itemSize, count: accessor.count };
@@ -472,27 +827,9 @@ export class GltfLoader {
 		);
 	}
 
-	/** The UV set and transform of the material's base color map (else its first map). */
-	private static uvPlan(mat: GltfMaterial | undefined): UvPlan {
-		const first = [
-			mat?.pbrMetallicRoughness?.baseColorTexture,
-			mat?.normalTexture,
-			mat?.pbrMetallicRoughness?.metallicRoughnessTexture,
-			mat?.occlusionTexture,
-			mat?.emissiveTexture,
-		].find((t) => t !== undefined);
-		return first
-			? {
-					texCoord: GltfLoader.texCoordOf(first),
-					transform: first.extensions?.KHR_texture_transform,
-				}
-			: { texCoord: 0 };
-	}
-
 	/**
 	 * A texture's decodable image: EXT_texture_webp's source when present.
-	 * KTX2 / Basis (KHR_texture_basisu) and other formats the renderer
-	 * cannot decode are skipped with a warning.
+	 * Basis KTX2 and EXT_texture_webp override a texture's fallback source.
 	 */
 	private static textureImage(
 		doc: GltfDocument,
@@ -504,14 +841,10 @@ export class GltfLoader {
 		const texture = doc.textures?.[textureIndex];
 		if (!texture) return undefined;
 		const source =
-			texture.extensions?.EXT_texture_webp?.source ?? texture.source;
-		if (source === undefined) {
-			if (texture.extensions?.KHR_texture_basisu)
-				GltfLoader.warn(
-					`${label} is a KTX2 / Basis texture, which framefields cannot decode; it is skipped (use PNG, JPEG or WebP).`,
-				);
-			return undefined;
-		}
+			texture.extensions?.KHR_texture_basisu?.source ??
+			texture.extensions?.EXT_texture_webp?.source ??
+			texture.source;
+		if (source === undefined) return undefined;
 		const image = GltfLoader.imageBytes(doc, binaryBuffers, source, basePath);
 		if (!image) return undefined;
 		if (!SUPPORTED_IMAGE_MIMES.has(image.mime)) {
@@ -564,29 +897,14 @@ export class GltfLoader {
 		} else if (mat.extensions?.KHR_materials_unlit) {
 			material.shading = "unlit";
 		}
-		// Every map is sampled with the mesh's one UV set (see uvPlan).
-		const plan = GltfLoader.uvPlan(mat);
 		const image = (info: GltfTextureInfo | undefined, slot: string) => {
 			if (!info) return undefined;
-			const label = `The ${slot} map of material "${name}"`;
-			const set = GltfLoader.texCoordOf(info);
-			if (set !== plan.texCoord) {
-				GltfLoader.warn(
-					`${label} uses UV set ${set}, but the mesh draws with UV set ${plan.texCoord}; the map is skipped.`,
-				);
-				return undefined;
-			}
-			const t = info.extensions?.KHR_texture_transform;
-			if (JSON.stringify(t ?? null) !== JSON.stringify(plan.transform ?? null))
-				GltfLoader.warn(
-					`${label} has a different KHR_texture_transform than the mesh's first map; it is drawn with that one's.`,
-				);
 			return GltfLoader.textureImage(
 				doc,
 				binaryBuffers,
 				info.index,
 				basePath,
-				label,
+				`The ${slot} map of material "${name}"`,
 			);
 		};
 		const base = image(pbr?.baseColorTexture, "base color");
@@ -653,8 +971,7 @@ export class GltfLoader {
 			for (const chan of animDef.channels) {
 				const sampler = animDef.samplers[chan.sampler];
 				const node = chan.target.node;
-				if (!sampler || node === undefined || chan.target.path === "weights")
-					continue;
+				if (!sampler || node === undefined) continue;
 				const times = GltfLoader.readFloats(
 					doc,
 					binaryBuffers,
@@ -679,7 +996,8 @@ export class GltfLoader {
 				};
 				if (chan.target.path === "translation") track.translations = values;
 				else if (chan.target.path === "rotation") track.rotations = values;
-				else track.scales = values;
+				else if (chan.target.path === "scale") track.scales = values;
+				else track.weights = values;
 				tracks.push(track);
 			}
 			return {
@@ -716,8 +1034,6 @@ export class GltfLoader {
 				basePath,
 			);
 		});
-
-		const uvPlans = (doc.materials ?? []).map((mat) => GltfLoader.uvPlan(mat));
 
 		const nodes = GltfLoader.buildNodes(doc);
 		const skins = (doc.skins ?? []).map((skin) => ({
@@ -777,26 +1093,69 @@ export class GltfLoader {
 			const meshDef = doc.meshes?.[inst.mesh];
 			if (!meshDef) continue;
 			meshDef.primitives.forEach((prim, primIdx) => {
-				if (prim.attributes.POSITION === undefined) return;
-				if (prim.mode !== undefined && prim.mode !== 4) return;
-				const read = (acc: number | undefined) =>
-					acc === undefined
-						? undefined
-						: GltfLoader.readFloats(doc, binaryBuffers, acc);
+				if (prim.attributes.POSITION === undefined) {
+					throw new Error(
+						`glTF mesh ${inst.mesh} primitive ${primIdx} has no POSITION attribute`,
+					);
+				}
+				const read = (acc: number | undefined) => {
+					if (acc === undefined) return undefined;
+					const data = prim.decodedDraco?.attributes[acc];
+					if (!data) return GltfLoader.readFloats(doc, binaryBuffers, acc);
+					const accessor = doc.accessors?.[acc];
+					if (!accessor) throw new Error(`Accessor ${acc} not found`);
+					return {
+						data,
+						itemSize: COMPONENTS[accessor.type] ?? 1,
+						count: accessor.count,
+					};
+				};
 
 				const pos = read(prim.attributes.POSITION)!;
 				const numVerts = pos.count;
-				const plan =
-					prim.material !== undefined ? uvPlans[prim.material] : undefined;
+				const mat =
+					prim.material === undefined
+						? undefined
+						: doc.materials?.[prim.material];
 				const attributes = prim.attributes as Record<
 					string,
 					number | undefined
 				>;
+				const mapUv = (
+					info: GltfTextureInfo | undefined,
+				): Float32Array | undefined => {
+					if (!info) return undefined;
+					const set = GltfLoader.texCoordOf(info);
+					const accessor = attributes[`TEXCOORD_${set}`];
+					if (accessor === undefined)
+						throw new Error(
+							`glTF mesh ${inst.mesh} primitive ${primIdx} lacks TEXCOORD_${set} required by a texture`,
+						);
+					const uv = read(accessor);
+					if (!uv)
+						throw new Error(
+							`glTF mesh ${inst.mesh} has missing texture coordinates`,
+						);
+					if (uv.itemSize !== 2 || uv.count !== numVerts)
+						throw new Error(
+							`Invalid TEXCOORD_${set} on glTF mesh ${inst.mesh} primitive ${primIdx}`,
+						);
+					const transform = info.extensions?.KHR_texture_transform;
+					if (transform) applyTextureTransform(uv.data, transform);
+					return uv.data;
+				};
 				const uvs =
-					read(attributes[`TEXCOORD_${plan?.texCoord ?? 0}`])?.data ??
+					mapUv(mat?.pbrMetallicRoughness?.baseColorTexture) ??
 					read(prim.attributes.TEXCOORD_0)?.data ??
 					new Float32Array(numVerts * 2);
-				if (plan?.transform) applyTextureTransform(uvs, plan.transform);
+				const mapUvs = {
+					normal: mapUv(mat?.normalTexture),
+					metallicRoughness: mapUv(
+						mat?.pbrMetallicRoughness?.metallicRoughnessTexture,
+					),
+					occlusion: mapUv(mat?.occlusionTexture),
+					emissive: mapUv(mat?.emissiveTexture),
+				};
 				const colors = read(prim.attributes.COLOR_0);
 				let rgba: Float32Array | undefined;
 				if (colors) {
@@ -810,7 +1169,9 @@ export class GltfLoader {
 				}
 
 				let indices: Uint16Array | Uint32Array;
-				if (prim.indices !== undefined) {
+				if (prim.decodedDraco) {
+					indices = prim.decodedDraco.indices;
+				} else if (prim.indices !== undefined) {
 					indices = GltfLoader.readIndices(doc, binaryBuffers, prim.indices);
 				} else {
 					indices =
@@ -819,6 +1180,9 @@ export class GltfLoader {
 							: new Uint16Array(numVerts);
 					for (let i = 0; i < numVerts; i++) indices[i] = i;
 				}
+
+				const primitive = expandPrimitive(indices, prim.mode ?? 4);
+				indices = primitive.indices;
 
 				// Skinned vertices are in bind (model) space; others sit under their node.
 				const skinned =
@@ -835,6 +1199,27 @@ export class GltfLoader {
 					} else grow(x, y, z);
 				}
 
+				const morphTargets = prim.targets?.map((target) => {
+					const positions = read(target.POSITION);
+					const normals = read(target.NORMAL);
+					if (
+						(positions &&
+							(positions.count !== numVerts || positions.itemSize !== 3)) ||
+						(normals && (normals.count !== numVerts || normals.itemSize !== 3))
+					) {
+						throw new Error(
+							`Invalid morph target on glTF mesh ${inst.mesh} primitive ${primIdx}`,
+						);
+					}
+					return { positions: positions?.data, normals: normals?.data };
+				});
+				const defaultWeights =
+					(inst.node === undefined
+						? undefined
+						: doc.nodes?.[inst.node]?.weights) ?? meshDef.weights;
+				const morphWeights = morphTargets?.map(
+					(_, i) => defaultWeights?.[i] ?? 0,
+				);
 				model.meshes.push({
 					id: `gltf_mesh_${inst.mesh}_${primIdx}${inst.node !== undefined ? `_n${inst.node}` : ""}`,
 					name: meshDef.name ?? `Mesh_${inst.mesh}`,
@@ -843,6 +1228,9 @@ export class GltfLoader {
 						read(prim.attributes.NORMAL)?.data ??
 						new Float32Array(numVerts * 3),
 					uvs,
+					mapUvs,
+					morphTargets,
+					morphWeights,
 					colors: rgba,
 					jointIndices: skinned
 						? read(prim.attributes.JOINTS_0)?.data
@@ -851,6 +1239,7 @@ export class GltfLoader {
 						? read(prim.attributes.WEIGHTS_0)?.data
 						: undefined,
 					indices,
+					topology: primitive.topology,
 					materialName:
 						prim.material !== undefined
 							? materialKeys[prim.material]
@@ -927,6 +1316,25 @@ export class GltfLoader {
 	/**
 	 * Loads a glTF / GLB file synchronously or asynchronously from a path or URL.
 	 */
+	public static async loadAsync(
+		srcOrData: string | ArrayBuffer | Uint8Array,
+		options: LoadModelOptions = {},
+	): Promise<Model3DData> {
+		if (typeof srcOrData !== "string")
+			return GltfLoader.parseAsync(srcOrData, options);
+		const cleanPath = srcOrData.startsWith("file://")
+			? srcOrData.replace("file://", "")
+			: srcOrData;
+		if (!srcOrData.trimStart().startsWith("{") && fs.existsSync(cleanPath)) {
+			return GltfLoader.parseAsync(
+				fs.readFileSync(cleanPath),
+				options,
+				path.dirname(cleanPath),
+			);
+		}
+		return GltfLoader.parseAsync(srcOrData, options);
+	}
+
 	public static load(
 		srcOrData: string | ArrayBuffer | Uint8Array,
 		options: LoadModelOptions = {},
@@ -969,6 +1377,13 @@ export function loadGLTF(
 	return GltfLoader.load(srcOrData, options);
 }
 
+export async function loadGLTFAsync(
+	srcOrData: string | ArrayBuffer | Uint8Array,
+	options: LoadModelOptions = {},
+): Promise<Model3DData> {
+	return GltfLoader.loadAsync(srcOrData, options);
+}
+
 export function parseGLB(
 	data: Uint8Array | ArrayBuffer,
 	options: LoadModelOptions = {},
@@ -996,6 +1411,7 @@ const SUPPORTED_IMAGE_MIMES = new Set([
 	"image/gif",
 	"image/tiff",
 	"image/avif",
+	"image/ktx2",
 ]);
 
 /**
@@ -1011,7 +1427,7 @@ function applyTextureTransform(
 	for (let i = 0; i < uvs.length; i += 2) {
 		const u = uvs[i]! * scale[0];
 		const v = uvs[i + 1]! * scale[1];
-		uvs[i] = c * u + s * v + offset[0];
-		uvs[i + 1] = -s * u + c * v + offset[1];
+		uvs[i] = c * u - s * v + offset[0];
+		uvs[i + 1] = s * u + c * v + offset[1];
 	}
 }

@@ -7,6 +7,7 @@
 import { type Mat4, Matrix4Math, type Vec3 } from "../math3d/index.js";
 import type {
 	AnimationClip3D,
+	Mesh3DData,
 	Model3DData,
 	ModelNode3D,
 	NodeAnimationTrack3D,
@@ -107,6 +108,7 @@ function sampleChannel(
 	values: Float32Array,
 	size: number,
 	time: number,
+	quaternion = false,
 ): number[] {
 	const { times } = track;
 	const cubic = track.interpolation === "cubic";
@@ -133,10 +135,26 @@ function sampleChannel(
 				(-2 * u3 + 3 * u2) * (b[i] ?? 0) +
 				(u3 - u2) * dt * (inB[i] ?? 0),
 		);
-		return size === 4 ? normalizeQuat(out as Quat) : out;
+		return quaternion ? normalizeQuat(out as Quat) : out;
 	}
-	if (size === 4) return slerp(a as Quat, b as Quat, u);
+	if (quaternion) return slerp(a as Quat, b as Quat, u);
 	return a.map((v, i) => v + ((b[i] ?? v) - v) * u);
+}
+
+/** Samples per-instance glTF morph weights without quaternion interpolation. */
+export function sampleMorphWeights(
+	mesh: Mesh3DData,
+	clip: AnimationClip3D | undefined,
+	time: number,
+): number[] {
+	const count = mesh.morphTargets?.length ?? 0;
+	if (!count) return [];
+	const track = clip?.tracks.find(
+		(t) => t.node === mesh.node && t.weights && t.times.length > 0,
+	);
+	return track?.weights
+		? sampleChannel(track, track.weights, count, time)
+		: (mesh.morphWeights ?? Array(count).fill(0));
 }
 
 /** Each node's local matrix with the clip's tracks applied at `time` (seconds). */
@@ -155,8 +173,9 @@ function localMatrices(
 		if (track.translations)
 			t[i] = sampleChannel(track, track.translations, 3, time) as Vec3;
 		if (track.rotations)
-			r[i] = sampleChannel(track, track.rotations, 4, time) as Quat;
-		if (track.scales) s[i] = sampleChannel(track, track.scales, 3, time) as Vec3;
+			r[i] = sampleChannel(track, track.rotations, 4, time, true) as Quat;
+		if (track.scales)
+			s[i] = sampleChannel(track, track.scales, 3, time) as Vec3;
 	}
 	return nodes.map((n, i) => n.matrix ?? trsMatrix(t[i]!, r[i]!, s[i]!));
 }

@@ -7,6 +7,7 @@ import {
 	loadFBX,
 	loadGLB,
 	loadGLTF,
+	loadGLTFAsync,
 	loadOBJ,
 	loadOFF,
 	loadPLY,
@@ -44,11 +45,13 @@ import { dofBokehWgsl } from "../shaders/dof-bokeh.js";
 import type { SlugGlyphBatch } from "../slug/slug-pipeline.js";
 import { AudioMeshDeformPipeline } from "./audio-mesh-deform-pipeline.js";
 import { type BloomOptions, BloomPipeline } from "./bloom-pipeline.js";
+import { decodeKtx2, isKtx2 } from "./ktx2.js";
 import {
 	type GPUMeshBuffers,
 	Mesh3DPipeline,
 	type MeshMaterialMaps,
 } from "./mesh3d-pipeline.js";
+import { MorphPipeline } from "./morph-pipeline.js";
 import { Quad3DPipeline } from "./quad3d-pipeline.js";
 import { SHADOW_DEPTH_FORMAT } from "./shadow-depth.js";
 import {
@@ -148,6 +151,8 @@ export interface DrawMesh3DOpts extends SurfaceParams {
 	colorTint?: [number, number, number, number];
 	/** Whether backface is rendered */
 	twoSided?: boolean;
+	/** Per-instance morph target weights, evaluated before skinning. */
+	morphWeights?: number[];
 	/** Wireframe mode */
 	wireframe?: boolean;
 	/** Blend without writing depth; draw transparent meshes back to front. */
@@ -232,6 +237,7 @@ export class Renderer3D {
 	public slug3dPipeline: Slug3DPipeline;
 	public mesh3dPipeline: Mesh3DPipeline;
 	public audioMeshDeformPipeline: AudioMeshDeformPipeline;
+	private morphPipeline: MorphPipeline;
 	private dofPipeline: GPURenderPipeline;
 	private dofBindGroupLayout: GPUBindGroupLayout;
 	private cameraPool: BufferPool;
@@ -301,6 +307,7 @@ export class Renderer3D {
 			sampleCount,
 		);
 		this.audioMeshDeformPipeline = new AudioMeshDeformPipeline(device);
+		this.morphPipeline = new MorphPipeline(device);
 
 		this.cameraPool = new BufferPool(
 			320,
@@ -377,6 +384,7 @@ export class Renderer3D {
 		this.slug3dPipeline.resetPools();
 		this.mesh3dPipeline.resetPools();
 		this.audioMeshDeformPipeline.resetPools();
+		this.morphPipeline.resetPools();
 	}
 
 	getOrCreateDepthTexture(width: number, height: number): GPUTexture {
@@ -1099,7 +1107,8 @@ export class Renderer3D {
 	getOrCreateMeshBuffers(mesh: Mesh3DData, wireframe = false): GPUMeshBuffers {
 		let cached = this.meshBuffersCache.get(mesh);
 		if (cached) {
-			if (wireframe) this.ensureWireIndices(mesh, cached);
+			if (wireframe && (!mesh.topology || mesh.topology === "triangle-list"))
+				this.ensureWireIndices(mesh, cached);
 			return cached;
 		}
 
@@ -1191,15 +1200,44 @@ export class Renderer3D {
 			colorBuffer.unmap();
 		}
 
+		let mapUvBuffer: GPUBuffer | undefined;
+		if (mesh.mapUvs && Object.values(mesh.mapUvs).some(Boolean)) {
+			const data = new Float32Array(numVerts * 8);
+			const maps = [
+				mesh.mapUvs.normal,
+				mesh.mapUvs.metallicRoughness,
+				mesh.mapUvs.occlusion,
+				mesh.mapUvs.emissive,
+			];
+			for (let i = 0; i < numVerts; i++) {
+				for (let j = 0; j < maps.length; j++) {
+					const uv = maps[j] ?? mesh.uvs;
+					data[i * 8 + j * 2] = uv[i * 2] ?? 0;
+					data[i * 8 + j * 2 + 1] = uv[i * 2 + 1] ?? 0;
+				}
+			}
+			mapUvBuffer = this.device.createBuffer({
+				label: "Mesh3DMapUvs",
+				size: Math.max(32, data.byteLength),
+				usage: GPUBufferUsage.VERTEX,
+				mappedAtCreation: true,
+			});
+			new Float32Array(mapUvBuffer.getMappedRange()).set(data);
+			mapUvBuffer.unmap();
+		}
+
 		cached = {
 			vertexBuffer,
 			indexBuffer,
 			indexCount: mesh.indices.length,
 			indexFormat: is32Bit ? "uint32" : "uint16",
+			topology: mesh.topology,
 			colorBuffer,
+			mapUvBuffer,
 		};
 		this.meshBuffersCache.set(mesh, cached);
-		if (wireframe) this.ensureWireIndices(mesh, cached);
+		if (wireframe && (!mesh.topology || mesh.topology === "triangle-list"))
+			this.ensureWireIndices(mesh, cached);
 		return cached;
 	}
 
@@ -1241,6 +1279,26 @@ export class Renderer3D {
 		buffers.wireIndexCount = data.length;
 	}
 
+	morphMesh(
+		encoder: GPUCommandEncoder,
+		mesh: Mesh3DData,
+		weights: number[],
+		wireframe = false,
+	): GPUMeshBuffers {
+		const buffers = this.getOrCreateMeshBuffers(mesh, wireframe);
+		if (!mesh.morphTargets?.length || !weights.some((weight) => weight !== 0))
+			return buffers;
+		return {
+			...buffers,
+			vertexBuffer: this.morphPipeline.execute(
+				encoder,
+				mesh,
+				buffers.vertexBuffer,
+				weights,
+			),
+		};
+	}
+
 	deformMesh(
 		encoder: GPUCommandEncoder,
 		mesh: Mesh3DData,
@@ -1251,8 +1309,9 @@ export class Renderer3D {
 			sampleRate?: number;
 		},
 		wireframe = false,
+		input?: GPUMeshBuffers,
 	): GPUMeshBuffers {
-		const meshBuffers = this.getOrCreateMeshBuffers(mesh, wireframe);
+		const meshBuffers = input ?? this.getOrCreateMeshBuffers(mesh, wireframe);
 		const numVerts = mesh.positions.length / 3;
 		const deformedVertexBuffer = this.audioMeshDeformPipeline.execute(
 			encoder,
@@ -1270,7 +1329,9 @@ export class Renderer3D {
 			indexBuffer: meshBuffers.indexBuffer,
 			indexCount: meshBuffers.indexCount,
 			indexFormat: meshBuffers.indexFormat,
+			topology: meshBuffers.topology,
 			colorBuffer: meshBuffers.colorBuffer,
+			mapUvBuffer: meshBuffers.mapUvBuffer,
 			wireIndexBuffer: meshBuffers.wireIndexBuffer,
 			wireIndexCount: meshBuffers.wireIndexCount,
 		};
@@ -1396,6 +1457,30 @@ export class Renderer3D {
 		return model;
 	}
 
+	/** Loads glTF asynchronously so its compressed buffer decoders can initialize. */
+	async loadModelAsync(
+		srcOrData: string | ArrayBuffer | Uint8Array,
+		format: Parameters<Renderer3D["loadModel"]>[1] = "auto",
+		options: LoadModelOptions = {},
+	): Promise<Model3DData> {
+		const isGltf =
+			format === "gltf" ||
+			format === "glb" ||
+			(format === "auto" &&
+				(typeof srcOrData === "string"
+					? /\.(gltf|glb)$/i.test(srcOrData) ||
+						srcOrData.trimStart().startsWith("{")
+					: GltfLoader.isGlb(srcOrData)));
+		if (!isGltf) return this.loadModel(srcOrData, format, options);
+		if (typeof srcOrData !== "string") return loadGLTFAsync(srcOrData, options);
+		const key = `${format}|${JSON.stringify(options)}|${srcOrData}`;
+		const cached = this.modelCache.get(key);
+		if (cached) return cached;
+		const model = await loadGLTFAsync(srcOrData, options);
+		this.modelCache.set(key, model);
+		return model;
+	}
+
 	/**
 	 * The material's diffuse texture on the GPU, decoded once with a full mip
 	 * chain (a character's 2K maps are drawn a few hundred pixels tall).
@@ -1464,6 +1549,29 @@ export class Renderer3D {
 		label: string,
 	): Promise<GPUTexture | undefined> {
 		if (!encoded) return undefined;
+		const bytes =
+			encoded instanceof Uint8Array ? encoded : new Uint8Array(encoded);
+		if (isKtx2(bytes)) {
+			const decoded = await decodeKtx2(bytes);
+			const texture = this.device.createTexture({
+				label,
+				size: { width: decoded.width, height: decoded.height },
+				mipLevelCount: decoded.levels.length,
+				format: "rgba8unorm",
+				usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
+			});
+			for (const [level, data] of decoded.levels.entries()) {
+				const width = Math.max(1, decoded.width >> level);
+				const height = Math.max(1, decoded.height >> level);
+				this.device.queue.writeTexture(
+					{ texture, mipLevel: level },
+					data,
+					{ bytesPerRow: width * 4, rowsPerImage: height },
+					{ width, height },
+				);
+			}
+			return texture;
+		}
 		const sharp = (await import(/* webpackIgnore: true */ "sharp")).default;
 		const source = Buffer.from(
 			encoded instanceof Uint8Array ? encoded : new Uint8Array(encoded),
@@ -1574,6 +1682,7 @@ export class Renderer3D {
 		this.quad3dPipeline.destroy();
 		this.slug3dPipeline.destroy();
 		this.mesh3dPipeline.destroy();
+		this.morphPipeline.destroy();
 		this.cameraPool.destroy();
 		this.lightsPool.destroy();
 		this.cameraUniformBindGroupCache.destroy();

@@ -5,8 +5,21 @@ export interface Mesh3DData {
 	name?: string;
 	positions: Float32Array; // 3 floats per vertex (x, y, z)
 	normals: Float32Array; // 3 floats per vertex (nx, ny, nz)
-	uvs: Float32Array; // 2 floats per vertex (u, v)
+	uvs: Float32Array; // 2 floats per vertex (u, v), for the base color map
+	/** Object-space morph deltas, applied before skinning. */
+	morphTargets?: { positions?: Float32Array; normals?: Float32Array }[];
+	/** Default morph weights for this mesh instance. */
+	morphWeights?: number[];
+	/** Per-map UVs, with the map's own texture transform already applied. */
+	mapUvs?: {
+		normal?: Float32Array;
+		metallicRoughness?: Float32Array;
+		occlusion?: Float32Array;
+		emissive?: Float32Array;
+	};
 	indices: Uint16Array | Uint32Array;
+	/** GPU primitive topology; defaults to triangles. */
+	topology?: "triangle-list" | "line-list" | "point-list";
 	colors?: Float32Array; // 4 floats per vertex (r, g, b, a), display (sRGB) 0..1; multiplies the base color
 	tangents?: Float32Array; // 4 floats per vertex (x, y, z, w)
 	// Skinned Mesh / Skeletal Animation attributes
@@ -109,6 +122,7 @@ export interface NodeAnimationTrack3D {
 	translations?: Float32Array; // 3 floats per keyframe [x, y, z]
 	rotations?: Float32Array; // 4 floats per keyframe [x, y, z, w] quaternion or Euler [rx, ry, rz]
 	scales?: Float32Array; // 3 floats per keyframe [sx, sy, sz]
+	weights?: Float32Array; // morph weights, target count values per keyframe
 	/** "cubic" (glTF CUBICSPLINE) stores [inTangent, value, outTangent] per keyframe. */
 	interpolation?: "linear" | "step" | "cubic";
 }

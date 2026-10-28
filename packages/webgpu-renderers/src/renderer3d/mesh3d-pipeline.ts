@@ -49,6 +49,8 @@ export interface MeshUniformData extends SurfaceParams {
 	wireframe?: boolean;
 	/** Blend without writing depth; the caller draws transparent meshes back to front. */
 	transparent?: boolean;
+	/** Extra per-map UV vertex attributes are present. */
+	hasMapUvs?: boolean;
 	isSkinned?: boolean;
 	skinningMatrices?: Float32Array; // 128 * 16 floats
 	material?: "lit" | "unlit" | "toon";
@@ -79,8 +81,10 @@ export interface GPUMeshBuffers {
 	indexBuffer: GPUBuffer;
 	indexCount: number;
 	indexFormat: GPUIndexFormat;
+	topology?: "triangle-list" | "line-list" | "point-list";
 	/** Per-vertex RGBA (display / sRGB), 4 floats each; absent = white. */
 	colorBuffer?: GPUBuffer;
+	mapUvBuffer?: GPUBuffer;
 	wireIndexBuffer?: GPUBuffer;
 	wireIndexCount?: number;
 }
@@ -94,6 +98,17 @@ export class Mesh3DPipeline {
 	private wireMrt: GPURenderPipeline;
 	private wireBloom: BloomPipelineVariants;
 	private wireShadow: GPURenderPipeline;
+	private pointPipelines: {
+		single: GPURenderPipeline;
+		mrt: GPURenderPipeline;
+		bloom: BloomPipelineVariants;
+	};
+	private transparentPointPipelines: {
+		single: GPURenderPipeline;
+		mrt: GPURenderPipeline;
+		bloom: BloomPipelineVariants;
+	};
+	private pointShadow: GPURenderPipeline;
 	private transparentPipelines: {
 		single: GPURenderPipeline;
 		mrt: GPURenderPipeline;
@@ -228,6 +243,15 @@ export class Mesh3DPipeline {
 					arrayStride: 16, // RGBA vertex color
 					attributes: [{ shaderLocation: 5, offset: 0, format: "float32x4" }],
 				},
+				{
+					arrayStride: 32,
+					attributes: [
+						{ shaderLocation: 6, offset: 0, format: "float32x2" },
+						{ shaderLocation: 7, offset: 8, format: "float32x2" },
+						{ shaderLocation: 8, offset: 16, format: "float32x2" },
+						{ shaderLocation: 9, offset: 24, format: "float32x2" },
+					],
+				},
 			],
 		};
 
@@ -276,6 +300,37 @@ export class Mesh3DPipeline {
 			...createBasePipelines(device, transparentWireBase),
 			bloom: new BloomPipelineVariants(device, transparentWireBase),
 		};
+		const pointBase: PipelineVariantBase = {
+			...base,
+			label: "Mesh3DPoints",
+			primitive: { topology: "point-list" },
+		};
+		const transparentPointBase: PipelineVariantBase = {
+			...pointBase,
+			label: "Mesh3DTransparentPoints",
+			depthStencil: { ...base.depthStencil, depthWriteEnabled: false },
+		};
+		this.pointPipelines = {
+			...createBasePipelines(device, pointBase),
+			bloom: new BloomPipelineVariants(device, pointBase),
+		};
+		this.transparentPointPipelines = {
+			...createBasePipelines(device, transparentPointBase),
+			bloom: new BloomPipelineVariants(device, transparentPointBase),
+		};
+		this.pointShadow = device.createRenderPipeline({
+			label: "Mesh3DPointShadow",
+			layout: device.createPipelineLayout({
+				bindGroupLayouts: [this.cameraLayout, this.modelLayout],
+			}),
+			vertex: vertexState,
+			depthStencil: {
+				format: SHADOW_DEPTH_STENCIL.format,
+				depthWriteEnabled: true,
+				depthCompare: "less-equal",
+			},
+			primitive: { topology: "point-list" },
+		});
 		this.wireShadow = device.createRenderPipeline({
 			label: "Mesh3DWireframeShadow",
 			layout: device.createPipelineLayout({
@@ -363,7 +418,7 @@ export class Mesh3DPipeline {
 		this.modelData[36] = data.opacity ?? 1.0;
 		this.modelData[37] = data.twoSided ? 1.0 : 0.0;
 		this.modelData[38] = data.isSkinned ? 1.0 : 0.0;
-		this.modelData[39] = 0;
+		this.modelData[39] = data.hasMapUvs ? 1 : 0;
 
 		const shininess =
 			data.roughness !== undefined
@@ -440,7 +495,10 @@ export class Mesh3DPipeline {
 		useMrt = false,
 		useBloom = false,
 	): void {
-		const modelBindGroup = this.packModel(data);
+		const modelBindGroup = this.packModel({
+			...data,
+			hasMapUvs: Boolean(meshBuffers.mapUvBuffer),
+		});
 		const white = this.defaultWhiteTexture;
 		const maps = data.maps;
 		const textureBindGroup = this.device.createBindGroup({
@@ -461,21 +519,33 @@ export class Mesh3DPipeline {
 			],
 		});
 
-		const wireframe = data.wireframe === true;
+		const wireframe =
+			data.wireframe === true &&
+			(!meshBuffers.topology || meshBuffers.topology === "triangle-list");
 		if (wireframe && !meshBuffers.wireIndexBuffer) {
 			throw new Error("Wireframe requires mesh buffers with edge indices");
 		}
-		const variants = data.transparent
-			? wireframe
-				? this.transparentWirePipelines
-				: this.transparentPipelines
-			: wireframe
-				? { single: this.wireSingle, mrt: this.wireMrt, bloom: this.wireBloom }
-				: {
-						single: this.pipelineSingle,
-						mrt: this.pipelineMrt,
-						bloom: this.bloomVariants,
-					};
+		const line = wireframe || meshBuffers.topology === "line-list";
+		const variants =
+			meshBuffers.topology === "point-list"
+				? data.transparent
+					? this.transparentPointPipelines
+					: this.pointPipelines
+				: data.transparent
+					? line
+						? this.transparentWirePipelines
+						: this.transparentPipelines
+					: line
+						? {
+								single: this.wireSingle,
+								mrt: this.wireMrt,
+								bloom: this.wireBloom,
+							}
+						: {
+								single: this.pipelineSingle,
+								mrt: this.pipelineMrt,
+								bloom: this.bloomVariants,
+							};
 		pass.setPipeline(
 			useBloom
 				? variants.bloom.get(useMrt)
@@ -489,6 +559,10 @@ export class Mesh3DPipeline {
 		pass.setBindGroup(3, lightsBindGroup);
 		pass.setVertexBuffer(0, meshBuffers.vertexBuffer);
 		pass.setVertexBuffer(1, this.colorsFor(meshBuffers));
+		pass.setVertexBuffer(
+			2,
+			meshBuffers.mapUvBuffer ?? meshBuffers.vertexBuffer,
+		);
 		pass.setIndexBuffer(
 			wireframe ? meshBuffers.wireIndexBuffer! : meshBuffers.indexBuffer,
 			meshBuffers.indexFormat,
@@ -505,15 +579,27 @@ export class Mesh3DPipeline {
 		meshBuffers: GPUMeshBuffers,
 		data: MeshUniformData,
 	): void {
-		const wireframe = data.wireframe === true;
+		const wireframe =
+			data.wireframe === true &&
+			(!meshBuffers.topology || meshBuffers.topology === "triangle-list");
 		if (wireframe && !meshBuffers.wireIndexBuffer) {
 			throw new Error("Wireframe requires mesh buffers with edge indices");
 		}
-		pass.setPipeline(wireframe ? this.wireShadow : this.pipelineShadow);
+		pass.setPipeline(
+			meshBuffers.topology === "point-list"
+				? this.pointShadow
+				: wireframe || meshBuffers.topology === "line-list"
+					? this.wireShadow
+					: this.pipelineShadow,
+		);
 		pass.setBindGroup(0, lightCameraBindGroup);
 		pass.setBindGroup(1, this.packModel(data));
 		pass.setVertexBuffer(0, meshBuffers.vertexBuffer);
 		pass.setVertexBuffer(1, this.colorsFor(meshBuffers));
+		pass.setVertexBuffer(
+			2,
+			meshBuffers.mapUvBuffer ?? meshBuffers.vertexBuffer,
+		);
 		pass.setIndexBuffer(
 			wireframe ? meshBuffers.wireIndexBuffer! : meshBuffers.indexBuffer,
 			meshBuffers.indexFormat,

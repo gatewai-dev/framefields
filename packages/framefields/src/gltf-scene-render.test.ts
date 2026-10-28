@@ -4,6 +4,7 @@
  * Each scene is a GLB built in the test and checked by its pixels.
  */
 import fs from "node:fs/promises";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { Canvas, loadImage } from "skia-canvas";
@@ -79,10 +80,7 @@ class GlbBuilder {
 		const header = Buffer.alloc(12);
 		header.writeUInt32LE(0x46546c67, 0);
 		header.writeUInt32LE(2, 4);
-		header.writeUInt32LE(
-			12 + 8 + docPadded.length + 8 + binPadded.length,
-			8,
-		);
+		header.writeUInt32LE(12 + 8 + docPadded.length + 8 + binPadded.length, 8);
 		const chunk = (data: Buffer, type: number) => {
 			const h = Buffer.alloc(8);
 			h.writeUInt32LE(data.length, 0);
@@ -127,7 +125,7 @@ async function pixels(png: Buffer) {
 }
 
 /** Renders a GLB centred in a SIZE² frame, model units = pixels, Y up flipped to the screen's Y down. */
-async function render(file: string, frame = 0, fps = 30) {
+async function render(file: string, frame = 0, fps = 30, lit = false) {
 	const comp = new Composition({
 		width: SIZE,
 		height: SIZE,
@@ -154,7 +152,7 @@ async function render(file: string, frame = 0, fps = 30) {
 			y: SIZE / 2,
 			z: 0,
 			rotateX: 180,
-			material: "unlit",
+			material: lit ? "lit" : "unlit",
 			loop: false,
 		}),
 	);
@@ -191,9 +189,16 @@ describe("glTF scene rendering", () => {
 						],
 					},
 				],
-				materials: [{ pbrMetallicRoughness: { baseColorTexture: { index: 0 } } }],
+				materials: [
+					{ pbrMetallicRoughness: { baseColorTexture: { index: 0 } } },
+				],
 				textures: [{ source: 0 }],
-				images: [{ bufferView: g.image(await solidPng("#ff2000")), mimeType: "image/png" }],
+				images: [
+					{
+						bufferView: g.image(await solidPng("#ff2000")),
+						mimeType: "image/png",
+					},
+				],
 			}),
 		);
 		const px = await render(file);
@@ -203,14 +208,491 @@ describe("glTF scene rendering", () => {
 		expect(b).toBeLessThan(40);
 	});
 
+	it("reports unsupported required extensions instead of rendering a blank model", async () => {
+		const file = path.join(dir, "unsupported.gltf");
+		await fs.writeFile(
+			file,
+			JSON.stringify({
+				asset: { version: "2.0" },
+				extensionsRequired: ["VENDOR_unknown"],
+			}),
+		);
+		const comp = new Composition({
+			width: SIZE,
+			height: SIZE,
+			fps: 30,
+			durationMs: 1000,
+			backgroundColor: BG,
+		});
+		comp.add(
+			Layer.camera({
+				x: 200,
+				y: 200,
+				z: -600,
+				targetX: 200,
+				targetY: 200,
+				targetZ: 0,
+			}),
+		);
+		comp.add(Layer.glb(file, { id: "unsupported", x: 200, y: 200 }));
+		await expect(comp.renderFrame({ frame: 0 })).rejects.toThrow(
+			/VENDOR_unknown/,
+		);
+	});
+
+	it.each([
+		"etc1s",
+		"uastc-ldr",
+	])("renders required KTX2/Basis %s textures offline", async (format) => {
+		const g = new GlbBuilder();
+		const q = rect(-100, -100, 100, 100);
+		const image = await fs.readFile(
+			new URL(
+				`../../webgpu-renderers/src/renderer3d/fixtures/${format}.ktx2`,
+				import.meta.url,
+			),
+		);
+		const file = path.join(dir, `${format}.glb`);
+		await fs.writeFile(
+			file,
+			g.build({
+				extensionsUsed: ["KHR_texture_basisu"],
+				extensionsRequired: ["KHR_texture_basisu"],
+				meshes: [
+					{
+						primitives: [
+							{
+								attributes: {
+									POSITION: g.accessor(new Float32Array(q.positions), "VEC3"),
+									TEXCOORD_0: g.accessor(new Float32Array(q.uvs), "VEC2"),
+								},
+								indices: g.accessor(new Uint16Array(q.indices), "SCALAR"),
+								material: 0,
+							},
+						],
+					},
+				],
+				materials: [
+					{ pbrMetallicRoughness: { baseColorTexture: { index: 0 } } },
+				],
+				textures: [{ extensions: { KHR_texture_basisu: { source: 0 } } }],
+				images: [{ bufferView: g.image(image), mimeType: "image/ktx2" }],
+			}),
+		);
+		const color = (await render(file))(200, 200);
+		expect(color[0]).toBeGreaterThan(180);
+		expect(color[1]).toBeLessThan(60);
+		expect(color[2]).toBeLessThan(50);
+	});
+
+	it("blends an ETC1S KTX2 texture with alpha", async () => {
+		const g = new GlbBuilder();
+		const q = rect(-100, -100, 100, 100);
+		const image = await fs.readFile(
+			new URL(
+				"../../webgpu-renderers/src/renderer3d/fixtures/etc1s-alpha.ktx2",
+				import.meta.url,
+			),
+		);
+		const file = path.join(dir, "ktx-alpha.glb");
+		await fs.writeFile(
+			file,
+			g.build({
+				extensionsUsed: ["KHR_texture_basisu"],
+				extensionsRequired: ["KHR_texture_basisu"],
+				meshes: [
+					{
+						primitives: [
+							{
+								attributes: {
+									POSITION: g.accessor(new Float32Array(q.positions), "VEC3"),
+									TEXCOORD_0: g.accessor(new Float32Array(q.uvs), "VEC2"),
+								},
+								indices: g.accessor(new Uint16Array(q.indices), "SCALAR"),
+								material: 0,
+							},
+						],
+					},
+				],
+				materials: [
+					{
+						alphaMode: "BLEND",
+						pbrMetallicRoughness: { baseColorTexture: { index: 0 } },
+					},
+				],
+				textures: [{ extensions: { KHR_texture_basisu: { source: 0 } } }],
+				images: [{ bufferView: g.image(image), mimeType: "image/ktx2" }],
+			}),
+		);
+		const color = (await render(file))(200, 200);
+		expect(color[0]).toBeGreaterThan(100);
+		expect(color[0]).toBeLessThan(135);
+	});
+
+	it("renders meshopt-compressed glTF through the compositor", async () => {
+		const encoded = Buffer.from(
+			"oAAAAAEzAAAA//8AAAABDAAAAP8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMjCAADIwgAAAAA=",
+			"base64",
+		);
+		const file = path.join(dir, "meshopt.gltf");
+		await fs.writeFile(
+			file,
+			JSON.stringify({
+				asset: { version: "2.0" },
+				extensionsUsed: ["EXT_meshopt_compression"],
+				extensionsRequired: ["EXT_meshopt_compression"],
+				buffers: [
+					{
+						byteLength: encoded.length,
+						uri: `data:application/octet-stream;base64,${encoded.toString("base64")}`,
+					},
+				],
+				bufferViews: [
+					{
+						buffer: 0,
+						byteLength: 48,
+						byteStride: 12,
+						extensions: {
+							EXT_meshopt_compression: {
+								buffer: 0,
+								byteOffset: 0,
+								byteLength: encoded.length,
+								byteStride: 12,
+								count: 4,
+								mode: "ATTRIBUTES",
+							},
+						},
+					},
+				],
+				accessors: [
+					{ bufferView: 0, componentType: 5126, count: 4, type: "VEC3" },
+				],
+				meshes: [{ primitives: [{ attributes: { POSITION: 0 }, mode: 6 }] }],
+			}),
+		);
+		expect((await render(file))(200, 200)[0]).toBeGreaterThan(180);
+	});
+
+	it("renders Draco-compressed glTF through the compositor", async () => {
+		const requireFromRenderer = createRequire(
+			import.meta.resolve("@framefields/webgpu-renderers"),
+		);
+		const dracoRoot = path.dirname(requireFromRenderer.resolve("draco3dgltf"));
+		const encoded = await fs.readFile(path.join(dracoRoot, "bunny.drc"));
+		const file = path.join(dir, "draco.gltf");
+		await fs.writeFile(
+			file,
+			JSON.stringify({
+				asset: { version: "2.0" },
+				extensionsUsed: ["KHR_draco_mesh_compression"],
+				extensionsRequired: ["KHR_draco_mesh_compression"],
+				buffers: [
+					{
+						byteLength: encoded.length,
+						uri: `data:application/octet-stream;base64,${encoded.toString("base64")}`,
+					},
+				],
+				bufferViews: [{ buffer: 0, byteLength: encoded.length }],
+				accessors: [
+					{ componentType: 5126, count: 34834, type: "VEC3" },
+					{ componentType: 5125, count: 69451 * 3, type: "SCALAR" },
+				],
+				meshes: [
+					{
+						primitives: [
+							{
+								attributes: { POSITION: 0 },
+								indices: 1,
+								extensions: {
+									KHR_draco_mesh_compression: {
+										bufferView: 0,
+										attributes: { POSITION: 0 },
+									},
+								},
+							},
+						],
+					},
+				],
+			}),
+		);
+		const comp = new Composition({
+			width: SIZE,
+			height: SIZE,
+			fps: 30,
+			durationMs: 1000,
+			backgroundColor: BG,
+		});
+		comp.add(
+			Layer.camera({
+				x: 200,
+				y: 200,
+				z: -600,
+				targetX: 200,
+				targetY: 200,
+				targetZ: 0,
+			}),
+		);
+		comp.add(
+			Layer.glb(file, {
+				x: 200,
+				y: 200,
+				center: true,
+				normalizeSize: 240,
+				material: "unlit",
+			}),
+		);
+		const px = await pixels(await comp.renderFrame({ frame: 0 }));
+		let lit = 0;
+		for (let y = 100; y < 300; y += 4)
+			for (let x = 100; x < 300; x += 4) if ((px(x, y)[0] ?? 0) > 50) lit++;
+		expect(lit).toBeGreaterThan(100);
+	});
+
+	it.each([
+		0, 1, 2, 3, 5, 6,
+	])("renders glTF primitive mode %i", async (mode) => {
+		const g = new GlbBuilder();
+		const file = path.join(dir, `primitive-${mode}.glb`);
+		const q = rect(-100, -100, 100, 100);
+		await fs.writeFile(
+			file,
+			g.build({
+				meshes: [
+					{
+						primitives: [
+							{
+								attributes: {
+									POSITION: g.accessor(new Float32Array(q.positions), "VEC3"),
+								},
+								mode,
+							},
+						],
+					},
+				],
+			}),
+		);
+		const px = await render(file);
+		const litNear = (x: number, y: number) => {
+			for (let dy = -2; dy <= 2; dy++)
+				for (let dx = -2; dx <= 2; dx++) {
+					if ((px(x + dx, y + dy)[0] ?? 0) > 50) return true;
+				}
+			return false;
+		};
+		if (mode === 0) expect(litNear(100, 300)).toBe(true);
+		else if (mode < 4) expect(litNear(200, 300)).toBe(true);
+		else expect(litNear(200, 200)).toBe(true);
+	});
+
+	it("samples an emissive map using its own UV set and transform", async () => {
+		const canvas = new Canvas(8, 8);
+		const ctx = canvas.getContext("2d");
+		ctx.fillStyle = "#ff0000";
+		ctx.fillRect(0, 0, 4, 8);
+		ctx.fillStyle = "#00ff00";
+		ctx.fillRect(4, 0, 4, 8);
+		const image = await canvas.toBuffer("png");
+		const renderUv = async (offset: number) => {
+			const g = new GlbBuilder();
+			const q = rect(-100, -100, 100, 100);
+			const file = path.join(dir, `map-uv-${offset}.glb`);
+			await fs.writeFile(
+				file,
+				g.build({
+					meshes: [
+						{
+							primitives: [
+								{
+									attributes: {
+										POSITION: g.accessor(new Float32Array(q.positions), "VEC3"),
+										TEXCOORD_0: g.accessor(
+											new Float32Array([
+												0.25, 0.5, 0.25, 0.5, 0.25, 0.5, 0.25, 0.5,
+											]),
+											"VEC2",
+										),
+										TEXCOORD_1: g.accessor(
+											new Float32Array([
+												0.75, 0.5, 0.75, 0.5, 0.75, 0.5, 0.75, 0.5,
+											]),
+											"VEC2",
+										),
+									},
+									indices: g.accessor(new Uint16Array(q.indices), "SCALAR"),
+									material: 0,
+								},
+							],
+						},
+					],
+					materials: [
+						{
+							pbrMetallicRoughness: {
+								baseColorFactor: [0, 0, 0, 1],
+								baseColorTexture: { index: 0, texCoord: 0 },
+							},
+							emissiveFactor: [1, 1, 1],
+							emissiveTexture: {
+								index: 0,
+								texCoord: 1,
+								extensions: { KHR_texture_transform: { offset: [offset, 0] } },
+							},
+						},
+					],
+					textures: [{ source: 0 }],
+					images: [{ bufferView: g.image(image), mimeType: "image/png" }],
+				}),
+			);
+			return (await render(file, 0, 30, true))(SIZE / 2, SIZE / 2);
+		};
+		const green = await renderUv(0);
+		const red = await renderUv(-0.5);
+		expect(green[1]).toBeGreaterThan(200);
+		expect(green[0]).toBeLessThan(40);
+		expect(red[0]).toBeGreaterThan(200);
+		expect(red[1]).toBeLessThan(40);
+	});
+
+	it("applies animated morph weights to mesh positions", async () => {
+		const g = new GlbBuilder();
+		const q = rect(-100, -30, -40, 30);
+		const file = path.join(dir, "morph.glb");
+		const delta = new Float32Array([
+			120, 0, 0, 120, 0, 0, 120, 0, 0, 120, 0, 0,
+		]);
+		await fs.writeFile(
+			file,
+			g.build({
+				nodes: [{ mesh: 0 }],
+				scenes: [{ nodes: [0] }],
+				meshes: [
+					{
+						weights: [0],
+						primitives: [
+							{
+								attributes: {
+									POSITION: g.accessor(new Float32Array(q.positions), "VEC3"),
+								},
+								indices: g.accessor(new Uint16Array(q.indices), "SCALAR"),
+								targets: [{ POSITION: g.accessor(delta, "VEC3") }],
+							},
+						],
+					},
+				],
+				animations: [
+					{
+						channels: [{ sampler: 0, target: { node: 0, path: "weights" } }],
+						samplers: [
+							{
+								input: g.accessor(new Float32Array([0, 1]), "SCALAR"),
+								output: g.accessor(new Float32Array([0, 1]), "SCALAR"),
+								interpolation: "LINEAR",
+							},
+						],
+					},
+				],
+			}),
+		);
+		const rest = await render(file, 0);
+		const halfway = await render(file, 15);
+		const end = await render(file, 30);
+		expect(rest(130, 200)[0]).toBeGreaterThan(200);
+		expect(rest(250, 200)[0]).toBeLessThan(10);
+		expect(halfway(190, 200)[0]).toBeGreaterThan(200);
+		expect(end(130, 200)[0]).toBeLessThan(10);
+		expect(end(250, 200)[0]).toBeGreaterThan(200);
+	});
+
+	it("applies morph deltas before the skin's joint transform", async () => {
+		const g = new GlbBuilder();
+		const q = rect(-100, -20, -60, 20);
+		const file = path.join(dir, "morph-skin.glb");
+		const delta = new Float32Array([50, 0, 0, 50, 0, 0, 50, 0, 0, 50, 0, 0]);
+		const joints = new Uint16Array(16);
+		const weights = new Float32Array([
+			1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0,
+		]);
+		await fs.writeFile(
+			file,
+			g.build({
+				nodes: [
+					{ mesh: 0, skin: 0, weights: [1] },
+					{ translation: [40, 0, 0] },
+				],
+				scenes: [{ nodes: [0, 1] }],
+				skins: [{ joints: [1] }],
+				meshes: [
+					{
+						primitives: [
+							{
+								attributes: {
+									POSITION: g.accessor(new Float32Array(q.positions), "VEC3"),
+									JOINTS_0: g.accessor(joints, "VEC4"),
+									WEIGHTS_0: g.accessor(weights, "VEC4"),
+								},
+								indices: g.accessor(new Uint16Array(q.indices), "SCALAR"),
+								targets: [{ POSITION: g.accessor(delta, "VEC3") }],
+							},
+						],
+					},
+				],
+			}),
+		);
+		const px = await render(file);
+		expect(px(210, 200)[0]).toBeGreaterThan(200);
+		expect(px(120, 200)[0]).toBeLessThan(10);
+	});
+
+	it("keeps independent default weights on instances of the same morph mesh", async () => {
+		const g = new GlbBuilder();
+		const q = rect(-20, -20, 20, 20);
+		const file = path.join(dir, "morph-instances.glb");
+		const delta = new Float32Array([
+			100, 0, 0, 100, 0, 0, 100, 0, 0, 100, 0, 0,
+		]);
+		await fs.writeFile(
+			file,
+			g.build({
+				nodes: [
+					{ mesh: 0, translation: [-100, 70, 0], weights: [0] },
+					{ mesh: 0, translation: [-100, -70, 0], weights: [1] },
+				],
+				scenes: [{ nodes: [0, 1] }],
+				meshes: [
+					{
+						weights: [0],
+						primitives: [
+							{
+								attributes: {
+									POSITION: g.accessor(new Float32Array(q.positions), "VEC3"),
+								},
+								indices: g.accessor(new Uint16Array(q.indices), "SCALAR"),
+								targets: [{ POSITION: g.accessor(delta, "VEC3") }],
+							},
+						],
+					},
+				],
+			}),
+		);
+		const px = await render(file);
+		expect(px(100, 130)[0]).toBeGreaterThan(200);
+		expect(px(200, 270)[0]).toBeGreaterThan(200);
+		expect(px(100, 270)[0]).toBeLessThan(10);
+	});
+
 	it("poses a skinned mesh through its joint chain from a rotation track", async () => {
 		// A 20×200 strip: the lower half on joint 0 (origin), the upper on
 		// joint 1 (100 up, child of joint 0). The clip turns joint 1 by 90°
 		// about Z over one second, folding the upper half to the left.
 		const g = new GlbBuilder();
-		const positions = [-10, 0, 0, 10, 0, 0, -10, 100, 0, 10, 100, 0, -10, 200, 0, 10, 200, 0];
-		const joints = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0];
-		const weights = [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0];
+		const positions = [
+			-10, 0, 0, 10, 0, 0, -10, 100, 0, 10, 100, 0, -10, 200, 0, 10, 200, 0,
+		];
+		const joints = [
+			0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0,
+		];
+		const weights = [
+			1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0,
+		];
 		const ibm = [
 			...[1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
 			...[1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, -100, 0, 1],
@@ -226,7 +708,12 @@ describe("glTF scene rendering", () => {
 					{ name: "root", children: [2] },
 					{ name: "tip", translation: [0, 100, 0] },
 				],
-				skins: [{ joints: [1, 2], inverseBindMatrices: g.accessor(new Float32Array(ibm), "MAT4") }],
+				skins: [
+					{
+						joints: [1, 2],
+						inverseBindMatrices: g.accessor(new Float32Array(ibm), "MAT4"),
+					},
+				],
 				meshes: [
 					{
 						primitives: [
@@ -236,20 +723,28 @@ describe("glTF scene rendering", () => {
 									JOINTS_0: g.accessor(new Uint16Array(joints), "VEC4"),
 									WEIGHTS_0: g.accessor(new Float32Array(weights), "VEC4"),
 								},
-								indices: g.accessor(new Uint16Array([0, 1, 3, 0, 3, 2, 2, 3, 5, 2, 5, 4]), "SCALAR"),
+								indices: g.accessor(
+									new Uint16Array([0, 1, 3, 0, 3, 2, 2, 3, 5, 2, 5, 4]),
+									"SCALAR",
+								),
 								material: 0,
 							},
 						],
 					},
 				],
-				materials: [{ pbrMetallicRoughness: { baseColorFactor: [1, 1, 1, 1] } }],
+				materials: [
+					{ pbrMetallicRoughness: { baseColorFactor: [1, 1, 1, 1] } },
+				],
 				animations: [
 					{
 						channels: [{ sampler: 0, target: { node: 2, path: "rotation" } }],
 						samplers: [
 							{
 								input: g.accessor(new Float32Array([0, 1]), "SCALAR"),
-								output: g.accessor(new Float32Array([0, 0, 0, 1, 0, 0, s45, s45]), "VEC4"),
+								output: g.accessor(
+									new Float32Array([0, 0, 0, 1, 0, 0, s45, s45]),
+									"VEC4",
+								),
 							},
 						],
 					},
@@ -257,8 +752,11 @@ describe("glTF scene rendering", () => {
 			}),
 		);
 		// Model (x, y) lands on screen (SIZE/2 + x, SIZE/2 - y).
-		const lit = (px: (x: number, y: number) => number[], x: number, y: number) =>
-			(px(SIZE / 2 + x, SIZE / 2 - y)[0] ?? 0) > 128;
+		const lit = (
+			px: (x: number, y: number) => number[],
+			x: number,
+			y: number,
+		) => (px(SIZE / 2 + x, SIZE / 2 - y)[0] ?? 0) > 128;
 		const rest = await render(file, 0);
 		expect(lit(rest, 0, 150)).toBe(true);
 		expect(lit(rest, -60, 100)).toBe(false);
@@ -285,7 +783,9 @@ describe("glTF scene rendering", () => {
 					{
 						primitives: [
 							{
-								attributes: { POSITION: g.accessor(new Float32Array(q.positions), "VEC3") },
+								attributes: {
+									POSITION: g.accessor(new Float32Array(q.positions), "VEC3"),
+								},
 								indices: g.accessor(new Uint16Array(q.indices), "SCALAR"),
 							},
 						],

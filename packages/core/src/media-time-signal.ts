@@ -27,39 +27,12 @@ export function sampleMediaSignal(options: {
 	sourceStartSec?: number;
 	sample: (compositionFrame: number) => number;
 }): SampledMediaSignal {
-	const { mode, fps, startFrame, durationFrames, sample } = options;
-	if (
-		!Number.isFinite(fps) ||
-		fps <= 0 ||
-		!Number.isInteger(startFrame) ||
-		startFrame < 0 ||
-		!Number.isInteger(durationFrames) ||
-		durationFrames <= 0
-	)
-		throw new Error("Invalid media signal timing");
-	const values = new Float64Array(durationFrames + 1);
-	for (let i = 0; i <= durationFrames; i++) {
-		const value = sample(startFrame + i);
-		if (!Number.isFinite(value))
-			throw new Error(
-				`Non-finite media signal at composition frame ${startFrame + i}`,
-			);
-		values[i] = value;
+	const recorder = new MediaSignalRecorder(options);
+	for (let i = 0; i <= options.durationFrames; i++) {
+		const frame = options.startFrame + i;
+		recorder.record(frame, options.sample(frame));
 	}
-	if (mode === "source-time") return { mode, values, fps };
-	const sourceStartSec = options.sourceStartSec ?? 0;
-	if (!Number.isFinite(sourceStartSec) || sourceStartSec < 0)
-		throw new Error("Invalid media signal source start");
-	const positions = new Float64Array(values.length);
-	positions[0] = sourceStartSec;
-	for (let i = 0; i < durationFrames; i++) {
-		positions[i + 1] = positions[i] + (values[i] / 2 + values[i + 1] / 2) / fps;
-		if (!Number.isFinite(positions[i + 1]))
-			throw new Error(
-				`Media signal integration overflow at composition frame ${startFrame + i + 1}`,
-			);
-	}
-	return { mode, values, positions, fps };
+	return recorder.finish();
 }
 
 /** Sample an engine signal with its composition clock and full frame context. */
@@ -151,4 +124,101 @@ export function sampledMediaSourceRange(
 		}
 	}
 	return { min, max, maxIncluded };
+}
+
+/**
+ * Records values after frame preparation, so live signal history can be replayed
+ * for audio and seeks without evaluating the signal a second time.
+ */
+export class MediaSignalRecorder {
+	private readonly values: Float64Array;
+	private readonly positions: Float64Array | undefined;
+	private recorded = 0;
+	readonly startFrame: number;
+	readonly durationFrames: number;
+	readonly fps: number;
+	readonly mode: "source-time" | "speed";
+
+	constructor(options: {
+		mode: "source-time" | "speed";
+		fps: number;
+		startFrame: number;
+		durationFrames: number;
+		sourceStartSec?: number;
+	}) {
+		if (
+			!Number.isFinite(options.fps) ||
+			options.fps <= 0 ||
+			!Number.isInteger(options.startFrame) ||
+			options.startFrame < 0 ||
+			!Number.isInteger(options.durationFrames) ||
+			options.durationFrames <= 0
+		)
+			throw new Error("Invalid media signal timing");
+		const start = options.sourceStartSec ?? 0;
+		if (!Number.isFinite(start) || start < 0)
+			throw new Error("Invalid media signal source start");
+		this.mode = options.mode;
+		this.fps = options.fps;
+		this.startFrame = options.startFrame;
+		this.durationFrames = options.durationFrames;
+		this.values = new Float64Array(options.durationFrames + 1);
+		if (options.mode === "speed") {
+			this.positions = new Float64Array(options.durationFrames + 1);
+			this.positions[0] = start;
+		}
+	}
+
+	/** Each boundary is recorded once in composition-frame order. */
+	record(frame: number, value: number): void {
+		const index = frame - this.startFrame;
+		if (!Number.isInteger(frame) || index < 0 || index > this.durationFrames)
+			throw new Error(`Media signal frame ${frame} is outside the layer`);
+		if (!Number.isFinite(value))
+			throw new Error(`Non-finite media signal at composition frame ${frame}`);
+		if (index < this.recorded) {
+			if (this.values[index] !== value)
+				throw new Error(
+					`Media signal frame ${frame} was already recorded with a different value`,
+				);
+			return;
+		}
+		if (index !== this.recorded)
+			throw new Error(`Media signal frame ${frame} was recorded out of order`);
+		this.values[index] = value;
+		if (this.positions && index > 0) {
+			const position =
+				this.positions[index - 1] +
+				(this.values[index - 1] / 2 + value / 2) / this.fps;
+			if (!Number.isFinite(position))
+				throw new Error(
+					`Media signal integration overflow at composition frame ${frame}`,
+				);
+			this.positions[index] = position;
+		}
+		this.recorded++;
+	}
+
+	/** The known source position at an already-recorded frame boundary. */
+	at(frame: number): number {
+		const index = frame - this.startFrame;
+		if (!Number.isInteger(frame) || index < 0 || index >= this.recorded)
+			throw new Error(`Media signal frame ${frame} has not been recorded`);
+		return this.positions ? this.positions[index] : this.values[index];
+	}
+
+	/** A self-contained snapshot, available only when every boundary was recorded. */
+	finish(): SampledMediaSignal {
+		if (this.recorded !== this.values.length)
+			throw new Error("Media signal history is incomplete");
+		const values = this.values.slice();
+		return this.positions
+			? {
+					mode: "speed",
+					fps: this.fps,
+					values,
+					positions: this.positions.slice(),
+				}
+			: { mode: "source-time", fps: this.fps, values };
+	}
 }

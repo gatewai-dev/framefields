@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+	MediaSignalRecorder,
 	sampledMediaSourceRange,
 	sampledMediaSourceTime,
 	sampleFrameMediaSignal,
@@ -171,5 +172,44 @@ describe("sampled media signals", () => {
 		expect(sampledMediaSourceTime(map, 1)).toBe(0);
 		expect(sampledMediaSourceTime(map, 0.5)).toBeCloseTo(2.5e307);
 		expect(sampledMediaSourceRange(map, 0, 1).max).toBeCloseTo(2.5e307);
+	});
+});
+
+describe("live media signal history", () => {
+	it("records mutable speed after each frame and replays fractional positions", () => {
+		const speed = Signal.state(1);
+		const recorder = new MediaSignalRecorder({
+			mode: "speed",
+			fps: 2,
+			startFrame: 10,
+			durationFrames: 2,
+			sourceStartSec: 2,
+		});
+		recorder.record(10, speed.get());
+		speed.set(-1);
+		recorder.record(11, speed.get());
+		recorder.record(12, speed.get());
+		expect(recorder.at(10)).toBe(2);
+		expect(recorder.at(11)).toBe(2);
+		expect(recorder.at(12)).toBe(1.5);
+		const history = recorder.finish();
+		expect(sampledMediaSourceTime(history, 0.5)).toBe(2.125);
+		expect(sampledMediaSourceTime(history, 2)).toBe(1.5);
+		speed.set(20);
+		expect(sampledMediaSourceTime(history, 2)).toBe(1.5);
+	});
+	it("rejects missing, reordered, and conflicting frame samples", () => {
+		const recorder = new MediaSignalRecorder({
+			mode: "source-time",
+			fps: 24,
+			startFrame: 5,
+			durationFrames: 2,
+		});
+		expect(() => recorder.record(6, 1)).toThrow(/out of order/);
+		recorder.record(5, 0.5);
+		recorder.record(5, 0.5);
+		expect(() => recorder.record(5, 0.6)).toThrow(/different value/);
+		expect(() => recorder.at(6)).toThrow(/not been recorded/);
+		expect(() => recorder.finish()).toThrow(/incomplete/);
 	});
 });

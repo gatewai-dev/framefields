@@ -1,5 +1,13 @@
 # @framefields/node-compositor
 
+## 2.8.0
+
+### Patch Changes
+
+- b5c6470: Sort blended 3D meshes across the scene and render them without depth writes. Apply glTF base-color alpha once.
+- e96a32f: Render model and procedural mesh wireframes as triangle edges, including animated and shadow-casting meshes.
+- 9609991: Render all glTF primitive modes, per-map UV sets and transforms, sparse accessors, animated morph targets, Draco or meshopt compressed geometry, and ETC1S/UASTC KTX2 textures. Reject unsupported required glTF extensions explicitly.
+
 ## 2.7.0
 
 ### Minor Changes

@@ -542,7 +542,6 @@ export class GltfLoader {
 			roughness: pbr?.roughnessFactor ?? 0.5,
 			metallic: pbr?.metallicFactor ?? 0.0,
 			shininess: 32.0 * (1.0 - (pbr?.roughnessFactor ?? 0.5)),
-			opacity: baseColor[3] ?? 1.0,
 			twoSided: mat.doubleSided ?? true,
 			alphaMode:
 				mat.alphaMode === "MASK"

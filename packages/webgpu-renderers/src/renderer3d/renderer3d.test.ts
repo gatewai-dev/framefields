@@ -45,6 +45,25 @@ describe("Renderer3D Subsystem", () => {
 		expect(mockDevice.createRenderPipeline).toHaveBeenCalled();
 	});
 
+	it("creates blended mesh and wireframe pipelines without depth writes", () => {
+		for (const label of [
+			"Mesh3DTransparentSingle",
+			"Mesh3DTransparentMrt",
+			"Mesh3DTransparentWireframeSingle",
+			"Mesh3DTransparentWireframeMrt",
+		]) {
+			expect(mockDevice.createRenderPipeline).toHaveBeenCalledWith(
+				expect.objectContaining({
+					label,
+					depthStencil: expect.objectContaining({
+						depthWriteEnabled: false,
+						depthCompare: "less-equal",
+					}),
+				}),
+			);
+		}
+	});
+
 	it("creates and caches depth textures for surface dimensions", () => {
 		const depth1 = renderer3d.getOrCreateDepthTexture(1920, 1080);
 		expect(depth1).toBeDefined();

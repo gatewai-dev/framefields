@@ -81,6 +81,26 @@ import {
 } from "./transform.js";
 import { has3DTransform, type Quad2D, Transform3DMath } from "./transform3d.js";
 
+// Mesh vertex buffers are cached by identity, so their alpha classification can
+// also be computed once instead of scanning large models on every frame.
+const meshHasAlpha = new WeakMap<Mesh3DData, boolean>();
+function hasVertexAlpha(mesh: Mesh3DData): boolean {
+	const cached = meshHasAlpha.get(mesh);
+	if (cached !== undefined) return cached;
+	const colors = mesh.colors;
+	let transparent = false;
+	if (colors) {
+		for (let i = 3; i < colors.length; i += 4) {
+			if (colors[i] < 1) {
+				transparent = true;
+				break;
+			}
+		}
+	}
+	meshHasAlpha.set(mesh, transparent);
+	return transparent;
+}
+
 // Layout depends on the document tree (whose `children` array keeps its
 // identity between frames), the viewport, media sizes and the few layout
 // props a timeline can animate. A film's tree holds every scene, so
@@ -1400,16 +1420,38 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				Boolean(sceneBloom),
 			);
 
-			// Glass reads what is behind the batch (the canvas so far), and goes
-			// last so opaque meshes are already in the depth buffer.
+			// Opaque objects establish depth first. Sort blended meshes across the
+			// whole batch by camera-space depth, then draw glass as before.
 			const isGlass = (item: Pending3DItem) =>
 				item.kind === "mesh" &&
 				(item.opts.material === "glass" ||
 					item.opts.material === "acrylic" ||
 					item.opts.material === "frosted");
+			const opaque: Pending3DItem[] = [];
+			const glass: Pending3DItem[] = [];
+			const transparent: { item: Pending3DItem; depth: number }[] = [];
+			const forward = Vector3Math.subtract(camera.target, camera.eye);
+			for (const item of pending3DItems) {
+				if (isGlass(item)) glass.push(item);
+				else if (item.kind === "mesh" && item.opts.transparent) {
+					const bounds = r3d.worldBounds({
+						kind: "mesh",
+						mesh: item.mesh,
+						opts: item.opts,
+					});
+					const center = bounds.min.map((v, i) => (v + bounds.max[i]) / 2);
+					const depth =
+						center[0] * forward[0] +
+						center[1] * forward[1] +
+						center[2] * forward[2];
+					transparent.push({ item, depth });
+				} else opaque.push(item);
+			}
+			transparent.sort((a, b) => b.depth - a.depth);
 			const ordered = [
-				...pending3DItems.filter((i) => !isGlass(i)),
-				...pending3DItems.filter(isGlass),
+				...opaque,
+				...transparent.map(({ item }) => item),
+				...glass,
 			];
 			for (const item of ordered) {
 				if (item.kind === "quad") {
@@ -2066,15 +2108,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					}
 				}
 
-				// Blended materials draw after everything opaque behind them.
-				const isBlend = (m: Mesh3DData) =>
-					m.materialName
-						? model.materials[m.materialName]?.alphaMode === "blend"
-						: false;
-				const drawOrder = [...model.meshes].sort(
-					(a, b) => Number(isBlend(a)) - Number(isBlend(b)),
-				);
-				for (const mesh of drawOrder) {
+				for (const mesh of model.meshes) {
 					const mat = mesh.materialName
 						? model.materials[mesh.materialName]
 						: undefined;
@@ -2265,6 +2299,11 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 						modelMatrix: placed.matrix,
 						opacity: modelOpacity * (mat?.opacity ?? 1.0),
 						colorTint: meshColorTint,
+						transparent:
+							mat?.alphaMode === "blend" ||
+							modelOpacity * (mat?.opacity ?? 1) < 1 ||
+							meshColorTint[3] < 1 ||
+							hasVertexAlpha(mesh),
 						twoSided: target?.twoSided ?? lop.twoSided ?? mat?.twoSided ?? true,
 						wireframe: Boolean(target?.wireframe ?? lop.wireframe),
 						isSkinned: Boolean(

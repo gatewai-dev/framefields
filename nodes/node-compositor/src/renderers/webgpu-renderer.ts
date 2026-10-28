@@ -67,6 +67,9 @@ import {
 	type ShapeGeometryConfig,
 	SlugFontCache,
 	type SlugGlyphBatch,
+	type Swarm3DFrameInput,
+	type Swarm3DState,
+	type Swarm3DStaticConfig,
 	sampleMorphWeights,
 	spansText,
 	srtLoader,
@@ -213,6 +216,7 @@ function getHomographyResources(
 }
 
 const audioTrackLatentCache = new Map<string, AudioLatentTrackCache>();
+const swarmStateMap = new WeakMap<object, Swarm3DState>();
 const deviceRenderer3DCache = new WeakMap<GPUDevice, Map<string, Renderer3D>>();
 
 /** One Renderer3D per device, target format and MSAA sample count. */
@@ -588,6 +592,53 @@ function effectsReach(effects: unknown[]): number | null {
 		reach += r;
 	}
 	return reach;
+}
+
+function quatFromEulerAngles(
+	rx: number,
+	ry: number,
+	rz: number,
+): [number, number, number, number] {
+	const DEG = Math.PI / 180;
+	const halfX = (rx * DEG) / 2;
+	const halfY = (ry * DEG) / 2;
+	const halfZ = (rz * DEG) / 2;
+	const cx = Math.cos(halfX);
+	const sx = Math.sin(halfX);
+	const cy = Math.cos(halfY);
+	const sy = Math.sin(halfY);
+	const cz = Math.cos(halfZ);
+	const sz = Math.sin(halfZ);
+	return [
+		cz * cy * sx - sz * sy * cx,
+		cz * sy * cx + sz * cy * sx,
+		sz * cy * cx - cz * sy * sx,
+		cz * cy * cx + sz * sy * sx,
+	];
+}
+
+function sampleColorRamp(
+	ramp: string | string[],
+	factor: number,
+): [number, number, number] {
+	if (!Array.isArray(ramp) || ramp.length === 0) {
+		const p = parseColor((ramp as string) || "#ffffff") ?? { r: 1, g: 1, b: 1 };
+		return [p.r, p.g, p.b];
+	}
+	if (ramp.length === 1) {
+		const p = parseColor(ramp[0]) ?? { r: 1, g: 1, b: 1 };
+		return [p.r, p.g, p.b];
+	}
+	const t = Math.max(0, Math.min(1, factor)) * (ramp.length - 1);
+	const idx = Math.min(Math.floor(t), ramp.length - 2);
+	const frac = t - idx;
+	const c0 = parseColor(ramp[idx]) ?? { r: 1, g: 1, b: 1 };
+	const c1 = parseColor(ramp[idx + 1]) ?? { r: 1, g: 1, b: 1 };
+	return [
+		c0.r + (c1.r - c0.r) * frac,
+		c0.g + (c1.g - c0.g) * frac,
+		c0.b + (c1.b - c0.b) * frac,
+	];
 }
 
 function expandRect(r: Rect, by: number): Rect {
@@ -1239,6 +1290,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 						exposure: target?.exposure ?? lop.exposure,
 						toneMapping: lop.toneMapping,
 						fog: lop.fog,
+						floor: lop.floor,
 						...(intensity !== undefined && { intensity }),
 					};
 					sceneBloom =
@@ -1412,25 +1464,6 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				}
 			}
 
-			const {
-				pass: pass3d,
-				cameraBindGroup,
-				cameraBuffer,
-				lightsBindGroup,
-			} = r3d.beginPass(
-				encoder,
-				scene3dView,
-				nativeWidth,
-				nativeHeight,
-				camera,
-				"clear",
-				{ r: 0, g: 0, b: 0, a: 0 },
-				linearDepthView,
-				sceneLights,
-				{ environment: sceneEnvironment, shadow },
-				Boolean(sceneBloom),
-			);
-
 			// Opaque objects establish depth first. Sort blended meshes across the
 			// whole batch by camera-space depth, then draw glass as before.
 			const isGlass = (item: Pending3DItem) =>
@@ -1464,6 +1497,108 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				...transparent.map(({ item }) => item),
 				...glass,
 			];
+
+			// Planar floor reflection pass (if environment.floor is active)
+			const floorSpec = sceneEnvironment?.floor;
+			let blurredReflectionTex: GPUTexture | null = null;
+			if (
+				floorSpec &&
+				typeof floorSpec.y === "number" &&
+				camera.eye[1] < floorSpec.y
+			) {
+				const reflectedCamera: Camera3DPose = {
+					...camera,
+					eye: [camera.eye[0], 2 * floorSpec.y - camera.eye[1], camera.eye[2]],
+					target: [
+						camera.target[0],
+						2 * floorSpec.y - camera.target[1],
+						camera.target[2],
+					],
+					up: [camera.up[0], camera.up[1], camera.up[2]],
+				};
+				const {
+					pass: reflPass,
+					cameraBindGroup: reflCamBind,
+					lightsBindGroup: reflLightsBind,
+					reflectionTexture: reflTex,
+				} = r3d.beginReflectionPass(
+					encoder,
+					nativeWidth,
+					nativeHeight,
+					reflectedCamera,
+					sceneLights,
+					{ environment: sceneEnvironment, shadow: null },
+				);
+				for (const item of ordered) {
+					if (item.kind === "quad") {
+						r3d.drawTextureQuad(
+							reflPass,
+							reflCamBind,
+							reflLightsBind,
+							item.texture,
+							item.opts,
+							false,
+						);
+					} else if (item.kind === "slug") {
+						r3d.drawSlugText(
+							reflPass,
+							reflCamBind,
+							reflLightsBind,
+							item.batches,
+							item.opts,
+							item.stackBase,
+							false,
+						);
+					} else if (item.kind === "mesh") {
+						r3d.drawMesh3D(
+							reflPass,
+							reflCamBind,
+							reflLightsBind,
+							item.meshBuffers ?? item.mesh,
+							item.texture,
+							item.opts,
+							false,
+						);
+					}
+				}
+				reflPass.end();
+				blurredReflectionTex = r3d.blurReflection(
+					encoder,
+					reflTex,
+					floorSpec.roughness ?? 0.35,
+				);
+			}
+
+			const {
+				pass: pass3d,
+				cameraBindGroup,
+				cameraBuffer,
+				lightsBindGroup,
+			} = r3d.beginPass(
+				encoder,
+				scene3dView,
+				nativeWidth,
+				nativeHeight,
+				camera,
+				"clear",
+				{ r: 0, g: 0, b: 0, a: 0 },
+				linearDepthView,
+				sceneLights,
+				{ environment: sceneEnvironment, shadow },
+				Boolean(sceneBloom),
+			);
+
+			if (floorSpec && blurredReflectionTex) {
+				r3d.drawFloor(
+					pass3d,
+					cameraBindGroup,
+					lightsBindGroup,
+					blurredReflectionTex,
+					floorSpec,
+					dofEnabled,
+					Boolean(sceneBloom),
+				);
+			}
 			for (const item of ordered) {
 				if (item.kind === "quad") {
 					r3d.drawTextureQuad(
@@ -2024,6 +2159,813 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 
 				const modelOpacity =
 					(target?.opacity ?? lop.opacity ?? 1) * accumulatedOpacity;
+
+				if (lop.instances3d) {
+					const instOpt = lop.instances3d as Record<string, any>;
+					const rawMeshes = Array.isArray(instOpt.mesh)
+						? instOpt.mesh
+						: instOpt.mesh
+							? [instOpt.mesh]
+							: lop.modelData
+								? [lop.modelData]
+								: lop.primitive3d
+									? [
+											getPrimitiveGeometry(
+												lop.primitive3d as PrimitiveGeometryOptions,
+											),
+										]
+									: [];
+
+					const variants: Model3DData[] = [];
+					for (const m of rawMeshes) {
+						let vModel: Model3DData | undefined;
+						if (typeof m === "object" && m !== null) {
+							if ("meshes" in m && Array.isArray((m as any).meshes)) {
+								vModel = m as Model3DData;
+							} else if (m.modelData && "meshes" in m.modelData) {
+								vModel = m.modelData as Model3DData;
+							} else if (m.primitive3d) {
+								vModel = getPrimitiveGeometry(
+									m.primitive3d as PrimitiveGeometryOptions,
+								);
+							} else if (m.src) {
+								try {
+									vModel = r3d.loadModel(m.src, m.modelFormat ?? "auto", {
+										center: m.center,
+										normalizeSize: m.normalizeSize,
+									});
+								} catch {}
+							}
+						}
+						if (vModel && vModel.meshes && vModel.meshes.length > 0) {
+							variants.push(vModel);
+						}
+					}
+					if (variants.length === 0 && model) {
+						variants.push(model);
+					}
+					if (variants.length > 0) {
+						const count =
+							instOpt.bodies &&
+							Array.isArray(instOpt.bodies) &&
+							instOpt.bodies.length > 0
+								? instOpt.bodies.length
+								: (instOpt.count ??
+									(Array.isArray(instOpt.transforms)
+										? instOpt.transforms.length
+										: 0));
+
+						if (count > 0) {
+							const numVariants = variants.length;
+							const bucketCounts = new Uint32Array(numVariants);
+							for (let i = 0; i < count; i++) {
+								bucketCounts[i % numVariants]++;
+							}
+							const bucketItems: Float32Array[] = [];
+							const bucketBounds: Array<{
+								min: [number, number, number];
+								max: [number, number, number];
+							}> = [];
+							for (let k = 0; k < numVariants; k++) {
+								bucketItems.push(new Float32Array(bucketCounts[k] * 16));
+								bucketBounds.push({
+									min: [Infinity, Infinity, Infinity],
+									max: [-Infinity, -Infinity, -Infinity],
+								});
+							}
+							const bucketCursors = new Uint32Array(numVariants);
+
+							const frameCtx = {
+								frame: shiftedFrame ?? 0,
+								fps: fps || 30,
+								time: (shiftedFrame ?? 0) / (fps || 30),
+								duration: 0,
+								durationMs: 0,
+								progress: 0,
+								deltaTime: 1 / (fps || 30),
+							};
+
+							for (let i = 0; i < count; i++) {
+								const k = i % numVariants;
+								const cursor = bucketCursors[k];
+								const bData = bucketItems[k];
+								const bBox = bucketBounds[k];
+								const off = cursor * 16;
+
+								let ix = 0;
+								let iy = 0;
+								let iz = 0;
+								let iscale = 1.0;
+								let iqx = 0;
+								let iqy = 0;
+								let iqz = 0;
+								let iqw = 1.0;
+								let icr = 1.0;
+								let icg = 1.0;
+								let icb = 1.0;
+								let ica = 1.0;
+								let ier = 0.0;
+								let ieg = 0.0;
+								let ieb = 0.0;
+								let iew = 0.0;
+
+								if (instOpt.bodies && instOpt.bodies[i]) {
+									const b = instOpt.bodies[i];
+									ix =
+										typeof b.x?.get === "function"
+											? Number(b.x.get(frameCtx))
+											: Number(b.x ?? 0);
+									iy =
+										typeof b.y?.get === "function"
+											? Number(b.y.get(frameCtx))
+											: Number(b.y ?? 0);
+									iz =
+										typeof b.z?.get === "function"
+											? Number(b.z.get(frameCtx))
+											: Number(b.z ?? 0);
+									const rx =
+										typeof b.rotateX?.get === "function"
+											? Number(b.rotateX.get(frameCtx))
+											: Number(b.rotateX ?? 0);
+									const ry =
+										typeof b.rotateY?.get === "function"
+											? Number(b.rotateY.get(frameCtx))
+											: Number(b.rotateY ?? 0);
+									const rz =
+										typeof b.rotateZ?.get === "function"
+											? Number(b.rotateZ.get(frameCtx))
+											: Number(b.rotateZ ?? 0);
+									const q = quatFromEulerAngles(rx, ry, rz);
+									iqx = q[0];
+									iqy = q[1];
+									iqz = q[2];
+									iqw = q[3];
+
+									if (instOpt.emissiveBySpeed) {
+										const spd =
+											typeof b.speed?.get === "function"
+												? Number(b.speed.get(frameCtx))
+												: Number(b.speed ?? 0);
+										const maxSpd = instOpt.emissiveBySpeed.maxSpeed || 1000;
+										const factor = Math.min(1, Math.max(0, spd / maxSpd));
+										if (factor > 0.001) {
+											const ramp = sampleColorRamp(
+												instOpt.emissiveBySpeed.color,
+												factor,
+											);
+											ier = ramp[0];
+											ieg = ramp[1];
+											ieb = ramp[2];
+											iew = factor * (instOpt.emissiveBySpeed.intensity ?? 3.0);
+										}
+									}
+									if (instOpt.emissiveByImpact) {
+										const imp =
+											typeof b.impact?.get === "function"
+												? Number(b.impact.get(frameCtx))
+												: Number(b.impact ?? 0);
+										if (imp > 0.01) {
+											const impCol = parseColor(
+												instOpt.emissiveByImpact.color ?? "#ffffff",
+											) ?? { r: 1, g: 1, b: 1, a: 1 };
+											ier = Math.max(ier, impCol.r);
+											ieg = Math.max(ieg, impCol.g);
+											ieb = Math.max(ieb, impCol.b);
+											iew = Math.max(
+												iew,
+												imp * (instOpt.emissiveByImpact.intensity ?? 4.0),
+											);
+										}
+									}
+								} else if (typeof instOpt.instanceAt === "function") {
+									const t = instOpt.instanceAt(i, shiftedFrame ?? 0, fps || 30);
+									if (!t) continue;
+									ix = t.x ?? 0;
+									iy = t.y ?? 0;
+									iz = t.z ?? 0;
+									if (typeof t.scale === "number") iscale = t.scale;
+									if (iscale <= 0) continue;
+									if (t.rotation) {
+										if (t.rotation.length === 4) {
+											iqx = t.rotation[0];
+											iqy = t.rotation[1];
+											iqz = t.rotation[2];
+											iqw = t.rotation[3];
+										} else {
+											const q = quatFromEulerAngles(
+												t.rotation[0],
+												t.rotation[1],
+												t.rotation[2],
+											);
+											iqx = q[0];
+											iqy = q[1];
+											iqz = q[2];
+											iqw = q[3];
+										}
+									}
+									if (t.color) {
+										const p =
+											typeof t.color === "string"
+												? parseColor(t.color)
+												: {
+														r: t.color[0],
+														g: t.color[1],
+														b: t.color[2],
+														a: t.color[3] ?? 1,
+													};
+										if (p) {
+											icr = p.r;
+											icg = p.g;
+											icb = p.b;
+											ica = p.a;
+										}
+									}
+									if (t.emissive) {
+										const p =
+											typeof t.emissive === "string"
+												? parseColor(t.emissive)
+												: {
+														r: t.emissive[0],
+														g: t.emissive[1],
+														b: t.emissive[2],
+													};
+										if (p) {
+											ier = p.r;
+											ieg = p.g;
+											ieb = p.b;
+										}
+										iew = t.emissiveIntensity ?? 1.0;
+									}
+								} else if (
+									Array.isArray(instOpt.transforms) &&
+									instOpt.transforms[i]
+								) {
+									const t = instOpt.transforms[i];
+									ix = t.x ?? 0;
+									iy = t.y ?? 0;
+									iz = t.z ?? 0;
+									if (typeof t.scale === "number") iscale = t.scale;
+									if (iscale <= 0) continue;
+									if (t.rotation) {
+										if (t.rotation.length === 4) {
+											iqx = t.rotation[0];
+											iqy = t.rotation[1];
+											iqz = t.rotation[2];
+											iqw = t.rotation[3];
+										} else {
+											const q = quatFromEulerAngles(
+												t.rotation[0],
+												t.rotation[1],
+												t.rotation[2],
+											);
+											iqx = q[0];
+											iqy = q[1];
+											iqz = q[2];
+											iqw = q[3];
+										}
+									}
+									if (t.color) {
+										const p =
+											typeof t.color === "string"
+												? parseColor(t.color)
+												: {
+														r: t.color[0],
+														g: t.color[1],
+														b: t.color[2],
+														a: t.color[3] ?? 1,
+													};
+										if (p) {
+											icr = p.r;
+											icg = p.g;
+											icb = p.b;
+											ica = p.a;
+										}
+									}
+									if (t.emissive) {
+										const p =
+											typeof t.emissive === "string"
+												? parseColor(t.emissive)
+												: {
+														r: t.emissive[0],
+														g: t.emissive[1],
+														b: t.emissive[2],
+													};
+										if (p) {
+											ier = p.r;
+											ieg = p.g;
+											ieb = p.b;
+										}
+										iew = t.emissiveIntensity ?? 1.0;
+									}
+								} else {
+									continue;
+								}
+
+								bucketCursors[k]++;
+								bData[off + 0] = ix;
+								bData[off + 1] = iy;
+								bData[off + 2] = iz;
+								bData[off + 3] = iscale;
+								bData[off + 4] = iqx;
+								bData[off + 5] = iqy;
+								bData[off + 6] = iqz;
+								bData[off + 7] = iqw;
+								bData[off + 8] = icr;
+								bData[off + 9] = icg;
+								bData[off + 10] = icb;
+								bData[off + 11] = ica;
+								bData[off + 12] = ier;
+								bData[off + 13] = ieg;
+								bData[off + 14] = ieb;
+								bData[off + 15] = iew;
+
+								const rad = 50 * iscale;
+								bBox.min[0] = Math.min(bBox.min[0], ix - rad);
+								bBox.min[1] = Math.min(bBox.min[1], iy - rad);
+								bBox.min[2] = Math.min(bBox.min[2], iz - rad);
+								bBox.max[0] = Math.max(bBox.max[0], ix + rad);
+								bBox.max[1] = Math.max(bBox.max[1], iy + rad);
+								bBox.max[2] = Math.max(bBox.max[2], iz + rad);
+							}
+
+							for (let k = 0; k < numVariants; k++) {
+								const bCount = bucketCursors[k];
+								if (bCount === 0) continue;
+								const v = variants[k];
+								const activeSlice =
+									bCount === bucketCounts[k]
+										? bucketItems[k]
+										: bucketItems[k].subarray(0, bCount * 16);
+								const instanceBuffer = r3d.uploadInstanceData(activeSlice);
+								const bounds = Number.isFinite(bucketBounds[k].min[0])
+									? bucketBounds[k]
+									: undefined;
+
+								for (const mesh of v.meshes) {
+									const mat = mesh.materialName
+										? v.materials[mesh.materialName]
+										: undefined;
+									const meshOpts: DrawMesh3DOpts = {
+										modelMatrix: finalModelMatrix,
+										opacity: modelOpacity * (mat?.opacity ?? 1.0),
+										colorTint,
+										transparent: false,
+										twoSided: target?.twoSided ?? lop.twoSided ?? true,
+										wireframe: Boolean(target?.wireframe ?? lop.wireframe),
+										material:
+											target?.material ??
+											lop.material ??
+											instOpt.material ??
+											mat?.shading ??
+											"lit",
+										roughness:
+											target?.roughness ??
+											lop.roughness ??
+											instOpt.roughness ??
+											mat?.roughness,
+										specularIntensity:
+											target?.specularIntensity ??
+											lop.specularIntensity ??
+											instOpt.specularIntensity ??
+											0.5,
+										ambientIntensity:
+											target?.ambientIntensity ??
+											lop.ambientIntensity ??
+											instOpt.ambientIntensity ??
+											1.0,
+										metallic:
+											target?.metallic ??
+											lop.metallic ??
+											instOpt.metallic ??
+											mat?.metallic,
+										...surfaceProps(target, lop, mat),
+										instanceBuffer,
+										instanceCount: bCount,
+										bounds,
+									};
+									pending3DItems.push({
+										kind: "mesh",
+										mesh,
+										texture: mat ? await r3d.materialTexture(mat) : undefined,
+										opts: meshOpts,
+									});
+								}
+							}
+							return { finalTex: destTex, finalView: destView };
+						}
+					}
+				}
+
+				if (lop.swarm3d) {
+					const swarmOpt = lop.swarm3d as Record<string, any>;
+					const max = swarmOpt.max ?? 2000;
+					const seed = swarmOpt.seed ?? 42;
+					const substeps = swarmOpt.substeps ?? 2;
+					const prewarm = swarmOpt.prewarm ?? 0;
+					const emitter = swarmOpt.emitter ?? {};
+					const speed = Array.isArray(swarmOpt.speed)
+						? swarmOpt.speed
+						: [swarmOpt.speed ?? 100, swarmOpt.speed ?? 300];
+					const direction = swarmOpt.direction ?? [0, -1, 0];
+					const spread = ((swarmOpt.spread ?? 45) * Math.PI) / 180;
+					const angularSpeed = Array.isArray(swarmOpt.angularSpeed)
+						? swarmOpt.angularSpeed
+						: [swarmOpt.angularSpeed ?? 1, swarmOpt.angularSpeed ?? 6];
+					const angularDrag = swarmOpt.angularDrag ?? 0.1;
+					const lifetime = Array.isArray(swarmOpt.lifetime)
+						? swarmOpt.lifetime
+						: [swarmOpt.lifetime ?? 2, swarmOpt.lifetime ?? 4];
+					const size = Array.isArray(swarmOpt.size)
+						? swarmOpt.size
+						: [swarmOpt.size ?? 18, swarmOpt.size ?? 12];
+					const sizeJitter = swarmOpt.sizeJitter ?? 0.25;
+					const fade = swarmOpt.fade ?? [0.15, 0.2];
+
+					const colorStops: Array<[number, number, number, number]> = [];
+					if (Array.isArray(swarmOpt.color)) {
+						for (const c of swarmOpt.color) {
+							const p = parseColor(c);
+							if (p) colorStops.push([p.r, p.g, p.b, p.a]);
+						}
+					} else if (typeof swarmOpt.color === "string") {
+						const p = parseColor(swarmOpt.color);
+						if (p) colorStops.push([p.r, p.g, p.b, p.a]);
+					}
+					if (colorStops.length === 0) {
+						colorStops.push([0.15, 0.14, 0.18, 1.0]);
+					}
+
+					const heatOpt = swarmOpt.heat ?? {};
+					const heatColorStops: [
+						[number, number, number],
+						[number, number, number],
+						[number, number, number],
+					] = [
+						[0.1, 0.05, 0.15],
+						[1.0, 0.0, 0.6],
+						[1.0, 0.9, 1.0],
+					];
+					if (Array.isArray(heatOpt.color) && heatOpt.color.length >= 2) {
+						const c0 = parseColor(heatOpt.color[0]) ?? {
+							r: 0.1,
+							g: 0.05,
+							b: 0.15,
+						};
+						const c1 = parseColor(
+							heatOpt.color[Math.floor(heatOpt.color.length / 2)],
+						) ?? { r: 1.0, g: 0.0, b: 0.6 };
+						const c2 = parseColor(heatOpt.color[heatOpt.color.length - 1]) ?? {
+							r: 1.0,
+							g: 0.9,
+							b: 1.0,
+						};
+						heatColorStops[0] = [c0.r, c0.g, c0.b];
+						heatColorStops[1] = [c1.r, c1.g, c1.b];
+						heatColorStops[2] = [c2.r, c2.g, c2.b];
+					}
+
+					const rawVariants = Array.isArray(swarmOpt.meshVariants)
+						? swarmOpt.meshVariants
+						: swarmOpt.mesh
+							? [swarmOpt.mesh]
+							: [];
+					const variants: Model3DData[] = [];
+					for (const m of rawVariants) {
+						let vModel: Model3DData | undefined;
+						if (m && typeof m === "object") {
+							if ("meshes" in m && Array.isArray((m as any).meshes)) {
+								vModel = m as Model3DData;
+							} else if (m.modelData && "meshes" in m.modelData) {
+								vModel = m.modelData as Model3DData;
+							} else if (m.primitive3d) {
+								vModel = getPrimitiveGeometry(
+									m.primitive3d as PrimitiveGeometryOptions,
+								);
+							} else if (m.src) {
+								try {
+									vModel = r3d.loadModel(m.src, m.modelFormat ?? "auto", {
+										center: m.center,
+										normalizeSize: m.normalizeSize,
+									});
+								} catch {}
+							}
+						}
+						if (vModel && vModel.meshes && vModel.meshes.length > 0) {
+							variants.push(vModel);
+						}
+					}
+					if (variants.length === 0 && model) {
+						variants.push(model);
+					}
+
+					let meshRadius = 20;
+					const primaryBounds = variants[0]?.bounds;
+					if (primaryBounds) {
+						const dx = primaryBounds.max[0] - primaryBounds.min[0];
+						const dy = primaryBounds.max[1] - primaryBounds.min[1];
+						const dz = primaryBounds.max[2] - primaryBounds.min[2];
+						const maxExtent = Math.max(dx, dy, dz) * 0.5;
+						if (Number.isFinite(maxExtent) && maxExtent > 0.1) {
+							meshRadius = maxExtent;
+						}
+					}
+
+					let sparksConfig: Swarm3DStaticConfig["sparks"] | undefined;
+					if (swarmOpt.sparks && typeof swarmOpt.sparks === "object") {
+						const sp = swarmOpt.sparks;
+						const spSize = Array.isArray(sp.size)
+							? [sp.size[0] ?? 3.2, sp.size[1] ?? 1.2]
+							: [sp.size ?? 3.2, (sp.size ?? 3.2) * 0.35];
+						const spLife = Array.isArray(sp.lifetime)
+							? [sp.lifetime[0] ?? 0.35, sp.lifetime[1] ?? 0.9]
+							: [sp.lifetime ?? 0.35, (sp.lifetime ?? 0.6) * 1.4];
+						const spSpeed = Array.isArray(sp.speed)
+							? [sp.speed[0] ?? 60, sp.speed[1] ?? 260]
+							: [60, sp.speed ?? 260];
+						let spColor: [number, number, number] = [1, 0.9, 1];
+						if (Array.isArray(sp.color) && sp.color.length >= 1) {
+							const sc = parseColor(
+								sp.color[Math.floor(sp.color.length / 2)],
+							) ??
+								parseColor(sp.color[0]) ?? { r: 1, g: 0.9, b: 1 };
+							spColor = [sc.r, sc.g, sc.b];
+						} else if (typeof sp.color === "string") {
+							const sc = parseColor(sp.color) ?? { r: 1, g: 0.9, b: 1 };
+							spColor = [sc.r, sc.g, sc.b];
+						}
+						sparksConfig = {
+							max: sp.max ?? 2000,
+							rate: sp.rate ?? 600,
+							threshold: sp.threshold ?? 0.25,
+							size: [spSize[0], spSize[1]],
+							lifetime: [spLife[0], spLife[1]],
+							speed: [spSpeed[0], spSpeed[1]],
+							intensity: sp.intensity ?? 9.0,
+							color: spColor,
+						};
+					}
+
+					const staticConfig: Swarm3DStaticConfig = {
+						max,
+						seed,
+						substeps,
+						prewarm,
+						emitter: {
+							shape: emitter.shape ?? "point",
+							x: emitter.x ?? 0,
+							y: emitter.y ?? 0,
+							z: emitter.z ?? 0,
+							width: emitter.width ?? 100,
+							height: emitter.height ?? 100,
+							depth: emitter.depth ?? 100,
+							radius: emitter.radius ?? 50,
+						},
+						speed: [speed[0], speed[1]],
+						direction: [direction[0], direction[1], direction[2]],
+						spread,
+						angularSpeed: [angularSpeed[0], angularSpeed[1]],
+						angularDrag,
+						lifetime: [lifetime[0], lifetime[1]],
+						size: [size[0], size[1]],
+						sizeJitter,
+						fade: [fade[0], fade[1]],
+						colors: colorStops,
+						heat: {
+							source: heatOpt.source ?? "both",
+							maxSpeed: heatOpt.maxSpeed ?? 900,
+							curve: heatOpt.curve ?? 1.6,
+							intensity: heatOpt.intensity ?? 5.0,
+							colors: heatColorStops,
+						},
+						variants: Math.max(1, variants.length),
+						meshRadius,
+						sparks: sparksConfig,
+					};
+
+					let swarmState = swarmStateMap.get(lop);
+					if (!swarmState || swarmState.device !== ctx.device) {
+						swarmState = r3d.swarm3dPipeline.createState(staticConfig);
+						swarmStateMap.set(lop, swarmState);
+					}
+
+					const targetF = shiftedFrame ?? 0;
+					const frameSampler = (f: number): Swarm3DFrameInput => {
+						const fCtx = {
+							frame: f,
+							fps: fps || 30,
+							time: f / (fps || 30),
+							duration: 0,
+							durationMs: 0,
+							progress: 0,
+							deltaTime: 1 / (fps || 30),
+						};
+						const sample = (d: any, fallback: number) =>
+							typeof d === "number"
+								? d
+								: typeof d?.get === "function"
+									? Number(d.get(fCtx))
+									: typeof d === "function"
+										? Number(d(f))
+										: fallback;
+
+						const grav = swarmOpt.gravity;
+						let gx = 0;
+						let gy = 1200;
+						let gz = 0;
+						if (Array.isArray(grav)) {
+							gx = sample(grav[0], 0);
+							gy = sample(grav[1], 1200);
+							gz = sample(grav[2], 0);
+						} else if (grav !== undefined) {
+							gy = sample(grav, 1200);
+						}
+
+						const rate = sample(emitter.rate, 150);
+						const dragVal = sample(swarmOpt.drag, 0.05);
+
+						let noiseStrength = 0;
+						let noiseScale = 200;
+						let noiseSpeed = 1.0;
+						if (swarmOpt.noise) {
+							noiseStrength = sample(swarmOpt.noise.strength, 0);
+							noiseScale = swarmOpt.noise.scale ?? 200;
+							noiseSpeed = swarmOpt.noise.speed ?? 1.0;
+						}
+
+						const attractors: Array<{
+							x: number;
+							y: number;
+							z: number;
+							strength: number;
+							radius?: number;
+						}> = [];
+						if (Array.isArray(swarmOpt.attractors)) {
+							for (const a of swarmOpt.attractors) {
+								attractors.push({
+									x: sample(a.x, 0),
+									y: sample(a.y, 0),
+									z: sample(a.z, 0),
+									strength: sample(a.strength, 0),
+									radius: a.radius,
+								});
+							}
+						}
+
+						let vortex: Swarm3DFrameInput["vortex"] | undefined;
+						if (swarmOpt.vortex) {
+							vortex = {
+								x: sample(swarmOpt.vortex.x, 0),
+								y: sample(swarmOpt.vortex.y, 0),
+								z: sample(swarmOpt.vortex.z, 0),
+								axis: swarmOpt.vortex.axis ?? [0, -1, 0],
+								swirl: sample(swarmOpt.vortex.swirl, 0),
+								pull: sample(swarmOpt.vortex.pull, 0),
+								axial: sample(swarmOpt.vortex.axial, 0),
+								radius: swarmOpt.vortex.radius ?? 800,
+							};
+						}
+
+						let floor: Swarm3DFrameInput["floor"] | undefined;
+						if (swarmOpt.floor) {
+							floor = {
+								y: swarmOpt.floor.y ?? 500,
+								bounce: swarmOpt.floor.bounce ?? 0.3,
+								friction: sample(swarmOpt.floor.friction, 1.5),
+								heatGain: swarmOpt.floor.heatGain ?? 1.0,
+								heatDecay: swarmOpt.floor.heatDecay ?? 0.45,
+							};
+						}
+
+						let emitterPos: [number, number, number] | undefined;
+						if (
+							emitter.x !== undefined ||
+							emitter.y !== undefined ||
+							emitter.z !== undefined
+						) {
+							emitterPos = [
+								sample(emitter.x, 0),
+								sample(emitter.y, 0),
+								sample(emitter.z, 0),
+							];
+						}
+
+						return {
+							rate,
+							gravity: [gx, gy, gz],
+							drag: dragVal,
+							noise: {
+								strength: noiseStrength,
+								scale: noiseScale,
+								speed: noiseSpeed,
+							},
+							attractors,
+							vortex,
+							floor,
+							emitterPos,
+						};
+					};
+
+					r3d.swarm3dPipeline.advance(
+						swarmState,
+						staticConfig,
+						targetF,
+						fps || 30,
+						frameSampler,
+					);
+
+					if (variants.length > 0) {
+						const sliceCount = swarmState.sliceCount;
+						for (let vIdx = 0; vIdx < variants.length; vIdx++) {
+							const vModel = variants[vIdx];
+							const firstInstance = vIdx * sliceCount;
+							for (const mesh of vModel.meshes) {
+								const mat = mesh.materialName
+									? vModel.materials[mesh.materialName]
+									: undefined;
+								const meshOpts: DrawMesh3DOpts = {
+									modelMatrix: finalModelMatrix,
+									opacity: modelOpacity,
+									colorTint,
+									transparent: false,
+									twoSided: target?.twoSided ?? lop.twoSided ?? true,
+									wireframe: Boolean(target?.wireframe ?? lop.wireframe),
+									material:
+										target?.material ??
+										lop.material ??
+										swarmOpt.material ??
+										mat?.shading ??
+										"lit",
+									roughness:
+										target?.roughness ??
+										lop.roughness ??
+										swarmOpt.roughness ??
+										mat?.roughness ??
+										0.35,
+									specularIntensity:
+										target?.specularIntensity ??
+										lop.specularIntensity ??
+										swarmOpt.specularIntensity ??
+										0.5,
+									ambientIntensity:
+										target?.ambientIntensity ??
+										lop.ambientIntensity ??
+										swarmOpt.ambientIntensity ??
+										1.0,
+									metallic:
+										target?.metallic ??
+										lop.metallic ??
+										swarmOpt.metallic ??
+										mat?.metallic ??
+										0.7,
+									...surfaceProps(target, lop, mat),
+									instanceBuffer: swarmState.instances,
+									instanceCount: sliceCount,
+									firstInstance,
+								};
+								pending3DItems.push({
+									kind: "mesh",
+									mesh,
+									texture: mat ? await r3d.materialTexture(mat) : undefined,
+									opts: meshOpts,
+								});
+							}
+						}
+
+						if (sparksConfig && sparksConfig.max > 0) {
+							const sparkModel = variants[0];
+							const sparkFirst = variants.length * sliceCount;
+							for (const mesh of sparkModel.meshes) {
+								const mat = mesh.materialName
+									? sparkModel.materials[mesh.materialName]
+									: undefined;
+								const sparkOpts: DrawMesh3DOpts = {
+									modelMatrix: finalModelMatrix,
+									opacity: modelOpacity,
+									colorTint,
+									transparent: false,
+									twoSided: true,
+									wireframe: false,
+									material: "lit",
+									roughness: 0.2,
+									specularIntensity: 0.8,
+									ambientIntensity: 1.0,
+									metallic: 0.9,
+									...surfaceProps(target, lop, mat),
+									instanceBuffer: swarmState.instances,
+									instanceCount: sparksConfig.max,
+									firstInstance: sparkFirst,
+								};
+								pending3DItems.push({
+									kind: "mesh",
+									mesh,
+									texture: mat ? await r3d.materialTexture(mat) : undefined,
+									opts: sparkOpts,
+								});
+							}
+						}
+					}
+					return { finalTex: destTex, finalView: destView };
+				}
 
 				// Animation evaluation
 				let skinningMatrices: Float32Array | undefined;

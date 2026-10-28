@@ -53,6 +53,10 @@ export interface MeshUniformData extends SurfaceParams {
 	hasMapUvs?: boolean;
 	isSkinned?: boolean;
 	skinningMatrices?: Float32Array; // 128 * 16 floats
+	/** Hardware-instanced draw path. */
+	isInstanced?: boolean;
+	/** Storage buffer containing `array<InstanceData>` (64 bytes per instance). */
+	instanceBuffer?: GPUBuffer;
 	material?: "lit" | "unlit" | "toon";
 	/** Screen-space track matte: the mesh shows where this texture's alpha does. */
 	matte?: GPUTexture;
@@ -131,6 +135,7 @@ export class Mesh3DPipeline {
 	/** (0.5, 0.5, 1): an unperturbed tangent-space normal. */
 	private flatNormalTexture: GPUTexture;
 	private defaultSkinningBuffer: GPUBuffer;
+	private defaultInstanceBuffer: GPUBuffer;
 	/** White vertex colors for meshes without any, grown to the largest mesh. */
 	private whiteColorBuffer: GPUBuffer | null = null;
 	private whiteColorCapacity = 0;
@@ -193,6 +198,11 @@ export class Mesh3DPipeline {
 				},
 				matteLayoutEntry(2),
 				matteLayoutEntry(3),
+				{
+					binding: 4,
+					visibility: GPUShaderStage.VERTEX,
+					buffer: { type: "read-only-storage" },
+				},
 			],
 		});
 
@@ -400,6 +410,34 @@ export class Mesh3DPipeline {
 			idMatrices,
 		);
 		this.defaultSkinningBuffer.unmap();
+
+		// Default 1-element dummy instance buffer (posScale=[0,0,0,1], quat=[0,0,0,1], color=[1,1,1,1], emissive=[0,0,0,0])
+		this.defaultInstanceBuffer = device.createBuffer({
+			label: "Mesh3DDefaultInstanceBuffer",
+			size: 64,
+			usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+			mappedAtCreation: true,
+		});
+		const defInst = new Float32Array(
+			this.defaultInstanceBuffer.getMappedRange(),
+		);
+		defInst[0] = 0;
+		defInst[1] = 0;
+		defInst[2] = 0;
+		defInst[3] = 1;
+		defInst[4] = 0;
+		defInst[5] = 0;
+		defInst[6] = 0;
+		defInst[7] = 1;
+		defInst[8] = 1;
+		defInst[9] = 1;
+		defInst[10] = 1;
+		defInst[11] = 1;
+		defInst[12] = 0;
+		defInst[13] = 0;
+		defInst[14] = 0;
+		defInst[15] = 0;
+		this.defaultInstanceBuffer.unmap();
 	}
 
 	resetPools(): void {
@@ -418,7 +456,10 @@ export class Mesh3DPipeline {
 		this.modelData[36] = data.opacity ?? 1.0;
 		this.modelData[37] = data.twoSided ? 1.0 : 0.0;
 		this.modelData[38] = data.isSkinned ? 1.0 : 0.0;
-		this.modelData[39] = data.hasMapUvs ? 1 : 0;
+		// Bit 0 selects instance data; bit 1 selects the extra map UVs.
+		this.modelData[39] =
+			(data.isInstanced || data.instanceBuffer ? 1 : 0) +
+			(data.hasMapUvs ? 2 : 0);
 
 		const shininess =
 			data.roughness !== undefined
@@ -480,6 +521,12 @@ export class Mesh3DPipeline {
 						(data.glass && data.backdrop?.createView()) ||
 						fullCoverageView(this.device),
 				},
+				{
+					binding: 4,
+					resource: {
+						buffer: data.instanceBuffer ?? this.defaultInstanceBuffer,
+					},
+				},
 			],
 		});
 	}
@@ -494,6 +541,8 @@ export class Mesh3DPipeline {
 		data: MeshUniformData,
 		useMrt = false,
 		useBloom = false,
+		instanceCount = 1,
+		firstInstance = 0,
 	): void {
 		const modelBindGroup = this.packModel({
 			...data,
@@ -567,9 +616,19 @@ export class Mesh3DPipeline {
 			wireframe ? meshBuffers.wireIndexBuffer! : meshBuffers.indexBuffer,
 			meshBuffers.indexFormat,
 		);
-		pass.drawIndexed(
-			wireframe ? meshBuffers.wireIndexCount! : meshBuffers.indexCount,
-		);
+		if (instanceCount > 1 || data.isInstanced) {
+			pass.drawIndexed(
+				wireframe ? meshBuffers.wireIndexCount! : meshBuffers.indexCount,
+				instanceCount,
+				0,
+				0,
+				firstInstance,
+			);
+		} else {
+			pass.drawIndexed(
+				wireframe ? meshBuffers.wireIndexCount! : meshBuffers.indexCount,
+			);
+		}
 	}
 
 	/** Draws the mesh into a shadow map (`lightCameraBindGroup` holds the light's view-projection). */
@@ -578,6 +637,8 @@ export class Mesh3DPipeline {
 		lightCameraBindGroup: GPUBindGroup,
 		meshBuffers: GPUMeshBuffers,
 		data: MeshUniformData,
+		instanceCount = 1,
+		firstInstance = 0,
 	): void {
 		const wireframe =
 			data.wireframe === true &&
@@ -604,9 +665,19 @@ export class Mesh3DPipeline {
 			wireframe ? meshBuffers.wireIndexBuffer! : meshBuffers.indexBuffer,
 			meshBuffers.indexFormat,
 		);
-		pass.drawIndexed(
-			wireframe ? meshBuffers.wireIndexCount! : meshBuffers.indexCount,
-		);
+		if (instanceCount > 1 || data.isInstanced) {
+			pass.drawIndexed(
+				wireframe ? meshBuffers.wireIndexCount! : meshBuffers.indexCount,
+				instanceCount,
+				0,
+				0,
+				firstInstance,
+			);
+		} else {
+			pass.drawIndexed(
+				wireframe ? meshBuffers.wireIndexCount! : meshBuffers.indexCount,
+			);
+		}
 	}
 
 	private colorsFor(meshBuffers: GPUMeshBuffers): GPUBuffer {
@@ -638,5 +709,6 @@ export class Mesh3DPipeline {
 		this.defaultWhiteTexture.destroy();
 		this.flatNormalTexture.destroy();
 		this.defaultSkinningBuffer.destroy();
+		this.defaultInstanceBuffer.destroy();
 	}
 }

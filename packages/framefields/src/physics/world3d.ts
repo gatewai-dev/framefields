@@ -43,6 +43,18 @@ export interface PhysicsBox3D {
 }
 
 export interface Body3DOptions extends Omit<BodyCommonOptions, "lockRotation"> {
+	/** Initial X position override in px. */
+	x?: number;
+	/** Initial Y position override in px. */
+	y?: number;
+	/** Initial Z position override in px. */
+	z?: number;
+	/** Initial Euler X rotation override in degrees. */
+	rotateX?: number;
+	/** Initial Euler Y rotation override in degrees. */
+	rotateY?: number;
+	/** Initial Euler Z rotation override in degrees. */
+	rotateZ?: number;
 	/**
 	 * Never rotates (`true`), or only around some axes: `{ x: true, y: true }`
 	 * keeps a card facing the camera while it still spins in the picture plane.
@@ -367,11 +379,15 @@ export class PhysicsWorld3D extends WorldCore<Vec3, Quat, PhysicsBody3D> {
 		const isLayer = typeof (target as unknown as LayerLike).kind === "string";
 		const layer = isLayer ? (target as unknown as LayerLike) : undefined;
 		const t = target as unknown as LayerLike;
-		const position: Vec3 = [num(t.x, 0), num(t.y, 0), num(t.z, 0)];
+		const position: Vec3 = [
+			num(options.x ?? t.x, 0),
+			num(options.y ?? t.y, 0),
+			num(options.z ?? t.z, 0),
+		];
 		const rotation: Vec3 = [
-			num(t.rotateX, 0),
-			num(t.rotateY, 0),
-			num(t.rotateZ, 0),
+			num(options.rotateX ?? t.rotateX, 0),
+			num(options.rotateY ?? t.rotateY, 0),
+			num(options.rotateZ ?? t.rotateZ, 0),
 		];
 		const ppm = this.pixelsPerMeter;
 		const type = options.type ?? "dynamic";

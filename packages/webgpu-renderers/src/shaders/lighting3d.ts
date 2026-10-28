@@ -44,6 +44,7 @@ struct LightsUniforms {
     shadowParams  : vec4<f32>, // x = enabled, y = shadowed light index, z = softness (texels), w = map size
     shadowBias    : vec4<f32>, // x = depth bias, y = normal offset (world px), z = darkness 0..1, w = unused
     shadowMatrix  : mat4x4<f32>,
+    floorParams   : vec4<f32>, // x = floorY, y = fadeDistance, z = isReflectionPass, w = unused
 };
 
 const PI = 3.14159265359;
@@ -413,6 +414,17 @@ fn shadeSurfaceFull(worldPos: vec3<f32>, worldNormal: vec3<f32>, baseColor: vec3
         let f = smoothstep(lights.fogRange.x, max(lights.fogRange.y, lights.fogRange.x + 1.0), dist) * lights.fogRange.z;
         display = mix(display, lights.fog.rgb, f);
         hdr = hdr * (1.0 - f);
+    }
+    if (lights.floorParams.z > 0.5) {
+        if (worldPos.y > lights.floorParams.x + 0.1) {
+            discard;
+        }
+        if (lights.floorParams.y > 0.0) {
+            let deltaY = max(0.0, lights.floorParams.x - worldPos.y);
+            let fade = exp(-deltaY / lights.floorParams.y);
+            display = display * fade;
+            hdr = hdr * fade;
+        }
     }
     out.display = linearToSrgb(display);
     out.hdr = hdr;

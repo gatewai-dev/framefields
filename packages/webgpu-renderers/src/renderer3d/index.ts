@@ -1,6 +1,8 @@
 export * from "./audio-mesh-deform-pipeline.js";
 export * from "./bloom-pipeline.js";
+export * from "./floor-reflection-pipeline.js";
 export * from "./glass-pipeline.js";
+export * from "./matte3d.js";
 export * from "./mesh3d-pipeline.js";
 export * from "./motion-blur-pipeline.js";
 export * from "./primitive-geometry.js";
@@ -11,5 +13,5 @@ export * from "./shadow-frustum.js";
 export * from "./shadow-pipeline.js";
 export * from "./ssao-pipeline.js";
 export * from "./surface-params.js";
+export * from "./swarm3d-pipeline.js";
 export * from "./text-extruder.js";
-export * from "./matte3d.js";

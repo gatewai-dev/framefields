@@ -52,10 +52,25 @@ export interface CylinderGeometryOptions extends PrimitiveSurface {
 	openEnded?: boolean;
 }
 
+export interface ShardGeometryOptions extends PrimitiveSurface {
+	type: "shard";
+	/** Approximate bounding radius (or half-extent if size is not set). Default 50. */
+	radius?: number;
+	/** Optional non-uniform half-extents [hx, hy, hz]; overrides radius per axis. */
+	size?: [number, number, number];
+	/** Number of clipping half-space planes carving the polyhedron (4..48). Default 14. */
+	facets?: number;
+	/** Deterministic PRNG seed for plane normals and depths. Default 1. */
+	seed?: number;
+	/** How unevenly planes cut toward the center, 0..0.85 (0 = regular polyhedron, 0.5 = jagged). Default 0.35. */
+	irregularity?: number;
+}
+
 export type PrimitiveGeometryOptions =
 	| RoundedBoxGeometryOptions
 	| SphereGeometryOptions
-	| CylinderGeometryOptions;
+	| CylinderGeometryOptions
+	| ShardGeometryOptions;
 
 class MeshBuilder {
 	positions: number[] = [];
@@ -281,6 +296,274 @@ function cylinder(o: CylinderGeometryOptions, mb: MeshBuilder): void {
 	}
 }
 
+function shard(o: ShardGeometryOptions, mb: MeshBuilder): void {
+	const r = o.radius ?? 50;
+	const hx = (o.size ? o.size[0] : r) || 50;
+	const hy = (o.size ? o.size[1] : r) || 50;
+	const hz = (o.size ? o.size[2] : r) || 50;
+	const maxR = Math.max(hx, hy, hz);
+	const facets = Math.max(4, Math.min(64, Math.round(o.facets ?? 14)));
+	const seed = Math.round(o.seed ?? 1) >>> 0;
+	const irregularity = Math.max(0, Math.min(0.85, o.irregularity ?? 0.35));
+
+	// Simple PCG random generator
+	let state = BigInt(seed) * 6364136223846793005n + 1442695040888963407n;
+	const rnd = (): number => {
+		state = state * 6364136223846793005n + 1442695040888963407n;
+		const xorshifted = Number(((state >> 18n) ^ state) >> 27n) >>> 0;
+		const rot = Number(state >> 59n) >>> 0;
+		const res = (xorshifted >>> rot) | (xorshifted << ((32 - rot) & 31));
+		return (res >>> 0) / 4294967296;
+	};
+
+	type V3 = [number, number, number];
+	type Polygon = V3[];
+
+	const sub3 = (a: V3, b: V3): V3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+	const dot3 = (a: V3, b: V3): number =>
+		a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+	const cross3 = (a: V3, b: V3): V3 => [
+		a[1] * b[2] - a[2] * b[1],
+		a[2] * b[0] - a[0] * b[2],
+		a[0] * b[1] - a[1] * b[0],
+	];
+
+	// Start with bounding box of size [2*hx, 2*hy, 2*hz] as 6 rectangular faces
+	// Each face is an array of CCW vertices facing outward
+	let faces: Polygon[] = [
+		[
+			[-hx, -hy, -hz],
+			[hx, -hy, -hz],
+			[hx, hy, -hz],
+			[-hx, hy, -hz],
+		], // front (-z)
+		[
+			[hx, -hy, hz],
+			[-hx, -hy, hz],
+			[-hx, hy, hz],
+			[hx, hy, hz],
+		], // back (+z)
+		[
+			[-hx, -hy, hz],
+			[-hx, -hy, -hz],
+			[-hx, hy, -hz],
+			[-hx, hy, hz],
+		], // left (-x)
+		[
+			[hx, -hy, -hz],
+			[hx, -hy, hz],
+			[hx, hy, hz],
+			[hx, hy, -hz],
+		], // right (+x)
+		[
+			[-hx, -hy, hz],
+			[hx, -hy, hz],
+			[hx, -hy, -hz],
+			[-hx, -hy, -hz],
+		], // top (-y)
+		[
+			[-hx, hy, -hz],
+			[hx, hy, -hz],
+			[hx, hy, hz],
+			[-hx, hy, hz],
+		], // bottom (+y)
+	];
+
+	// Clip against `facets` random half-spaces: n · x <= d
+	// Using Fibonacci sphere distribution + jitter
+	const phi = (1 + Math.sqrt(5)) / 2;
+	for (let i = 0; i < facets; i++) {
+		const theta = (2 * Math.PI * i) / phi + (rnd() - 0.5) * 0.4;
+		const zNorm = 1 - (2 * (i + 0.5)) / facets;
+		const radiusAtZ = Math.sqrt(Math.max(0, 1 - zNorm * zNorm));
+		let n: V3 = [
+			Math.cos(theta) * radiusAtZ,
+			Math.sin(theta) * radiusAtZ,
+			zNorm,
+		];
+		// Jitter normal slightly
+		n[0] += (rnd() - 0.5) * 0.2;
+		n[1] += (rnd() - 0.5) * 0.2;
+		n[2] += (rnd() - 0.5) * 0.2;
+		const len = Math.hypot(n[0], n[1], n[2]);
+		if (len < 1e-6) continue;
+		n = [n[0] / len, n[1] / len, n[2] / len];
+
+		// Scale distance according to bounding box dimensions
+		const supportR = Math.hypot(n[0] * hx, n[1] * hy, n[2] * hz);
+		const d = supportR * (1 - irregularity * (0.2 + 0.8 * rnd()));
+
+		// Sutherland-Hodgman 3D convex clipping
+		const nextFaces: Polygon[] = [];
+		const capVertices: V3[] = [];
+
+		for (const face of faces) {
+			const clipped: V3[] = [];
+			const numV = face.length;
+			for (let j = 0; j < numV; j++) {
+				const p1 = face[j]!;
+				const p2 = face[(j + 1) % numV]!;
+				const dist1 = dot3(n, p1) - d;
+				const dist2 = dot3(n, p2) - d;
+
+				if (dist1 <= 1e-5) {
+					clipped.push(p1);
+				}
+				if (
+					(dist1 > 1e-5 && dist2 < -1e-5) ||
+					(dist1 < -1e-5 && dist2 > 1e-5)
+				) {
+					const t = dist1 / (dist1 - dist2);
+					const intersection: V3 = [
+						p1[0] + (p2[0] - p1[0]) * t,
+						p1[1] + (p2[1] - p1[1]) * t,
+						p1[2] + (p2[2] - p1[2]) * t,
+					];
+					clipped.push(intersection);
+					capVertices.push(intersection);
+				}
+			}
+			if (clipped.length >= 3) {
+				nextFaces.push(clipped);
+			}
+		}
+
+		if (capVertices.length >= 3) {
+			// Cluster / deduplicate vertices close to each other
+			const uniqueCap: V3[] = [];
+			for (const pt of capVertices) {
+				let duplicate = false;
+				for (const u of uniqueCap) {
+					if (Math.hypot(pt[0] - u[0], pt[1] - u[1], pt[2] - u[2]) < 1e-3) {
+						duplicate = true;
+						break;
+					}
+				}
+				if (!duplicate) uniqueCap.push(pt);
+			}
+
+			if (uniqueCap.length >= 3) {
+				// Compute center of cap
+				let cx = 0;
+				let cy = 0;
+				let cz = 0;
+				for (const u of uniqueCap) {
+					cx += u[0];
+					cy += u[1];
+					cz += u[2];
+				}
+				const c: V3 = [
+					cx / uniqueCap.length,
+					cy / uniqueCap.length,
+					cz / uniqueCap.length,
+				];
+
+				// Tangent vectors on cutting plane
+				const up: V3 = Math.abs(n[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0];
+				const tangentX = normalize(cross3(up, n)) as V3;
+				const tangentY = cross3(n, tangentX);
+
+				// Sort vertices CCW with respect to outward normal n
+				uniqueCap.sort((vA, vB) => {
+					const aA = Math.atan2(
+						dot3(sub3(vA, c), tangentY),
+						dot3(sub3(vA, c), tangentX),
+					);
+					const aB = Math.atan2(
+						dot3(sub3(vB, c), tangentY),
+						dot3(sub3(vB, c), tangentX),
+					);
+					return aA - aB;
+				});
+
+				nextFaces.push(uniqueCap);
+			}
+		}
+
+		if (nextFaces.length >= 4) {
+			faces = nextFaces;
+		}
+	}
+
+	// Compute bounding box center
+	let minX = Number.POSITIVE_INFINITY;
+	let minY = Number.POSITIVE_INFINITY;
+	let minZ = Number.POSITIVE_INFINITY;
+	let maxX = Number.NEGATIVE_INFINITY;
+	let maxY = Number.NEGATIVE_INFINITY;
+	let maxZ = Number.NEGATIVE_INFINITY;
+	for (const face of faces) {
+		for (const pt of face) {
+			if (pt[0] < minX) minX = pt[0];
+			if (pt[0] > maxX) maxX = pt[0];
+			if (pt[1] < minY) minY = pt[1];
+			if (pt[1] > maxY) maxY = pt[1];
+			if (pt[2] < minZ) minZ = pt[2];
+			if (pt[2] > maxZ) maxZ = pt[2];
+		}
+	}
+	const center: V3 = [(minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2];
+
+	// Center faces on origin
+	for (const face of faces) {
+		for (let j = 0; j < face.length; j++) {
+			const pt = face[j]!;
+			face[j] = [pt[0] - center[0], pt[1] - center[1], pt[2] - center[2]];
+		}
+	}
+
+	// Triangulate each face into MeshBuilder with flat-shaded face normals
+	for (const face of faces) {
+		if (face.length < 3) continue;
+
+		// Compute true face normal
+		let fn: V3 = [0, 0, 0];
+		for (let j = 0; j < face.length; j++) {
+			const curr = face[j]!;
+			const next = face[(j + 1) % face.length]!;
+			fn[0] += (curr[1] - next[1]) * (curr[2] + next[2]);
+			fn[1] += (curr[2] - next[2]) * (curr[0] + next[0]);
+			fn[2] += (curr[0] - next[0]) * (curr[1] + next[1]);
+		}
+		const fnLen = Math.hypot(fn[0], fn[1], fn[2]);
+		if (fnLen < 1e-6) continue;
+		fn = [fn[0] / fnLen, fn[1] / fnLen, fn[2] / fnLen];
+
+		// Check winding with respect to center (origin)
+		const faceCenter: V3 = [
+			face.reduce((s, p) => s + p[0], 0) / face.length,
+			face.reduce((s, p) => s + p[1], 0) / face.length,
+			face.reduce((s, p) => s + p[2], 0) / face.length,
+		];
+		if (dot3(fn, faceCenter) < 0) {
+			// Flip winding if normal pointed inward
+			face.reverse();
+			fn = [-fn[0], -fn[1], -fn[2]];
+		}
+
+		// Local face UV basis
+		const up: V3 = Math.abs(fn[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0];
+		const tx = normalize(cross3(up, fn)) as V3;
+		const ty = cross3(fn, tx);
+
+		// Project face vertices to [0, 1] UVs
+		const uvs: [number, number][] = face.map((pt) => [
+			0.5 + dot3(pt, tx) / (2 * maxR),
+			0.5 + dot3(pt, ty) / (2 * maxR),
+		]);
+
+		const baseIdx = mb.positions.length / 3;
+		for (let j = 0; j < face.length; j++) {
+			mb.vertex(face[j]!, fn, uvs[j]!);
+		}
+
+		// Fan triangulation
+		for (let j = 1; j < face.length - 1; j++) {
+			mb.indices.push(baseIdx, baseIdx + j, baseIdx + j + 1);
+		}
+	}
+}
+
 /** Builds a procedural solid as a single-mesh Model3DData. */
 export function generatePrimitiveGeometry(
 	options: PrimitiveGeometryOptions,
@@ -289,6 +572,7 @@ export function generatePrimitiveGeometry(
 	if (options.type === "roundedBox") roundedBox(options, mb);
 	else if (options.type === "sphere") sphere(options, mb);
 	else if (options.type === "cylinder") cylinder(options, mb);
+	else if (options.type === "shard") shard(options, mb);
 	else {
 		throw new Error(
 			`Unknown 3D primitive: ${(options as { type?: string }).type}`,

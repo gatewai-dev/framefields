@@ -517,6 +517,8 @@ export {
 	type EaseRef,
 	type EnhancedTextNode,
 	EnhancedTextNodeSchema,
+	type EnvironmentFloor,
+	EnvironmentFloorSchema,
 	type EnvironmentFog,
 	EnvironmentFogSchema,
 	type EnvironmentPreset,
@@ -928,6 +930,8 @@ export {
 	type Cylinder3DOptions,
 	type ExtrudedText3DOptions,
 	type Grid3DOptions,
+	type Instances3DOptions,
+	type InstanceTransform3D,
 	Layer3D,
 	type Plane3DOptions,
 	type Primitive3DNodeOptions,
@@ -939,6 +943,7 @@ export {
 	type Text3DOptions,
 } from "./shapes3d.js";
 export { type StyleName, Styles } from "./styles.js";
+export type { Swarm3DOptions } from "./swarm3d.js";
 export {
 	type SceneSequenceOptions,
 	type SequenceEntry,
@@ -3363,6 +3368,7 @@ export type EnvironmentOptions = Partial<
 		| "exposure"
 		| "toneMapping"
 		| "fog"
+		| "floor"
 		| "bloom"
 		| "startFrame"
 		| "durationFrames"

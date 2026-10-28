@@ -11,11 +11,14 @@ import {
 	type Model3DData,
 	type PrimitiveGeometryOptions,
 	type RoundedBoxGeometryOptions,
+	type ShardGeometryOptions,
 	SlugFontCache,
 	type SphereGeometryOptions,
 } from "@framefields/webgpu-renderers";
 import { autoId } from "./ids.js";
 import { type AnimatableNode, Layer } from "./index.js";
+import type { PhysicsBody3D } from "./physics/world3d.js";
+import { createSwarm3D, type Swarm3DOptions } from "./swarm3d.js";
 
 /** Physically based surface options every 3D builder accepts. */
 export interface Surface3DOptions {
@@ -303,6 +306,64 @@ export type Sphere3DOptions = Primitive3DNodeOptions &
 	Omit<SphereGeometryOptions, "type" | "color" | "material">;
 export type Cylinder3DOptions = Primitive3DNodeOptions &
 	Omit<CylinderGeometryOptions, "type" | "color" | "material">;
+export type Shard3DOptions = Primitive3DNodeOptions &
+	Omit<ShardGeometryOptions, "type" | "color" | "material">;
+
+export interface InstanceTransform3D {
+	x: number;
+	y: number;
+	z: number;
+	/** Euler degrees [rx, ry, rz] or unit quaternion [qx, qy, qz, qw]. */
+	rotation?: [number, number, number] | [number, number, number, number];
+	scale?: number;
+	color?: string | [number, number, number, number];
+	emissive?: string | [number, number, number];
+	emissiveIntensity?: number;
+}
+
+export interface Instances3DOptions extends Surface3DOptions {
+	id?: string;
+	/** One mesh node/primitive, or an array of mesh variants distributed across instances. */
+	mesh: AnimatableNode<Model3DNode> | Array<AnimatableNode<Model3DNode>>;
+	/** Count of instances when driven by `instanceAt` or `bodies`. */
+	count?: number;
+	/** Bind directly to Physics.world3d rigid bodies. */
+	bodies?: readonly PhysicsBody3D[];
+	/** Per-frame callback `(index, frame, fps) => InstanceTransform3D`. */
+	instanceAt?: (
+		index: number,
+		frame: number,
+		fps: number,
+	) => InstanceTransform3D | undefined;
+	/** Pre-computed array of instance transforms. */
+	transforms?: InstanceTransform3D[];
+	/** Optional speed/impact-to-emissive mapping when bound to `bodies`. */
+	emissiveBySpeed?: {
+		color: string | string[];
+		maxSpeed: number;
+		intensity?: number;
+	};
+	emissiveByImpact?: { color: string; intensity?: number };
+	x?: number;
+	y?: number;
+	z?: number;
+	rotateX?: number;
+	rotateY?: number;
+	rotateZ?: number;
+	scale?: number;
+	color?: string;
+	colorTint?: string;
+	opacity?: number;
+	twoSided?: boolean;
+	wireframe?: boolean;
+	material?: MaterialType;
+	roughness?: number;
+	metallic?: number;
+	specularIntensity?: number;
+	ambientIntensity?: number;
+	startFrame?: number;
+	durationFrames?: number;
+}
 
 /** Mesh shading the geometry can bake in; layer materials (glass, …) apply on the node. */
 function meshShading(
@@ -951,6 +1012,79 @@ export const Layer3D = {
 			},
 			options,
 		);
+	},
+
+	/**
+	 * A procedural faceted convex polyhedron / rock shard: carved from half-space planes.
+	 * Convex hull collider in Physics.world3d is derived automatically.
+	 */
+	shard(options: Shard3DOptions = {}): AnimatableNode<Model3DNode> {
+		return primitiveNode(
+			"shard",
+			{
+				type: "shard",
+				radius: options.radius,
+				size: options.size,
+				facets: options.facets,
+				seed: options.seed,
+				irregularity: options.irregularity,
+			},
+			options,
+		);
+	},
+
+	/**
+	 * Single-draw-call hardware-instanced 3D mesh batch node.
+	 * Renders hundreds or thousands of 3D meshes in 1 draw call per mesh variant,
+	 * driven by Physics.world3d rigid bodies, procedural callbacks, or transform arrays.
+	 */
+	instances(options: Instances3DOptions): AnimatableNode<Model3DNode> {
+		const primaryMesh = Array.isArray(options.mesh)
+			? options.mesh[0]
+			: options.mesh;
+		const node: Model3DNode = {
+			id: options.id ?? autoId("instances3d"),
+			kind: "model3d",
+			x: options.x ?? 0,
+			y: options.y ?? 0,
+			z: options.z ?? 0,
+			rotateX: options.rotateX ?? 0,
+			rotateY: options.rotateY ?? 0,
+			rotateZ: options.rotateZ ?? 0,
+			scale: options.scale ?? 1,
+			color: options.color,
+			colorTint: options.colorTint,
+			opacity: options.opacity ?? 1,
+			twoSided: options.twoSided ?? true,
+			wireframe: options.wireframe ?? false,
+			material: options.material ?? "lit",
+			roughness: options.roughness,
+			metallic: options.metallic,
+			specularIntensity: options.specularIntensity,
+			ambientIntensity: options.ambientIntensity,
+			startFrame: options.startFrame,
+			durationFrames: options.durationFrames,
+			instances3d: { ...options },
+			...materialProps(options),
+		};
+		if (primaryMesh) {
+			const m = primaryMesh as unknown as Record<string, unknown>;
+			if (m.modelData) node.modelData = m.modelData;
+			if (m.primitive3d) node.primitive3d = m.primitive3d;
+			if (m.src) node.src = m.src as string;
+		}
+		return Layer.model(
+			node as unknown as Partial<Model3DNode>,
+		) as unknown as AnimatableNode<Model3DNode>;
+	},
+
+	/**
+	 * GPU-simulated 3D particle swarm and shard system.
+	 * Simulates thousands of 3D mesh particles natively inside WebGPU with 3D curl noise,
+	 * attractors, vortex fields, floor collisions, and speed/friction-driven HDR bloom emission.
+	 */
+	swarm(options: Swarm3DOptions = {}): AnimatableNode<Model3DNode> {
+		return createSwarm3D(options);
 	},
 
 	/**

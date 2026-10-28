@@ -31,6 +31,21 @@ export interface Environment3DFog {
 	opacity?: number;
 }
 
+export interface Environment3DFloor {
+	/** World Y coordinate of the floor plane (px, y down). */
+	y: number;
+	/** Base floor surface color (default "#08070a"). */
+	color?: string;
+	/** Mirror reflectivity at normal incidence / Fresnel scale, 0..1 (default 0.35). */
+	reflectivity?: number;
+	/** Surface roughness 0..1: controls anisotropic vertical/horizontal reflection blur (default 0.35). */
+	roughness?: number;
+	/** Reflection fade-out distance from the floor plane in world Y px (default 900). */
+	fadeDistance?: number;
+	/** Optional overall opacity of the floor plane, 0..1 (default 1; 0 draws only the additive reflection over background). */
+	opacity?: number;
+}
+
 export interface Environment3DOptions {
 	preset?: EnvironmentPreset;
 	/** Overrides the preset's sky (above), horizon and ground colors. */
@@ -48,6 +63,7 @@ export interface Environment3DOptions {
 	/** Default "neutral". */
 	toneMapping?: ToneMapping;
 	fog?: Environment3DFog;
+	floor?: Environment3DFloor;
 }
 
 interface PresetDef {
@@ -102,7 +118,7 @@ const TONE_MAPPING_CODE: Record<ToneMapping, number> = {
 	neutral: 3,
 };
 
-function linearRgb(color: string): [number, number, number] {
+export function linearRgb(color: string): [number, number, number] {
 	const c = parseCssColor(color) ?? [0, 0, 0, 1];
 	const lin = (v: number) =>
 		v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
@@ -121,6 +137,14 @@ export interface ResolvedEnvironment {
 		color: [number, number, number];
 		start: number;
 		end: number;
+		opacity: number;
+	};
+	floor?: {
+		y: number;
+		color: [number, number, number];
+		reflectivity: number;
+		roughness: number;
+		fadeDistance: number;
 		opacity: number;
 	};
 }
@@ -150,6 +174,19 @@ export function resolveEnvironment(
 					start: opts.fog.start,
 					end: opts.fog.end,
 					opacity: Math.max(0, Math.min(1, opts.fog.opacity ?? 1)),
+				}
+			: undefined,
+		floor: opts.floor
+			? {
+					y: opts.floor.y,
+					color: linearRgb(opts.floor.color ?? "#08070a"),
+					reflectivity: Math.max(
+						0,
+						Math.min(1, opts.floor.reflectivity ?? 0.35),
+					),
+					roughness: Math.max(0, Math.min(1, opts.floor.roughness ?? 0.35)),
+					fadeDistance: Math.max(0, opts.floor.fadeDistance ?? 900),
+					opacity: Math.max(0, Math.min(1, opts.floor.opacity ?? 1.0)),
 				}
 			: undefined,
 	};

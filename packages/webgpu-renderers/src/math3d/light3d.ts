@@ -61,9 +61,9 @@ export interface GPULightData {
 export const MAX_LIGHTS = 8;
 /**
  * 16 (ambient) + 16 (params) + 8 * 64 (lights), then the physical-shading
- * block appended after them: 8 vec4 (128) + shadow matrix (64).
+ * block appended after them: 8 vec4 (128) + shadow matrix (64) + floorParams (16).
  */
-export const LIGHT_UNIFORM_SIZE_BYTES = 544 + 128 + 64;
+export const LIGHT_UNIFORM_SIZE_BYTES = 544 + 128 + 64 + 32;
 
 export interface LightsUniformData {
 	ambientColor: [number, number, number, number];
@@ -251,9 +251,16 @@ export const Light3D = {
 		lights: Light3DOptions[],
 		environment?: Environment3DOptions | null,
 		shadow?: ShadowUniformInfo | null,
+		isReflectionPass = false,
 	): Float32Array {
 		const buffer = new Float32Array(LIGHT_UNIFORM_SIZE_BYTES / 4);
-		Light3D.packPhysicalBlock(buffer, lights ?? [], environment, shadow);
+		Light3D.packPhysicalBlock(
+			buffer,
+			lights ?? [],
+			environment,
+			shadow,
+			isReflectionPass,
+		);
 
 		if ((!lights || lights.length === 0) && !environment) {
 			// No lights: params.y = 0.0 indicates unlit mode
@@ -352,6 +359,7 @@ export const Light3D = {
 		lights: Light3DOptions[],
 		environment?: Environment3DOptions | null,
 		shadow?: ShadowUniformInfo | null,
+		isReflectionPass = false,
 	): void {
 		const base = 8 + MAX_LIGHTS * 16; // first float after the lights array
 		let ambR = 0;
@@ -397,6 +405,18 @@ export const Light3D = {
 			);
 			for (let i = 0; i < 16; i++)
 				buffer[base + 32 + i] = shadow.matrix[i] ?? 0;
+		}
+
+		if (environment?.floor) {
+			buffer[base + 48] = environment.floor.y;
+			buffer[base + 49] = environment.floor.fadeDistance ?? 900;
+			buffer[base + 50] = isReflectionPass ? 1.0 : 0.0;
+			buffer[base + 51] = 0.0;
+		} else {
+			buffer[base + 48] = 0.0;
+			buffer[base + 49] = 0.0;
+			buffer[base + 50] = 0.0;
+			buffer[base + 51] = 0.0;
 		}
 	},
 };

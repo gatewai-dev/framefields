@@ -189,6 +189,39 @@ describe("Layer3D mesh primitives", () => {
 		expect(center.g).toBeGreaterThan(150);
 		expect(center.r).toBeLessThan(center.g / 2);
 	});
+
+	it("renders a faceted 3D shard with specular highlight", async () => {
+		const comp = stage();
+		comp.add(
+			Layer.directionalLight({
+				color: "#ffffff",
+				intensity: 1.5,
+				x: 300,
+				y: 0,
+				z: -500,
+				targetX: 400,
+				targetY: 300,
+				targetZ: 0,
+			}),
+		);
+		comp.add(
+			Layer3D.shard({
+				radius: 120,
+				facets: 14,
+				seed: 7,
+				irregularity: 0.4,
+				x: 400,
+				y: 300,
+				color: "#ff0077",
+				material: "lit",
+			}),
+		);
+		const decoded = await decode(await comp.renderFrame({ frame: 0 }));
+		const pixel = decoded.at(400, 300);
+		// Shard is brightly lit and drawn with #ff0077 base color
+		expect(pixel.r).toBeGreaterThan(100);
+		expect(pixel.b).toBeGreaterThan(30);
+	});
 });
 
 describe("text reveal by count", () => {

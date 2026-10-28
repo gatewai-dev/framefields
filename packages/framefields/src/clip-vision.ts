@@ -391,8 +391,9 @@ export class ClipVision implements ClipSubjectSource {
 	blurredMask(c: number): Float32Array | null {
 		c = Math.max(0, c);
 		if (this.blurred.has(c)) return this.blurred.get(c) ?? null;
-		const r = this.mustHave(c);
-		const grid = r.mask ? boxBlur(r.mask, this.cellW, this.cellH, 2) : null;
+		this.mustHave(c);
+		const mask = bridgedMask(this.results, c, this.smoothing);
+		const grid = mask ? boxBlur(mask, this.cellW, this.cellH, 2) : null;
 		this.blurred.set(c, grid);
 		return grid;
 	}
@@ -792,29 +793,68 @@ type Segmentation = Awaited<ReturnType<VisionRunner["segment"]>>;
  * than twice its size (a flowing dress often comes back as "kite").
  */
 function personSilhouette(seg: Segmentation): Uint8Array | undefined {
-	const people = seg.masks.filter((m) => m.category === "person");
-	if (people.length === 0) return undefined;
-	const person = people.reduce((a, b) => (b.area > a.area ? b : a));
-	const box = seg.detections[person.detectionIndex]?.boundingBox;
-	const out = new Uint8Array(person.mask);
-	if (!box) return out;
-	for (const m of seg.masks) {
-		if (m === person || m.area > person.area * 2) continue;
-		const b = seg.detections[m.detectionIndex]?.boundingBox;
-		if (!b) continue;
-		const ix = Math.max(
-			0,
-			Math.min(box.originX + box.width, b.originX + b.width) -
-				Math.max(box.originX, b.originX),
-		);
-		const iy = Math.max(
-			0,
-			Math.min(box.originY + box.height, b.originY + b.height) -
-				Math.max(box.originY, b.originY),
-		);
-		if (ix * iy < 0.3 * b.width * b.height) continue;
-		for (let i = 0; i < out.length; i++)
-			if (m.mask[i] > out[i]) out[i] = m.mask[i];
+	return mergeSubjectMask(seg.masks, {
+		classes: ["person"],
+		overlap: 0.2,
+		maxGrowth: 3.5,
+	})?.mask;
+}
+
+function maskSum(m: Uint8Array | null | undefined): number {
+	if (!m) return 0;
+	let s = 0;
+	for (let i = 0; i < m.length; i++) s += m[i];
+	return s;
+}
+
+/**
+ * Bridges 1–2 frame segmentation part dropouts (e.g. a fast-spinning skirt
+ * missed on a single frame) across the smoothing window.
+ */
+function bridgedMask(
+	results: Map<number, FrameResult>,
+	c: number,
+	smoothing: number,
+): Uint8Array | null {
+	const base = results.get(c)?.mask ?? null;
+	if (smoothing <= 0) return base;
+	const baseSum = maskSum(base);
+	let prevFrame = -1;
+	let prevMask: Uint8Array | null = null;
+	let nextFrame = -1;
+	let nextMask: Uint8Array | null = null;
+	const threshold = Math.max(1000, baseSum * 1.35);
+
+	for (let d = 1; d <= smoothing + 1; d++) {
+		if (prevFrame < 0 && c - d >= 0) {
+			const m = results.get(c - d)?.mask ?? null;
+			if (maskSum(m) > threshold) {
+				prevFrame = c - d;
+				prevMask = m;
+			}
+		}
+		if (nextFrame < 0) {
+			const m = results.get(c + d)?.mask ?? null;
+			if (maskSum(m) > threshold) {
+				nextFrame = c + d;
+				nextMask = m;
+			}
+		}
+	}
+	if (!prevMask && !nextMask) return base;
+	const ref = prevMask ?? nextMask;
+	if (!ref) return base;
+	const out = base ? new Uint8Array(base) : new Uint8Array(ref.length);
+	if (prevMask && nextMask && nextFrame > prevFrame) {
+		const u = (c - prevFrame) / (nextFrame - prevFrame);
+		for (let i = 0; i < out.length; i++) {
+			const v = Math.round(prevMask[i] + (nextMask[i] - prevMask[i]) * u);
+			if (v > out[i]) out[i] = v;
+		}
+	} else {
+		for (let i = 0; i < out.length; i++) {
+			if (ref[i] > out[i]) out[i] = ref[i];
+		}
 	}
 	return out;
 }

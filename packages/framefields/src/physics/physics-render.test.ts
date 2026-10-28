@@ -167,4 +167,47 @@ describe("physics render", () => {
 		expect(rest.r).toBeGreaterThan(120);
 		expect(rest.g).toBeLessThan(rest.r / 2);
 	});
+
+	it("drops a 3D shard with convex hull collider onto the ground", async () => {
+		const c = new Composition({
+			width: 800,
+			height: 600,
+			fps: FPS,
+			durationFrames: 60,
+			backgroundColor: "#000000",
+		});
+		c.add([
+			Layer.camera({
+				x: 400,
+				y: 300,
+				z: -900,
+				targetX: 400,
+				targetY: 300,
+				targetZ: 0,
+			}),
+			Layer.ambientLight("#ffffff", 1),
+		]);
+		const shard = Layer3D.shard({
+			id: "shard",
+			radius: 60,
+			facets: 12,
+			seed: 123,
+			x: 400,
+			y: -200,
+			z: 0,
+			color: "#30ff30",
+		});
+		c.add(shard);
+		const world = await Physics.world3d({ fps: FPS, frames: 60 });
+		world.ground({ y: 360 });
+		world.body(shard, { restitution: 0, angularDamping: 2 });
+		world.simulate();
+
+		const start = await frame(c, 0);
+		const end = await frame(c, 59);
+		expect(getPixel(start, 400, 300).g).toBeLessThan(20);
+		const rest = getPixel(end, 400, 300);
+		expect(rest.g).toBeGreaterThan(120);
+		expect(rest.r).toBeLessThan(rest.g / 2);
+	});
 });

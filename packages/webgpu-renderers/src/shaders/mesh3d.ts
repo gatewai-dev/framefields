@@ -17,7 +17,7 @@ struct ModelUniforms {
     modelMatrix    : mat4x4<f32>,
     normalMatrix   : mat4x4<f32>,
     colorTint      : vec4<f32>,
-    params         : vec4<f32>, // x = opacity, y = twoSided (1.0 = yes), z = isSkinned (1.0 = yes), w = reserved
+    params         : vec4<f32>, // x = opacity, y = twoSided (1.0 = yes), z = isSkinned (1.0 = yes), w = isInstanced (1.0 = yes)
     materialParams : vec4<f32>, // x = shininess, y = specularIntensity, z = ambientIntensity, w = materialMode (0=unlit, 1=lit, 2=toon)
     shade          : vec4<f32>, // rgb = toon shadow-side color multiplier, a = alpha cutoff (0 = none)
     pbr            : vec4<f32>, // x = roughness (<0 = default), y = metallic
@@ -29,10 +29,18 @@ struct SkinningUniforms {
     jointMatrices : array<mat4x4<f32>, 128>,
 };
 
+struct InstanceData {
+    posScale : vec4<f32>, // xyz = translation, w = scale
+    quat     : vec4<f32>, // xyzw = unit rotation quaternion
+    color    : vec4<f32>, // rgba = color multiplier
+    emissive : vec4<f32>, // rgb = sRGB emissive color, w = emissiveIntensity
+};
+
 @group(0) @binding(0) var<uniform> cam      : CameraUniforms;
 @group(1) @binding(0) var<uniform> model    : ModelUniforms;
 @group(1) @binding(1) var<uniform> skinning : SkinningUniforms;
 ${matte3dWgsl(1, 2)}@group(1) @binding(3) var backdropTex : texture_2d<f32>;
+@group(1) @binding(4) var<storage, read> instances : array<InstanceData>;
 @group(2) @binding(0) var texSampler        : sampler;
 @group(2) @binding(1) var mainTex           : texture_2d<f32>;
 @group(2) @binding(2) var normalTex         : texture_2d<f32>;
@@ -57,10 +65,19 @@ struct VertexOutput {
     @location(2)       worldNormal : vec3<f32>,
     @location(3)       linearDepth : f32,
     @location(4)       color       : vec4<f32>,
+    @location(5)       emissive    : vec4<f32>,
 };
 
+fn rotateVecByQuat(v: vec3<f32>, q: vec4<f32>) -> vec3<f32> {
+    let t = 2.0 * cross(q.xyz, v);
+    return v + q.w * t + cross(q.xyz, t);
+}
+
 @vertex
-fn vs_main(in: VertexInput) -> VertexOutput {
+fn vs_main(
+    in: VertexInput,
+    @builtin(instance_index) instanceIndex: u32,
+) -> VertexOutput {
     var out: VertexOutput;
 
     var localPos = in.position;
@@ -93,6 +110,23 @@ fn vs_main(in: VertexInput) -> VertexOutput {
         }
     }
 
+    // Hardware instancing: transform local vertex by instance transform
+    // Static read prevents Tint from dropping the storage buffer binding
+    let dummyInst = instances[0].posScale.x;
+    var instColor = vec4<f32>(1.0);
+    var instEmissive = vec4<f32>(0.0);
+
+    if (model.params.w > 0.5) {
+        let inst = instances[instanceIndex];
+        let scaledPos = localPos * inst.posScale.w;
+        localPos = rotateVecByQuat(scaledPos, inst.quat) + inst.posScale.xyz;
+        localNorm = rotateVecByQuat(localNorm, inst.quat);
+        instColor = inst.color;
+        instEmissive = inst.emissive;
+    } else {
+        localPos.x += dummyInst * 0.0;
+    }
+
     let worldPos4 = model.modelMatrix * vec4<f32>(localPos, 1.0);
     out.worldPos = worldPos4.xyz;
 
@@ -101,7 +135,8 @@ fn vs_main(in: VertexInput) -> VertexOutput {
 
     out.clipPos = cam.viewProjMatrix * worldPos4;
     out.uv = in.uv;
-    out.color = in.color;
+    out.color = in.color * instColor;
+    out.emissive = instEmissive;
 
     out.linearDepth = dot(worldPos4.xyz - cam.cameraPos.xyz, cam.cameraDir.xyz);
     return out;
@@ -258,6 +293,9 @@ fn shadeMesh(in: VertexOutput, isFront: bool) -> MeshFragment {
         if (lights.params.y >= 0.5) {
             toon = toonLighting(in, baseRgb);
         }
+        if (model.params.w > 0.5 && (in.emissive.w > 0.0 || dot(in.emissive.rgb, in.emissive.rgb) > 0.0)) {
+            toon += in.emissive.rgb * in.emissive.w;
+        }
         out.color = vec4<f32>(toon * alpha, alpha);
         out.hdr = vec4<f32>(srgbToLinear(toon) * alpha, alpha);
         return out;
@@ -288,6 +326,9 @@ fn shadeMesh(in: VertexOutput, isFront: bool) -> MeshFragment {
     if (model.maps.w > 0.5) {
         // Linear multiply in display space is close enough for an 8-bit map.
         emissive = vec4<f32>(emissive.rgb * emissiveSample, emissive.w);
+    }
+    if (model.params.w > 0.5 && (in.emissive.w > 0.0 || dot(in.emissive.rgb, in.emissive.rgb) > 0.0)) {
+        emissive = in.emissive;
     }
     let shaded = shadeSurfaceFull(in.worldPos, N, baseRgb, material, pbr, emissive);
     out.color = vec4<f32>(shaded.display * alpha, alpha);

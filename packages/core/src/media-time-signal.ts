@@ -134,6 +134,7 @@ export class MediaSignalRecorder {
 	private readonly values: Float64Array;
 	private readonly positions: Float64Array | undefined;
 	private recorded = 0;
+	private evaluating = false;
 	readonly startFrame: number;
 	readonly durationFrames: number;
 	readonly fps: number;
@@ -197,6 +198,20 @@ export class MediaSignalRecorder {
 			this.positions[index] = position;
 		}
 		this.recorded++;
+	}
+
+	/** Evaluate after frame preparation, reporting recursive time dependencies. */
+	recordFrom(frame: number, sample: () => number): void {
+		if (this.evaluating)
+			throw new Error(
+				`Circular media signal dependency at composition frame ${frame}`,
+			);
+		this.evaluating = true;
+		try {
+			this.record(frame, sample());
+		} finally {
+			this.evaluating = false;
+		}
 	}
 
 	/** The known source position at an already-recorded frame boundary. */

@@ -176,6 +176,33 @@ describe("sampled media signals", () => {
 });
 
 describe("live media signal history", () => {
+	it("reports a circular signal dependency and recovers after an error", () => {
+		const a = new MediaSignalRecorder({
+			mode: "source-time",
+			fps: 24,
+			startFrame: 0,
+			durationFrames: 1,
+		});
+		const b = new MediaSignalRecorder({
+			mode: "source-time",
+			fps: 24,
+			startFrame: 0,
+			durationFrames: 1,
+		});
+		expect(() =>
+			a.recordFrom(0, () => {
+				b.recordFrom(0, () => {
+					a.recordFrom(0, () => 0);
+					return 0;
+				});
+				return 0;
+			}),
+		).toThrow(/Circular media signal dependency/);
+		a.recordFrom(0, () => 0.5);
+		b.recordFrom(0, () => 0.25);
+		expect(a.at(0)).toBe(0.5);
+		expect(b.at(0)).toBe(0.25);
+	});
 	it("records mutable speed after each frame and replays fractional positions", () => {
 		const speed = Signal.state(1);
 		const recorder = new MediaSignalRecorder({

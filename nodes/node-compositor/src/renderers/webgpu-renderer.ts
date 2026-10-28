@@ -2238,7 +2238,6 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 								const bData = bucketItems[k];
 								const bBox = bucketBounds[k];
 								const off = cursor * 16;
-								bucketCursors[k]++;
 
 								let ix = 0;
 								let iy = 0;
@@ -2327,72 +2326,12 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 									}
 								} else if (typeof instOpt.instanceAt === "function") {
 									const t = instOpt.instanceAt(i, shiftedFrame ?? 0, fps || 30);
-									if (t) {
-										ix = t.x ?? 0;
-										iy = t.y ?? 0;
-										iz = t.z ?? 0;
-										if (typeof t.scale === "number") iscale = t.scale;
-										if (t.rotation) {
-											if (t.rotation.length === 4) {
-												iqx = t.rotation[0];
-												iqy = t.rotation[1];
-												iqz = t.rotation[2];
-												iqw = t.rotation[3];
-											} else {
-												const q = quatFromEulerAngles(
-													t.rotation[0],
-													t.rotation[1],
-													t.rotation[2],
-												);
-												iqx = q[0];
-												iqy = q[1];
-												iqz = q[2];
-												iqw = q[3];
-											}
-										}
-										if (t.color) {
-											const p =
-												typeof t.color === "string"
-													? parseColor(t.color)
-													: {
-															r: t.color[0],
-															g: t.color[1],
-															b: t.color[2],
-															a: t.color[3] ?? 1,
-														};
-											if (p) {
-												icr = p.r;
-												icg = p.g;
-												icb = p.b;
-												ica = p.a;
-											}
-										}
-										if (t.emissive) {
-											const p =
-												typeof t.emissive === "string"
-													? parseColor(t.emissive)
-													: {
-															r: t.emissive[0],
-															g: t.emissive[1],
-															b: t.emissive[2],
-														};
-											if (p) {
-												ier = p.r;
-												ieg = p.g;
-												ieb = p.b;
-											}
-											iew = t.emissiveIntensity ?? 1.0;
-										}
-									}
-								} else if (
-									Array.isArray(instOpt.transforms) &&
-									instOpt.transforms[i]
-								) {
-									const t = instOpt.transforms[i];
+									if (!t) continue;
 									ix = t.x ?? 0;
 									iy = t.y ?? 0;
 									iz = t.z ?? 0;
 									if (typeof t.scale === "number") iscale = t.scale;
+									if (iscale <= 0) continue;
 									if (t.rotation) {
 										if (t.rotation.length === 4) {
 											iqx = t.rotation[0];
@@ -2444,8 +2383,72 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 										}
 										iew = t.emissiveIntensity ?? 1.0;
 									}
+								} else if (
+									Array.isArray(instOpt.transforms) &&
+									instOpt.transforms[i]
+								) {
+									const t = instOpt.transforms[i];
+									ix = t.x ?? 0;
+									iy = t.y ?? 0;
+									iz = t.z ?? 0;
+									if (typeof t.scale === "number") iscale = t.scale;
+									if (iscale <= 0) continue;
+									if (t.rotation) {
+										if (t.rotation.length === 4) {
+											iqx = t.rotation[0];
+											iqy = t.rotation[1];
+											iqz = t.rotation[2];
+											iqw = t.rotation[3];
+										} else {
+											const q = quatFromEulerAngles(
+												t.rotation[0],
+												t.rotation[1],
+												t.rotation[2],
+											);
+											iqx = q[0];
+											iqy = q[1];
+											iqz = q[2];
+											iqw = q[3];
+										}
+									}
+									if (t.color) {
+										const p =
+											typeof t.color === "string"
+												? parseColor(t.color)
+												: {
+														r: t.color[0],
+														g: t.color[1],
+														b: t.color[2],
+														a: t.color[3] ?? 1,
+													};
+										if (p) {
+											icr = p.r;
+											icg = p.g;
+											icb = p.b;
+											ica = p.a;
+										}
+									}
+									if (t.emissive) {
+										const p =
+											typeof t.emissive === "string"
+												? parseColor(t.emissive)
+												: {
+														r: t.emissive[0],
+														g: t.emissive[1],
+														b: t.emissive[2],
+													};
+										if (p) {
+											ier = p.r;
+											ieg = p.g;
+											ieb = p.b;
+										}
+										iew = t.emissiveIntensity ?? 1.0;
+									}
+								} else {
+									continue;
 								}
 
+								bucketCursors[k]++;
 								bData[off + 0] = ix;
 								bData[off + 1] = iy;
 								bData[off + 2] = iz;
@@ -2473,10 +2476,14 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 							}
 
 							for (let k = 0; k < numVariants; k++) {
-								const bCount = bucketCounts[k];
+								const bCount = bucketCursors[k];
 								if (bCount === 0) continue;
 								const v = variants[k];
-								const instanceBuffer = r3d.uploadInstanceData(bucketItems[k]);
+								const activeSlice =
+									bCount === bucketCounts[k]
+										? bucketItems[k]
+										: bucketItems[k].subarray(0, bCount * 16);
+								const instanceBuffer = r3d.uploadInstanceData(activeSlice);
 								const bounds = Number.isFinite(bucketBounds[k].min[0])
 									? bucketBounds[k]
 									: undefined;

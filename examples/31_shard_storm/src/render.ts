@@ -47,7 +47,7 @@ if (mode === "frames") {
 			frames,
 			columns: 4,
 			cellWidth: 480,
-			showLabels: true,
+			showLabels: false,
 		}),
 	);
 	console.log(file);

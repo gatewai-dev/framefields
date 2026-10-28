@@ -58,6 +58,7 @@ import {
 } from "./shadow-frustum.js";
 import { Slug3DPipeline } from "./slug3d-pipeline.js";
 import type { SurfaceParams } from "./surface-params.js";
+import { Swarm3DPipeline } from "./swarm3d-pipeline.js";
 
 const ADDRESS_MODES: Record<"repeat" | "clamp" | "mirror", GPUAddressMode> = {
 	repeat: "repeat",
@@ -238,6 +239,7 @@ export class Renderer3D {
 	public slug3dPipeline: Slug3DPipeline;
 	public mesh3dPipeline: Mesh3DPipeline;
 	public audioMeshDeformPipeline: AudioMeshDeformPipeline;
+	public swarm3dPipeline: Swarm3DPipeline;
 	private dofPipeline: GPURenderPipeline;
 	private dofBindGroupLayout: GPUBindGroupLayout;
 	private cameraPool: BufferPool;
@@ -308,6 +310,7 @@ export class Renderer3D {
 			sampleCount,
 		);
 		this.audioMeshDeformPipeline = new AudioMeshDeformPipeline(device);
+		this.swarm3dPipeline = new Swarm3DPipeline(device);
 
 		this.cameraPool = new BufferPool(
 			320,

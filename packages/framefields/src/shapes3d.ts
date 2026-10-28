@@ -18,6 +18,7 @@ import {
 import { autoId } from "./ids.js";
 import { type AnimatableNode, Layer } from "./index.js";
 import type { PhysicsBody3D } from "./physics/world3d.js";
+import { createSwarm3D, type Swarm3DOptions } from "./swarm3d.js";
 
 /** Physically based surface options every 3D builder accepts. */
 export interface Surface3DOptions {
@@ -1075,6 +1076,15 @@ export const Layer3D = {
 		return Layer.model(
 			node as unknown as Partial<Model3DNode>,
 		) as unknown as AnimatableNode<Model3DNode>;
+	},
+
+	/**
+	 * GPU-simulated 3D particle swarm and shard system.
+	 * Simulates thousands of 3D mesh particles natively inside WebGPU with 3D curl noise,
+	 * attractors, vortex fields, floor collisions, and speed/friction-driven HDR bloom emission.
+	 */
+	swarm(options: Swarm3DOptions = {}): AnimatableNode<Model3DNode> {
+		return createSwarm3D(options);
 	},
 
 	/**

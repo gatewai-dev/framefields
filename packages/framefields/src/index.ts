@@ -941,6 +941,7 @@ export {
 	type Text3DOptions,
 } from "./shapes3d.js";
 export { type StyleName, Styles } from "./styles.js";
+export type { Swarm3DOptions } from "./swarm3d.js";
 export {
 	type SceneSequenceOptions,
 	type SequenceEntry,

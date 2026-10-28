@@ -67,6 +67,9 @@ import {
 	type ShapeGeometryConfig,
 	SlugFontCache,
 	type SlugGlyphBatch,
+	type Swarm3DFrameInput,
+	type Swarm3DState,
+	type Swarm3DStaticConfig,
 	spansText,
 	srtLoader,
 	Vector3Math,
@@ -212,6 +215,7 @@ function getHomographyResources(
 }
 
 const audioTrackLatentCache = new Map<string, AudioLatentTrackCache>();
+const swarmStateMap = new WeakMap<object, Swarm3DState>();
 const deviceRenderer3DCache = new WeakMap<GPUDevice, Map<string, Renderer3D>>();
 
 /** One Renderer3D per device, target format and MSAA sample count. */
@@ -2446,6 +2450,301 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 							return { finalTex: destTex, finalView: destView };
 						}
 					}
+				}
+
+				if (lop.swarm3d) {
+					const swarmOpt = lop.swarm3d as Record<string, any>;
+					const max = swarmOpt.max ?? 2000;
+					const seed = swarmOpt.seed ?? 42;
+					const substeps = swarmOpt.substeps ?? 2;
+					const prewarm = swarmOpt.prewarm ?? 0;
+					const emitter = swarmOpt.emitter ?? {};
+					const speed = Array.isArray(swarmOpt.speed)
+						? swarmOpt.speed
+						: [swarmOpt.speed ?? 100, swarmOpt.speed ?? 300];
+					const direction = swarmOpt.direction ?? [0, -1, 0];
+					const spread = ((swarmOpt.spread ?? 45) * Math.PI) / 180;
+					const angularSpeed = Array.isArray(swarmOpt.angularSpeed)
+						? swarmOpt.angularSpeed
+						: [swarmOpt.angularSpeed ?? 1, swarmOpt.angularSpeed ?? 6];
+					const angularDrag = swarmOpt.angularDrag ?? 0.1;
+					const lifetime = Array.isArray(swarmOpt.lifetime)
+						? swarmOpt.lifetime
+						: [swarmOpt.lifetime ?? 2, swarmOpt.lifetime ?? 4];
+					const size = Array.isArray(swarmOpt.size)
+						? swarmOpt.size
+						: [swarmOpt.size ?? 18, swarmOpt.size ?? 12];
+					const sizeJitter = swarmOpt.sizeJitter ?? 0.25;
+					const fade = swarmOpt.fade ?? [0.15, 0.2];
+
+					const colorStops: Array<[number, number, number, number]> = [];
+					if (Array.isArray(swarmOpt.color)) {
+						for (const c of swarmOpt.color) {
+							const p = parseColor(c);
+							if (p) colorStops.push([p.r, p.g, p.b, p.a]);
+						}
+					} else if (typeof swarmOpt.color === "string") {
+						const p = parseColor(swarmOpt.color);
+						if (p) colorStops.push([p.r, p.g, p.b, p.a]);
+					}
+					if (colorStops.length === 0) {
+						colorStops.push([0.15, 0.14, 0.18, 1.0]);
+					}
+
+					const heatOpt = swarmOpt.heat ?? {};
+					const heatColorStops: [
+						[number, number, number],
+						[number, number, number],
+						[number, number, number],
+					] = [
+						[0.1, 0.05, 0.15],
+						[1.0, 0.0, 0.6],
+						[1.0, 0.9, 1.0],
+					];
+					if (Array.isArray(heatOpt.color) && heatOpt.color.length >= 2) {
+						const c0 = parseColor(heatOpt.color[0]) ?? {
+							r: 0.1,
+							g: 0.05,
+							b: 0.15,
+						};
+						const c1 = parseColor(
+							heatOpt.color[Math.floor(heatOpt.color.length / 2)],
+						) ?? { r: 1.0, g: 0.0, b: 0.6 };
+						const c2 = parseColor(heatOpt.color[heatOpt.color.length - 1]) ?? {
+							r: 1.0,
+							g: 0.9,
+							b: 1.0,
+						};
+						heatColorStops[0] = [c0.r, c0.g, c0.b];
+						heatColorStops[1] = [c1.r, c1.g, c1.b];
+						heatColorStops[2] = [c2.r, c2.g, c2.b];
+					}
+
+					const staticConfig: Swarm3DStaticConfig = {
+						max,
+						seed,
+						substeps,
+						prewarm,
+						emitter: {
+							shape: emitter.shape ?? "point",
+							x: emitter.x ?? 0,
+							y: emitter.y ?? 0,
+							z: emitter.z ?? 0,
+							width: emitter.width ?? 100,
+							height: emitter.height ?? 100,
+							depth: emitter.depth ?? 100,
+							radius: emitter.radius ?? 50,
+						},
+						speed: [speed[0], speed[1]],
+						direction: [direction[0], direction[1], direction[2]],
+						spread,
+						angularSpeed: [angularSpeed[0], angularSpeed[1]],
+						angularDrag,
+						lifetime: [lifetime[0], lifetime[1]],
+						size: [size[0], size[1]],
+						sizeJitter,
+						fade: [fade[0], fade[1]],
+						colors: colorStops,
+						heat: {
+							source: heatOpt.source ?? "both",
+							maxSpeed: heatOpt.maxSpeed ?? 900,
+							curve: heatOpt.curve ?? 1.6,
+							intensity: heatOpt.intensity ?? 5.0,
+							colors: heatColorStops,
+						},
+						variants: 1,
+					};
+
+					let swarmState = swarmStateMap.get(lop);
+					if (!swarmState || swarmState.device !== ctx.device) {
+						swarmState = r3d.swarm3dPipeline.createState(staticConfig);
+						swarmStateMap.set(lop, swarmState);
+					}
+
+					const targetF = shiftedFrame ?? 0;
+					const frameSampler = (f: number): Swarm3DFrameInput => {
+						const fCtx = {
+							frame: f,
+							fps: fps || 30,
+							time: f / (fps || 30),
+							duration: 0,
+							durationMs: 0,
+							progress: 0,
+							deltaTime: 1 / (fps || 30),
+						};
+						const sample = (d: any, fallback: number) =>
+							typeof d === "number"
+								? d
+								: typeof d?.get === "function"
+									? Number(d.get(fCtx))
+									: typeof d === "function"
+										? Number(d(f))
+										: fallback;
+
+						const grav = swarmOpt.gravity;
+						let gx = 0;
+						let gy = 1200;
+						let gz = 0;
+						if (Array.isArray(grav)) {
+							gx = sample(grav[0], 0);
+							gy = sample(grav[1], 1200);
+							gz = sample(grav[2], 0);
+						} else if (grav !== undefined) {
+							gy = sample(grav, 1200);
+						}
+
+						const rate = sample(emitter.rate, 150);
+						const dragVal = sample(swarmOpt.drag, 0.05);
+
+						let noiseStrength = 0;
+						let noiseScale = 200;
+						let noiseSpeed = 1.0;
+						if (swarmOpt.noise) {
+							noiseStrength = sample(swarmOpt.noise.strength, 0);
+							noiseScale = swarmOpt.noise.scale ?? 200;
+							noiseSpeed = swarmOpt.noise.speed ?? 1.0;
+						}
+
+						const attractors: Array<{
+							x: number;
+							y: number;
+							z: number;
+							strength: number;
+							radius?: number;
+						}> = [];
+						if (Array.isArray(swarmOpt.attractors)) {
+							for (const a of swarmOpt.attractors) {
+								attractors.push({
+									x: sample(a.x, 0),
+									y: sample(a.y, 0),
+									z: sample(a.z, 0),
+									strength: sample(a.strength, 0),
+									radius: a.radius,
+								});
+							}
+						}
+
+						let vortex: Swarm3DFrameInput["vortex"] | undefined;
+						if (swarmOpt.vortex) {
+							vortex = {
+								x: sample(swarmOpt.vortex.x, 0),
+								y: sample(swarmOpt.vortex.y, 0),
+								z: sample(swarmOpt.vortex.z, 0),
+								axis: swarmOpt.vortex.axis ?? [0, -1, 0],
+								swirl: sample(swarmOpt.vortex.swirl, 0),
+								pull: sample(swarmOpt.vortex.pull, 0),
+								axial: sample(swarmOpt.vortex.axial, 0),
+								radius: swarmOpt.vortex.radius ?? 800,
+							};
+						}
+
+						let floor: Swarm3DFrameInput["floor"] | undefined;
+						if (swarmOpt.floor) {
+							floor = {
+								y: swarmOpt.floor.y ?? 500,
+								bounce: swarmOpt.floor.bounce ?? 0.3,
+								friction: sample(swarmOpt.floor.friction, 1.5),
+								heatGain: swarmOpt.floor.heatGain ?? 1.0,
+								heatDecay: swarmOpt.floor.heatDecay ?? 0.45,
+							};
+						}
+
+						let emitterPos: [number, number, number] | undefined;
+						if (
+							emitter.x !== undefined ||
+							emitter.y !== undefined ||
+							emitter.z !== undefined
+						) {
+							emitterPos = [
+								sample(emitter.x, 0),
+								sample(emitter.y, 0),
+								sample(emitter.z, 0),
+							];
+						}
+
+						return {
+							rate,
+							gravity: [gx, gy, gz],
+							drag: dragVal,
+							noise: {
+								strength: noiseStrength,
+								scale: noiseScale,
+								speed: noiseSpeed,
+							},
+							attractors,
+							vortex,
+							floor,
+							emitterPos,
+						};
+					};
+
+					r3d.swarm3dPipeline.advance(
+						swarmState,
+						staticConfig,
+						targetF,
+						fps || 30,
+						frameSampler,
+					);
+
+					const swarmMesh =
+						model ??
+						(Array.isArray(swarmOpt.meshVariants) &&
+						swarmOpt.meshVariants[0]?.modelData
+							? swarmOpt.meshVariants[0].modelData
+							: undefined);
+					if (swarmMesh && swarmMesh.meshes && swarmMesh.meshes.length > 0) {
+						for (const mesh of swarmMesh.meshes) {
+							const mat = mesh.materialName
+								? swarmMesh.materials[mesh.materialName]
+								: undefined;
+							const meshOpts: DrawMesh3DOpts = {
+								modelMatrix: finalModelMatrix,
+								opacity: modelOpacity,
+								colorTint,
+								transparent: false,
+								twoSided: target?.twoSided ?? lop.twoSided ?? true,
+								wireframe: Boolean(target?.wireframe ?? lop.wireframe),
+								material:
+									target?.material ??
+									lop.material ??
+									swarmOpt.material ??
+									mat?.shading ??
+									"lit",
+								roughness:
+									target?.roughness ??
+									lop.roughness ??
+									swarmOpt.roughness ??
+									mat?.roughness ??
+									0.35,
+								specularIntensity:
+									target?.specularIntensity ??
+									lop.specularIntensity ??
+									swarmOpt.specularIntensity ??
+									0.5,
+								ambientIntensity:
+									target?.ambientIntensity ??
+									lop.ambientIntensity ??
+									swarmOpt.ambientIntensity ??
+									1.0,
+								metallic:
+									target?.metallic ??
+									lop.metallic ??
+									swarmOpt.metallic ??
+									mat?.metallic ??
+									0.7,
+								...surfaceProps(target, lop, mat),
+								instanceBuffer: swarmState.instances,
+								instanceCount: max,
+							};
+							pending3DItems.push({
+								kind: "mesh",
+								mesh,
+								texture: mat ? await r3d.materialTexture(mat) : undefined,
+								opts: meshOpts,
+							});
+						}
+					}
+					return { finalTex: destTex, finalView: destView };
 				}
 
 				// Animation evaluation

@@ -11,6 +11,7 @@ import {
 	type Model3DData,
 	type PrimitiveGeometryOptions,
 	type RoundedBoxGeometryOptions,
+	type ShardGeometryOptions,
 	SlugFontCache,
 	type SphereGeometryOptions,
 } from "@framefields/webgpu-renderers";
@@ -303,6 +304,8 @@ export type Sphere3DOptions = Primitive3DNodeOptions &
 	Omit<SphereGeometryOptions, "type" | "color" | "material">;
 export type Cylinder3DOptions = Primitive3DNodeOptions &
 	Omit<CylinderGeometryOptions, "type" | "color" | "material">;
+export type Shard3DOptions = Primitive3DNodeOptions &
+	Omit<ShardGeometryOptions, "type" | "color" | "material">;
 
 /** Mesh shading the geometry can bake in; layer materials (glass, …) apply on the node. */
 function meshShading(
@@ -948,6 +951,25 @@ export const Layer3D = {
 				height: options.height,
 				segments: options.segments,
 				openEnded: options.openEnded,
+			},
+			options,
+		);
+	},
+
+	/**
+	 * A procedural faceted convex polyhedron / rock shard: carved from half-space planes.
+	 * Convex hull collider in Physics.world3d is derived automatically.
+	 */
+	shard(options: Shard3DOptions = {}): AnimatableNode<Model3DNode> {
+		return primitiveNode(
+			"shard",
+			{
+				type: "shard",
+				radius: options.radius,
+				size: options.size,
+				facets: options.facets,
+				seed: options.seed,
+				irregularity: options.irregularity,
 			},
 			options,
 		);

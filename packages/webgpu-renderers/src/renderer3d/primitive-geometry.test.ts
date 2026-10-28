@@ -143,4 +143,40 @@ describe("3D primitive geometry", () => {
 		expect(getPrimitiveGeometry({ ...opts })).toBe(a);
 		expect(getPrimitiveGeometry({ ...opts, width: 66 })).not.toBe(a);
 	});
+
+	it("builds a convex shard wound outward on all facets", () => {
+		const shard = generatePrimitiveGeometry({
+			type: "shard",
+			radius: 40,
+			facets: 16,
+			seed: 42,
+			irregularity: 0.4,
+		});
+		expect(shard.bounds.center[0]).toBeCloseTo(0, 1);
+		expect(shard.bounds.center[1]).toBeCloseTo(0, 1);
+		expect(shard.bounds.center[2]).toBeCloseTo(0, 1);
+		expect(shard.bounds.boundingSphereRadius).toBeGreaterThan(15);
+		expect(shard.bounds.boundingSphereRadius).toBeLessThanOrEqual(
+			Math.hypot(40, 40, 40) + 1,
+		);
+		expectOutwardSolid(shard);
+
+		// Equal shard specs share cached geometry
+		const cached = getPrimitiveGeometry({
+			type: "shard",
+			radius: 40,
+			facets: 16,
+			seed: 42,
+			irregularity: 0.4,
+		});
+		expect(
+			getPrimitiveGeometry({
+				type: "shard",
+				radius: 40,
+				facets: 16,
+				seed: 42,
+				irregularity: 0.4,
+			}),
+		).toBe(cached);
+	});
 });

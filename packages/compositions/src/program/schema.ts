@@ -1445,7 +1445,7 @@ export interface Model3DNode {
 	animation?: LayerAnimationSpec;
 	audioDeform?: MeshAudioDeformConfig;
 	text3dOptions?: unknown;
-	/** Layer3D primitive options (roundedBox, sphere, cylinder) the mesh is rebuilt from when modelData is lost. */
+	/** Layer3D primitive options (roundedBox, sphere, cylinder, shard) the mesh is rebuilt from when modelData is lost. */
 	primitive3d?: unknown;
 }
 

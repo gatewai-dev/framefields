@@ -78,6 +78,7 @@ import {
 import { compileTimeline, seekTimeline } from "../shared/compiler.js";
 import type { CompositorOperation } from "../shared/config.js";
 import { shouldPaintContainerBackground } from "./container-bg.js";
+import { compatibleMeshDraws } from "./mesh-instancing.js";
 import {
 	buildLayerMatrix,
 	resolveLayer2DPosition,
@@ -1492,8 +1493,56 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				} else opaque.push(item);
 			}
 			transparent.sort((a, b) => b.depth - a.depth);
+			// Batch consecutive compatible opaque meshes without changing draw order.
+			// Each pair of storage records holds the full model and normal matrices.
+			const batchedOpaque: Pending3DItem[] = [];
+			const maxInstances = Math.max(
+				1,
+				Math.floor(ctx.device.limits.maxStorageBufferBindingSize / 128),
+			);
+			for (let i = 0; i < opaque.length; ) {
+				const first = opaque[i];
+				if (first.kind !== "mesh") {
+					batchedOpaque.push(first);
+					i++;
+					continue;
+				}
+				let end = i + 1;
+				while (end < opaque.length && end - i < maxInstances) {
+					const next = opaque[end];
+					if (next.kind !== "mesh" || !compatibleMeshDraws(first, next)) break;
+					end++;
+				}
+				if (end - i === 1) {
+					batchedOpaque.push(first);
+				} else {
+					const data = new Float32Array((end - i) * 32);
+					for (let j = i; j < end; j++) {
+						const item = opaque[j];
+						if (item.kind !== "mesh") throw new Error("Invalid mesh batch");
+						const matrix = r3d.meshModelMatrix(item.opts);
+						data.set(matrix, (j - i) * 32);
+						data.set(
+							item.opts.normalMatrix ?? Light3D.computeNormalMatrix(matrix),
+							(j - i) * 32 + 16,
+						);
+					}
+					batchedOpaque.push({
+						...first,
+						opts: {
+							...first.opts,
+							modelMatrix: Matrix4Math.identity(),
+							normalMatrix: Matrix4Math.identity(),
+							instanceBuffer: r3d.uploadInstanceData(data),
+							instanceCount: end - i,
+							matrixInstances: true,
+						},
+					});
+				}
+				i = end;
+			}
 			const ordered = [
-				...opaque,
+				...batchedOpaque,
 				...transparent.map(({ item }) => item),
 				...glass,
 			];

@@ -210,6 +210,8 @@ export interface DrawMesh3DOpts extends SurfaceParams {
 	firstInstance?: number;
 	/** Storage buffer holding `InstanceData` structs (64 bytes per instance). */
 	instanceBuffer?: GPUBuffer;
+	/** Each instance stores a model matrix followed by its normal matrix. */
+	matrixInstances?: boolean;
 	/** Optional overall bounding box (e.g. for instanced clusters or swarms) for shadow frustum fitting. */
 	bounds?: Aabb;
 }
@@ -1341,7 +1343,7 @@ export class Renderer3D {
 	}
 
 	/** T(pos) * Rz * Ry * Rx * S, or the draw's precomputed model matrix. */
-	private meshModelMatrix(opts: DrawMesh3DOpts): Mat4 {
+	meshModelMatrix(opts: DrawMesh3DOpts): Mat4 {
 		if (opts.modelMatrix) return opts.modelMatrix;
 		const {
 			position = [0, 0, 0],
@@ -1686,6 +1688,7 @@ export class Renderer3D {
 					opts.instanceBuffer || (opts.instanceCount && opts.instanceCount > 1),
 				),
 				instanceBuffer: opts.instanceBuffer,
+				matrixInstances: opts.matrixInstances,
 			},
 			useMrt,
 			this.passWritesHdr,

@@ -219,7 +219,38 @@ describe("3D primitive geometry", () => {
 			tube: 20,
 			arc: 180,
 		});
-		expect(partial.meshes[0]!.indices.length).toBeGreaterThan(0);
+		const pMesh = partial.meshes[0]!;
+		expect(pMesh.indices.length).toBeGreaterThan(0);
+		for (let t = 0; t < pMesh.indices.length; t += 3) {
+			const [i0, i1, i2] = [
+				pMesh.indices[t]!,
+				pMesh.indices[t + 1]!,
+				pMesh.indices[t + 2]!,
+			];
+			const a: V = [
+				pMesh.positions[i0 * 3]!,
+				pMesh.positions[i0 * 3 + 1]!,
+				pMesh.positions[i0 * 3 + 2]!,
+			];
+			const b: V = [
+				pMesh.positions[i1 * 3]!,
+				pMesh.positions[i1 * 3 + 1]!,
+				pMesh.positions[i1 * 3 + 2]!,
+			];
+			const c: V = [
+				pMesh.positions[i2 * 3]!,
+				pMesh.positions[i2 * 3 + 1]!,
+				pMesh.positions[i2 * 3 + 2]!,
+			];
+			const face = cross(sub(b, a), sub(c, a));
+			if (Math.hypot(...face) < 1e-6) continue;
+			const vn: V = [
+				pMesh.normals[i0 * 3]!,
+				pMesh.normals[i0 * 3 + 1]!,
+				pMesh.normals[i0 * 3 + 2]!,
+			];
+			expect(dot(face, vn)).toBeGreaterThan(0);
+		}
 	});
 
 	it("builds a capsule wound outward with total height length + 2 * radius", () => {

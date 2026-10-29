@@ -399,8 +399,11 @@ export type Capsule3DOptions = Primitive3DNodeOptions &
 export type Ring3DOptions = Primitive3DNodeOptions &
 	Omit<RingGeometryOptions, "type" | "color" | "material">;
 export type Polyhedron3DOptions = Primitive3DNodeOptions &
-	Omit<PolyhedronGeometryOptions, "type" | "color" | "material">;
-export type Icosphere3DOptions = Omit<Polyhedron3DOptions, "shape">;
+	Omit<PolyhedronGeometryOptions, "type" | "color" | "material"> & {
+		/** Alias for `shape` (`"tetrahedron" | "octahedron" | "dodecahedron" | "icosahedron" | "icosphere"`). */
+		type?: PolyhedronGeometryOptions["shape"];
+	};
+export type Icosphere3DOptions = Omit<Polyhedron3DOptions, "shape" | "type">;
 export type ExtrudeShape3DOptions = Primitive3DNodeOptions &
 	Omit<ExtrudeShapeGeometryOptions, "type" | "color" | "material">;
 export type Lathe3DOptions = Primitive3DNodeOptions &
@@ -1293,11 +1296,12 @@ export const Layer3D = {
 	 * or geodesic `icosphere` with configurable subdivision `detail` and `flatShaded` facets.
 	 */
 	polyhedron(options: Polyhedron3DOptions = {}): AnimatableNode<Model3DNode> {
+		const shape = options.shape ?? options.type ?? "icosahedron";
 		return primitiveNode(
-			options.shape ?? "icosahedron",
+			shape,
 			{
 				type: "polyhedron",
-				shape: options.shape,
+				shape,
 				radius: options.radius,
 				detail: options.detail,
 				flatShaded: options.flatShaded,
@@ -1336,6 +1340,9 @@ export const Layer3D = {
 			{
 				type: "extrude",
 				shape: options.shape,
+				d: options.d,
+				contour: options.contour,
+				holes: options.holes,
 				depth: options.depth,
 				bevelThickness: options.bevelThickness,
 				bevelSize: options.bevelSize,
@@ -1354,6 +1361,7 @@ export const Layer3D = {
 	 * to create bowls, bottles, goblets, vases, and turned solids.
 	 */
 	lathe(options: Lathe3DOptions): AnimatableNode<Model3DNode> {
+		const capped = options.capped ?? options.closed;
 		return primitiveNode(
 			"lathe",
 			{
@@ -1362,12 +1370,13 @@ export const Layer3D = {
 				segments: options.segments,
 				phiStart: options.phiStart,
 				phiLength: options.phiLength,
-				capped: options.capped,
+				capped,
+				closed: options.closed,
 				flatShaded: options.flatShaded,
 			},
 			{
 				...options,
-				twoSided: options.twoSided ?? !(options.capped ?? false),
+				twoSided: options.twoSided ?? !(capped ?? false),
 			},
 		);
 	},

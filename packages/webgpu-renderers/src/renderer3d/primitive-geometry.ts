@@ -129,10 +129,16 @@ export interface PolyhedronGeometryOptions extends PrimitiveSurface {
 export interface ExtrudeShapeGeometryOptions extends PrimitiveSurface {
 	type: "extrude";
 	/** SVG path string (`M ... Z`, including holes/multiple subpaths) or one or more 2D point contours (`[x, y]` or `{x, y}`). */
-	shape:
+	shape?:
 		| string
 		| Array<[number, number] | Point2D>
 		| Array<Array<[number, number] | Point2D>>;
+	/** Alias for `shape` when passing an SVG path string (`M ... Z`). */
+	d?: string;
+	/** Outer 2D contour (`[x, y]` or `{x, y}`) when not using `shape` or `d`. */
+	contour?: Array<[number, number] | Point2D>;
+	/** Optional inner hole contours (`[[x, y], ...][]`). */
+	holes?: Array<Array<[number, number] | Point2D>>;
 	/** Extrusion thickness along Z (default 20). */
 	depth?: number;
 	/** Optional bevel thickness along Z at front and back caps (default 0). */
@@ -166,6 +172,8 @@ export interface LatheGeometryOptions extends PrimitiveSurface {
 	phiLength?: number;
 	/** Cap the top and bottom openings when the profile starts/ends away from r = 0 (default false). */
 	capped?: boolean;
+	/** Alias for `capped`. */
+	closed?: boolean;
 	/** Flat-shade longitudinal segments (default false). */
 	flatShaded?: boolean;
 }
@@ -639,7 +647,8 @@ function torus(o: TorusGeometryOptions, mb: MeshBuilder): void {
 				]);
 			}
 			for (let j = 0; j < radialSegments; j++) {
-				if (sign > 0) mb.indices.push(center, ring + j, ring + j + 1);
+				// (p_j - center) × (p_{j+1} - center) points along (su, -cu, 0) = -tangent (sign < 0).
+				if (sign < 0) mb.indices.push(center, ring + j, ring + j + 1);
 				else mb.indices.push(center, ring + j + 1, ring + j);
 			}
 		}
@@ -1364,28 +1373,38 @@ function toPoint2D(p: [number, number] | Point2D): Point2D {
 }
 
 function normalizeContoursInput(
-	shape: ExtrudeShapeGeometryOptions["shape"],
+	o: Pick<ExtrudeShapeGeometryOptions, "shape" | "d" | "contour" | "holes">,
 	flattening: CurveFlattening,
 ): Contour[] {
-	if (typeof shape === "string") {
-		return parseSvgPathToContours(shape, flattening).filter(
+	const raw = o.shape ?? o.d ?? o.contour;
+	let contours: Contour[] = [];
+	if (typeof raw === "string") {
+		contours = parseSvgPathToContours(raw, flattening).filter(
 			(c) => c.length >= 3,
 		);
+	} else if (Array.isArray(raw) && raw.length > 0) {
+		const first = raw[0];
+		const isNested =
+			Array.isArray(first) &&
+			first.length > 0 &&
+			(Array.isArray(first[0]) ||
+				(typeof first[0] === "object" && first[0] !== null && "x" in first[0]));
+		if (isNested) {
+			contours = (raw as Array<Array<[number, number] | Point2D>>)
+				.map((c) => c.map(toPoint2D))
+				.filter((c) => c.length >= 3);
+		} else {
+			const single = (raw as Array<[number, number] | Point2D>).map(toPoint2D);
+			if (single.length >= 3) contours = [single];
+		}
 	}
-	if (!Array.isArray(shape) || shape.length === 0) return [];
-	const first = shape[0];
-	const isNested =
-		Array.isArray(first) &&
-		first.length > 0 &&
-		(Array.isArray(first[0]) ||
-			(typeof first[0] === "object" && first[0] !== null && "x" in first[0]));
-	if (isNested) {
-		return (shape as Array<Array<[number, number] | Point2D>>)
-			.map((c) => c.map(toPoint2D))
-			.filter((c) => c.length >= 3);
+	if (Array.isArray(o.holes)) {
+		for (const hole of o.holes) {
+			const mapped = hole.map(toPoint2D);
+			if (mapped.length >= 3) contours.push(mapped);
+		}
 	}
-	const single = (shape as Array<[number, number] | Point2D>).map(toPoint2D);
-	return single.length >= 3 ? [single] : [];
+	return contours;
 }
 
 /** Side-wall segments meeting at more than 30° keep a crisp hard edge. */
@@ -1412,7 +1431,7 @@ function buildExtrudedShapeModel(o: ExtrudeShapeGeometryOptions): Model3DData {
 		tolerance: Math.max(1e-3, o.curveTolerance ?? 0.25),
 	};
 
-	const rawContours = normalizeContoursInput(o.shape, flattening);
+	const rawContours = normalizeContoursInput(o, flattening);
 	const polygons = organizeGlyphPolygons({
 		contours: rawContours,
 		simplified: false,
@@ -1811,42 +1830,55 @@ function lathe(o: LatheGeometryOptions, mb: MeshBuilder): void {
 		}
 	} else {
 		// Smooth-shaded vertex normals along the profile with crease splitting at sharp corners (> 30°)
-		const base = mb.positions.length / 3;
-		for (let j = 0; j < count; j++) {
-			const p = pts[j]!;
-			const nPrev =
-				j > 0
-					? segNormals[j - 1]!
-					: isClosedLoop
-						? segNormals[count - 2]!
-						: segNormals[0]!;
-			const nNext =
-				j < count - 1
-					? segNormals[j]!
-					: isClosedLoop
-						? segNormals[0]!
-						: segNormals[count - 2]!;
-			const nx = nPrev.x + nNext.x;
-			const ny = nPrev.y + nNext.y;
+		const smoothOrCrease = (nSeg: Point2D, nAdj: Point2D): Point2D => {
+			if (nSeg.x * nAdj.x + nSeg.y * nAdj.y < SIDE_CREASE_COS) {
+				return nSeg;
+			}
+			const nx = nSeg.x + nAdj.x;
+			const ny = nSeg.y + nAdj.y;
 			const nLen = Math.hypot(nx, ny);
-			const n2 = nLen > 1e-8 ? { x: nx / nLen, y: ny / nLen } : { x: 1, y: 0 };
-
+			return nLen > 1e-8 ? { x: nx / nLen, y: ny / nLen } : nSeg;
+		};
+		const emitRing = (p: Point2D, n2: Point2D, v: number): void => {
 			for (let i = 0; i <= seg; i++) {
 				const phi = phiStart + (i / seg) * phiLength;
 				const c = Math.cos(phi);
 				const s = Math.sin(phi);
-				mb.vertex(
-					[p.x * c, p.y, p.x * s],
-					normalize([n2.x * c, n2.y, n2.x * s]),
-					[i / seg, vCoords[j]!],
-				);
+				const vNorm: V3 =
+					p.x <= 1e-5 && Math.abs(n2.y) > 1e-5
+						? [0, n2.y < 0 ? -1 : 1, 0]
+						: normalize([n2.x * c, n2.y, n2.x * s]);
+				mb.vertex([p.x * c, p.y, p.x * s], vNorm, [i / seg, v]);
 			}
+		};
+
+		for (let j = 0; j < count - 1; j++) {
+			const pA = pts[j]!;
+			const pB = pts[j + 1]!;
+			const nSeg = segNormals[j]!;
+			const nPrevA =
+				j > 0
+					? segNormals[j - 1]!
+					: isClosedLoop
+						? segNormals[count - 2]!
+						: nSeg;
+			const nNextB =
+				j + 1 < count - 1
+					? segNormals[j + 1]!
+					: isClosedLoop
+						? segNormals[0]!
+						: nSeg;
+			const nA = smoothOrCrease(nSeg, nPrevA);
+			const nB = smoothOrCrease(nSeg, nNextB);
+			const base = mb.positions.length / 3;
+			emitRing(pA, nA, vCoords[j]!);
+			emitRing(pB, nB, vCoords[j + 1]!);
+			mb.grid(base, seg, 1, false);
 		}
-		mb.grid(base, seg, count - 1, false);
 	}
 
 	// Optional end caps when not closed and r > 0
-	if (o.capped && !isClosedLoop) {
+	if ((o.capped ?? o.closed) && !isClosedLoop) {
 		const first = pts[0]!;
 		const last = pts[count - 1]!;
 		for (const [pt, ny] of [

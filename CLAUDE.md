@@ -38,39 +38,3 @@ Code-first video engine on native WebGPU (Dawn) in Node, no browser. pnpm + turb
 
 ## Local-only files
 Gitignored, never commit: `assets/fonts`, `*.mp4/mp3/wav/png/jpg`, `*.onnx`, `scratch*/`, `examples/output/`, `.hermes/`, `.env*` (never print secrets). Put probes and logs under `scratch/` or `output/`.
-
-## Engine gotchas (fail silently)
-- Premultiplied-alpha blend uses `srcFactor: "one"`, never `"src-alpha"` (murky grey fades).
-- WGSL: every declared storage binding must be used, or Tint drops it from the layout.
-- Clamp scissor rects to non-negative integers within the surface.
-- Signals are class instances; never spread them (loses `.get(ctx)`). A `NaN` uniform blacks out the frame.
-- `CompositorProgramSchema` is `.strict()`: new node/program fields go in `program/schema.ts`, or `comp.toSpec()` fails.
-- Keyframe frames and effect frame options must be integers (`Math.round(...)`).
-- Master soundtrack layers to about -14 dBFS RMS, summed peak near 0.9.
-- Procedural SFX (`renderSfx`, `mixSfxInto`, `softLimit`): `atBar` is where the effect starts; a whoosh peaks 0.42s in, so start ~0.21 bars before the cut.
-- `withAnimation` keeps `animation` an enumerable data property so spreads keep tracks.
-- Keep `isAbsolutePositioned` symmetric between `buildYogaNode` and `readLayout`.
-- Compositor specs: audio is `config.layout` items with `kind: "media"`, `inputHandleId` (live handle ID, not label) and `volume`. Fonts go in top-level `"fonts"` with relative paths.
-- Fonts: every `Layer.text` font must be registered with `FontManager` and declared in `fonts`; no system fonts. Emoji need a color emoji font (`FontManager.registerEmojiFont`, or `framefields fonts add emoji`). Missing glyphs fall back per grapheme across registered families, except path text, which is single-font.
-- Path text (`pathOptions`) coordinates are local to the node's box; size the node to contain the path.
-- Shape paths support SVG arcs; a circle is two arcs and draws on with `trimEnd`.
-- Circular window: plate plus `Layer.shape("ellipse", { blendMode: "mask-in" })` in a box with `background: "transparent"`.
-- No per-effect helpers like `blurTrackedRegion`; extend `comp.section` / `Layer.section`.
-
-## Authoring API traps
-- `LayerAnimation` has no `moveX/moveY/scale/rotate/trimPath`; use `fromTo(prop, from, to, { start, end, ease })`. `fadeIn`/`fadeOut` are positional: `.fadeIn(0, 20, "power2.out")`.
-- Borders are `borderColor` + `borderWidth`; CSS `border` is ignored.
-- Setting only `x` or `y` makes a node absolute; use `position: "relative"` to nudge. A centered flex needs an explicit `width` (or `"fill"`).
-- Keyframes are relative to the node's own window (never add the parent's `startFrame`). Animating `y` overrides layout `y`: `fromTo("y", y + 40, y)`.
-- Eases: `none power1 power2 power3 sine circ expo back elastic bounce spring cubic hold` (no `power4`).
-- Don't nest an opaque container inside a `tilt3D`/`rotateX`/`perspective` container; make one card.
-- Every audio layer needs `durationFrames` (`audio.totalFrames`).
-
-## Video taste
-Follow `plugins/framefields/skills/framefields/SKILL.md`.
-- Tokens first: `theme.ts` with palette, type scale, spacing, radii, eases, one `BEAT`.
-- Native layout trees only; never fake UI, charts or screenshots with bitmaps.
-- One clock: captions/voiceover first, then BeatGrid, then reading pace (~2.4 words/s). Derive timing from generated audio; never guess or slice evenly.
-- Restrained hierarchy: one idea and focal point per shot, negative space, huge display type, small tracked-out labels.
-- Decisive motion: enter decelerating (`expo.out`, `power3.out`, `back.out(1.5)`, spring), exit fast (`power2/3.in`), never linear on position/scale/rotation, stagger siblings 2-4 frames.
-- Verify: typecheck -> schema parse -> `renderFrame` -> `renderFrameGrid` -> pixel probes -> `renderVideo` + `ffprobe`.

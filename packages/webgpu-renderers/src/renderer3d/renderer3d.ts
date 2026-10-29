@@ -162,7 +162,7 @@ export interface DrawMesh3DOpts extends SurfaceParams {
 	transparent?: boolean;
 	/** Whether vertex skinning is enabled */
 	isSkinned?: boolean;
-	/** Skinning matrices (128 * 16 floats) */
+	/** Skinning matrices (16 floats per joint) */
 	skinningMatrices?: Float32Array;
 	/** Pre-computed model matrix overriding position/rotation/scale if supplied */
 	modelMatrix?: Mat4;
@@ -221,7 +221,7 @@ export interface Scene3DWorld {
 	/** Present = physically based shading (see `Environment3DOptions`). */
 	environment?: Environment3DOptions | null;
 	/** From `renderShadowMap`, when a light casts shadows. */
-	shadow?: ShadowUniformInfo | null;
+	shadow?: ShadowUniformInfo | ShadowUniformInfo[] | null;
 }
 
 /** Something that can fall into a shadow map. */
@@ -237,6 +237,9 @@ export type ShadowCaster3D =
 export interface ShadowMapOptions3D {
 	/** Texels per side. Default 2048. */
 	mapSize?: number;
+	/** Layer and total layers in the shadow texture array. */
+	layer?: number;
+	layerCount?: number;
 	/** Edge blur in texels. Default 2.5. */
 	softness?: number;
 	/** 0..1. Default 1. */
@@ -257,6 +260,7 @@ export class Renderer3D {
 	private dofBindGroupLayout: GPUBindGroupLayout;
 	private cameraPool: BufferPool;
 	private lightsPool: BufferPool;
+	private directLightsPool: BufferPool;
 	private instancePool: BufferPool;
 	private cameraUniformBindGroupCache = new UniformBindGroupCache();
 	private samplerCache = new SamplerCache();
@@ -288,6 +292,7 @@ export class Renderer3D {
 	private modelCache = new Map<string, Model3DData>();
 	private lastCameraPose: Camera3DPose | null = null;
 	private shadowTexture: GPUTexture | null = null;
+	private shadowTextures = new Map<string, GPUTexture>();
 	private placeholderShadowTexture: GPUTexture | null = null;
 	private shadowSampler: GPUSampler | null = null;
 	private meshBounds = new WeakMap<Mesh3DData, Aabb>();
@@ -347,6 +352,11 @@ export class Renderer3D {
 		this.lightsPool = new BufferPool(
 			LIGHT_UNIFORM_SIZE_BYTES,
 			GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+		);
+
+		this.directLightsPool = new BufferPool(
+			64,
+			GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
 		);
 
 		this.instancePool = new BufferPool(
@@ -415,6 +425,7 @@ export class Renderer3D {
 		this.lastCameraPose = null;
 		this.lastCameraBuffer = null;
 		this.lightsPool.reset();
+		this.directLightsPool.reset();
 		this.instancePool.reset();
 		this.quad3dPipeline.resetPools();
 		this.slug3dPipeline.resetPools();
@@ -686,7 +697,7 @@ export class Renderer3D {
 		const lightsData = Light3D.packLightsUniforms(
 			lights ?? [],
 			world?.environment,
-			world?.shadow,
+			Array.isArray(world?.shadow) ? world.shadow[0] : world?.shadow,
 		);
 		return this.lightsPool.getBuffer(this.device, lightsData);
 	}
@@ -695,7 +706,15 @@ export class Renderer3D {
 	private createLightsBindGroup(
 		lightsBuffer: GPUBuffer,
 		withShadow: boolean,
+		lights: Light3DOptions[],
+		shadows: ShadowUniformInfo[],
 	): GPUBindGroup {
+		const data = Light3D.packDirectLights(lights, shadows);
+		if (data.byteLength > this.device.limits.maxStorageBufferBindingSize)
+			throw new Error(
+				`Direct lights require ${data.byteLength} bytes, exceeding the device storage binding limit of ${this.device.limits.maxStorageBufferBindingSize} bytes`,
+			);
+		const directBuffer = this.directLightsPool.getBuffer(this.device, data);
 		this.shadowSampler ??= this.device.createSampler({
 			label: "ShadowComparisonSampler",
 			compare: "less-equal",
@@ -720,8 +739,9 @@ export class Renderer3D {
 			layout: this.quad3dPipeline.lightsLayout,
 			entries: [
 				{ binding: 0, resource: { buffer: lightsBuffer } },
-				{ binding: 1, resource: map.createView() },
+				{ binding: 1, resource: map.createView({ dimension: "2d-array" }) },
 				{ binding: 2, resource: this.shadowSampler },
+				{ binding: 3, resource: { buffer: directBuffer } },
 			],
 		});
 	}
@@ -790,6 +810,12 @@ export class Renderer3D {
 			processed.dirRadius[2],
 		];
 		const mapSize = options.mapSize ?? 2048;
+		const layer = options.layer ?? 0;
+		const layerCount = options.layerCount ?? 1;
+		if (layerCount > this.device.limits.maxTextureArrayLayers)
+			throw new Error(
+				`Shadow maps require ${layerCount} texture layers, exceeding the device limit of ${this.device.limits.maxTextureArrayLayers}`,
+			);
 		const casterBounds = casters.map((c) => this.worldBounds(c));
 		const frustum = fitShadowFrustum(
 			{ type: kind, position, direction, angle: light.angle },
@@ -799,16 +825,23 @@ export class Renderer3D {
 		);
 		if (!frustum) return null;
 
-		if (!this.shadowTexture || this.shadowTexture.width !== mapSize) {
-			this.shadowTexture?.destroy();
-			this.shadowTexture = this.device.createTexture({
+		const key = `${mapSize}:${layerCount}`;
+		let texture = this.shadowTextures.get(key);
+		if (!texture) {
+			texture = this.device.createTexture({
 				label: "ShadowMap",
-				size: { width: mapSize, height: mapSize },
+				size: {
+					width: mapSize,
+					height: mapSize,
+					depthOrArrayLayers: layerCount,
+				},
 				format: SHADOW_DEPTH_FORMAT,
 				usage:
 					GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
 			});
+			this.shadowTextures.set(key, texture);
 		}
+		this.shadowTexture = texture;
 
 		// The light's "camera": only viewProj matters to the vertex shaders.
 		const lightCam = new Float32Array(80);
@@ -832,7 +865,11 @@ export class Renderer3D {
 			label: "ShadowMapPass",
 			colorAttachments: [],
 			depthStencilAttachment: {
-				view: this.shadowTexture.createView(),
+				view: this.shadowTexture.createView({
+					dimension: "2d",
+					baseArrayLayer: layer,
+					arrayLayerCount: 1,
+				}),
 				depthClearValue: 1.0,
 				depthLoadOp: "clear",
 				depthStoreOp: "store",
@@ -924,6 +961,12 @@ export class Renderer3D {
 		const lightsBindGroup = this.createLightsBindGroup(
 			lightsBuffer,
 			Boolean(world?.shadow),
+			lights ?? [],
+			world?.shadow
+				? Array.isArray(world.shadow)
+					? world.shadow
+					: [world.shadow]
+				: [],
 		);
 
 		const msaa = this.sampleCount > 1;
@@ -1054,13 +1097,19 @@ export class Renderer3D {
 		const lightsData = Light3D.packLightsUniforms(
 			lights ?? [],
 			world?.environment,
-			world?.shadow,
+			Array.isArray(world?.shadow) ? world.shadow[0] : world?.shadow,
 			true,
 		);
 		const lightsBuffer = this.lightsPool.getBuffer(this.device, lightsData);
 		const lightsBindGroup = this.createLightsBindGroup(
 			lightsBuffer,
 			Boolean(world?.shadow),
+			lights ?? [],
+			world?.shadow
+				? Array.isArray(world.shadow)
+					? world.shadow
+					: [world.shadow]
+				: [],
 		);
 
 		const msaa = this.sampleCount > 1;
@@ -1970,7 +2019,8 @@ export class Renderer3D {
 	destroy(): void {
 		this.bloomPipeline?.destroy();
 		this.depthTexture?.destroy();
-		this.shadowTexture?.destroy();
+		for (const texture of this.shadowTextures.values()) texture.destroy();
+		this.shadowTextures.clear();
 		this.placeholderShadowTexture?.destroy();
 		this.linearDepthTexture?.destroy();
 		this.msaaColorTexture?.destroy();
@@ -1989,6 +2039,7 @@ export class Renderer3D {
 		this.reflectionBlurredTexture?.destroy();
 		this.cameraPool.destroy();
 		this.lightsPool.destroy();
+		this.directLightsPool.destroy();
 		this.instancePool.destroy();
 		this.cameraUniformBindGroupCache.destroy();
 	}

@@ -602,6 +602,49 @@ describe("glTF scene rendering", () => {
 		expect(end(250, 200)[0]).toBeGreaterThan(200);
 	});
 
+	it("renders a skin whose vertices reference joint 129", async () => {
+		const g = new GlbBuilder();
+		const q = rect(-100, -20, -60, 20);
+		const file = path.join(dir, "large-skin.glb");
+		const joints = new Uint16Array([
+			128, 0, 0, 0, 128, 0, 0, 0, 128, 0, 0, 0, 128, 0, 0, 0,
+		]);
+		const weights = new Float32Array([
+			1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0,
+		]);
+		const nodes = [
+			{ mesh: 0, skin: 0 },
+			...Array.from({ length: 129 }, (_, i) => ({
+				translation: [i === 128 ? 90 : 0, 0, 0],
+			})),
+		];
+		await fs.writeFile(
+			file,
+			g.build({
+				nodes,
+				scenes: [{ nodes: nodes.map((_, i) => i) }],
+				skins: [{ joints: Array.from({ length: 129 }, (_, i) => i + 1) }],
+				meshes: [
+					{
+						primitives: [
+							{
+								attributes: {
+									POSITION: g.accessor(new Float32Array(q.positions), "VEC3"),
+									JOINTS_0: g.accessor(joints, "VEC4"),
+									WEIGHTS_0: g.accessor(weights, "VEC4"),
+								},
+								indices: g.accessor(new Uint16Array(q.indices), "SCALAR"),
+							},
+						],
+					},
+				],
+			}),
+		);
+		const px = await render(file);
+		expect(px(210, 200)[0]).toBeGreaterThan(200);
+		expect(px(120, 200)[0]).toBeLessThan(10);
+	});
+
 	it("applies morph deltas before the skin's joint transform", async () => {
 		const g = new GlbBuilder();
 		const q = rect(-100, -20, -60, 20);

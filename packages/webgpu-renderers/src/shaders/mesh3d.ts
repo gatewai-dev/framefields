@@ -1,6 +1,6 @@
 /**
  * WebGPU WGSL shaders for 3D static and skinned meshes.
- * Supports GPU Linear Blend Skinning (up to 128 bones),
+ * Supports GPU Linear Blend Skinning,
  * the shared 3D surface shading (Blinn-Phong, or physical GGX + image-based light
  * in scenes with an environment) or toon shading, shadow maps, emissive,
  * alpha-cutoff (glTF MASK) materials,
@@ -26,7 +26,7 @@ struct ModelUniforms {
 };
 
 struct SkinningUniforms {
-    jointMatrices : array<mat4x4<f32>, 128>,
+    jointMatrices : array<mat4x4<f32>>,
 };
 
 struct InstanceData {
@@ -38,7 +38,7 @@ struct InstanceData {
 
 @group(0) @binding(0) var<uniform> cam      : CameraUniforms;
 @group(1) @binding(0) var<uniform> model    : ModelUniforms;
-@group(1) @binding(1) var<uniform> skinning : SkinningUniforms;
+@group(1) @binding(1) var<storage, read> skinning : SkinningUniforms;
 ${matte3dWgsl(1, 2)}@group(1) @binding(3) var backdropTex : texture_2d<f32>;
 @group(1) @binding(4) var<storage, read> instances : array<InstanceData>;
 @group(2) @binding(0) var texSampler        : sampler;

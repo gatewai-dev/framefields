@@ -6,7 +6,7 @@ import {
 	accumulateVertexNormals,
 	resolveModelTransform,
 } from "./mesh-utils.js";
-import { MAX_JOINTS, poseNodes, type Quat } from "./pose.js";
+import { poseNodes, type Quat } from "./pose.js";
 import {
 	isSupportedTexture,
 	readTextureFile,
@@ -675,10 +675,6 @@ export class FbxLoader {
 							influences.set(cp, list);
 						}
 					}
-					if (joints.length > MAX_JOINTS)
-						throw new Error(
-							`FBX skin has ${joints.length} bones; the mesh shader holds ${MAX_JOINTS}`,
-						);
 					if (joints.length > 0) {
 						skinIndex = skins.length;
 						skins.push({

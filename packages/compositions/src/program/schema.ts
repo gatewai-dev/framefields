@@ -1350,7 +1350,7 @@ export interface LightNode {
 	decay?: number;
 	angle?: number;
 	penumbra?: number;
-	/** Directional / spot: render a shadow map (one shadow light per scene). */
+	/** Directional / spot: render a shadow map. */
 	castShadow?: boolean;
 	/** Shadow edge blur in shadow-map texels. Default 2.5. */
 	shadowSoftness?: number;

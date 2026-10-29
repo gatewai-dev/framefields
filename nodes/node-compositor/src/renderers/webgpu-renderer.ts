@@ -1417,12 +1417,20 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				linearDepthView = linearDepthTex.createView();
 			}
 
-			// Shadow map from the first castShadow light: meshes cast unless
+			// Shadow maps for castShadow lights: meshes cast unless
 			// they opt out, flat layers only when they opt in; everything
 			// in the pass can receive.
-			let shadow: ReturnType<typeof r3d.renderShadowMap> = null;
-			const casterIndex = Light3D.shadowCasterIndex(sceneLights);
-			if (casterIndex >= 0) {
+			const shadow: NonNullable<ReturnType<typeof r3d.renderShadowMap>>[] = [];
+			const shadowLights = sceneLights
+				.filter((light) => (light.lightType ?? light.type) !== "ambient")
+				.map((light, index) => ({ light, index }))
+				.filter(
+					({ light }) =>
+						light.castShadow &&
+						((light.lightType ?? light.type) === "directional" ||
+							(light.lightType ?? light.type) === "spot"),
+				);
+			if (shadowLights.length > 0) {
 				const casters: ShadowCaster3D[] = [];
 				const receivers: ReturnType<typeof r3d.worldBounds>[] = [];
 				for (const item of pending3DItems) {
@@ -1450,18 +1458,22 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 						if (item.opts.castShadow === true) casters.push(caster);
 					}
 				}
-				const shadowLight = sceneLights.filter(
-					(l) => (l.lightType ?? l.type) !== "ambient",
-				)[casterIndex];
-				if (shadowLight && casters.length > 0) {
-					shadow = r3d.renderShadowMap(
-						encoder,
-						shadowLight,
-						casterIndex,
-						casters,
-						receivers,
-						{ mapSize: shadowMapSize },
-					);
+				if (casters.length > 0) {
+					for (const { light, index } of shadowLights) {
+						const result = r3d.renderShadowMap(
+							encoder,
+							light,
+							index,
+							casters,
+							receivers,
+							{
+								mapSize: shadowMapSize,
+								layer: shadow.length,
+								layerCount: shadowLights.length,
+							},
+						);
+						if (result) shadow.push(result);
+					}
 				}
 			}
 
@@ -1633,7 +1645,10 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				{ r: 0, g: 0, b: 0, a: 0 },
 				linearDepthView,
 				sceneLights,
-				{ environment: sceneEnvironment, shadow },
+				{
+					environment: sceneEnvironment,
+					shadow: shadow.length ? shadow : null,
+				},
 				Boolean(sceneBloom),
 			);
 
@@ -3065,9 +3080,9 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				if (!posed && clip && clip.duration > 0) {
 					const currentSec = clipSec;
 					if (model.skeleton && model.skeleton.bones.length > 0) {
-						const numBones = Math.min(128, model.skeleton.bones.length);
-						skinningMatrices = new Float32Array(128 * 16);
-						for (let b = 0; b < 128; b++) {
+						const numBones = model.skeleton.bones.length;
+						skinningMatrices = new Float32Array(numBones * 16);
+						for (let b = 0; b < numBones; b++) {
 							skinningMatrices[b * 16] = 1;
 							skinningMatrices[b * 16 + 5] = 1;
 							skinningMatrices[b * 16 + 10] = 1;

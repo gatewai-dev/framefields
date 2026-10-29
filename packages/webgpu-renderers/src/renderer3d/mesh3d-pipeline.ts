@@ -52,7 +52,7 @@ export interface MeshUniformData extends SurfaceParams {
 	/** Extra per-map UV vertex attributes are present. */
 	hasMapUvs?: boolean;
 	isSkinned?: boolean;
-	skinningMatrices?: Float32Array; // 128 * 16 floats
+	skinningMatrices?: Float32Array; // 16 floats per joint
 	/** Hardware-instanced draw path. */
 	isInstanced?: boolean;
 	/** Instance storage contains model and normal matrices in pairs. */
@@ -161,10 +161,9 @@ export class Mesh3DPipeline {
 			(52 + SURFACE_PARAMS_FLOATS) * 4,
 			GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
 		);
-		// 128 bones * 16 floats * 4 bytes = 8192 bytes
 		this.skinningPool = new BufferPool(
-			8192,
-			GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+			64,
+			GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
 		);
 
 		const module = device.createShaderModule({
@@ -196,7 +195,7 @@ export class Mesh3DPipeline {
 				{
 					binding: 1,
 					visibility: GPUShaderStage.VERTEX,
-					buffer: { type: "uniform" },
+					buffer: { type: "read-only-storage" },
 				},
 				matteLayoutEntry(2),
 				matteLayoutEntry(3),
@@ -395,17 +394,12 @@ export class Mesh3DPipeline {
 			{ width: 1, height: 1 },
 		);
 
-		// Default identity skinning buffer (128 identity matrices)
-		const idMatrices = new Float32Array(128 * 16);
-		for (let b = 0; b < 128; b++) {
-			idMatrices[b * 16] = 1;
-			idMatrices[b * 16 + 5] = 1;
-			idMatrices[b * 16 + 10] = 1;
-			idMatrices[b * 16 + 15] = 1;
-		}
+		// A non-skinned draw still binds one identity matrix.
+		const idMatrices = new Float32Array(16);
+		idMatrices[0] = idMatrices[5] = idMatrices[10] = idMatrices[15] = 1;
 		this.defaultSkinningBuffer = device.createBuffer({
-			size: 8192,
-			usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+			size: 64,
+			usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
 			mappedAtCreation: true,
 		});
 		new Float32Array(this.defaultSkinningBuffer.getMappedRange()).set(
@@ -504,6 +498,15 @@ export class Mesh3DPipeline {
 
 		const modelBuffer = this.modelPool.getBuffer(this.device, this.modelData);
 
+		if (
+			data.skinningMatrices &&
+			data.skinningMatrices.byteLength >
+				this.device.limits.maxStorageBufferBindingSize
+		) {
+			throw new Error(
+				`Skinning data requires ${data.skinningMatrices.byteLength} bytes, exceeding the device storage binding limit of ${this.device.limits.maxStorageBufferBindingSize} bytes`,
+			);
+		}
 		const skinningBuffer =
 			data.isSkinned && data.skinningMatrices
 				? this.skinningPool.getBuffer(this.device, data.skinningMatrices)

@@ -30,6 +30,16 @@ struct GPULight {
     spotParams     : vec4<f32>, // x = cos(outer), y = cos(inner), z = decay, w = unused
 };
 
+struct DirectLight {
+    posType : vec4<f32>,
+    dirRadius : vec4<f32>,
+    colorIntensity : vec4<f32>,
+    spotParams : vec4<f32>,
+    shadowMatrix : mat4x4<f32>,
+    shadowParams : vec4<f32>,
+    shadowBias : vec4<f32>,
+};
+
 struct LightsUniforms {
     ambientColor  : vec4<f32>, // rgb = ambient color * intensity (sRGB), w = unused
     params        : vec4<f32>, // x = numLights, y = hasLights, z = physical (1), w = tone mapping (0 none, 1 ACES, 2 AgX, 3 PBR Neutral)
@@ -212,25 +222,26 @@ var<private> POISSON : array<vec2<f32>, 12> = array<vec2<f32>, 12>(
 
 /// 1 = fully lit, 0 = fully shadowed, for light index i.
 fn shadowFactor(worldPos: vec3<f32>, N: vec3<f32>, i: i32) -> f32 {
-    if (lights.shadowParams.x < 0.5 || i32(lights.shadowParams.y) != i) {
+    let shadow = directLights[i];
+    if (shadow.shadowParams.w < 0.5) {
         return 1.0;
     }
-    let p = worldPos + N * lights.shadowBias.y;
-    let lp = lights.shadowMatrix * vec4<f32>(p, 1.0);
+    let p = worldPos + N * shadow.shadowBias.y;
+    let lp = shadow.shadowMatrix * vec4<f32>(p, 1.0);
     let ndc = lp.xyz / lp.w;
     let uv = vec2<f32>(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5);
     if (lp.w <= 0.0 || uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 || ndc.z > 1.0) {
         return 1.0;
     }
-    let texel = 1.0 / max(lights.shadowParams.w, 1.0);
-    let radius = lights.shadowParams.z * texel;
-    let depthRef = ndc.z - lights.shadowBias.x;
+    let texel = 1.0 / max(shadow.shadowParams.y, 1.0);
+    let radius = shadow.shadowParams.x * texel;
+    let depthRef = ndc.z - shadow.shadowBias.x;
     var lit = 0.0;
     for (var k = 0; k < 12; k++) {
-        lit += textureSampleCompareLevel(shadowMap, shadowSampler, uv + POISSON[k] * radius, depthRef);
+        lit += textureSampleCompareLevel(shadowMap, shadowSampler, uv + POISSON[k] * radius, i32(shadow.shadowParams.z), depthRef);
     }
     lit = lit / 12.0;
-    return mix(1.0, lit, lights.shadowBias.z);
+    return mix(1.0, lit, shadow.shadowBias.z);
 }
 
 // ── Lights ────────────────────────────────────────────────────────────
@@ -243,7 +254,7 @@ struct LightSample {
 
 fn sampleLight(i: i32, worldPos: vec3<f32>) -> LightSample {
     var out = LightSample(vec3<f32>(0.0, 0.0, 1.0), 1.0, false);
-    let light = lights.lights[i];
+    let light = directLights[i];
     let lightType = light.posType.w;
     if (lightType > 0.5 && lightType < 1.5) {
         out.L = normalize(-light.dirRadius.xyz);
@@ -292,15 +303,12 @@ fn applyLighting3D(worldPos: vec3<f32>, worldNormal: vec3<f32>, baseColor: vec3<
 
     var totalIllumination = baseColor * (lights.ambientColor.rgb * ambientInt);
     let numLights = i32(lights.params.x);
-    for (var i = 0; i < 8; i++) {
-        if (i >= numLights) {
-            break;
-        }
+    for (var i = 0; i < numLights; i++) {
         let ls = sampleLight(i, worldPos);
         if (!ls.valid) {
             continue;
         }
-        let light = lights.lights[i];
+        let light = directLights[i];
         let lightColor = light.colorIntensity.rgb;
         let intensity = light.colorIntensity.w;
         let NdotL = max(dot(N, ls.L), 0.0);
@@ -333,15 +341,12 @@ fn shadePhysical(worldPos: vec3<f32>, worldNormal: vec3<f32>, albedo: vec3<f32>,
 
     var lo = vec3<f32>(0.0);
     let numLights = i32(lights.params.x);
-    for (var i = 0; i < 8; i++) {
-        if (i >= numLights) {
-            break;
-        }
+    for (var i = 0; i < numLights; i++) {
         let ls = sampleLight(i, worldPos);
         if (!ls.valid) {
             continue;
         }
-        let light = lights.lights[i];
+        let light = directLights[i];
         let nDotL = max(dot(N, ls.L), 0.0);
         if (nDotL <= 0.0) {
             continue;
@@ -439,6 +444,7 @@ fn shadeSurface(worldPos: vec3<f32>, worldNormal: vec3<f32>, baseColor: vec3<f32
 /** Group-3 bindings every lit 3D shader declares. */
 export const lightsBindingsWgsl = `
 @group(3) @binding(0) var<uniform> lights : LightsUniforms;
-@group(3) @binding(1) var shadowMap : texture_depth_2d;
+@group(3) @binding(1) var shadowMap : texture_depth_2d_array;
 @group(3) @binding(2) var shadowSampler : sampler_comparison;
+@group(3) @binding(3) var<storage, read> directLights : array<DirectLight>;
 `;

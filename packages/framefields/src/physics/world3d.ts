@@ -703,10 +703,14 @@ function num(v: unknown, fallback: number): number {
 
 interface PrimitiveSpec {
 	type?: string;
+	shape?: string;
 	width?: number;
 	height?: number;
 	depth?: number;
+	length?: number;
 	radius?: number;
+	tube?: number;
+	outerRadius?: number;
 	radiusTop?: number;
 	radiusBottom?: number;
 	taper?: number;
@@ -750,7 +754,10 @@ function colliderShape3D(t: LayerLike, options: Body3DOptions): Shape3D {
 		if (h) return h;
 	}
 	const sphere =
-		mode === "sphere" || (mode === "auto" && prim.type === "sphere");
+		mode === "sphere" ||
+		(mode === "auto" &&
+			(prim.type === "sphere" ||
+				(prim.type === "polyhedron" && prim.shape === "icosphere")));
 	if (sphere && (uniform || mode === "sphere")) {
 		const r = num(prim.radius, 0) || Math.max(...(boxSize(t, prim) ?? [0])) / 2;
 		if (r > 0) return { kind: "ball", radius: r * Math.max(...scale) };
@@ -803,9 +810,24 @@ function colliderShape3D(t: LayerLike, options: Body3DOptions): Shape3D {
 function boxSize(t: LayerLike, prim: PrimitiveSpec): Vec3 | undefined {
 	if (prim.type === "roundedBox")
 		return [num(prim.width, 0), num(prim.height, 0), num(prim.depth, 0)];
-	if (prim.type === "sphere") {
-		const d = num(prim.radius, 0) * 2;
+	if (prim.type === "sphere" || prim.type === "polyhedron") {
+		const d = num(prim.radius, 50) * 2;
 		return [d, d, d];
+	}
+	if (prim.type === "capsule") {
+		const r = num(prim.radius, 30);
+		const len = num(prim.length, 60);
+		return [r * 2, len + r * 2, r * 2];
+	}
+	if (prim.type === "torus") {
+		const R = num(prim.radius, 60);
+		const r = num(prim.tube, 20);
+		return [(R + r) * 2, (R + r) * 2, r * 2];
+	}
+	if (prim.type === "ring") {
+		const rOut = num(prim.outerRadius, 60);
+		const depth = Math.max(2, num(prim.depth, 0));
+		return [rOut * 2, rOut * 2, depth];
 	}
 	if (prim.type === "cylinder") {
 		const d =

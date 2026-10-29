@@ -5,15 +5,26 @@ import type {
 	Model3DNode,
 } from "@framefields/compositions/program";
 import {
+	type CapsuleGeometryOptions,
 	type CylinderGeometryOptions,
+	type ExtrudeShapeGeometryOptions,
 	generateExtrudedTextGeometry,
 	getPrimitiveGeometry,
+	type LatheGeometryOptions,
+	type Line3DGeometryOptions,
 	type Model3DData,
+	Path3D,
+	type Points3DGeometryOptions,
+	type PolyhedronGeometryOptions,
 	type PrimitiveGeometryOptions,
+	type RingGeometryOptions,
 	type RoundedBoxGeometryOptions,
 	type ShardGeometryOptions,
 	SlugFontCache,
 	type SphereGeometryOptions,
+	type TorusGeometryOptions,
+	type TubeGeometryOptions,
+	type TubePathSpec,
 } from "@framefields/webgpu-renderers";
 import { autoId } from "./ids.js";
 import { type AnimatableNode, Layer } from "./index.js";
@@ -128,17 +139,39 @@ export interface Carousel3DOptions {
 	opacity?: number;
 }
 
-export interface Prism3DOptions {
+export interface Prism3DOptions extends Surface3DOptions {
 	id?: string;
-	sides: number;
-	radius: number;
-	height: number;
+	/** Number of polygon sides (default 6). */
+	sides?: number;
+	/** Circumradius of the polygon (default 60). */
+	radius?: number;
+	/** Optional top (-y) radius; defaults to `radius`. */
+	radiusTop?: number;
+	/** Optional bottom (+y) radius; defaults to `radius`. */
+	radiusBottom?: number;
+	/** Height along Y (default 100). */
+	height?: number;
 	x?: number;
 	y?: number;
 	z?: number;
 	rotateX?: number;
 	rotateY?: number;
 	rotateZ?: number;
+	scale?: number;
+	scaleX?: number;
+	scaleY?: number;
+	scaleZ?: number;
+	/** Leave the top and bottom polygon caps off (default false = solid capped prism). */
+	openEnded?: boolean;
+	/** Flat-shade each polygonal side facet (default true for crisp prism edges). */
+	flatShaded?: boolean;
+	/** Draw triangle edges instead of filled surfaces. */
+	wireframe?: boolean;
+	/** Surface color baked into the mesh (default `#3b82f6`). */
+	color?: string;
+	/** Animated color multiplier (`node.color`). */
+	tint?: string;
+	/** Optional per-side panel configs; when provided, builds a multi-panel preserve-3d container. */
 	sideConfigs?: Array<CubeFaceInput>;
 	twoSided?: boolean;
 	material?: MaterialType;
@@ -153,6 +186,52 @@ export interface Prism3DOptions {
 	fresnelPower?: number;
 	envIntensity?: number;
 	opacity?: number;
+	startFrame?: number;
+	durationFrames?: number;
+}
+
+export interface Pyramid3DOptions extends Surface3DOptions {
+	id?: string;
+	/** Number of base polygon sides (default 4 = square pyramid; 3 = triangular pyramid). */
+	sides?: number;
+	/** Circumradius of the base polygon (default 60). */
+	radius?: number;
+	/** Optional top (-y) truncation radius for a frustum pyramid (default 0 = sharp apex). */
+	radiusTop?: number;
+	/** Height from base (+y) to apex (-y) (default 100). */
+	height?: number;
+	/** Leave the base cap off (default false = solid capped pyramid). */
+	openEnded?: boolean;
+	/** Flat-shade each triangular side face (default true). */
+	flatShaded?: boolean;
+	x?: number;
+	y?: number;
+	z?: number;
+	rotateX?: number;
+	rotateY?: number;
+	rotateZ?: number;
+	scale?: number;
+	scaleX?: number;
+	scaleY?: number;
+	scaleZ?: number;
+	wireframe?: boolean;
+	color?: string;
+	tint?: string;
+	twoSided?: boolean;
+	material?: MaterialType;
+	shininess?: number;
+	roughness?: number;
+	specularIntensity?: number;
+	metallic?: number;
+	ambientIntensity?: number;
+	ior?: number;
+	transmission?: number;
+	dispersion?: number;
+	fresnelPower?: number;
+	envIntensity?: number;
+	opacity?: number;
+	startFrame?: number;
+	durationFrames?: number;
 }
 
 export interface Plane3DOptions extends Surface3DOptions {
@@ -267,7 +346,7 @@ export interface ExtrudedText3DOptions extends Text3DOptions {
 	curveTolerance?: number;
 }
 
-/** Node props shared by the mesh primitives (roundedBox, sphere, cylinder). */
+/** Node props shared by the mesh primitives (roundedBox, sphere, cylinder, torus, capsule, …). */
 export interface Primitive3DNodeOptions extends Surface3DOptions {
 	id?: string;
 	x?: number;
@@ -280,6 +359,8 @@ export interface Primitive3DNodeOptions extends Surface3DOptions {
 	scaleX?: number;
 	scaleY?: number;
 	scaleZ?: number;
+	/** Render both front and back faces (default false for closed solids). */
+	twoSided?: boolean;
 	/** Draw triangle edges instead of filled surfaces. */
 	wireframe?: boolean;
 	/** Surface color baked into the mesh (default white). */
@@ -295,6 +376,11 @@ export interface Primitive3DNodeOptions extends Surface3DOptions {
 	specularIntensity?: number;
 	ambientIntensity?: number;
 	metallic?: number;
+	ior?: number;
+	transmission?: number;
+	dispersion?: number;
+	fresnelPower?: number;
+	envIntensity?: number;
 	opacity?: number;
 	startFrame?: number;
 	durationFrames?: number;
@@ -306,6 +392,41 @@ export type Sphere3DOptions = Primitive3DNodeOptions &
 	Omit<SphereGeometryOptions, "type" | "color" | "material">;
 export type Cylinder3DOptions = Primitive3DNodeOptions &
 	Omit<CylinderGeometryOptions, "type" | "color" | "material">;
+export type Torus3DOptions = Primitive3DNodeOptions &
+	Omit<TorusGeometryOptions, "type" | "color" | "material">;
+export type Capsule3DOptions = Primitive3DNodeOptions &
+	Omit<CapsuleGeometryOptions, "type" | "color" | "material">;
+export type Ring3DOptions = Primitive3DNodeOptions &
+	Omit<RingGeometryOptions, "type" | "color" | "material">;
+export type Polyhedron3DOptions = Primitive3DNodeOptions &
+	Omit<PolyhedronGeometryOptions, "type" | "color" | "material"> & {
+		/** Alias for `shape` (`"tetrahedron" | "octahedron" | "dodecahedron" | "icosahedron" | "icosphere"`). */
+		type?: PolyhedronGeometryOptions["shape"];
+	};
+export type Icosphere3DOptions = Omit<Polyhedron3DOptions, "shape" | "type">;
+export type ExtrudeShape3DOptions = Primitive3DNodeOptions &
+	Omit<ExtrudeShapeGeometryOptions, "type" | "color" | "material">;
+export type Lathe3DOptions = Primitive3DNodeOptions &
+	Omit<LatheGeometryOptions, "type" | "color" | "material">;
+export type Tube3DOptions = Primitive3DNodeOptions &
+	Omit<TubeGeometryOptions, "type" | "color" | "material" | "path"> & {
+		/** A `Path3D` instance, `TubePathSpec`, or array of 3D waypoints `[x, y, z]`. */
+		path?: Path3D | TubePathSpec;
+		/** Alias for `path` when passing an array of 3D waypoints `[x, y, z]` or a `Path3D`. */
+		points?: Path3D | TubePathSpec;
+	};
+export type Line3DOptions = Primitive3DNodeOptions &
+	Omit<Line3DGeometryOptions, "type" | "color" | "material" | "points"> & {
+		/** A `Path3D` instance, `TubePathSpec`, or array of 3D points `[x, y, z]`. */
+		points?: Path3D | TubePathSpec;
+		/** Alias for `points` when passing a `Path3D` or `TubePathSpec`. */
+		path?: Path3D | TubePathSpec;
+	};
+export type Points3DOptions = Primitive3DNodeOptions &
+	Omit<Points3DGeometryOptions, "type" | "color" | "material" | "points"> & {
+		/** A `Path3D` instance, `TubePathSpec`, or array of 3D points `[x, y, z]`. */
+		points: Path3D | TubePathSpec;
+	};
 export type Shard3DOptions = Primitive3DNodeOptions &
 	Omit<ShardGeometryOptions, "type" | "color" | "material">;
 
@@ -374,6 +495,13 @@ function meshShading(
 		: undefined;
 }
 
+function normalizePathSpec(input: Path3D | TubePathSpec): TubePathSpec {
+	if (input instanceof Path3D) {
+		return input.getPoints(96);
+	}
+	return input;
+}
+
 function primitiveNode(
 	prefix: string,
 	geometry: PrimitiveGeometryOptions,
@@ -415,12 +543,8 @@ function primitiveNode(
 		specularIntensity: o.specularIntensity ?? 0.5,
 		ambientIntensity: o.ambientIntensity ?? 1.0,
 		metallic: o.metallic,
-		...materialProps({
-			emissive: o.emissive,
-			emissiveIntensity: o.emissiveIntensity,
-			castShadow: o.castShadow,
-		}),
-		twoSided: false,
+		...materialProps(o),
+		twoSided: o.twoSided ?? false,
 		wireframe: o.wireframe,
 		startFrame: o.startFrame,
 		durationFrames: o.durationFrames,
@@ -429,6 +553,12 @@ function primitiveNode(
 
 export type Shape3DContainer = AnimatableNode<BoxNode> & {
 	faces?: AnimatableNode<BoxNode>[];
+	items?: LayoutNode[];
+	[Symbol.iterator](): Iterator<LayoutNode>;
+};
+
+export type SolidShape3DNode = AnimatableNode<Model3DNode> & {
+	faces?: LayoutNode[];
 	items?: LayoutNode[];
 	[Symbol.iterator](): Iterator<LayoutNode>;
 };
@@ -540,9 +670,8 @@ export const Layer3D = {
 				ambientIntensity:
 					cfg.ambientIntensity ?? options.ambientIntensity ?? 1.0,
 				...materialProps({
-					emissive: cfg.emissive ?? options.emissive,
-					emissiveIntensity: cfg.emissiveIntensity ?? options.emissiveIntensity,
-					castShadow: cfg.castShadow ?? options.castShadow,
+					...options,
+					...cfg,
 				}),
 				background: cfg.background ?? defaultColor,
 				borderRadius: cfg.borderRadius ?? 0,
@@ -666,8 +795,8 @@ export const Layer3D = {
 			x: options.x ?? 0,
 			y: options.y ?? 0,
 			z: options.z ?? 0,
-			width: (options.itemWidth ?? 200) as any,
-			height: (options.itemHeight ?? 200) as any,
+			width: options.itemWidth ?? 200,
+			height: options.itemHeight ?? 200,
 			is3D: true,
 			transformStyle: "preserve-3d",
 			rotateX: options.rotateX ?? 0,
@@ -682,63 +811,144 @@ export const Layer3D = {
 	},
 
 	/**
-	 * Creates an N-sided regular polygonal 3D prism.
+	 * Creates an N-sided regular polygonal 3D prism with top and bottom caps,
+	 * outward flat-shaded facet normals, and full material options.
+	 * If `sideConfigs` are provided, builds a multi-panel preserve-3d container with all material props applied.
 	 */
 	prism(options: Prism3DOptions): Shape3DContainer {
-		const { sides, radius, height, twoSided = true } = options;
-		const n = Math.max(3, sides);
-		const sideWidth = 2 * radius * Math.tan(Math.PI / n);
-		const angleStep = 360 / n;
-		const panels: AnimatableNode<BoxNode>[] = [];
+		const n = Math.max(3, Math.round(options.sides));
+		if (options.sideConfigs && options.sideConfigs.length > 0) {
+			const { radius, height, twoSided = true } = options;
+			const sideWidth = 2 * radius * Math.tan(Math.PI / n);
+			const angleStep = 360 / n;
+			const panels: AnimatableNode<BoxNode>[] = [];
 
-		for (let i = 0; i < n; i++) {
-			const angleDeg = i * angleStep;
-			const rad = (angleDeg * Math.PI) / 180;
-			const x = radius * Math.sin(rad);
-			const z = radius * Math.cos(rad);
-			const cfg = options.sideConfigs?.[i];
-			const color =
-				typeof cfg === "string"
-					? cfg
-					: ((cfg as { background?: string } | undefined)?.background ??
-						`hsl(${(i * 360) / n}, 70%, 50%)`);
+			for (let i = 0; i < n; i++) {
+				const angleDeg = i * angleStep;
+				const rad = (angleDeg * Math.PI) / 180;
+				const x = radius * Math.sin(rad);
+				const z = -radius * Math.cos(rad);
+				const input = options.sideConfigs[i];
+				const defaultColor = options.color ?? `hsl(${(i * 360) / n}, 70%, 50%)`;
 
-			panels.push(
-				Layer.box({
-					id: `${options.id ?? "prism"}-panel-${i}`,
-					position: "absolute",
-					width: sideWidth,
-					height,
-					is3D: true,
-					twoSided,
-					x,
-					y: 0,
-					z,
-					rotateY: angleDeg,
-					background: color,
-				}),
-			);
+				if (input && typeof input === "object" && "kind" in input) {
+					const node = input as AnimatableNode<BoxNode>;
+					node.position = "absolute";
+					node.is3D = true;
+					node.twoSided = twoSided;
+					node.x = x;
+					node.y = 0;
+					node.z = z;
+					node.rotateY = -angleDeg;
+					Object.assign(node, materialProps(options));
+					panels.push(node);
+					continue;
+				}
+
+				const cfg: CubeFaceConfig =
+					typeof input === "string"
+						? { background: input }
+						: (input ?? { background: defaultColor });
+
+				panels.push(
+					Layer.box({
+						id: `${options.id ?? "prism"}-panel-${i}`,
+						position: "absolute",
+						width: sideWidth,
+						height,
+						is3D: true,
+						twoSided,
+						x,
+						y: 0,
+						z,
+						rotateY: -angleDeg,
+						background: cfg.background ?? defaultColor,
+						borderRadius: cfg.borderRadius ?? 0,
+						borderWidth: cfg.borderWidth,
+						borderColor: cfg.borderColor,
+						opacity: cfg.opacity ?? options.opacity ?? 1,
+						material: cfg.material ?? options.material ?? "lit",
+						shininess: cfg.shininess ?? options.shininess ?? 32,
+						specularIntensity:
+							cfg.specularIntensity ?? options.specularIntensity ?? 0.5,
+						ambientIntensity:
+							cfg.ambientIntensity ?? options.ambientIntensity ?? 1.0,
+						...materialProps({ ...options, ...cfg }),
+						children: cfg.children ?? [],
+					}),
+				);
+			}
+
+			const container = Layer.box({
+				id: options.id ?? autoId("prism"),
+				position: "absolute",
+				x: options.x ?? 0,
+				y: options.y ?? 0,
+				z: options.z ?? 0,
+				width: sideWidth,
+				height,
+				is3D: true,
+				transformStyle: "preserve-3d",
+				rotateX: options.rotateX ?? 0,
+				rotateY: options.rotateY ?? 0,
+				rotateZ: options.rotateZ ?? 0,
+				opacity: options.opacity ?? 1,
+				background: "transparent",
+				children: panels,
+			});
+
+			return withParts(container, { faces: panels });
 		}
 
-		const container = Layer.box({
-			id: options.id ?? autoId("prism"),
-			position: "absolute",
-			x: options.x ?? 0,
-			y: options.y ?? 0,
-			z: options.z ?? 0,
-			width: sideWidth,
-			height,
-			is3D: true,
-			transformStyle: "preserve-3d",
-			rotateX: options.rotateX ?? 0,
-			rotateY: options.rotateY ?? 0,
-			rotateZ: options.rotateZ ?? 0,
-			opacity: options.opacity ?? 1,
-			background: "transparent",
-			children: panels,
-		});
+		const modelNode = primitiveNode(
+			"prism",
+			{
+				type: "cylinder",
+				radius: options.radius,
+				radiusTop: options.radiusTop ?? options.radius,
+				radiusBottom: options.radiusBottom ?? options.radius,
+				height: options.height,
+				segments: n,
+				openEnded: options.openEnded ?? false,
+				flatShaded: options.flatShaded ?? true,
+			},
+			{
+				...options,
+				color: options.color ?? "#3b82f6",
+				twoSided: options.twoSided ?? Boolean(options.openEnded),
+			},
+		);
 
-		return withParts(container, { faces: panels });
+		return withParts(modelNode, {
+			faces: [modelNode],
+			items: [modelNode],
+		}) as unknown as Shape3DContainer;
+	},
+
+	/**
+	 * Creates a solid N-sided regular polygonal pyramid (or truncated pyramid when `radiusTop > 0`)
+	 * with a bottom cap and crisp flat-shaded side facets.
+	 */
+	pyramid(options: Pyramid3DOptions): AnimatableNode<Model3DNode> {
+		const n = Math.max(3, Math.round(options.sides ?? 4));
+		return primitiveNode(
+			"pyramid",
+			{
+				type: "cylinder",
+				radius: options.radius ?? 60,
+				radiusTop: options.radiusTop ?? 0,
+				radiusBottom: options.radius ?? 60,
+				height: options.height,
+				segments: n,
+				openEnded: options.openEnded ?? false,
+				flatShaded: options.flatShaded ?? true,
+			},
+			{
+				...options,
+				color: options.color ?? "#f59e0b",
+				twoSided: options.twoSided ?? Boolean(options.openEnded),
+			},
+		);
 	},
 
 	/**
@@ -861,7 +1071,12 @@ export const Layer3D = {
 			fontWeight: options.fontWeight ?? "bold",
 			fontStyle: options.fontStyle,
 			fill: options.fill ?? "#ffffff",
-			align: (options.align as any) ?? "center",
+			align: (options.align ?? "center") as
+				| "left"
+				| "center"
+				| "right"
+				| "start"
+				| "end",
 			direction: options.direction,
 			verticalAlign: options.verticalAlign ?? "middle",
 			letterSpacing: options.letterSpacing,
@@ -1009,8 +1224,241 @@ export const Layer3D = {
 				height: options.height,
 				segments: options.segments,
 				openEnded: options.openEnded,
+				flatShaded: options.flatShaded,
+			},
+			{
+				...options,
+				twoSided: options.twoSided ?? Boolean(options.openEnded),
+			},
+		);
+	},
+
+	/**
+	 * A 3D torus (donut / ring) mesh with major `radius`, tube radius `tube`,
+	 * and optional partial `arc` sweep in degrees.
+	 */
+	torus(options: Torus3DOptions = {}): AnimatableNode<Model3DNode> {
+		return primitiveNode(
+			"torus",
+			{
+				type: "torus",
+				radius: options.radius,
+				tube: options.tube,
+				radialSegments: options.radialSegments,
+				tubularSegments: options.tubularSegments,
+				arc: options.arc,
 			},
 			options,
+		);
+	},
+
+	/**
+	 * A smooth 3D capsule (pill) mesh aligned along the Y axis: a cylinder of
+	 * length `length` and radius `radius` capped by two hemispheres.
+	 */
+	capsule(options: Capsule3DOptions = {}): AnimatableNode<Model3DNode> {
+		return primitiveNode(
+			"capsule",
+			{
+				type: "capsule",
+				radius: options.radius,
+				length: options.length,
+				capSegments: options.capSegments,
+				radialSegments: options.radialSegments,
+			},
+			options,
+		);
+	},
+
+	/**
+	 * A 3D ring / annulus with `innerRadius`, `outerRadius`, and optional `depth`
+	 * for a thick-walled washer/annular solid.
+	 */
+	ring(options: Ring3DOptions = {}): AnimatableNode<Model3DNode> {
+		return primitiveNode(
+			"ring",
+			{
+				type: "ring",
+				innerRadius: options.innerRadius,
+				outerRadius: options.outerRadius,
+				depth: options.depth,
+				thetaSegments: options.thetaSegments,
+				phiSegments: options.phiSegments,
+				thetaStart: options.thetaStart,
+				thetaLength: options.thetaLength,
+			},
+			options,
+		);
+	},
+
+	/**
+	 * A Platonic polyhedron (`tetrahedron`, `octahedron`, `dodecahedron`, `icosahedron`)
+	 * or geodesic `icosphere` with configurable subdivision `detail` and `flatShaded` facets.
+	 */
+	polyhedron(options: Polyhedron3DOptions = {}): AnimatableNode<Model3DNode> {
+		const shape = options.shape ?? options.type ?? "icosahedron";
+		return primitiveNode(
+			shape,
+			{
+				type: "polyhedron",
+				shape,
+				radius: options.radius,
+				detail: options.detail,
+				flatShaded: options.flatShaded,
+			},
+			options,
+		);
+	},
+
+	/**
+	 * An icosahedron (20-sided regular polyhedron), optionally subdivided with `detail`.
+	 */
+	icosahedron(options: Icosphere3DOptions = {}): AnimatableNode<Model3DNode> {
+		return Layer3D.polyhedron({ ...options, shape: "icosahedron" });
+	},
+
+	/**
+	 * An evenly distributed geodesic icosphere mesh (`detail` defaults to 2, smooth-shaded by default).
+	 */
+	icosphere(options: Icosphere3DOptions = {}): AnimatableNode<Model3DNode> {
+		return Layer3D.polyhedron({
+			...options,
+			shape: "icosphere",
+			detail: options.detail ?? 2,
+			flatShaded: options.flatShaded ?? false,
+		});
+	},
+
+	/**
+	 * Extrudes a 2D outline (an SVG path string with curves/holes or a 2D point contour array)
+	 * into a 3D solid mesh with optional front/back bevels (`bevelThickness`, `bevelSize`, `bevelSegments`)
+	 * and separate side wall color (`bevelColor`).
+	 */
+	extrude(options: ExtrudeShape3DOptions): AnimatableNode<Model3DNode> {
+		return primitiveNode(
+			"extrude",
+			{
+				type: "extrude",
+				shape: options.shape,
+				d: options.d,
+				contour: options.contour,
+				holes: options.holes,
+				depth: options.depth,
+				bevelThickness: options.bevelThickness,
+				bevelSize: options.bevelSize,
+				bevelSegments: options.bevelSegments,
+				bevelColor: options.bevelColor,
+				curveSegments: options.curveSegments,
+				curveTolerance: options.curveTolerance,
+				center: options.center,
+			},
+			options,
+		);
+	},
+
+	/**
+	 * Revolves a 2D profile (`[[r, y], ...]` or an SVG path string) around the Y axis
+	 * to create bowls, bottles, goblets, vases, and turned solids.
+	 */
+	lathe(options: Lathe3DOptions): AnimatableNode<Model3DNode> {
+		const capped = options.capped ?? options.closed;
+		return primitiveNode(
+			"lathe",
+			{
+				type: "lathe",
+				points: options.points,
+				segments: options.segments,
+				phiStart: options.phiStart,
+				phiLength: options.phiLength,
+				capped,
+				closed: options.closed,
+				flatShaded: options.flatShaded,
+			},
+			{
+				...options,
+				twoSided: options.twoSided ?? !(capped ?? false),
+			},
+		);
+	},
+
+	/**
+	 * Sweeps a circular or thick-walled hollow pipe cross-section (`innerRadius > 0`)
+	 * along a 3D curve (`Path3D`, `TubePathSpec`, or 3D waypoints `[x, y, z]`) using
+	 * Rotation-Minimizing Frames.
+	 */
+	tube(options: Tube3DOptions): AnimatableNode<Model3DNode> {
+		const pathInput = options.path ?? options.points;
+		if (!pathInput) {
+			throw new Error("Layer3D.tube requires `path` or `points`");
+		}
+		return primitiveNode(
+			"tube",
+			{
+				type: "tube",
+				path: normalizePathSpec(pathInput),
+				radius: options.radius,
+				innerRadius: options.innerRadius,
+				radiusTaper: options.radiusTaper,
+				tubularSegments: options.tubularSegments,
+				radialSegments: options.radialSegments,
+				closed: options.closed,
+				capped: options.capped,
+			},
+			{
+				...options,
+				twoSided: options.twoSided ?? options.capped === false,
+			},
+		);
+	},
+
+	/**
+	 * 3D line / curve geometry (`line-list` topology) along 3D points or a `Path3D` curve,
+	 * supporting dashed segments (`dashSize`, `gapSize`) and per-vertex colors for 3D diagrams.
+	 */
+	line(options: Line3DOptions): AnimatableNode<Model3DNode> {
+		const pointsInput = options.points ?? options.path;
+		if (!pointsInput) {
+			throw new Error("Layer3D.line requires `points` or `path`");
+		}
+		return primitiveNode(
+			"line3d",
+			{
+				type: "line3d",
+				points: normalizePathSpec(pointsInput),
+				colors: options.colors,
+				mode: options.mode,
+				closed: options.closed,
+				dashSize: options.dashSize,
+				gapSize: options.gapSize,
+			},
+			{
+				...options,
+				material: options.material ?? "unlit",
+				castShadow: options.castShadow ?? false,
+			},
+		);
+	},
+
+	/**
+	 * 3D point cloud / diagram vertex geometry along 3D points or a `Path3D` curve.
+	 * Pass `pointSize > 0` for 3D spherical diagram dots that scale in perspective,
+	 * or omit `pointSize` for native GPU `point-list` pixels.
+	 */
+	points(options: Points3DOptions): AnimatableNode<Model3DNode> {
+		const isPixelPoints = (options.pointSize ?? 0) <= 0;
+		return primitiveNode(
+			"points3d",
+			{
+				type: "points3d",
+				points: normalizePathSpec(options.points),
+				colors: options.colors,
+				pointSize: options.pointSize,
+			},
+			{
+				...options,
+				material: options.material ?? (isPixelPoints ? "unlit" : "lit"),
+				castShadow: options.castShadow ?? !isPixelPoints,
+			},
 		);
 	},
 

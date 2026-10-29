@@ -91,12 +91,15 @@ export class Path3D {
 			upRef = [0, 0, 1];
 		}
 		let n0 = Vector3Math.normalize(
-			Vector3Math.subtract(upRef, Vector3Math.multiplyScalar(t0, Vector3Math.dot(upRef, t0))),
+			Vector3Math.subtract(
+				upRef,
+				Vector3Math.multiplyScalar(t0, Vector3Math.dot(upRef, t0)),
+			),
 		);
 		if (Vector3Math.lengthSq(n0) < 1e-4) {
 			n0 = [1, 0, 0];
 		}
-		let b0 = Vector3Math.normalize(Vector3Math.cross(t0, n0));
+		const b0 = Vector3Math.normalize(Vector3Math.cross(t0, n0));
 		this.frames[0] = {
 			normal: n0,
 			binormal: b0,
@@ -132,7 +135,10 @@ export class Path3D {
 				if (c2 > 1e-8) {
 					n_next = Vector3Math.subtract(
 						n_i_L,
-						Vector3Math.multiplyScalar(v2, (2 * Vector3Math.dot(v2, n_i_L)) / c2),
+						Vector3Math.multiplyScalar(
+							v2,
+							(2 * Vector3Math.dot(v2, n_i_L)) / c2,
+						),
 					);
 				} else {
 					n_next = n_i_L;
@@ -162,10 +168,30 @@ export class Path3D {
 	 */
 	private eulerFromFrame(tangent: Vec3, normal: Vec3, _binormal: Vec3): Vec3 {
 		// Tangent is the forward viewing axis Z_fwd or X_fwd
-		const pitch = Math.asin(Math.max(-1, Math.min(1, -tangent[1]))) * (180 / Math.PI);
+		const pitch =
+			Math.asin(Math.max(-1, Math.min(1, -tangent[1]))) * (180 / Math.PI);
 		const yaw = Math.atan2(tangent[0], tangent[2]) * (180 / Math.PI);
 		const roll = Math.atan2(normal[0], normal[1]) * (180 / Math.PI);
 		return [pitch, yaw, roll];
+	}
+
+	/**
+	 * Returns a copy of the discrete samples `[position, tangent, distance]` along this path.
+	 */
+	public getSamples(): ReadonlyArray<Path3DSample> {
+		return this.samples;
+	}
+
+	/**
+	 * Evaluates `count` evenly arc-length-spaced 3D positions along the path.
+	 */
+	public getPoints(count = 64): Vec3[] {
+		const n = Math.max(2, Math.round(count));
+		const pts: Vec3[] = [];
+		for (let i = 0; i < n; i++) {
+			pts.push(this.getPointAt(i / (n - 1)).position);
+		}
+		return pts;
 	}
 
 	/**
@@ -205,11 +231,15 @@ export class Path3D {
 		const alpha = segLen > 1e-6 ? (d - s0.distance) / segLen : 0;
 
 		const position = Vector3Math.lerp(s0.position, s1.position, alpha);
-		const tangent = Vector3Math.normalize(Vector3Math.lerp(s0.tangent, s1.tangent, alpha));
+		const tangent = Vector3Math.normalize(
+			Vector3Math.lerp(s0.tangent, s1.tangent, alpha),
+		);
 
 		const f0 = this.frames[idx0];
 		const f1 = this.frames[idx1];
-		const normal = Vector3Math.normalize(Vector3Math.lerp(f0.normal, f1.normal, alpha));
+		const normal = Vector3Math.normalize(
+			Vector3Math.lerp(f0.normal, f1.normal, alpha),
+		);
 		const binormal = Vector3Math.normalize(Vector3Math.cross(tangent, normal));
 		const rotation: Vec3 = [
 			f0.rotation[0] + (f1.rotation[0] - f0.rotation[0]) * alpha,
@@ -258,7 +288,9 @@ export class Path3D {
 			const pSecond = waypoints[1];
 			const pLast = waypoints[waypoints.length - 1];
 			const pPrevLast = waypoints[waypoints.length - 2];
-			pts.push(Vector3Math.subtract(pFirst, Vector3Math.subtract(pSecond, pFirst)));
+			pts.push(
+				Vector3Math.subtract(pFirst, Vector3Math.subtract(pSecond, pFirst)),
+			);
 			pts.push(...waypoints);
 			pts.push(Vector3Math.add(pLast, Vector3Math.subtract(pLast, pPrevLast)));
 		}
@@ -272,7 +304,8 @@ export class Path3D {
 			const p2 = pts[s + 2];
 			const p3 = pts[s + 3];
 
-			const steps = s === numSegments - 1 ? samplesPerSegment : samplesPerSegment - 1;
+			const steps =
+				s === numSegments - 1 ? samplesPerSegment : samplesPerSegment - 1;
 			for (let step = 0; step <= steps; step++) {
 				const t = step / samplesPerSegment;
 				const t2 = t * t;
@@ -346,7 +379,8 @@ export class Path3D {
 
 		for (let s = 0; s < segments.length; s++) {
 			const seg = segments[s];
-			const steps = s === segments.length - 1 ? samplesPerSegment : samplesPerSegment - 1;
+			const steps =
+				s === segments.length - 1 ? samplesPerSegment : samplesPerSegment - 1;
 
 			for (let step = 0; step <= steps; step++) {
 				const t = step / samplesPerSegment;
@@ -357,15 +391,30 @@ export class Path3D {
 				const ttt = tt * t;
 
 				const pos: Vec3 = [
-					uuu * seg.p0[0] + 3 * uu * t * seg.p1[0] + 3 * u * tt * seg.p2[0] + ttt * seg.p3[0],
-					uuu * seg.p0[1] + 3 * uu * t * seg.p1[1] + 3 * u * tt * seg.p2[1] + ttt * seg.p3[1],
-					uuu * seg.p0[2] + 3 * uu * t * seg.p1[2] + 3 * u * tt * seg.p2[2] + ttt * seg.p3[2],
+					uuu * seg.p0[0] +
+						3 * uu * t * seg.p1[0] +
+						3 * u * tt * seg.p2[0] +
+						ttt * seg.p3[0],
+					uuu * seg.p0[1] +
+						3 * uu * t * seg.p1[1] +
+						3 * u * tt * seg.p2[1] +
+						ttt * seg.p3[1],
+					uuu * seg.p0[2] +
+						3 * uu * t * seg.p1[2] +
+						3 * u * tt * seg.p2[2] +
+						ttt * seg.p3[2],
 				];
 
 				const tanVel: Vec3 = [
-					3 * uu * (seg.p1[0] - seg.p0[0]) + 6 * u * t * (seg.p2[0] - seg.p1[0]) + 3 * tt * (seg.p3[0] - seg.p2[0]),
-					3 * uu * (seg.p1[1] - seg.p0[1]) + 6 * u * t * (seg.p2[1] - seg.p1[1]) + 3 * tt * (seg.p3[1] - seg.p2[1]),
-					3 * uu * (seg.p1[2] - seg.p0[2]) + 6 * u * t * (seg.p2[2] - seg.p1[2]) + 3 * tt * (seg.p3[2] - seg.p2[2]),
+					3 * uu * (seg.p1[0] - seg.p0[0]) +
+						6 * u * t * (seg.p2[0] - seg.p1[0]) +
+						3 * tt * (seg.p3[0] - seg.p2[0]),
+					3 * uu * (seg.p1[1] - seg.p0[1]) +
+						6 * u * t * (seg.p2[1] - seg.p1[1]) +
+						3 * tt * (seg.p3[1] - seg.p2[1]),
+					3 * uu * (seg.p1[2] - seg.p0[2]) +
+						6 * u * t * (seg.p2[2] - seg.p1[2]) +
+						3 * tt * (seg.p3[2] - seg.p2[2]),
 				];
 				const tangent = Vector3Math.normalize(tanVel);
 				rawSamples.push({ position: pos, tangent });
@@ -379,7 +428,14 @@ export class Path3D {
 	 * Creates a 3D volumetric helix / spiral path.
 	 */
 	public static helix(options: HelixOptions): Path3D {
-		const { center, radius, pitch, turns, axis = "z", samplesPerTurn = 60 } = options;
+		const {
+			center,
+			radius,
+			pitch,
+			turns,
+			axis = "z",
+			samplesPerTurn = 60,
+		} = options;
 		const totalSamples = Math.max(10, Math.round(turns * samplesPerTurn));
 		const rawSamples: Array<{ position: Vec3; tangent: Vec3 }> = [];
 
@@ -395,17 +451,44 @@ export class Path3D {
 			let tanVel: Vec3;
 
 			if (axis === "z") {
-				pos = [center[0] + radius * c, center[1] + radius * s, center[2] + axial];
-				tanVel = [-radius * s, radius * c, (pitch * turns) / (turns * Math.PI * 2)];
+				pos = [
+					center[0] + radius * c,
+					center[1] + radius * s,
+					center[2] + axial,
+				];
+				tanVel = [
+					-radius * s,
+					radius * c,
+					(pitch * turns) / (turns * Math.PI * 2),
+				];
 			} else if (axis === "y") {
-				pos = [center[0] + radius * c, center[1] + axial, center[2] + radius * s];
-				tanVel = [-radius * s, (pitch * turns) / (turns * Math.PI * 2), radius * c];
+				pos = [
+					center[0] + radius * c,
+					center[1] + axial,
+					center[2] + radius * s,
+				];
+				tanVel = [
+					-radius * s,
+					(pitch * turns) / (turns * Math.PI * 2),
+					radius * c,
+				];
 			} else {
-				pos = [center[0] + axial, center[1] + radius * c, center[2] + radius * s];
-				tanVel = [(pitch * turns) / (turns * Math.PI * 2), -radius * s, radius * c];
+				pos = [
+					center[0] + axial,
+					center[1] + radius * c,
+					center[2] + radius * s,
+				];
+				tanVel = [
+					(pitch * turns) / (turns * Math.PI * 2),
+					-radius * s,
+					radius * c,
+				];
 			}
 
-			rawSamples.push({ position: pos, tangent: Vector3Math.normalize(tanVel) });
+			rawSamples.push({
+				position: pos,
+				tangent: Vector3Math.normalize(tanVel),
+			});
 		}
 
 		return Path3D.fromRawSamples(rawSamples);
@@ -415,7 +498,13 @@ export class Path3D {
 	 * Creates a 3D circular or arc orbit path.
 	 */
 	public static circle(options: CirclePathOptions): Path3D {
-		const { center, radius, startAngleDeg = 0, endAngleDeg = 360, samples = 128 } = options;
+		const {
+			center,
+			radius,
+			startAngleDeg = 0,
+			endAngleDeg = 360,
+			samples = 128,
+		} = options;
 		const startRad = (startAngleDeg * Math.PI) / 180;
 		const endRad = (endAngleDeg * Math.PI) / 180;
 		const rawSamples: Array<{ position: Vec3; tangent: Vec3 }> = [];
@@ -424,9 +513,16 @@ export class Path3D {
 			const theta = startRad + (endRad - startRad) * (i / samples);
 			const c = Math.cos(theta);
 			const s = Math.sin(theta);
-			const pos: Vec3 = [center[0] + radius * c, center[1], center[2] + radius * s];
+			const pos: Vec3 = [
+				center[0] + radius * c,
+				center[1],
+				center[2] + radius * s,
+			];
 			const tanVel: Vec3 = [-radius * s, 0, radius * c];
-			rawSamples.push({ position: pos, tangent: Vector3Math.normalize(tanVel) });
+			rawSamples.push({
+				position: pos,
+				tangent: Vector3Math.normalize(tanVel),
+			});
 		}
 
 		return Path3D.fromRawSamples(rawSamples);

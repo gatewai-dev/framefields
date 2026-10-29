@@ -1,6 +1,12 @@
 import { Canvas, loadImage } from "skia-canvas";
 import { describe, expect, it } from "vitest";
-import { Composition, Layer, Layer3D, LayerAnimation } from "./index.js";
+import {
+	Composition,
+	Layer,
+	Layer3D,
+	LayerAnimation,
+	Path3D,
+} from "./index.js";
 
 async function decode(png: Buffer) {
 	const img = await loadImage(png);
@@ -221,6 +227,136 @@ describe("Layer3D mesh primitives", () => {
 		// Shard is brightly lit and drawn with #ff0077 base color
 		expect(pixel.r).toBeGreaterThan(100);
 		expect(pixel.b).toBeGreaterThan(30);
+	});
+
+	it("renders torus, capsule, ring, solid prism, pyramid, and icosphere with materials", async () => {
+		const comp = stage();
+		comp.add(
+			Layer.directionalLight({
+				color: "#ffffff",
+				intensity: 1.4,
+				x: 200,
+				y: -400,
+				z: -500,
+				targetX: 400,
+				targetY: 300,
+				targetZ: 0,
+			}),
+		);
+		comp.add([
+			Layer3D.torus({
+				radius: 70,
+				tube: 24,
+				x: 220,
+				y: 300,
+				rotateX: 55,
+				color: "#ef4444",
+				roughness: 0.3,
+				metallic: 0.2,
+			}),
+			Layer3D.capsule({
+				radius: 35,
+				length: 70,
+				x: 400,
+				y: 300,
+				color: "#22c55e",
+			}),
+			Layer3D.prism({
+				sides: 6,
+				radius: 55,
+				height: 80,
+				x: 580,
+				y: 300,
+				color: "#3b82f6",
+				emissive: "#1d4ed8",
+				emissiveIntensity: 0.25,
+			}),
+			Layer3D.pyramid({
+				sides: 4,
+				radius: 50,
+				height: 80,
+				x: 300,
+				y: 300,
+				z: 140,
+				color: "#eab308",
+			}),
+			Layer3D.icosphere({
+				radius: 45,
+				detail: 2,
+				x: 500,
+				y: 300,
+				z: 140,
+				color: "#a855f7",
+			}),
+		]);
+		const decoded = await decode(await comp.renderFrame({ frame: 0 }));
+		// Capsule at center (400, 300) is green
+		const center = decoded.at(400, 300);
+		expect(center.g).toBeGreaterThan(120);
+		expect(center.g).toBeGreaterThan(center.r);
+		// Prism at right is blue
+		const right = decoded.at(555, 300);
+		expect(right.b).toBeGreaterThan(100);
+	});
+
+	it("renders extruded 2D shapes, lathe profiles, hollow tubes, and 3D diagram lines/points", async () => {
+		const comp = stage();
+		comp.add([
+			Layer3D.extrude({
+				shape: "M -40 -40 L 40 -40 L 40 40 L -40 40 Z",
+				depth: 30,
+				bevelThickness: 4,
+				bevelSize: 4,
+				x: 240,
+				y: 300,
+				rotateX: 40,
+				color: "#f97316",
+			}),
+			Layer3D.lathe({
+				points: [
+					[15, -40],
+					[45, 0],
+					[25, 40],
+				],
+				capped: true,
+				x: 400,
+				y: 300,
+				color: "#06b6d4",
+			}),
+			Layer3D.tube({
+				path: Path3D.catmullRom([
+					[-60, -40, -40],
+					[0, 0, 0],
+					[60, 40, 40],
+				]),
+				x: 560,
+				y: 300,
+				radius: 18,
+				innerRadius: 10,
+				color: "#ec4899",
+			}),
+			Layer3D.line({
+				points: [
+					[-220, -100, 0],
+					[220, -100, 0],
+				],
+				x: 400,
+				y: 300,
+				color: "#ffffff",
+			}),
+			Layer3D.points({
+				points: [[-180, -100, -100]],
+				x: 400,
+				y: 300,
+				pointSize: 16,
+				color: "#facc15",
+			}),
+		]);
+		const decoded = await decode(await comp.renderFrame({ frame: 0 }));
+		// Lathe at center (400, 300) is cyan
+		const center = decoded.at(400, 300);
+		expect(center.b).toBeGreaterThan(100);
+		expect(center.g).toBeGreaterThan(80);
 	});
 });
 

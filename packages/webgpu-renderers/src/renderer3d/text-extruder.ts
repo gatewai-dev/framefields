@@ -1,6 +1,7 @@
 import earcut from "earcut";
 import type * as fontkit from "fontkit";
 import { Path2D } from "skia-canvas";
+import { parseColor } from "../color.js";
 import type { Material3D, Mesh3DData, Model3DData } from "../loaders/types.js";
 import type { FontkitFont } from "../slug/slug-generator.js";
 import { shapeLineFromFont } from "../slug/text-shaping.js";
@@ -57,40 +58,9 @@ export interface ExtrudedTextResult {
 export function parseHexOrRgbColor(
 	colorStr: string,
 ): [number, number, number, number] {
-	const c = colorStr.trim();
-	if (c.startsWith("#")) {
-		const hex = c.slice(1);
-		if (hex.length === 3) {
-			const r = Number.parseInt(hex[0]! + hex[0]!, 16) / 255;
-			const g = Number.parseInt(hex[1]! + hex[1]!, 16) / 255;
-			const b = Number.parseInt(hex[2]! + hex[2]!, 16) / 255;
-			return [r, g, b, 1];
-		}
-		if (hex.length === 6) {
-			const r = Number.parseInt(hex.slice(0, 2), 16) / 255;
-			const g = Number.parseInt(hex.slice(2, 4), 16) / 255;
-			const b = Number.parseInt(hex.slice(4, 6), 16) / 255;
-			return [r, g, b, 1];
-		}
-		if (hex.length === 8) {
-			const r = Number.parseInt(hex.slice(0, 2), 16) / 255;
-			const g = Number.parseInt(hex.slice(2, 4), 16) / 255;
-			const b = Number.parseInt(hex.slice(4, 6), 16) / 255;
-			const a = Number.parseInt(hex.slice(6, 8), 16) / 255;
-			return [r, g, b, a];
-		}
-	}
-	if (c.startsWith("rgb")) {
-		const parts = c
-			.replace(/rgba?\(/, "")
-			.replace(/\)/, "")
-			.split(",")
-			.map((p) => Number.parseFloat(p.trim()));
-		const r = (parts[0] ?? 0) / 255;
-		const g = (parts[1] ?? 0) / 255;
-		const b = (parts[2] ?? 0) / 255;
-		const a = parts[3] !== undefined ? parts[3] : 1;
-		return [r, g, b, a];
+	const c = parseColor(colorStr);
+	if (c.a > 0 || colorStr.trim().toLowerCase() === "transparent") {
+		return [c.r, c.g, c.b, c.a];
 	}
 	return [1, 1, 1, 1];
 }

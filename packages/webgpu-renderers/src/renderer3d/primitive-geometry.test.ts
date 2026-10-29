@@ -179,4 +179,341 @@ describe("3D primitive geometry", () => {
 			}),
 		).toBe(cached);
 	});
+
+	it("builds torus and partial-arc torus wound outward", () => {
+		const full = generatePrimitiveGeometry({
+			type: "torus",
+			radius: 80,
+			tube: 20,
+			radialSegments: 16,
+			tubularSegments: 32,
+		});
+		expect(full.bounds.size[0]).toBeCloseTo(200, 1);
+		expect(full.bounds.size[1]).toBeCloseTo(200, 1);
+		expect(full.bounds.size[2]).toBeCloseTo(40, 1);
+		// Verify every triangle face normal agrees with its vertex normal
+		const mesh = full.meshes[0]!;
+		const p = mesh.positions;
+		const n = mesh.normals;
+		const at = (i: number): V => [p[i * 3]!, p[i * 3 + 1]!, p[i * 3 + 2]!];
+		const normalAt = (i: number): V => [
+			n[i * 3]!,
+			n[i * 3 + 1]!,
+			n[i * 3 + 2]!,
+		];
+		for (let t = 0; t < mesh.indices.length; t += 3) {
+			const [i0, i1, i2] = [
+				mesh.indices[t]!,
+				mesh.indices[t + 1]!,
+				mesh.indices[t + 2]!,
+			];
+			const a = at(i0);
+			const face = cross(sub(at(i1), a), sub(at(i2), a));
+			if (Math.hypot(...face) < 1e-6) continue;
+			expect(dot(face, normalAt(i0))).toBeGreaterThan(0);
+		}
+
+		const partial = generatePrimitiveGeometry({
+			type: "torus",
+			radius: 80,
+			tube: 20,
+			arc: 180,
+		});
+		const pMesh = partial.meshes[0]!;
+		expect(pMesh.indices.length).toBeGreaterThan(0);
+		for (let t = 0; t < pMesh.indices.length; t += 3) {
+			const [i0, i1, i2] = [
+				pMesh.indices[t]!,
+				pMesh.indices[t + 1]!,
+				pMesh.indices[t + 2]!,
+			];
+			const a: V = [
+				pMesh.positions[i0 * 3]!,
+				pMesh.positions[i0 * 3 + 1]!,
+				pMesh.positions[i0 * 3 + 2]!,
+			];
+			const b: V = [
+				pMesh.positions[i1 * 3]!,
+				pMesh.positions[i1 * 3 + 1]!,
+				pMesh.positions[i1 * 3 + 2]!,
+			];
+			const c: V = [
+				pMesh.positions[i2 * 3]!,
+				pMesh.positions[i2 * 3 + 1]!,
+				pMesh.positions[i2 * 3 + 2]!,
+			];
+			const face = cross(sub(b, a), sub(c, a));
+			if (Math.hypot(...face) < 1e-6) continue;
+			const vn: V = [
+				pMesh.normals[i0 * 3]!,
+				pMesh.normals[i0 * 3 + 1]!,
+				pMesh.normals[i0 * 3 + 2]!,
+			];
+			expect(dot(face, vn)).toBeGreaterThan(0);
+		}
+	});
+
+	it("builds a capsule wound outward with total height length + 2 * radius", () => {
+		const cap = generatePrimitiveGeometry({
+			type: "capsule",
+			radius: 25,
+			length: 70,
+			capSegments: 8,
+			radialSegments: 24,
+		});
+		expect(cap.bounds.size[0]).toBeCloseTo(50, 1);
+		expect(cap.bounds.size[1]).toBeCloseTo(120, 1);
+		expect(cap.bounds.size[2]).toBeCloseTo(50, 1);
+		expectOutwardSolid(cap);
+	});
+
+	it("builds flat and thick-walled rings with outward normals", () => {
+		const flatRing = generatePrimitiveGeometry({
+			type: "ring",
+			innerRadius: 30,
+			outerRadius: 60,
+		});
+		expect(flatRing.bounds.size[0]).toBeCloseTo(120, 1);
+		expect(flatRing.bounds.size[1]).toBeCloseTo(120, 1);
+		expect(flatRing.bounds.size[2]).toBeCloseTo(0, 4);
+
+		const solidRing = generatePrimitiveGeometry({
+			type: "ring",
+			innerRadius: 30,
+			outerRadius: 60,
+			depth: 16,
+		});
+		expect(solidRing.bounds.size[2]).toBeCloseTo(16, 4);
+		const mesh = solidRing.meshes[0]!;
+		const p = mesh.positions;
+		const n = mesh.normals;
+		const at = (i: number): V => [p[i * 3]!, p[i * 3 + 1]!, p[i * 3 + 2]!];
+		const normalAt = (i: number): V => [
+			n[i * 3]!,
+			n[i * 3 + 1]!,
+			n[i * 3 + 2]!,
+		];
+		for (let t = 0; t < mesh.indices.length; t += 3) {
+			const [i0, i1, i2] = [
+				mesh.indices[t]!,
+				mesh.indices[t + 1]!,
+				mesh.indices[t + 2]!,
+			];
+			const a = at(i0);
+			const face = cross(sub(at(i1), a), sub(at(i2), a));
+			if (Math.hypot(...face) < 1e-6) continue;
+			expect(dot(face, normalAt(i0))).toBeGreaterThan(0);
+		}
+	});
+
+	it("builds flat-shaded prisms and pyramids with caps and outward normals", () => {
+		const hexPrism = generatePrimitiveGeometry({
+			type: "cylinder",
+			radiusTop: 40,
+			radiusBottom: 40,
+			height: 80,
+			segments: 6,
+			flatShaded: true,
+		});
+		expectOutwardSolid(hexPrism);
+
+		const pyramid = generatePrimitiveGeometry({
+			type: "cylinder",
+			radiusTop: 0,
+			radiusBottom: 50,
+			height: 90,
+			segments: 4,
+			flatShaded: true,
+		});
+		expectOutwardSolid(pyramid);
+	});
+
+	it("builds all Platonic polyhedra and subdivided icospheres wound outward", () => {
+		for (const shape of [
+			"tetrahedron",
+			"octahedron",
+			"dodecahedron",
+			"icosahedron",
+			"icosphere",
+		] as const) {
+			const model = generatePrimitiveGeometry({
+				type: "polyhedron",
+				shape,
+				radius: 50,
+			});
+			expectOutwardSolid(model);
+		}
+		const subdivided = generatePrimitiveGeometry({
+			type: "polyhedron",
+			shape: "icosahedron",
+			radius: 50,
+			detail: 2,
+			flatShaded: true,
+		});
+		expectOutwardSolid(subdivided);
+		// 20 * 4^2 = 320 triangles -> 960 indices
+		expect(subdivided.meshes[0]!.indices.length).toBe(20 * 16 * 3);
+	});
+
+	it("extrudes 2D SVG paths (with holes and bevels) and polygon contours", () => {
+		const svgWithHole =
+			"M 0 0 L 100 0 L 100 100 L 0 100 Z M 25 25 L 25 75 L 75 75 L 75 25 Z";
+		const extruded = generatePrimitiveGeometry({
+			type: "extrude",
+			shape: svgWithHole,
+			depth: 24,
+			bevelThickness: 3,
+			bevelSize: 2,
+			bevelSegments: 2,
+			color: "#38bdf8",
+			bevelColor: "#0284c7",
+		});
+		expect(extruded.meshes.length).toBe(2);
+		expect(extruded.bounds.size[0]).toBeCloseTo(100, 1);
+		expect(extruded.bounds.size[1]).toBeCloseTo(100, 1);
+		expect(extruded.bounds.size[2]).toBeCloseTo(24, 1);
+
+		for (const mesh of extruded.meshes) {
+			const p = mesh.positions;
+			const n = mesh.normals;
+			const at = (i: number): V => [p[i * 3]!, p[i * 3 + 1]!, p[i * 3 + 2]!];
+			const normalAt = (i: number): V => [
+				n[i * 3]!,
+				n[i * 3 + 1]!,
+				n[i * 3 + 2]!,
+			];
+			for (let t = 0; t < mesh.indices.length; t += 3) {
+				const [i0, i1, i2] = [
+					mesh.indices[t]!,
+					mesh.indices[t + 1]!,
+					mesh.indices[t + 2]!,
+				];
+				const a = at(i0);
+				const face = cross(sub(at(i1), a), sub(at(i2), a));
+				if (Math.hypot(...face) < 1e-6) continue;
+				expect(dot(face, normalAt(i0))).toBeGreaterThan(0);
+			}
+		}
+	});
+
+	it("revolves a 2D profile with lathe and caps the ends", () => {
+		const goblet = generatePrimitiveGeometry({
+			type: "lathe",
+			points: [
+				[25, -50],
+				[35, -10],
+				[10, 20],
+				[30, 50],
+			],
+			segments: 24,
+			capped: true,
+		});
+		expect(goblet.bounds.size[0]).toBeCloseTo(70, 1);
+		expect(goblet.bounds.size[1]).toBeCloseTo(100, 1);
+		const mesh = goblet.meshes[0]!;
+		const p = mesh.positions;
+		const n = mesh.normals;
+		const at = (i: number): V => [p[i * 3]!, p[i * 3 + 1]!, p[i * 3 + 2]!];
+		const normalAt = (i: number): V => [
+			n[i * 3]!,
+			n[i * 3 + 1]!,
+			n[i * 3 + 2]!,
+		];
+		for (let t = 0; t < mesh.indices.length; t += 3) {
+			const [i0, i1, i2] = [
+				mesh.indices[t]!,
+				mesh.indices[t + 1]!,
+				mesh.indices[t + 2]!,
+			];
+			const a = at(i0);
+			const face = cross(sub(at(i1), a), sub(at(i2), a));
+			if (Math.hypot(...face) < 1e-6) continue;
+			expect(dot(face, normalAt(i0))).toBeGreaterThan(0);
+		}
+	});
+
+	it("sweeps solid and hollow thick-walled tubes along 3D paths", () => {
+		const solidTube = generatePrimitiveGeometry({
+			type: "tube",
+			path: [
+				[-100, 0, 0],
+				[0, -60, 40],
+				[100, 0, 0],
+			],
+			radius: 14,
+			tubularSegments: 32,
+			radialSegments: 12,
+		});
+		expect(solidTube.bounds.size[0]).toBeGreaterThan(200);
+
+		const hollowPipe = generatePrimitiveGeometry({
+			type: "tube",
+			path: {
+				kind: "helix",
+				radius: 60,
+				pitch: 40,
+				turns: 1.5,
+			},
+			radius: 14,
+			innerRadius: 9,
+			tubularSegments: 48,
+			radialSegments: 12,
+		});
+		const mesh = hollowPipe.meshes[0]!;
+		const p = mesh.positions;
+		const n = mesh.normals;
+		const at = (i: number): V => [p[i * 3]!, p[i * 3 + 1]!, p[i * 3 + 2]!];
+		const normalAt = (i: number): V => [
+			n[i * 3]!,
+			n[i * 3 + 1]!,
+			n[i * 3 + 2]!,
+		];
+		for (let t = 0; t < mesh.indices.length; t += 3) {
+			const [i0, i1, i2] = [
+				mesh.indices[t]!,
+				mesh.indices[t + 1]!,
+				mesh.indices[t + 2]!,
+			];
+			const a = at(i0);
+			const face = cross(sub(at(i1), a), sub(at(i2), a));
+			if (Math.hypot(...face) < 1e-6) continue;
+			expect(dot(face, normalAt(i0))).toBeGreaterThan(0);
+		}
+	});
+
+	it("builds 3D line-list and point-list / spherical point geometries", () => {
+		const line = generatePrimitiveGeometry({
+			type: "line3d",
+			points: [
+				[0, 0, 0],
+				[100, 0, 0],
+				[100, 100, 0],
+			],
+			dashSize: 10,
+			gapSize: 5,
+			colors: ["#ff0000", "#00ff00", "#0000ff"],
+		});
+		expect(line.meshes[0]!.topology).toBe("line-list");
+		expect(line.meshes[0]!.colors).toBeDefined();
+
+		const pixelPoints = generatePrimitiveGeometry({
+			type: "points3d",
+			points: [
+				[0, 0, 0],
+				[50, 50, 50],
+			],
+		});
+		expect(pixelPoints.meshes[0]!.topology).toBe("point-list");
+
+		const spherePoints = generatePrimitiveGeometry({
+			type: "points3d",
+			points: [
+				[0, 0, 0],
+				[50, 50, 50],
+			],
+			pointSize: 6,
+		});
+		expect(spherePoints.meshes[0]!.topology).toBeUndefined();
+		expect(spherePoints.meshes[0]!.indices.length).toBeGreaterThan(100);
+	});
 });

@@ -1,6 +1,6 @@
 {
 	"name": "@framefields/ai",
-	"version": "2.7.0",
+	"version": "2.8.0",
 	"private": false,
 	"description": "AI models (images, video, music, voice) through the framefields AI gateway, authenticated with a FRAMEFIELDS_API_KEY.",
 	"publishConfig": {

@@ -3,7 +3,7 @@ import path from "node:path";
 import draco from "draco3dgltf";
 import { MeshoptDecoder } from "meshoptimizer/decoder";
 import { type Mat4, Matrix4Math, type Vec3 } from "../math3d/index.js";
-import { MAX_JOINTS, poseNodes } from "./pose.js";
+import { poseNodes } from "./pose.js";
 import { textureMime } from "./texture-files.js";
 import type {
 	AnimationClip3D,
@@ -1248,13 +1248,6 @@ export class GltfLoader {
 					skin: skinned ? inst.skin : undefined,
 				});
 			});
-		}
-
-		for (const skin of skins) {
-			if (skin.joints.length > MAX_JOINTS)
-				throw new Error(
-					`glTF skin has ${skin.joints.length} joints; the mesh shader holds ${MAX_JOINTS}`,
-				);
 		}
 
 		if (!Number.isFinite(minX)) {

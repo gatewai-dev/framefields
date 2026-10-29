@@ -301,7 +301,6 @@ if (!result.qa!.passed) process.exitCode = 1; // fail CI / the agent loop
 | `offscreen_layer` | warning | A static absolute layer entirely outside the canvas |
 | `shadow_unsupported_light` | warning | `castShadow` on a point or ambient light |
 | `pbr_without_environment` | info | `roughness` / `metallic` set but no `Layer.environment()` (no physical shading) |
-| `multiple_shadow_lights` | info | Several `castShadow` lights; only the first casts |
 | `static_track` | info | Every keyframe on a track holds the same value |
 
 The document checks also run on their own, before any render: `comp.lint()` returns the same `{ severity, code, message, layerId }` entries. Run it in Step 1, right after typechecking.

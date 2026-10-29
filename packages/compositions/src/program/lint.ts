@@ -119,7 +119,6 @@ export function lintComposition(
 	const ambientLights: string[] = [];
 	let has3D = false;
 	const pbrNodes: string[] = [];
-	const shadowLights: string[] = [];
 	const emojiText: string[] = [];
 
 	const visit = (node: AnyNode, backdrop: string | null, atRoot: boolean) => {
@@ -158,8 +157,7 @@ export function lintComposition(
 			if (type === "environment") hasEnvironment = true;
 			if (type === "ambient") ambientLights.push(id);
 			if (node.castShadow) {
-				if (type === "directional" || type === "spot") shadowLights.push(id);
-				else
+				if (type !== "directional" && type !== "spot")
 					push(
 						"warning",
 						"shadow_unsupported_light",
@@ -335,13 +333,7 @@ export function lintComposition(
 			`The environment already fills shadows with light; ambient light ${ambientLights.join(", ")} adds flat light on top (remove it, or lower it, if the scene looks washed out).`,
 		);
 	}
-	if (shadowLights.length > 1) {
-		push(
-			"info",
-			"multiple_shadow_lights",
-			`${shadowLights.length} lights cast shadows (${shadowLights.join(", ")}); only the first one does.`,
-		);
-	}
+
 	if (has3D && pbrNodes.length > 0 && !hasEnvironment) {
 		push(
 			"info",

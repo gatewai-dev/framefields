@@ -3,6 +3,69 @@ import { Composition, Layer, LayerAnimation } from "./index.js";
 import { computeMse, decodePngPixels, getPixel } from "./test-utils/pixels.js";
 
 describe("WebGPU 3D Lighting & Shading Conformance", () => {
+	it("renders direct lights beyond the eighth", async () => {
+		const comp = new Composition({
+			width: 400,
+			height: 400,
+			fps: 30,
+			durationMs: 1000,
+			backgroundColor: "#000000",
+		});
+		comp.add(
+			Layer.camera({
+				x: 200,
+				y: 200,
+				z: -600,
+				targetX: 200,
+				targetY: 200,
+				targetZ: 0,
+			}),
+		);
+		for (let i = 0; i < 8; i++)
+			comp.add(
+				Layer.directionalLight({
+					color: "#ffffff",
+					intensity: 0,
+					x: 200,
+					y: 200,
+					z: -600,
+					targetX: 200,
+					targetY: 200,
+					targetZ: 0,
+				}),
+			);
+		comp.add(
+			Layer.directionalLight({
+				color: "#ff0000",
+				intensity: 1,
+				x: 200,
+				y: 200,
+				z: -600,
+				targetX: 200,
+				targetY: 200,
+				targetZ: 0,
+			}),
+		);
+		comp.add(
+			Layer.box({
+				is3D: true,
+				x: 100,
+				y: 100,
+				width: 200,
+				height: 200,
+				background: "#ffffff",
+				material: "lit",
+			}),
+		);
+		const pixel = getPixel(
+			await decodePngPixels(await comp.renderFrame({ frame: 0 })),
+			200,
+			200,
+		);
+		expect(pixel.r).toBeGreaterThan(100);
+		expect(pixel.g).toBeLessThan(30);
+	});
+
 	it("renders unlit mode when no lights are present (backward compatibility)", async () => {
 		const comp = new Composition({
 			width: 400,

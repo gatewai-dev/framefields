@@ -33,12 +33,17 @@ export function createLightsLayout(
 			{
 				binding: 1,
 				visibility: GPUShaderStage.FRAGMENT,
-				texture: { sampleType: "depth" },
+				texture: { sampleType: "depth", viewDimension: "2d-array" },
 			},
 			{
 				binding: 2,
 				visibility: GPUShaderStage.FRAGMENT,
 				sampler: { type: "comparison" },
+			},
+			{
+				binding: 3,
+				visibility: GPUShaderStage.FRAGMENT,
+				buffer: { type: "read-only-storage" },
 			},
 		],
 	});

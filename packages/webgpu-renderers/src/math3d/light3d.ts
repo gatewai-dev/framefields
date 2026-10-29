@@ -58,6 +58,7 @@ export interface GPULightData {
 	spotParams: [number, number, number, number];
 }
 
+/** Slots retained in the legacy uniform prefix; actual direct lights use storage. */
 export const MAX_LIGHTS = 8;
 /**
  * 16 (ambient) + 16 (params) + 8 * 64 (lights), then the physical-shading
@@ -284,9 +285,7 @@ export const Light3D = {
 				ambientG += col[1] * int;
 				ambientB += col[2] * int;
 			} else {
-				if (directLights.length < MAX_LIGHTS) {
-					directLights.push(Light3D.processLight(l));
-				}
+				directLights.push(Light3D.processLight(l));
 			}
 		}
 
@@ -338,13 +337,46 @@ export const Light3D = {
 		return buffer;
 	},
 
+	/** Packs every direct light for the variable-length GPU storage binding. */
+	packDirectLights(
+		lights: Light3DOptions[],
+		shadows: ShadowUniformInfo[] = [],
+	): Float32Array {
+		const direct = lights.filter(
+			(light) => (light.lightType ?? light.type) !== "ambient",
+		);
+		const data = new Float32Array(Math.max(1, direct.length) * 40);
+		const shadowLayers = new Map(
+			shadows.map((shadow, layer) => [shadow.lightIndex, layer]),
+		);
+		for (const [i, light] of direct.entries()) {
+			const packed = Light3D.processLight(light);
+			const offset = i * 40;
+			data.set(packed.posType, offset);
+			data.set(packed.dirRadius, offset + 4);
+			data.set(packed.colorIntensity, offset + 8);
+			data.set(packed.spotParams, offset + 12);
+			const layer = shadowLayers.get(i);
+			const shadow = layer === undefined ? undefined : shadows[layer];
+			if (shadow && layer !== undefined) {
+				for (let j = 0; j < 16; j++)
+					data[offset + 16 + j] = shadow.matrix[j] ?? 0;
+				data.set([shadow.softness, shadow.mapSize, layer, 1], offset + 32);
+				data.set(
+					[shadow.bias, shadow.normalOffset, shadow.darkness, 0],
+					offset + 36,
+				);
+			}
+		}
+		return data;
+	},
+
 	/** Index (among non-ambient lights) of the light that should cast shadows, or -1. */
 	shadowCasterIndex(lights: Light3DOptions[]): number {
 		let index = 0;
 		for (const l of lights) {
 			const kind = l.lightType ?? l.type;
 			if (kind === "ambient") continue;
-			if (index >= MAX_LIGHTS) break;
 			if (l.castShadow && (kind === "directional" || kind === "spot")) {
 				return index;
 			}

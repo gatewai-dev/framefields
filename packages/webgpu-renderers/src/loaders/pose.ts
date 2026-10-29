@@ -13,9 +13,6 @@ import type {
 	NodeAnimationTrack3D,
 } from "./types.js";
 
-/** Joints per skin the mesh shader holds (mesh3d.wgsl jointMatrices). */
-export const MAX_JOINTS = 128;
-
 export type Quat = [number, number, number, number];
 
 /** Column-major translate · rotate(quaternion) · scale. */
@@ -204,7 +201,7 @@ export function poseNodes(
 	return nodes.map((_, i) => resolve(i));
 }
 
-/** The joint matrices of one skin for a posed scene graph, padded with identity to MAX_JOINTS. */
+/** The joint matrices of one skin for a posed scene graph. */
 export function jointMatrices(
 	model: Model3DData,
 	skinIndex: number,
@@ -212,8 +209,8 @@ export function jointMatrices(
 ): Float32Array {
 	const skin = model.skins?.[skinIndex];
 	if (!skin) throw new Error(`model has no skin ${skinIndex}`);
-	const out = new Float32Array(MAX_JOINTS * 16);
-	for (let j = 0; j < MAX_JOINTS; j++) {
+	const out = new Float32Array(Math.max(1, skin.joints.length) * 16);
+	for (let j = 0; j < Math.max(1, skin.joints.length); j++) {
 		const node = skin.joints[j];
 		if (node === undefined) {
 			out.set(Matrix4Math.identity(), j * 16);

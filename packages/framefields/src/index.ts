@@ -299,6 +299,7 @@ import {
 	Layer3D,
 	type Plane3DOptions,
 	type Prism3DOptions,
+	type SolidShape3DNode,
 } from "./shapes3d.js";
 import {
 	type SceneSequenceOptions,
@@ -923,24 +924,37 @@ export {
 	type World3DOptions,
 } from "./physics/index.js";
 export {
+	type Capsule3DOptions,
 	type Carousel3DOptions,
 	type Cube3DOptions,
 	type CubeFaceConfig,
 	type CubeFaceInput,
 	type Cylinder3DOptions,
 	type ExtrudedText3DOptions,
+	type ExtrudeShape3DOptions,
 	type Grid3DOptions,
+	type Icosphere3DOptions,
 	type Instances3DOptions,
 	type InstanceTransform3D,
+	type Lathe3DOptions,
 	Layer3D,
+	type Line3DOptions,
 	type Plane3DOptions,
+	type Points3DOptions,
+	type Polyhedron3DOptions,
 	type Primitive3DNodeOptions,
 	type Prism3DOptions,
+	type Pyramid3DOptions,
+	type Ring3DOptions,
 	type RoundedBox3DOptions,
 	type Shape3DContainer,
+	type Shard3DOptions,
+	type SolidShape3DNode,
 	type Sphere3DOptions,
 	type Surface3DOptions,
 	type Text3DOptions,
+	type Torus3DOptions,
+	type Tube3DOptions,
 } from "./shapes3d.js";
 export { type StyleName, Styles } from "./styles.js";
 export type { Swarm3DOptions } from "./swarm3d.js";
@@ -3252,7 +3266,7 @@ export const Layer = {
 		Layer3D.carousel(options),
 	plane3d: (options: Plane3DOptions): AnimatableNode<BoxNode> =>
 		Layer3D.plane(options),
-	prism3d: (options: Prism3DOptions): AnimatableNode<BoxNode> =>
+	prism3d: (options: Prism3DOptions = {}): SolidShape3DNode =>
 		Layer3D.prism(options),
 	model: (options: Partial<Model3DNode> = {}): AnimatableNode<Model3DNode> =>
 		withAnimation({

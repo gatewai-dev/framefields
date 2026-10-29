@@ -68,6 +68,66 @@ const builders = {
 	sphere: () => Layer3D.sphere({ radius: 40, color: "#f00" }),
 	cylinder: () =>
 		Layer3D.cylinder({ radiusTop: 10, radiusBottom: 20, height: 40 }),
+	capsule: () => Layer3D.capsule({ radius: 20, height: 50, color: "#22c55e" }),
+	torus: () => Layer3D.torus({ radius: 45, tubeRadius: 12, color: "#ec4899" }),
+	ring: () =>
+		Layer3D.ring({ innerRadius: 20, outerRadius: 45, color: "#eab308" }),
+	pyramid: () => Layer3D.pyramid({ sides: 4, radius: 40, height: 70 }),
+	polyhedron: () =>
+		Layer3D.polyhedron({ type: "dodecahedron", radius: 35, color: "#06b6d4" }),
+	icosahedron: () => Layer3D.icosahedron({ radius: 35 }),
+	icosphere: () =>
+		Layer3D.icosphere({ radius: 40, detail: 2, flatShaded: false }),
+	extrude: () =>
+		Layer3D.extrude({
+			d: "M -30 -30 L 30 -30 L 30 30 L -30 30 Z",
+			depth: 16,
+			bevelThickness: 3,
+			bevelSize: 2,
+		}),
+	lathe: () =>
+		Layer3D.lathe({
+			points: [
+				[0, -40],
+				[25, 0],
+				[0, 40],
+			],
+			segments: 24,
+		}),
+	tube: () =>
+		Layer3D.tube({
+			points: [
+				[-40, 0, 0],
+				[0, -30, 0],
+				[40, 0, 0],
+			],
+			radius: 10,
+			innerRadius: 6,
+		}),
+	line3d: () =>
+		Layer3D.line({
+			points: [
+				[0, 0, 0],
+				[50, 20, -10],
+			],
+			dashSize: 6,
+			gapSize: 4,
+		}),
+	points3d: () =>
+		Layer3D.points({
+			points: [
+				[0, 0, 0],
+				[20, -10, 5],
+			],
+			pointSize: 8,
+		}),
+	prismWithSideConfigs: () =>
+		Layer3D.prism({
+			sides: 5,
+			radius: 40,
+			height: 80,
+			sideConfigs: ["#ff0000", { background: "#00ff00" }],
+		}),
 	barChart: () =>
 		Layer.chart({
 			type: "bar",

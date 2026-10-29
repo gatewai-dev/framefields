@@ -1,5 +1,7 @@
 # @framefields/node-audio-noise-gate
 
+## 2.8.1
+
 ## 2.8.0
 
 ## 2.7.0

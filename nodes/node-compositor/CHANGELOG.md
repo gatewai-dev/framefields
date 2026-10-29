@@ -1,5 +1,12 @@
 # @framefields/node-compositor
 
+## 2.8.1
+
+### Patch Changes
+
+- 7a1bac8: Support variable numbers of direct lights and skin joints, and render independent shadows for multiple directional and spot lights.
+- 1da767d: Batch compatible repeated opaque meshes into hardware-instanced draws while preserving individual transforms.
+
 ## 2.8.0
 
 ### Patch Changes

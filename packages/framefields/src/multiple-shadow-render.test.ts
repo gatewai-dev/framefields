@@ -6,6 +6,7 @@ import { decodePngPixels } from "./test-utils/pixels.js";
 describe("multiple shadow lights", () => {
 	it("renders the shadow maps for both directional lights", async () => {
 		const spy = vi.spyOn(Renderer3D.prototype, "renderShadowMap");
+		const draws = vi.spyOn(Renderer3D.prototype, "drawMesh3D");
 		try {
 			const render = async (left: boolean, right: boolean) => {
 				const c = new Composition({
@@ -75,6 +76,16 @@ describe("multiple shadow lights", () => {
 						material: "lit",
 					}),
 				);
+				c.add(
+					Layer3D.sphere({
+						x: 420,
+						y: 240,
+						z: 0,
+						radius: 60,
+						color: "#ffffff",
+						material: "lit",
+					}),
+				);
 				return (await decodePngPixels(await c.renderFrame({ frame: 0 })))
 					.pixels;
 			};
@@ -83,6 +94,11 @@ describe("multiple shadow lights", () => {
 			const right = await render(false, true);
 			spy.mockClear();
 			const both = await render(true, true);
+			expect(
+				draws.mock.calls.some(
+					(call) => call[5]?.matrixInstances && call[5]?.instanceCount === 2,
+				),
+			).toBe(true);
 			expect(new Set(spy.mock.calls.map((call) => call[2])).size).toBe(2);
 			const diff = (a: Uint8ClampedArray, b: Uint8ClampedArray) =>
 				a.reduce((sum, v, i) => sum + Math.abs(v - (b[i] ?? 0)), 0);
@@ -92,6 +108,7 @@ describe("multiple shadow lights", () => {
 			expect(diff(right, both)).toBeGreaterThan(1000);
 		} finally {
 			spy.mockRestore();
+			draws.mockRestore();
 		}
 	});
 });

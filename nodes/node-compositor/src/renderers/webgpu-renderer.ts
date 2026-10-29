@@ -48,6 +48,7 @@ import {
 	generateExtrudedTextGeometry,
 	getPrimitiveGeometry,
 	jointMatrices,
+	Light3D,
 	type Light3DOptions,
 	type Mat4,
 	Matrix4Math,

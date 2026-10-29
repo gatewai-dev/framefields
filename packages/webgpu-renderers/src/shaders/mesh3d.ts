@@ -17,7 +17,7 @@ struct ModelUniforms {
     modelMatrix    : mat4x4<f32>,
     normalMatrix   : mat4x4<f32>,
     colorTint      : vec4<f32>,
-    params         : vec4<f32>, // x = opacity, y = twoSided, z = isSkinned, w = flags (bit 0 instanced, bit 1 map UVs)
+    params         : vec4<f32>, // x = opacity, y = twoSided, z = isSkinned, w = flags (bit 0 instanced, bit 1 map UVs, bit 2 matrix instances)
     materialParams : vec4<f32>, // x = shininess, y = specularIntensity, z = ambientIntensity, w = materialMode (0=unlit, 1=lit, 2=toon)
     shade          : vec4<f32>, // rgb = toon shadow-side color multiplier, a = alpha cutoff (0 = none)
     pbr            : vec4<f32>, // x = roughness (<0 = default), y = metallic
@@ -124,7 +124,14 @@ fn vs_main(
     var instColor = vec4<f32>(1.0);
     var instEmissive = vec4<f32>(0.0);
 
-    if ((u32(model.params.w) & 1u) != 0u) {
+    if ((u32(model.params.w) & 4u) != 0u) {
+        let a = instances[instanceIndex * 2u];
+        let b = instances[instanceIndex * 2u + 1u];
+        let instanceModel = mat4x4<f32>(a.posScale, a.quat, a.color, a.emissive);
+        let instanceNormal = mat4x4<f32>(b.posScale, b.quat, b.color, b.emissive);
+        localPos = (instanceModel * vec4<f32>(localPos, 1.0)).xyz;
+        localNorm = (instanceNormal * vec4<f32>(localNorm, 0.0)).xyz;
+    } else if ((u32(model.params.w) & 1u) != 0u) {
         let inst = instances[instanceIndex];
         let scaledPos = localPos * inst.posScale.w;
         localPos = rotateVecByQuat(scaledPos, inst.quat) + inst.posScale.xyz;

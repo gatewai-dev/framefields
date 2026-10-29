@@ -55,6 +55,8 @@ export interface MeshUniformData extends SurfaceParams {
 	skinningMatrices?: Float32Array; // 16 floats per joint
 	/** Hardware-instanced draw path. */
 	isInstanced?: boolean;
+	/** Instance storage contains model and normal matrices in pairs. */
+	matrixInstances?: boolean;
 	/** Storage buffer containing `array<InstanceData>` (64 bytes per instance). */
 	instanceBuffer?: GPUBuffer;
 	material?: "lit" | "unlit" | "toon";
@@ -453,7 +455,8 @@ export class Mesh3DPipeline {
 		// Bit 0 selects instance data; bit 1 selects the extra map UVs.
 		this.modelData[39] =
 			(data.isInstanced || data.instanceBuffer ? 1 : 0) +
-			(data.hasMapUvs ? 2 : 0);
+			(data.hasMapUvs ? 2 : 0) +
+			(data.matrixInstances ? 4 : 0);
 
 		const shininess =
 			data.roughness !== undefined

@@ -1,5 +1,7 @@
 # @framefields/node-compositor
 
+## 2.9.0
+
 ## 2.8.1
 
 ### Patch Changes

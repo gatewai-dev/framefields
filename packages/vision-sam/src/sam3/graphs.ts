@@ -1,11 +1,3 @@
-/**
- * Copyright (c) Meta Platforms, Inc. and affiliates.
- * All rights reserved.
- *
- * This source code is licensed under the SAM License found in the
- * LICENSE file in the root directory of this source tree.
- */
-
 /** SAM 3's small prompt/position heads, assembled from the pinned upstream weights.
  * The video export omits dense prompts and learned temporal constants. These heads
  * restore the original operations, without approximating a semantic mask by clicks.

@@ -27,11 +27,11 @@ import type { VisionProps } from "./effects/index.js";
 export type PoseKeypointName = (typeof COCO17_KEYPOINT_NAMES)[number];
 
 export interface ClipVisionOptions {
-	/** Prompted SAM 2.1 Tiny video segmentation. Pose is opt-in in this mode. */
+	/** Prompted SAM 2.1 (Tiny or Small) video segmentation. Pose is opt-in in this mode. */
 	sam2?: Sam2Options;
-	/** Optional SAM 3.1 / SAM 3 point/box or text selection with temporal tracking. Mutually exclusive with sam2. */
+	/** SAM 3 point/box or text selection with temporal tracking. Mutually exclusive with sam2. */
 	sam3?: Sam3Options;
-	/** Explicitly agree to Meta's SAM License terms for downloading/running SAM models. */
+	/** Explicitly agree to Meta's SAM License terms, required to download and run SAM 3. */
 	acceptSamLicense?: boolean;
 	/** Composition frame the clip's first frame plays on (default 0). */
 	startFrame?: number;
@@ -547,8 +547,6 @@ export class ClipVision implements ClipSubjectSource {
 				baseUrl: this.options.baseUrl,
 				frameCount,
 				model: settings.model,
-				acceptLicense:
-					this.options.acceptSamLicense ?? this.options.sam2?.acceptLicense,
 			});
 			this.sam2Frame = first - 1;
 		}

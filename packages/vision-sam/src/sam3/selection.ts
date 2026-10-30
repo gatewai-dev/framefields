@@ -1,12 +1,4 @@
 /**
- * Copyright (c) Meta Platforms, Inc. and affiliates.
- * All rights reserved.
- *
- * This source code is licensed under the SAM License found in the
- * LICENSE file in the root directory of this source tree.
- */
-
-/**
  * Text-selected instances as one mask (`sam3.merge`): each pixel keeps its most confident
  * instance's logit, so the union is positive wherever any instance is.
  */

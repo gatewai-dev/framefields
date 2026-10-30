@@ -1,11 +1,3 @@
-/**
- * Copyright (c) Meta Platforms, Inc. and affiliates.
- * All rights reserved.
- *
- * This source code is licensed under the SAM License found in the
- * LICENSE file in the root directory of this source tree.
- */
-
 import { VisionModelStore } from "@framefields/vision";
 import { describe, expect, it } from "vitest";
 import { SAM_MODELS, SAM2_EXPORTS } from "../models/registry.js";
@@ -33,7 +25,6 @@ async function pipeline() {
 	const store = new VisionModelStore({
 		modelsDir: `/tmp/framefields-sam2-test-${crypto.randomUUID()}`,
 		verify: false,
-		acceptLicense: true,
 		fetchImpl: async (url) =>
 			new Response(
 				String(url).endsWith("constants.json")
@@ -67,19 +58,18 @@ async function pipeline() {
 		{ pointer_pos: float(new Float32Array(16 * 64), [16, 64]) },
 	]);
 	return {
-		tracker: await Sam2Tracker.create({ store, provider, acceptLicense: true }),
+		tracker: await Sam2Tracker.create({ store, provider }),
 		provider,
 	};
 }
 
 describe("SAM 2 video pipeline", () => {
-	it("requires license agreement before running", async () => {
+	it("needs no SAM License acceptance: SAM 2.1 weights are Apache-2.0", async () => {
 		const prev = process.env.FRAMEFIELDS_ACCEPT_SAM_LICENSE;
 		delete process.env.FRAMEFIELDS_ACCEPT_SAM_LICENSE;
 		try {
-			await expect(
-				Sam2Tracker.create({ acceptLicense: false }),
-			).rejects.toThrow("Meta SAM License agreement required");
+			const { tracker } = await pipeline();
+			tracker.release();
 		} finally {
 			if (prev !== undefined) process.env.FRAMEFIELDS_ACCEPT_SAM_LICENSE = prev;
 		}
@@ -160,7 +150,6 @@ describe("SAM 2 video pipeline", () => {
 	it("rejects an unknown model before downloading anything", async () => {
 		await expect(
 			Sam2Tracker.create({
-				acceptLicense: true,
 				// @ts-expect-error not a SAM 2.1 model
 				model: "huge",
 			}),

@@ -157,7 +157,7 @@ Detection picks "the largest person". Use SAM when the subject is **a specific**
 pnpm add @framefields/vision-sam
 ```
 
-`@framefields/vision-sam` is an optional peer of `framefields`. It is loaded only when a clip uses `sam2` or `sam3`; without it, those clips fail with an install message. The package's code is under Meta's SAM License (the SAM 2.1 weights themselves are Apache-2.0), so both `sam2` and `sam3` need explicit acceptance: `acceptSamLicense: true` on the clip (or `acceptLicense: true` inside `sam2` / `sam3`), or `FRAMEFIELDS_ACCEPT_SAM_LICENSE=1`. Import `Sam2Tracker` / `Sam3Tracker` from `@framefields/vision-sam` when you drive SAM directly.
+`@framefields/vision-sam` is an optional peer of `framefields`. It is loaded only when a clip uses `sam2` or `sam3`; without it, those clips fail with an install message. SAM 2.1's weights are Apache-2.0 and need no acceptance. SAM 3's weights are under Meta's SAM License, so `sam3` needs explicit acceptance before anything downloads: `acceptSamLicense: true` on the clip (or `acceptLicense: true` inside `sam3`), or `FRAMEFIELDS_ACCEPT_SAM_LICENSE=1`. Ask the user before accepting it on their behalf. Import `Sam2Tracker` / `Sam3Tracker` from `@framefields/vision-sam` when you drive SAM directly.
 
 ### Prompts
 
@@ -190,7 +190,6 @@ comp.vision(students, {
 
 // SAM 2.1 Small: a small subject, a box plus a point, and a correction later
 const ball = comp.vision(plate, {
-	acceptSamLicense: true,
 	sam2: {
 		model: "small",
 		category: "ball",
@@ -311,7 +310,7 @@ report.tracks; // [{ trackId, category, frames: [start, end], centerPath, … }]
 | Part of a fast-moving garment drops out | `variant: "m"`, or `keyBackground: true` |
 | Faint halo on dark backgrounds | Lower `featherRadius`, or raise `maskThreshold` (e.g. `0.6`) |
 | "Prompted sam2/sam3 tracking needs the optional @framefields/vision-sam package" | `pnpm add @framefields/vision-sam` |
-| "Meta SAM License agreement required" | `acceptSamLicense: true` or `FRAMEFIELDS_ACCEPT_SAM_LICENSE=1` |
+| "Meta SAM License agreement required" (SAM 3) | `acceptSamLicense: true` or `FRAMEFIELDS_ACCEPT_SAM_LICENSE=1`, once the user accepts the license |
 | "A prompted clip matte requires the source aspect ratio" | Matte at the source aspect, crop afterwards |
 | Log says `Inference on the CPU` on a GPU machine | The log's `reason` says why; on Linux NVIDIA check the CUDA 12 / cuDNN 9 libraries, or force `FRAMEFIELDS_VISION_PROVIDER` to see the error |
 | A preview of a clip outside the project shows nothing | Add its folder to `startPreview(…, { root: [process.cwd(), dir] })` |

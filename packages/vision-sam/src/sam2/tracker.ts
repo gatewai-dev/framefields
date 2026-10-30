@@ -1,11 +1,3 @@
-/**
- * Copyright (c) Meta Platforms, Inc. and affiliates.
- * All rights reserved.
- *
- * This source code is licensed under the SAM License found in the
- * LICENSE file in the root directory of this source tree.
- */
-
 import {
 	createDefaultSessionProvider,
 	imageToTensor,
@@ -19,7 +11,6 @@ import {
 	type VisionTensorOutputs,
 } from "@framefields/vision";
 import { z } from "zod";
-import { assertSamLicenseAccepted } from "../license.js";
 import {
 	ensureSamModelsRegistered,
 	SAM2_EXPORTS,
@@ -67,8 +58,6 @@ export interface Sam2TrackerOptions extends VisionModelStoreOptions {
 	readonly frameCount?: number;
 	/** Checkpoint: `"tiny"` (default, 512², fast) or `"small"` (1024², finer detail). */
 	readonly model?: Sam2Model;
-	/** Explicitly agree to Meta's SAM License terms to download or run SAM models. */
-	readonly acceptLicense?: boolean;
 }
 
 function floats(outputs: VisionTensorOutputs, name: string): Float32Array {
@@ -111,14 +100,9 @@ export class Sam2Tracker {
 	}
 
 	static async create(options: Sam2TrackerOptions = {}): Promise<Sam2Tracker> {
-		assertSamLicenseAccepted("SAM 2.1", options);
 		ensureSamModelsRegistered();
-		const store =
-			options.store ??
-			new VisionModelStore({
-				...options,
-				acceptLicense: options.acceptLicense ?? true,
-			});
+		// SAM 2.1's weights are Apache-2.0: no SAM License acceptance.
+		const store = options.store ?? new VisionModelStore(options);
 		const model = options.model ?? "tiny";
 		if (!(model in SAM2_EXPORTS))
 			throw new Error(

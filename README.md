@@ -206,12 +206,11 @@ const subject = Layer.video("assets/source.mp4", {
 }).withVision({ mode: "matte" });
 comp.add(subject);
 const tracked = comp.vision(subject, {
-  acceptSamLicense: true,
   sam2: { prompts: [{ frame: 0, points: [{ x: 0.5, y: 0.5, label: 1 }] }] },
 });
 const target = tracked.signals.objects.get(1);
 
-// SAM 3: every student in the shot as one mask, from one prompt
+// SAM 3 (Meta SAM License, accepted explicitly): every student in the shot as one mask, from one prompt
 comp.vision(subject, {
   acceptSamLicense: true,
   sam3: { text: "students in black jackets", merge: true },

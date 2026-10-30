@@ -1,13 +1,4 @@
-/**
- * Copyright (c) Meta Platforms, Inc. and affiliates.
- * All rights reserved.
- *
- * This source code is licensed under the SAM License found in the
- * LICENSE file in the root directory of this source tree.
- */
-
 import type { VisionImageInput } from "@framefields/vision";
-import type { SamLicenseOptions } from "../license.js";
 import type { Sam2Model } from "../models/registry.js";
 
 /** Normalized source-image coordinates. Labels 2/3 form a box's opposite corners. */
@@ -23,7 +14,7 @@ export interface Sam2Prompt {
 	readonly points: readonly Sam2Point[];
 }
 
-export interface Sam2Options extends SamLicenseOptions {
+export interface Sam2Options {
 	readonly prompts: readonly Sam2Prompt[];
 	/** Metadata for object and class signals; SAM does not classify objects. */
 	readonly category?: string;

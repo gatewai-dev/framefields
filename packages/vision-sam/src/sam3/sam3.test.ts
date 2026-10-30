@@ -1,17 +1,9 @@
-/**
- * Copyright (c) Meta Platforms, Inc. and affiliates.
- * All rights reserved.
- *
- * This source code is licensed under the SAM License found in the
- * LICENSE file in the root directory of this source tree.
- */
-
 import { describe, expect, it } from "vitest";
 import { Sam3MemoryBank, sam3Position } from "./memory.js";
 import { Sam3Tracker, sam3Mask } from "./tracker.js";
 import { validateSam3Prompts } from "./types.js";
 
-describe("SAM 3 / 3.1 video tracker", () => {
+describe("SAM 3 video tracker", () => {
 	it("enforces license agreement before creation", async () => {
 		const prev = process.env.FRAMEFIELDS_ACCEPT_SAM_LICENSE;
 		delete process.env.FRAMEFIELDS_ACCEPT_SAM_LICENSE;

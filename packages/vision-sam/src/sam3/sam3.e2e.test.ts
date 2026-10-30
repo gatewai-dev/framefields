@@ -1,11 +1,3 @@
-/**
- * Copyright (c) Meta Platforms, Inc. and affiliates.
- * All rights reserved.
- *
- * This source code is licensed under the SAM License found in the
- * LICENSE file in the root directory of this source tree.
- */
-
 import { NodeWebGPUProvider } from "@framefields/vision";
 import { describe, expect, it } from "vitest";
 import { Sam3Tracker } from "./tracker.js";
@@ -33,7 +25,7 @@ function picture(frame: number) {
 	return { width, height, data };
 }
 
-describe.skipIf(!enabled)("SAM 3 / 3.1 on native Dawn WebGPU", () => {
+describe.skipIf(!enabled)("SAM 3 on native Dawn WebGPU", () => {
 	it("propagates a prompted object across video frames with temporal memory", async () => {
 		const tracker = await Sam3Tracker.create({
 			provider: new NodeWebGPUProvider(),

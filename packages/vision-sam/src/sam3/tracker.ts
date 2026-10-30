@@ -1,11 +1,3 @@
-/**
- * Copyright (c) Meta Platforms, Inc. and affiliates.
- * All rights reserved.
- *
- * This source code is licensed under the SAM License found in the
- * LICENSE file in the root directory of this source tree.
- */
-
 import {
 	createDefaultSessionProvider,
 	type SessionProvider,
@@ -117,7 +109,7 @@ export class Sam3Tracker {
 	) {}
 
 	static async create(options: Sam3TrackerOptions = {}): Promise<Sam3Tracker> {
-		assertSamLicenseAccepted("SAM 3 / 3.1", options);
+		assertSamLicenseAccepted("SAM 3", options);
 		ensureSamModelsRegistered();
 		if (
 			options.frameCount !== undefined &&

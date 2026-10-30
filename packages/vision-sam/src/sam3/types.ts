@@ -1,11 +1,3 @@
-/**
- * Copyright (c) Meta Platforms, Inc. and affiliates.
- * All rights reserved.
- *
- * This source code is licensed under the SAM License found in the
- * LICENSE file in the root directory of this source tree.
- */
-
 import type { SamLicenseOptions } from "../license.js";
 import type { Sam3Precision } from "../models/registry.js";
 import type { Sam2Point } from "../sam2/types.js";

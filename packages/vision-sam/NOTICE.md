@@ -1,9 +1,18 @@
-# Legal Architecture & License Notice: @framefields/vision-sam
+# Notice: @framefields/vision-sam
 
-This package (`@framefields/vision-sam`) provides Segment Anything Model (SAM 2.1 & SAM 3 / 3.1) video tracking, prompt encoding, and semantic text selection for Framefields.
+This package provides prompted video tracking for framefields with Meta's Segment Anything models: SAM 2.1 (Tiny and Small) and SAM 3. Its source code is written for framefields; it contains no code or weights distributed by Meta.
 
-## License Segregation
-1. **Core Decoupling**: The Framefields SDK and core libraries are licensed under the Apache 2.0 license. In accordance with the terms of the Meta SAM License, SAM inference implementations and derivative models are maintained strictly isolated in this standalone package.
-2. **Model Weights Decoupling**: No SAM ONNX model binaries or weight derivatives are bundled in the Apache-2.0 core repository or published npm tarball. Model weights are dynamically downloaded on-demand to the user's local cache (`~/.cache/framefields/models`) directly from verified upstream sources upon explicit license acceptance.
-3. **Runtime License Acceptance**: Users of this package must accept the Meta SAM License terms directly at runtime, either by passing `acceptLicense: true` in tracking/vision options or by setting the environment variable `FRAMEFIELDS_ACCEPT_SAM_LICENSE=1`.
+## Model weights
 
+No model weights ship in this package or in any framefields package. Each model is downloaded on first use from a pinned Hugging Face revision into the local model cache (`~/.cache/framefields/models`), and verified by size and SHA-256.
+
+| Model | Weights license | Acceptance |
+| --- | --- | --- |
+| SAM 2.1 Tiny / Small (Diffusion Studio ONNX exports of `facebook/sam2.1-hiera-*`) | Apache-2.0 | none |
+| SAM 3 (ONNX exports of Meta's SAM 3 checkpoints) | Meta SAM License | required at runtime |
+
+## Accepting the SAM License
+
+Before SAM 3 weights are downloaded or run, you must accept Meta's SAM License (https://github.com/facebookresearch/sam3/blob/main/LICENSE): pass `acceptLicense: true` to `Sam3Tracker` (or `acceptSamLicense: true` in `comp.vision` options), or set `FRAMEFIELDS_ACCEPT_SAM_LICENSE=1`. Your use of SAM 3 is then governed by that license.
+
+`framefields` loads this package only when a clip uses `sam2` or `sam3`; it is an optional peer dependency, so projects that do not use SAM never install it.

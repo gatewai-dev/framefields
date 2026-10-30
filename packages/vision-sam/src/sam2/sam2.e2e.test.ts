@@ -1,11 +1,3 @@
-/**
- * Copyright (c) Meta Platforms, Inc. and affiliates.
- * All rights reserved.
- *
- * This source code is licensed under the SAM License found in the
- * LICENSE file in the root directory of this source tree.
- */
-
 import { NodeWebGPUProvider } from "@framefields/vision";
 import { describe, expect, it } from "vitest";
 import { Sam2Tracker } from "./tracker.js";
@@ -43,7 +35,6 @@ describe.skipIf(!enabled)("SAM 2.1 on native Dawn", () => {
 			provider: new NodeWebGPUProvider(),
 			frameCount: 8,
 			model,
-			acceptLicense: true,
 		});
 		try {
 			for (let frame = 0; frame < 8; frame++) {

@@ -118,10 +118,17 @@
 		"yoga-layout": "^3.2.1",
 		"zod": "^4.3.6"
 	},
+	"peerDependencies": {
+		"@framefields/vision-sam": "workspace:*"
+	},
+	"peerDependenciesMeta": {
+		"@framefields/vision-sam": {
+			"optional": true
+		}
+	},
 	"optionalDependencies": {
 		"@dimforge/rapier2d-deterministic-compat": "0.21.0",
 		"@dimforge/rapier3d-deterministic-compat": "0.21.0",
-		"@framefields/vision-sam": "workspace:*",
 		"onnxruntime-web": "^1.24.0"
 	},
 	"devDependencies": {

@@ -18,7 +18,7 @@ Code-first video engine on native WebGPU (Dawn) in Node, no browser. pnpm + turb
 - `packages/compositions`: Yoga layout (`utils/layout/resolve-layout.ts`), program schema (`program/schema.ts`), lint (`program/lint.ts`), animation/evaluator.
 - `packages/webgpu-renderers`: WGSL shaders, 2D/3D pipelines, Slug text (`src/slug/`), audio DSP.
 - `packages/renderer`: headless Node renderer (Dawn, WebCodecs/mediabunny).
-- `packages/vision-sam`: segregated package under Meta SAM License for prompted SAM 2.1 Tiny and SAM 3 / 3.1 video tracking and text selection. `comp.vision(..., { sam2 | sam3 })` shares clip mattes and exposes object/mask/pose signals. Model weights download dynamically at runtime with license confirmation.
+- `packages/vision-sam`: SAM 2.1 Tiny / SAM 3 trackers under Meta's SAM License, an optional peer of `framefields`. `clip-vision.ts` imports it only for `comp.vision(..., { sam2 | sam3 })`; keep runtime imports of it out of `framefields` (types only). Pins in `src/models/registry.ts`.
 - `packages/core`: shared types, `Effect` base, signals, `emojiPresentation` (the one UTS #51 rule used by layout, preload and lint).
 - Others: `renderers`, `media`, `node-sdk`, `server-utils`, `client-utils`, `tensor-webgpu`, `vision`, `tsconfig`.
 - `nodes/node-*`: one VFX/audio/layout node each (`src/shared/`, `src/renderers/`, `src/index.ts`). Only `node-compositor` has a `SKILL.md`; update it when Compositor behavior changes (guarded by `skillmd-check.test.ts`).

@@ -1,16 +1,8 @@
-/**
- * Copyright (c) Meta Platforms, Inc. and affiliates.
- * All rights reserved.
- *
- * This source code is licensed under the SAM License found in the
- * LICENSE file in the root directory of this source tree.
- */
-
 import type { TrackedObject } from "@framefields/core";
-import type { InstanceMask } from "@framefields/vision";
+import type { InstanceMask } from "../types.js";
 
-/** Derive tracked-object geometry from the selected mask, never another person's detector. */
-export function sam2Object(
+/** Tracked-object geometry of one selected mask (bounds, center, velocity), with no detector involved. */
+export function maskObject(
 	mask: InstanceMask,
 	frame: number,
 	fps: number,

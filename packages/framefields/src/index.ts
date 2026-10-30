@@ -136,17 +136,14 @@ export {
 	type VisionVariant,
 } from "@framefields/vision";
 
-export {
-	type Sam2FrameResult,
-	type Sam2Options,
-	type Sam2Point,
-	type Sam2Prompt,
-	Sam2Tracker,
-	type Sam2TrackerOptions,
-	type Sam3Options,
-	type Sam3Prompt,
-	Sam3Tracker,
-	type Sam3TrackerOptions,
+// Types only: the trackers ship in the optional @framefields/vision-sam peer (Meta SAM License).
+export type {
+	Sam2FrameResult,
+	Sam2Options,
+	Sam2Point,
+	Sam2Prompt,
+	Sam3Options,
+	Sam3Prompt,
 } from "@framefields/vision-sam";
 
 import fs from "node:fs/promises";

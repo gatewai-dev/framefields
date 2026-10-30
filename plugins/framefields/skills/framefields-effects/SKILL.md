@@ -224,7 +224,7 @@ Inference runs on the GPU through `onnxruntime-web`'s WebGPU backend (an optiona
 
 ### Prompted object tracking with SAM 2.1 Tiny and SAM 3 / 3.1
 
-Use SAM for a specific object among similar objects, or to select an object via semantic text prompt (e.g. "performer in black suit"). SAM tracking and text selection run via `@framefields/vision-sam` (decoupled under Meta's SAM License). To use SAM at runtime, license acceptance is required via `acceptSamLicense: true`, `sam2: { acceptLicense: true, ... }`, `sam3: { acceptLicense: true, ... }`, or the environment variable `FRAMEFIELDS_ACCEPT_SAM_LICENSE=1`.
+Use SAM for a specific object among similar objects, or to select an object via semantic text prompt (e.g. "performer in black suit"). SAM tracking and text selection run via `@framefields/vision-sam`, an optional peer under Meta's SAM License: install it next to `framefields` (`pnpm add @framefields/vision-sam`); `framefields` imports it only when a clip uses `sam2` or `sam3`, and prompts are validated on that first use. Import `Sam2Tracker`/`Sam3Tracker` from `@framefields/vision-sam`. To use SAM at runtime, license acceptance is required via `acceptSamLicense: true`, `sam2: { acceptLicense: true, ... }`, `sam3: { acceptLicense: true, ... }`, or the environment variable `FRAMEFIELDS_ACCEPT_SAM_LICENSE=1`.
 
 `comp.vision(layer, { sam2 })` runs the complete 512px SAM 2.1 Tiny video pipeline, including temporal memory. `comp.vision(layer, { sam3 })` runs SAM 3 / 3.1 quantized temporal tracking with optional CLIP/tokenizer-driven concept text selection. The pinned model assets download dynamically to the local cache (`~/.cache/framefields/models`) with size/SHA-256 integrity verification.
 

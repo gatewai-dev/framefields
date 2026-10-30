@@ -9,7 +9,6 @@
 export * from "./license.js";
 export * from "./models/registry.js";
 export * from "./sam2/memory.js";
-export * from "./sam2/signal-results.js";
 export * from "./sam2/tracker.js";
 export * from "./sam2/types.js";
 export * from "./sam3/graphs.js";

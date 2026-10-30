@@ -9,21 +9,17 @@ import {
 	type ClipSubjectSource,
 	COCO17_KEYPOINT_NAMES,
 	type InstanceMask,
+	maskObject,
 	mergeSubjectMask,
 	VisionBundle,
 	VisionRunner,
 } from "@framefields/vision";
-import {
-	SAM2_TINY_REVISION,
-	SAM3_REVISION,
-	type Sam2FrameResult,
-	type Sam2Options,
+import type {
+	Sam2FrameResult,
+	Sam2Options,
 	Sam2Tracker,
-	type Sam3Options,
+	Sam3Options,
 	Sam3Tracker,
-	sam2Object,
-	validateSam2Prompts,
-	validateSam3Prompts,
 } from "@framefields/vision-sam";
 import { mediaDecoderCache } from "@framefields/webgpu-renderers";
 import type { VisionProps } from "./effects/index.js";
@@ -105,6 +101,25 @@ const HOLD = 24;
 
 const CACHE_VERSION = 1;
 
+type VisionSam = typeof import("@framefields/vision-sam");
+
+let visionSam: Promise<VisionSam> | undefined;
+
+/**
+ * SAM lives in `@framefields/vision-sam`, an optional peer under Meta's SAM License, so it
+ * is imported only when a clip asks for `sam2` or `sam3`.
+ */
+function loadVisionSam(): Promise<VisionSam> {
+	visionSam ??= import("@framefields/vision-sam").catch((cause: unknown) => {
+		visionSam = undefined;
+		throw new Error(
+			"Prompted sam2/sam3 tracking needs the optional @framefields/vision-sam package (Meta SAM License). Install it next to framefields.",
+			{ cause },
+		);
+	});
+	return visionSam;
+}
+
 /**
  * Vision results for one clip, computed per frame on demand and shared by
  * everything that reads the clip: physics, layout, signals. Unlike the
@@ -139,6 +154,7 @@ export class ClipVision implements ClipSubjectSource {
 	private sam2Frame = -1;
 	private sam3Tracker?: Sam3Tracker;
 	private sam3Frame = -1;
+	private sam?: Promise<VisionSam>;
 	private signalBundle?: VisionBundle;
 	private publishedSignals = new Set<number>();
 	private signalMaskFrame = -1;
@@ -202,14 +218,7 @@ export class ClipVision implements ClipSubjectSource {
 			Math.round(options.smoothing ?? (options.sam2 || options.sam3 ? 0 : 2)),
 		);
 		this.cell = Math.max(1, Math.round(options.maskCell ?? 8));
-		if (options.sam2) {
-			validateSam2Prompts(options.sam2.prompts);
-			this.wantSubjects = true;
-		}
-		if (options.sam3) {
-			validateSam3Prompts(options.sam3);
-			this.wantSubjects = true;
-		}
+		if (options.sam2 || options.sam3) this.wantSubjects = true;
 	}
 
 	/** @internal Explicit selections must never fall back to another detected subject. */
@@ -380,7 +389,18 @@ export class ClipVision implements ClipSubjectSource {
 		return this.results.has(c) && (!this.wantSubjects || this.subjects.has(c));
 	}
 
+	/** Loads `@framefields/vision-sam` and validates the prompts once, on first use. */
+	private prompted(): Promise<VisionSam> {
+		this.sam ??= loadVisionSam().then((sam) => {
+			if (this.options.sam2) sam.validateSam2Prompts(this.options.sam2.prompts);
+			if (this.options.sam3) sam.validateSam3Prompts(this.options.sam3);
+			return sam;
+		});
+		return this.sam;
+	}
+
 	private async compute(from: number, to: number): Promise<void> {
+		if (this.exact) await this.prompted();
 		this.cacheLoaded ??= this.loadCache();
 		await this.cacheLoaded;
 		if (this.wantSubjects) {
@@ -502,6 +522,7 @@ export class ClipVision implements ClipSubjectSource {
 			if (settings.prompts.some((prompt) => prompt.frame >= frameCount)) {
 				throw new Error("SAM 2 prompt frames must be inside the source video.");
 			}
+			const { Sam2Tracker } = await this.prompted();
 			this.sam2Tracker = await Sam2Tracker.create({
 				modelsDir: this.options.modelsDir,
 				baseUrl: this.options.baseUrl,
@@ -558,6 +579,7 @@ export class ClipVision implements ClipSubjectSource {
 			if (settings.prompts.some((prompt) => prompt.frame >= frameCount)) {
 				throw new Error("SAM 3 prompt frames must be inside the source video.");
 			}
+			const { Sam3Tracker } = await this.prompted();
 			this.sam3Tracker = await Sam3Tracker.create({
 				modelsDir: this.options.modelsDir,
 				baseUrl: this.options.baseUrl,
@@ -710,7 +732,7 @@ export class ClipVision implements ClipSubjectSource {
 			const previous = bundle
 				.getObjectResult(frame - 1)
 				.objects.find((object) => object.trackId === 1);
-			const object = sam2Object(
+			const object = maskObject(
 				mask,
 				frame,
 				this.compositionFps,
@@ -841,6 +863,7 @@ export class ClipVision implements ClipSubjectSource {
 				process.env.FRAMEFIELDS_VISION_CACHE_DIR ??
 				path.join(os.homedir(), ".cache", "framefields", "vision");
 			const o = this.options;
+			const sam = this.exact ? await this.prompted() : undefined;
 			const key = JSON.stringify([
 				CACHE_VERSION,
 				path.resolve(this.source),
@@ -852,8 +875,8 @@ export class ClipVision implements ClipSubjectSource {
 				this.cell,
 				o.variant ?? "s",
 				o.confidence ?? null,
-				...(o.sam2 ? [[SAM2_TINY_REVISION, o.sam2]] : []),
-				...(o.sam3 ? [[SAM3_REVISION, o.sam3]] : []),
+				...(o.sam2 ? [[sam?.SAM2_TINY_REVISION, o.sam2]] : []),
+				...(o.sam3 ? [[sam?.SAM3_REVISION, o.sam3]] : []),
 			]);
 			const hash = crypto
 				.createHash("sha256")

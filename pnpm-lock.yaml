@@ -3005,6 +3005,9 @@ importers:
       '@framefields/vision':
         specifier: workspace:*
         version: link:../vision
+      '@framefields/vision-sam':
+        specifier: workspace:*
+        version: link:../vision-sam
       '@framefields/webgpu-renderers':
         specifier: workspace:*
         version: link:../webgpu-renderers
@@ -3039,9 +3042,6 @@ importers:
       '@dimforge/rapier3d-deterministic-compat':
         specifier: 0.21.0
         version: 0.21.0
-      '@framefields/vision-sam':
-        specifier: workspace:*
-        version: link:../vision-sam
       onnxruntime-web:
         specifier: ^1.24.0
         version: 1.30.0

@@ -546,6 +546,7 @@ export class ClipVision implements ClipSubjectSource {
 				modelsDir: this.options.modelsDir,
 				baseUrl: this.options.baseUrl,
 				frameCount,
+				model: settings.model,
 				acceptLicense:
 					this.options.acceptSamLicense ?? this.options.sam2?.acceptLicense,
 			});
@@ -936,7 +937,7 @@ export class ClipVision implements ClipSubjectSource {
 				o.variant ?? "s",
 				o.confidence ?? null,
 				// Prompted subjects are track-ID label maps (format 2).
-				...(o.sam2 ? [[sam?.SAM2_TINY_REVISION, o.sam2, 2]] : []),
+				...(o.sam2 ? [[sam?.sam2Revision(o.sam2.model), o.sam2, 2]] : []),
 				...(o.sam3 && sam
 					? [
 							[

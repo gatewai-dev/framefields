@@ -20,13 +20,43 @@ import {
  * registry on first tracker creation so `@framefields/vision` never lists SAM weights.
  */
 
-export type Sam2ModelKey =
-	| "sam2.1-tiny-constants"
-	| "sam2.1-tiny-vision_encoder"
-	| "sam2.1-tiny-mask_decoder"
-	| "sam2.1-tiny-memory_encoder"
-	| "sam2.1-tiny-memory_attention"
-	| "sam2.1-tiny-pointer_tpos";
+/** SAM 2.1 checkpoints with a pinned video export. */
+export type Sam2Model = "tiny" | "small";
+
+export type Sam2Graph =
+	| "vision_encoder"
+	| "mask_decoder"
+	| "memory_encoder"
+	| "memory_attention"
+	| "pointer_tpos";
+
+export type Sam2ModelKey = `sam2.1-${Sam2Model}-${Sam2Graph | "constants"}`;
+
+/**
+ * Diffusion Studio's fp16 video exports of Meta SAM 2.1 (Apache-2.0). Tiny is built for
+ * speed at 512² (32×32 features); Small runs SAM 2's native 1024² (64×64), resolving small
+ * objects, thin structures and identity after cuts better at roughly 4× the encoder and
+ * 16× the memory-attention work.
+ */
+export const SAM2_EXPORTS: Readonly<
+	Record<
+		Sam2Model,
+		{ repo: string; revision: string; size: number; name: string }
+	>
+> = {
+	tiny: {
+		repo: "diffusionstudio/sam2.1-tiny-video-onnx-fp16",
+		revision: "66673b5db39371b7dd7847f4d3bc0d4f4179b79e",
+		size: 512,
+		name: "Hiera Tiny",
+	},
+	small: {
+		repo: "diffusionstudio/sam2.1-small-video-onnx-fp16",
+		revision: "927ecec6e6ae2727d0af7720eefdb07f2efe4689",
+		size: 1024,
+		name: "Hiera Small",
+	},
+};
 
 /** Weight formats published for the SAM 3 tracker's image encoder. */
 export type Sam3Precision = "fp16" | "q4f16" | "q4";
@@ -68,24 +98,25 @@ const hf = (repo: string, revision: string, path: string): string =>
 
 type Pin = readonly [path: string, bytes: number, sha256: string];
 
-const SAM2_REPO = "diffusionstudio/sam2.1-tiny-video-onnx-fp16";
-const SAM2_REV = "66673b5db39371b7dd7847f4d3bc0d4f4179b79e";
-
 const sam2 = (
-	key: Sam2ModelKey,
+	model: Sam2Model,
+	graph: Sam2Graph | "constants",
 	[path, bytes, sha256]: Pin,
-): VisionModelDescriptor => ({
-	key,
-	family: "sam2",
-	filename: `${key}${path.slice(path.lastIndexOf("."))}`,
-	url: hf(SAM2_REPO, SAM2_REV, path),
-	bytes,
-	sha256,
-	input: [512, 512],
-	source:
-		"Meta SAM 2.1 Hiera Tiny (Apache-2.0), Diffusion Studio 512px fp16 video export",
-	license: "Apache-2.0",
-});
+): VisionModelDescriptor => {
+	const { repo, revision, size, name } = SAM2_EXPORTS[model];
+	const key: Sam2ModelKey = `sam2.1-${model}-${graph}`;
+	return {
+		key,
+		family: "sam2",
+		filename: `${key}${path.slice(path.lastIndexOf("."))}`,
+		url: hf(repo, revision, path),
+		bytes,
+		sha256,
+		input: [size, size],
+		source: `Meta SAM 2.1 ${name} (Apache-2.0), Diffusion Studio ${size}px fp16 video export`,
+		license: "Apache-2.0",
+	};
+};
 
 const sam3 =
 	(repo: string, revision: string) =>
@@ -155,35 +186,65 @@ const SUPPORT_GRAPH =
 	"bundles/sam3-base-video-tracking-ortcuda-v2/graphs/base_tracker_preview_single1.onnx";
 
 export const SAM_MODELS: readonly VisionModelDescriptor[] = [
-	sam2("sam2.1-tiny-constants", [
+	sam2("tiny", "constants", [
 		"constants.json",
 		9781,
 		"67583810f4b80b762285377a5cc1066bbe19cdf8ef7fc87ff6aa78fc79830ef2",
 	]),
-	sam2("sam2.1-tiny-vision_encoder", [
+	sam2("tiny", "vision_encoder", [
 		"onnx/vision_encoder.onnx",
 		58385353,
 		"24e9ccf5994be5c8dd93ebe771a4cc4f8bb122d0524555ac3ba4e7141710b133",
 	]),
-	sam2("sam2.1-tiny-mask_decoder", [
+	sam2("tiny", "mask_decoder", [
 		"onnx/mask_decoder.onnx",
 		8898805,
 		"6bc158b0d028777ca2e25203ece0f27429c436de39a5c7fe301b3858d6059789",
 	]),
-	sam2("sam2.1-tiny-memory_encoder", [
+	sam2("tiny", "memory_encoder", [
 		"onnx/memory_encoder.onnx",
 		2807753,
 		"8b2bb6810444cee684ef938b7464c5645653f236014f5497c3db3654818cc7ce",
 	]),
-	sam2("sam2.1-tiny-memory_attention", [
+	sam2("tiny", "memory_attention", [
 		"onnx/memory_attention.onnx",
 		13029470,
 		"67c4e4da01bc7f501b88294bb19a8200362915ece04e9d7e367a437658f342c9",
 	]),
-	sam2("sam2.1-tiny-pointer_tpos", [
+	sam2("tiny", "pointer_tpos", [
 		"onnx/pointer_tpos.onnx",
 		34228,
 		"3ab5bfce40ed01208301b2d8f596b9c9f7f493dcd7e09ef01ec22e5be3694bd7",
+	]),
+	sam2("small", "constants", [
+		"constants.json",
+		9820,
+		"09397f7251c159b64a2d581cc3ea0dbb3cf720c2e60777cb14e244405ed1c305",
+	]),
+	sam2("small", "vision_encoder", [
+		"onnx/vision_encoder.onnx",
+		83679474,
+		"fb570036f5afac59ef20848958b075c84da746e333efd863104d94604652efc4",
+	]),
+	sam2("small", "mask_decoder", [
+		"onnx/mask_decoder.onnx",
+		8910345,
+		"999b3b47bf2e924d522ed6cc011fa2c9b651754cc07895eb0da16a28a5ce7c4d",
+	]),
+	sam2("small", "memory_encoder", [
+		"onnx/memory_encoder.onnx",
+		2807884,
+		"f36324e383dbf21fcd549169aedf698db00c307fd9a49538c0e5f0aa168e4f99",
+	]),
+	sam2("small", "memory_attention", [
+		"onnx/memory_attention.onnx",
+		16175204,
+		"6666be8ca502b5c16e9a113d3d3934996d32f27e93bee5e66a8317fcceec9985",
+	]),
+	sam2("small", "pointer_tpos", [
+		"onnx/pointer_tpos.onnx",
+		34228,
+		"f9c1b36e0aa9dc6b7c05b02a8fdaa17cc671d967ffcacc14fcd3177e65ec25e9",
 	]),
 	...encoder(
 		"fp16",

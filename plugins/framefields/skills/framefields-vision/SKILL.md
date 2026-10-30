@@ -1,6 +1,6 @@
 ---
 name: framefields-vision
-description: On-device computer vision in framefields — object detection and tracking, instance segmentation, pose, person mattes and cutouts (RTMDet-Ins, RTMO, Selfie Segmenter), and prompted video tracking of a specific object or several people with SAM 2.1 Tiny (point/box prompts) and SAM 3 (text prompts such as "man in white shirt", multiple objects at once). Covers which API to use (withVision, comp.vision, analyzeVisionSequence), every pinned ONNX model with sizes and licenses, GPU/CUDA/CPU backends, model downloads and caching, performance, and troubleshooting. Use when a framefields composition needs to know where people or objects are, cut a subject out, follow someone through a clip, or select one person in a crowd.
+description: On-device computer vision in framefields — object detection and tracking, instance segmentation, pose, person mattes and cutouts (RTMDet-Ins, RTMO, Selfie Segmenter), and prompted video tracking of a specific object or several people with SAM 2.1 Tiny or Small (point/box prompts) and SAM 3 (text prompts such as "man in white shirt", multiple objects at once). Covers which API to use (withVision, comp.vision, analyzeVisionSequence), every pinned ONNX model with sizes and licenses, GPU/CUDA/CPU backends, model downloads and caching, performance, and troubleshooting. Use when a framefields composition needs to know where people or objects are, cut a subject out, follow someone through a clip, or select one person in a crowd.
 ---
 
 # framefields-vision
@@ -32,8 +32,13 @@ Vision runs ONNX models locally. Nothing is sent anywhere. Models download on fi
 
 About 380 MB for all of them. `variant: "t" | "s" | "m"` picks the size.
 
-### SAM 2.1 Tiny (`sam2`, Apache-2.0)
-Meta SAM 2.1 Hiera Tiny, Diffusion Studio's 512 px fp16 video export: vision encoder 58 MB, mask decoder 9 MB, memory attention 13 MB, memory encoder 3 MB, pointer encoding and constants (under 0.1 MB). About 83 MB in total. Point and box prompts only.
+### SAM 2.1 Tiny and Small (`sam2`, Apache-2.0)
+Meta SAM 2.1 Hiera checkpoints in Diffusion Studio's fp16 video exports, with the same five graphs and memory bank (the prompted frame, the 6 latest frames, 16 object pointers). Point and box prompts only. Pick one with `sam2: { model }`:
+
+| `model` | Input | Image encoder | Memory attention | Total | Per frame, M1 Pro WebGPU |
+| --- | --- | --- | --- | --- | --- |
+| `"tiny"` (default) | 512² (32×32 features) | 58 MB | 13 MB | ~83 MB | ~0.27 s |
+| `"small"` | 1024², SAM 2's native size (64×64) | 84 MB | 16 MB | ~112 MB | ~1.1 s |
 
 ### SAM 3 (`sam3`, Meta SAM License)
 Video tracking at 1008², plus text ("concept") selection. Only the image encoder the backend runs fastest is downloaded:
@@ -131,14 +136,20 @@ await dancer.ready(0);             // analyse a frame (or ready(0, 120)) to read
 
 Detection picks "the largest person". Use SAM when the subject is **a specific** person or object, especially in a crowd, or when you can only describe it.
 
-| | SAM 2.1 Tiny (`sam2`) | SAM 3 (`sam3`) |
-| --- | --- | --- |
-| Select by | points and boxes | points, boxes, or **text** |
-| Objects per clip | 1 | 1 to `maxObjects` |
-| Resolution | 512² | 1008² |
-| Cost per frame, M1 Pro | ~0.3 s | ~3.6 s image encoder (shared by every SAM 3 clip of the source) + ~0.7 s per tracked object |
-| Download | ~83 MB | ~1.75 GB (GPU) / ~1.2 GB (CPU) |
-| License | Apache-2.0 | Meta SAM License |
+| | SAM 2.1 Tiny (`sam2`) | SAM 2.1 Small (`sam2: { model: "small" }`) | SAM 3 (`sam3`) |
+| --- | --- | --- | --- |
+| Select by | points and boxes | points and boxes | points, boxes, or **text** |
+| Objects per clip | 1 | 1 | 1 to `maxObjects` |
+| Resolution | 512² | 1024² | 1008² |
+| Cost per frame, M1 Pro | ~0.27 s | ~1.1 s | ~3.6 s image encoder (shared by every SAM 3 clip of the source) + ~0.7 s per tracked object |
+| Download | ~83 MB | ~112 MB | ~1.75 GB (GPU) / ~1.2 GB (CPU) |
+| Weights license | Apache-2.0 | Apache-2.0 | Meta SAM License |
+
+**Choosing.** Decide from the shot and the request, and say which model you chose and why:
+- **SAM 2.1 Tiny:** one subject you can point at, which is large in frame (a close-up, a dancer, a speaker). It is the fastest by far; on such subjects its masks match Small's closely (IoU 0.98 on a close-up).
+- **SAM 2.1 Small:** still one subject from points or a box, but small in frame, thin or detailed (a ball, a hand, a bike, hair, a distant runner), or a shot with cuts or look-alikes where Tiny latches onto a similar object. About 4× Tiny's cost.
+- **SAM 3:** the subject has to be found from a description, or several people or objects must be tracked at once. It is the most expensive, so trim to the stretch you need.
+- Unsure between Tiny and Small: prototype with Tiny on a short trimmed stretch, inspect the masks, and switch to Small if edges, small parts or identity fail.
 
 ### Install and license
 
@@ -168,10 +179,11 @@ const crowd = comp.vision("assets/source.mp4", {
 	sam3: { category: "person", text: "student in blazer", maxObjects: 5 },
 });
 
-// SAM 2.1: a box plus a point, and a correction later
+// SAM 2.1 Small: a small subject, a box plus a point, and a correction later
 const ball = comp.vision(plate, {
 	acceptSamLicense: true,
 	sam2: {
+		model: "small",
 		category: "ball",
 		prompts: [
 			{ frame: 0, points: [
@@ -279,4 +291,5 @@ report.tracks; // [{ trackId, category, frames: [start, end], centerPath, … }]
 | Log says `Inference on the CPU` on a GPU machine | The log's `reason` says why; on Linux NVIDIA check the CUDA 12 / cuDNN 9 libraries, or force `FRAMEFIELDS_VISION_PROVIDER` to see the error |
 | A preview of a clip outside the project shows nothing | Add its folder to `startPreview(…, { root: [process.cwd(), dir] })` |
 | Renders offline or in CI | Copy the model cache, or set `FRAMEFIELDS_MODELS_BASE_URL` |
-| Check the models themselves | `await runner.preload([...])` on a fresh `FRAMEFIELDS_MODELS_DIR`; SAM: `pnpm --filter @framefields/vision-sam test:sam2` / `test:sam3` on a GPU machine |
+| SAM 2.1 Tiny mask loses a small object, its edges, or the subject after a cut | `sam2: { model: "small" }` |
+| Check the models themselves | `await runner.preload([...])` on a fresh `FRAMEFIELDS_MODELS_DIR`; SAM: `pnpm --filter @framefields/vision-sam test:sam2` (Tiny and Small) / `test:sam3` on a GPU machine |

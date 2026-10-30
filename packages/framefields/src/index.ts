@@ -139,6 +139,7 @@ export {
 // Types only: the trackers ship in the optional @framefields/vision-sam peer (Meta SAM License).
 export type {
 	Sam2FrameResult,
+	Sam2Model,
 	Sam2Options,
 	Sam2Point,
 	Sam2Prompt,

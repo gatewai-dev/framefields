@@ -20,7 +20,12 @@ import {
 } from "@framefields/vision";
 import { z } from "zod";
 import { assertSamLicenseAccepted } from "../license.js";
-import { ensureSamModelsRegistered } from "../models/registry.js";
+import {
+	ensureSamModelsRegistered,
+	SAM2_EXPORTS,
+	type Sam2Graph,
+	type Sam2Model,
+} from "../models/registry.js";
 import { Sam2MemoryBank, sam2Tokens } from "./memory.js";
 import {
 	type Sam2FrameResult,
@@ -29,7 +34,7 @@ import {
 } from "./types.js";
 
 const constantsSchema = z.object({
-	image_size: z.literal(512),
+	image_size: z.number().int().positive().multipleOf(16),
 	memory_frames: z.literal(7),
 	image_mean: z.tuple([z.number(), z.number(), z.number()]),
 	image_std: z.tuple([
@@ -42,12 +47,7 @@ const constantsSchema = z.object({
 		.length(7),
 });
 type Constants = z.infer<typeof constantsSchema>;
-type Graph =
-	| "vision_encoder"
-	| "mask_decoder"
-	| "memory_encoder"
-	| "memory_attention"
-	| "pointer_tpos";
+type Graph = Sam2Graph;
 const GRAPHS: readonly Graph[] = [
 	"vision_encoder",
 	"mask_decoder",
@@ -55,13 +55,18 @@ const GRAPHS: readonly Graph[] = [
 	"memory_attention",
 	"pointer_tpos",
 ];
-export const SAM2_TINY_REVISION = "66673b5db39371b7dd7847f4d3bc0d4f4179b79e";
+/** The pinned export revision of `model`: part of ClipVision's persistent cache identity. */
+export function sam2Revision(model: Sam2Model = "tiny"): string {
+	return `sam2.1-${model}-${SAM2_EXPORTS[model].revision}`;
+}
 
 export interface Sam2TrackerOptions extends VisionModelStoreOptions {
 	readonly provider?: SessionProvider;
 	readonly store?: VisionModelStore;
 	/** Source sequence length; used to normalize object-pointer time positions for short videos. */
 	readonly frameCount?: number;
+	/** Checkpoint: `"tiny"` (default, 512², fast) or `"small"` (1024², finer detail). */
+	readonly model?: Sam2Model;
 	/** Explicitly agree to Meta's SAM License terms to download or run SAM models. */
 	readonly acceptLicense?: boolean;
 }
@@ -85,10 +90,13 @@ function tensor(
 	return { name, data, dims };
 }
 
-/** Complete pinned 512px SAM 2.1 Tiny video graph pipeline, one explicitly selected object. */
+/** Complete pinned SAM 2.1 video graph pipeline (Tiny or Small), one explicitly selected object. */
 export class Sam2Tracker {
 	private readonly sessions = new Map<Graph, VisionSession>();
 	private readonly bank: Sam2MemoryBank;
+	/** Model input side; image features are `size / 16` square, one memory token per cell. */
+	private readonly size: number;
+	private readonly tokens: number;
 	private lastFrame = -1;
 	private released = false;
 	private constructor(
@@ -98,6 +106,8 @@ export class Sam2Tracker {
 		this.bank = new Sam2MemoryBank(
 			constants.memory_temporal_positional_encoding,
 		);
+		this.size = constants.image_size;
+		this.tokens = (this.size / 16) ** 2;
 	}
 
 	static async create(options: Sam2TrackerOptions = {}): Promise<Sam2Tracker> {
@@ -109,7 +119,12 @@ export class Sam2Tracker {
 				...options,
 				acceptLicense: options.acceptLicense ?? true,
 			});
-		const bytes = await store.ensure("sam2.1-tiny-constants");
+		const model = options.model ?? "tiny";
+		if (!(model in SAM2_EXPORTS))
+			throw new Error(
+				`Unknown SAM 2.1 model "${model}"; use "tiny" or "small".`,
+			);
+		const bytes = await store.ensure(`sam2.1-${model}-constants`);
 		const constants = constantsSchema.parse(
 			JSON.parse(new TextDecoder().decode(bytes)),
 		);
@@ -123,7 +138,7 @@ export class Sam2Tracker {
 		try {
 			for (const graph of GRAPHS) {
 				const session = await provider.createSession(
-					await store.ensure(`sam2.1-tiny-${graph}`),
+					await store.ensure(`sam2.1-${model}-${graph}`),
 				);
 				tracker.sessions.set(graph, session);
 			}
@@ -161,8 +176,8 @@ export class Sam2Tracker {
 		if (this.lastFrame < 0 && !points)
 			throw new Error("SAM 2 needs a prompt on its first frame.");
 		const { tensor: pixels } = imageToTensor(image, {
-			width: 512,
-			height: 512,
+			width: this.size,
+			height: this.size,
 			fit: "stretch",
 			channels: "rgb",
 			padValue: 0,
@@ -178,7 +193,7 @@ export class Sam2Tracker {
 			],
 		});
 		const vision = await this.run("vision_encoder", [
-			tensor("pixel_values", pixels, [1, 3, 512, 512]),
+			tensor("pixel_values", pixels, [1, 3, this.size, this.size]),
 		]);
 		const conditioned = points
 			? vision.feats2_no_mem
@@ -192,7 +207,9 @@ export class Sam2Tracker {
 			input("feats2_cond", conditioned),
 			tensor(
 				"input_points",
-				Float32Array.from(prompt.flatMap((p) => [p.x * 512, p.y * 512])),
+				Float32Array.from(
+					prompt.flatMap((p) => [p.x * this.size, p.y * this.size]),
+				),
 				[1, 1, prompt.length, 2],
 			),
 			tensor("input_labels", Int32Array.from(prompt.map((p) => p.label)), [
@@ -225,21 +242,22 @@ export class Sam2Tracker {
 			for (let token = 0; token < 4; token++)
 				bank.positions.set(
 					positions.subarray(i * 64, (i + 1) * 64),
-					7 * 1024 * 64 + (i * 4 + token) * 64,
+					7 * this.tokens * 64 + (i * 4 + token) * 64,
 				);
+		const memoryLength = 7 * this.tokens + 16 * 4;
 		const result = await this.run("memory_attention", [
-			tensor(
-				"current_vision_features",
-				sam2Tokens(floats(vision, "feats2")),
-				[1024, 1, 256],
-			),
+			tensor("current_vision_features", sam2Tokens(floats(vision, "feats2")), [
+				this.tokens,
+				1,
+				256,
+			]),
 			tensor(
 				"current_vision_position_embeddings",
 				sam2Tokens(floats(vision, "vision_pos_embed")),
-				[1024, 1, 256],
+				[this.tokens, 1, 256],
 			),
-			tensor("memory", bank.memory, [7232, 1, 64]),
-			tensor("memory_pos", bank.positions, [7232, 1, 64]),
+			tensor("memory", bank.memory, [memoryLength, 1, 64]),
+			tensor("memory_pos", bank.positions, [memoryLength, 1, 64]),
 		]);
 		const conditioned = result.conditioned_feats;
 		if (!conditioned) throw new Error("Missing SAM 2 conditioned features.");
@@ -282,7 +300,7 @@ export class Sam2Tracker {
 	}
 }
 
-/** Bilinear resize of logits before thresholding, matching SAM's source-image mask contract. */
+/** Bilinear resize of square logits before thresholding, matching SAM's source-image mask contract. */
 export function decodeSam2Mask(
 	logits: Float32Array,
 	width: number,
@@ -290,25 +308,31 @@ export function decodeSam2Mask(
 	score: number,
 	iou: number,
 ): Sam2FrameResult {
-	if (logits.length !== 512 * 512) throw new Error("Invalid SAM 2 mask shape.");
+	const side = Math.round(Math.sqrt(logits.length));
+	if (side * side !== logits.length || side % 16 !== 0)
+		throw new Error("Invalid SAM 2 mask shape.");
+	const last = side - 1;
 	const mask = new Uint8Array(width * height);
 	if (score > 0) {
 		for (let y = 0; y < height; y++) {
-			const sy = Math.max(0, Math.min(511, ((y + 0.5) * 512) / height - 0.5));
+			const sy = Math.max(0, Math.min(last, ((y + 0.5) * side) / height - 0.5));
 			const y0 = Math.floor(sy),
-				y1 = Math.min(511, y0 + 1),
+				y1 = Math.min(last, y0 + 1),
 				fy = sy - y0;
 			for (let x = 0; x < width; x++) {
-				const sx = Math.max(0, Math.min(511, ((x + 0.5) * 512) / width - 0.5));
+				const sx = Math.max(
+					0,
+					Math.min(last, ((x + 0.5) * side) / width - 0.5),
+				);
 				const x0 = Math.floor(sx),
-					x1 = Math.min(511, x0 + 1),
+					x1 = Math.min(last, x0 + 1),
 					fx = sx - x0;
 				const a =
-					(logits[y0 * 512 + x0] ?? 0) * (1 - fx) +
-					(logits[y0 * 512 + x1] ?? 0) * fx;
+					(logits[y0 * side + x0] ?? 0) * (1 - fx) +
+					(logits[y0 * side + x1] ?? 0) * fx;
 				const b =
-					(logits[y1 * 512 + x0] ?? 0) * (1 - fx) +
-					(logits[y1 * 512 + x1] ?? 0) * fx;
+					(logits[y1 * side + x0] ?? 0) * (1 - fx) +
+					(logits[y1 * side + x1] ?? 0) * fx;
 				mask[y * width + x] = a * (1 - fy) + b * fy > 0 ? 255 : 0;
 			}
 		}

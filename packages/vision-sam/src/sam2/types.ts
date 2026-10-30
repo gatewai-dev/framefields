@@ -8,6 +8,7 @@
 
 import type { VisionImageInput } from "@framefields/vision";
 import type { SamLicenseOptions } from "../license.js";
+import type { Sam2Model } from "../models/registry.js";
 
 /** Normalized source-image coordinates. Labels 2/3 form a box's opposite corners. */
 export interface Sam2Point {
@@ -26,6 +27,12 @@ export interface Sam2Options extends SamLicenseOptions {
 	readonly prompts: readonly Sam2Prompt[];
 	/** Metadata for object and class signals; SAM does not classify objects. */
 	readonly category?: string;
+	/**
+	 * Checkpoint: `"tiny"` (default; 512², ~0.3 s/frame on an M1 Pro) or `"small"` (SAM 2's
+	 * native 1024²; finer edges, small objects and thin structures, steadier identity after
+	 * cuts, at several times the cost).
+	 */
+	readonly model?: Sam2Model;
 }
 
 export interface Sam2FrameResult {

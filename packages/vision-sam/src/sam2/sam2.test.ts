@@ -8,6 +8,7 @@
 
 import { VisionModelStore } from "@framefields/vision";
 import { describe, expect, it } from "vitest";
+import { SAM_MODELS, SAM2_EXPORTS } from "../models/registry.js";
 import { ScriptedProvider } from "../test-support.js";
 import { Sam2MemoryBank, sam2Tokens } from "./memory.js";
 import { decodeSam2Mask, Sam2Tracker } from "./tracker.js";
@@ -139,6 +140,43 @@ describe("SAM 2 video pipeline", () => {
 				},
 			]),
 		).toThrow("corners");
+	});
+
+	it("pins every graph of every SAM 2.1 model, sized to its export", () => {
+		for (const [model, { size }] of Object.entries(SAM2_EXPORTS))
+			for (const graph of [
+				"constants",
+				"vision_encoder",
+				"mask_decoder",
+				"memory_encoder",
+				"memory_attention",
+				"pointer_tpos",
+			])
+				expect(
+					SAM_MODELS.find((m) => m.key === `sam2.1-${model}-${graph}`)?.input,
+				).toEqual([size, size]);
+	});
+
+	it("rejects an unknown model before downloading anything", async () => {
+		await expect(
+			Sam2Tracker.create({
+				acceptLicense: true,
+				// @ts-expect-error not a SAM 2.1 model
+				model: "huge",
+			}),
+		).rejects.toThrow('Unknown SAM 2.1 model "huge"');
+	});
+
+	it("decodes logits of any square model size to a source-sized mask", () => {
+		const logits = new Float32Array(1024 * 1024).fill(-1);
+		for (let y = 0; y < 1024; y++)
+			for (let x = 0; x < 512; x++) logits[y * 1024 + x] = 2;
+		expect(Array.from(decodeSam2Mask(logits, 4, 1, 1, 0.9).mask)).toEqual([
+			255, 255, 0, 0,
+		]);
+		expect(() => decodeSam2Mask(new Float32Array(500), 4, 1, 1, 0.9)).toThrow(
+			"Invalid SAM 2 mask shape.",
+		);
 	});
 
 	it("decodes logits to a source-sized binary mask", () => {

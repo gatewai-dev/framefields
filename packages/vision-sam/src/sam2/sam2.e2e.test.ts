@@ -34,11 +34,15 @@ function picture(frame: number) {
 	return { width, height, data };
 }
 
-describe.skipIf(!enabled)("SAM 2.1 Tiny on native Dawn", () => {
-	it("runs every graph and propagates a selected object without selecting a distractor", async () => {
+describe.skipIf(!enabled)("SAM 2.1 on native Dawn", () => {
+	it.each([
+		"tiny",
+		"small",
+	] as const)("%s runs every graph and propagates a selected object without selecting a distractor", async (model) => {
 		const tracker = await Sam2Tracker.create({
 			provider: new NodeWebGPUProvider(),
 			frameCount: 8,
+			model,
 			acceptLicense: true,
 		});
 		try {
@@ -55,5 +59,5 @@ describe.skipIf(!enabled)("SAM 2.1 Tiny on native Dawn", () => {
 		} finally {
 			tracker.release();
 		}
-	}, 120_000);
+	}, 300_000);
 });

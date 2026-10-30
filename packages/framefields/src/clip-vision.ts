@@ -602,6 +602,7 @@ export class ClipVision implements ClipSubjectSource {
 				frameCount,
 				textThreshold: settings.textThreshold,
 				maxObjects: settings.maxObjects,
+				merge: settings.merge,
 				precision: settings.precision,
 				acceptLicense:
 					this.options.acceptSamLicense ?? this.options.sam3?.acceptLicense,

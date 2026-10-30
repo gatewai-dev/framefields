@@ -179,6 +179,15 @@ const crowd = comp.vision("assets/source.mp4", {
 	sam3: { category: "person", text: "student in blazer", maxObjects: 5 },
 });
 
+// SAM 3: every match as ONE object — one mask, one memory, the cost of a single track
+const students = Layer.video("assets/source.mp4", { width: 1920, height: 1080, fit: "contain" })
+	.withVision({ mode: "matte" }); // cuts out all of them as one entity
+comp.add(students);
+comp.vision(students, {
+	acceptSamLicense: true,
+	sam3: { category: "person", text: "student in black jacket", merge: true },
+});
+
 // SAM 2.1 Small: a small subject, a box plus a point, and a correction later
 const ball = comp.vision(plate, {
 	acceptSamLicense: true,
@@ -214,6 +223,7 @@ Layer.box({
 - **Prompt frames** are increasing integers on the source analysis clock, before trimming. SAM propagates forward from the first prompt; earlier frames are empty and are not analysed. To track only a stretch of a long clip, trim the layer and prompt on the stretch's first source frame.
 - **Text prompts are concepts.** Name what sets the target apart in that shot. In a crowd where everyone shows a white collar, "man in white shirt" picks a student. In the same film's wide shot, where only he has no blazer, it picks him. Check the first frame of every prompt.
 - **Several objects** (`maxObjects`): one encoder pass per frame serves every track, and each track keeps its own memory. Where tracks overlap, the more confident one keeps the pixel. `signals.objects.get(k)` and `signals.masks` carry tracks `1…N`; the clip's matte and subject are all tracks merged. A later text prompt re-selects every track (IDs renumber); a points prompt with `object: k` seeds or corrects track `k` only (the next unused ID adds one).
+- **One entity for a whole group** (`merge: true`): every instance the text matches (up to `maxObjects`, default all) becomes one seed mask, tracked as one object with one memory. Use it when you need the group's mask or matte (cut out a crowd, grade everyone but the hero), not each member's box; it costs the same as one track however many match (4.1 s per frame for a whole crowd of students on an M1 Pro). Use `maxObjects` without `merge` when each member needs its own track, at about 0.7 s per member per frame.
 - Two text-prompted clips of one shot can claim the same person (a "student" track on the hero). Prefer prompts that exclude each other.
 - **Corrections and cuts.** A prompt on a later frame resets that object's memory. Re-prompt after hard cuts or long occlusions; appearance tracking cannot guarantee re-identification.
 - An explicit selection never falls back to another detected person. If its mask cannot align with a matte layer (a different aspect ratio), the render fails. Matte at the source aspect ratio and crop afterwards.

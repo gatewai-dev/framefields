@@ -34,8 +34,13 @@ export interface Sam3Options extends SamLicenseOptions {
 	readonly category?: string;
 	/** Minimum sigmoid score for a text-selected instance. Default 0.5. */
 	readonly textThreshold?: number;
-	/** Most instances a text prompt selects, as track IDs 1…N by score. Default 1. */
+	/** Most instances a text prompt selects, as track IDs 1…N by score. Default 1, or every match with `merge`. */
 	readonly maxObjects?: number;
+	/**
+	 * Select every instance matching the text as **one** object: one mask and one memory, so
+	 * tracking costs the same as a single object however many match (e.g. a whole crowd).
+	 */
+	readonly merge?: boolean;
 	/** Image-encoder weights; defaults to the fastest for the backend in use (`SAM3_ENCODER`). */
 	readonly precision?: Sam3Precision;
 }

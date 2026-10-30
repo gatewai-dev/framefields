@@ -54,8 +54,10 @@ export interface Sam3TrackerOptions extends VisionModelStoreOptions {
 	readonly store?: VisionModelStore;
 	readonly frameCount?: number;
 	readonly textThreshold?: number;
-	/** Most instances a text prompt selects. Default 1. */
+	/** Most instances a text prompt selects. Default 1, or every match with `merge`. */
 	readonly maxObjects?: number;
+	/** Track every instance a text prompt selects as one object (one mask, one memory). */
+	readonly merge?: boolean;
 	/** Image-encoder weights; defaults to the fastest for the provider's backend (`SAM3_ENCODER`). */
 	readonly precision?: Sam3Precision;
 	/** Explicitly agree to Meta's SAM License terms to download or run SAM models. */
@@ -260,12 +262,13 @@ export class Sam3Tracker {
 				this.provider,
 			);
 			if (!this.options.store) this.store.clearMemoryCache();
-			const masks = await this.selector.select(
+			const selected = await this.selector.select(
 				pixels,
 				prompt.text,
 				this.options.textThreshold ?? 0.5,
-				this.options.maxObjects ?? 1,
+				this.options.maxObjects ?? (this.options.merge ? Infinity : 1),
 			);
+			const masks = this.options.merge ? [unionLogits(selected)] : selected;
 			this.banks.length = 0;
 			for (const [index, logits] of masks.entries()) {
 				this.banks.push(this.newBank());
@@ -462,4 +465,13 @@ function seedLogits(logits: Float32Array): Float32Array {
 		}
 	}
 	return out;
+}
+
+/** Instances as one mask: each pixel keeps its most confident instance's logit. */
+function unionLogits(masks: readonly Float32Array[]): Float32Array {
+	const union = new Float32Array(masks[0]?.length ?? 0).fill(-Infinity);
+	for (const mask of masks)
+		for (let i = 0; i < union.length; i++)
+			union[i] = Math.max(union[i] ?? -Infinity, mask[i] ?? -Infinity);
+	return union;
 }

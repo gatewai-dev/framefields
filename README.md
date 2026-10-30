@@ -194,7 +194,7 @@ Installed components import only `framefields` and the shared toolkit in `framef
 
 ## Select and track a subject
 
-Use SAM 2.1 Tiny to select a specific object with a point or box and track it through video. Its masks, bounds, motion and optional matched pose feed the existing vision signals; the same clip masks drive cutouts. SAM ships separately under Meta's SAM License, so install it next to framefields:
+Select a specific object with a point or box (SAM 2.1 Tiny or Small), or by description, several at once, or a whole group as one mask (SAM 3), and track it through video. Masks, bounds, motion and optional matched pose feed the existing vision signals; the same clip masks drive cutouts. SAM ships separately under Meta's SAM License, so install it next to framefields:
 
 ```bash
 pnpm add @framefields/vision-sam
@@ -206,12 +206,19 @@ const subject = Layer.video("assets/source.mp4", {
 }).withVision({ mode: "matte" });
 comp.add(subject);
 const tracked = comp.vision(subject, {
+  acceptSamLicense: true,
   sam2: { prompts: [{ frame: 0, points: [{ x: 0.5, y: 0.5, label: 1 }] }] },
 });
 const target = tracked.signals.objects.get(1);
+
+// SAM 3: every student in the shot as one mask, from one prompt
+comp.vision(subject, {
+  acceptSamLicense: true,
+  sam3: { text: "students in black jackets", merge: true },
+});
 ```
 
-Prompts use normalized source coordinates. Model files download lazily, inference runs locally, and cached source-frame results support seeking and time remapping. See the [vision guide](https://framefields.dev/docs/guides/vision/#select-a-specific-object-with-sam-21-tiny) for corrections, signal tracks, model/runtime requirements and mask alignment limits.
+Prompts use normalized source coordinates. Model files download lazily, inference runs locally, and cached source-frame results support seeking and time remapping. See the [vision guide](https://framefields.dev/docs/guides/vision/#select-specific-objects-with-sam) for choosing a model, corrections, several objects, backends, costs and mask alignment limits.
 
 ---
 
@@ -232,7 +239,7 @@ Everything else—including full API references, interactive tutorials, and guid
 - **[WebGPU 2D VFX](https://framefields.dev/docs)** — 50+ shaders: 3D LUTs, Curves, Film Grain, Glassmorphism, and Blur
 - **[Unified 3D Scenes](https://framefields.dev/docs)** — LookAt cameras, PBR materials, studio lighting, shadows, and glTF/GLB models
 - **[Audio & Procedural SFX](https://framefields.dev/docs)** — BeatGrids, procedural whooshes/impacts, and audio-reactive signals
-- **[On-Device Vision](https://framefields.dev/docs/guides/vision/)** — Apache-2.0 ONNX models for detection, pose, cutouts, and prompted SAM 2.1 video tracking
+- **[On-Device Vision](https://framefields.dev/docs/guides/vision/)** — ONNX models for detection, pose and cutouts (Apache-2.0), and prompted SAM 2.1 / SAM 3 video tracking (optional, Meta SAM License)
 - **[Live Browser Preview](https://framefields.dev/docs)** — Localhost WebGPU player with scrubbing, waveform timeline, and frame-stepping
 
 ---

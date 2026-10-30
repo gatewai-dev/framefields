@@ -28,6 +28,7 @@ import type { Sam2Point } from "../sam2/types.js";
 import { holdSam3Encoder, type Sam3EncoderHandle } from "./encoder.js";
 import { sam3DenseDecoder, sam3SupportGraphs } from "./graphs.js";
 import { Sam3MemoryBank, sam3Position } from "./memory.js";
+import { mergeSelections } from "./selection.js";
 import { Sam3TextSelector, sam3Floats, sam3Run } from "./text-selector.js";
 import {
 	type Sam3FrameResult,
@@ -268,7 +269,7 @@ export class Sam3Tracker {
 				this.options.textThreshold ?? 0.5,
 				this.options.maxObjects ?? (this.options.merge ? Infinity : 1),
 			);
-			const masks = this.options.merge ? [unionLogits(selected)] : selected;
+			const masks = this.options.merge ? [mergeSelections(selected)] : selected;
 			this.banks.length = 0;
 			for (const [index, logits] of masks.entries()) {
 				this.banks.push(this.newBank());
@@ -465,13 +466,4 @@ function seedLogits(logits: Float32Array): Float32Array {
 		}
 	}
 	return out;
-}
-
-/** Instances as one mask: each pixel keeps its most confident instance's logit. */
-function unionLogits(masks: readonly Float32Array[]): Float32Array {
-	const union = new Float32Array(masks[0]?.length ?? 0).fill(-Infinity);
-	for (const mask of masks)
-		for (let i = 0; i < union.length; i++)
-			union[i] = Math.max(union[i] ?? -Infinity, mask[i] ?? -Infinity);
-	return union;
 }

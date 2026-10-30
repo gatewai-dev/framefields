@@ -1,6 +1,6 @@
 ---
 name: framefields
-description: Start a new framefields video project, or add framefields to an existing Node.js project. Use when the user wants to make a video with framefields and the project has no framefields setup yet, or asks how to install framefields, scaffold a composition and render script, get from an empty folder to a first MP4, generate images, video, music or voice for a film with AI models (`ai` from framefields, the framefields AI gateway), or add ready-made components (pointers, captions, title cards, device frames …) with `npx framefields add`. Hands off to framefields-compose, framefields-effects, and framefields-render for the details.
+description: Start a new framefields video project, or add framefields to an existing Node.js project. Use when the user wants to make a video with framefields and the project has no framefields setup yet, or asks how to install framefields, scaffold a composition and render script, get from an empty folder to a first MP4, generate images, video, music or voice for a film with AI models (`ai` from framefields, the framefields AI gateway), or add ready-made components (pointers, captions, title cards, device frames …) with `npx framefields add`. Hands off to framefields-compose, framefields-effects, framefields-vision, and framefields-render for the details.
 ---
 
 # framefields
@@ -13,7 +13,8 @@ This skill takes a project from nothing to a verified first render. For anything
 | Task | Skill |
 | --- | --- |
 | Scenes, layout, typography, animation, beat grids, film structure | `framefields-compose` |
-| Post-processing, color grading, VFX, on-device vision (tracking, cutouts, pose) | `framefields-effects` |
+| Post-processing, color grading, VFX | `framefields-effects` |
+| On-device vision: detection, cutouts, pose, tracking a specific person or several people (SAM 2.1 / SAM 3) | `framefields-vision` |
 | Frame inspection, frame grids, pixel tests, video export and QA | `framefields-render` |
 | Ready-made components (`npx framefields add`) | this skill, section 8 |
 | Generating images, video, music, voice with AI models (`ai`) | this skill, section 6 |
@@ -384,7 +385,7 @@ Coding agents interacting with the AI gateway can discover endpoints, inspect cr
 
 ## 8. Grow the film
 
-Once the first render works, move to the specialist skills: `framefields-compose` for splitting the film into scene modules on a beat grid, `framefields-effects` for grading, grain, and vision-driven effects, and `framefields-render` for tests and delivery checks. Keep `theme.ts` as the single source of sizes, colors, fonts, and timing as the project grows.
+Once the first render works, move to the specialist skills: `framefields-compose` for splitting the film into scene modules on a beat grid, `framefields-effects` for grading and grain, `framefields-vision` for cutouts, pose and tracking people, and `framefields-render` for tests and delivery checks. Keep `theme.ts` as the single source of sizes, colors, fonts, and timing as the project grows.
 
 ### Ready-made components
 

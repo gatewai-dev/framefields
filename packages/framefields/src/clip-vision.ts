@@ -9,15 +9,30 @@ import {
 	type ClipSubjectSource,
 	COCO17_KEYPOINT_NAMES,
 	type InstanceMask,
+	maskObject,
 	mergeSubjectMask,
+	VisionBundle,
 	VisionRunner,
 } from "@framefields/vision";
+import type {
+	Sam2Options,
+	Sam2Tracker,
+	Sam3ObjectResult,
+	Sam3Options,
+	Sam3Tracker,
+} from "@framefields/vision-sam";
 import { mediaDecoderCache } from "@framefields/webgpu-renderers";
 import type { VisionProps } from "./effects/index.js";
 
 export type PoseKeypointName = (typeof COCO17_KEYPOINT_NAMES)[number];
 
 export interface ClipVisionOptions {
+	/** Prompted SAM 2.1 (Tiny or Small) video segmentation. Pose is opt-in in this mode. */
+	sam2?: Sam2Options;
+	/** SAM 3 point/box or text selection with temporal tracking. Mutually exclusive with sam2. */
+	sam3?: Sam3Options;
+	/** Explicitly agree to Meta's SAM License terms, required to download and run SAM 3. */
+	acceptSamLicense?: boolean;
 	/** Composition frame the clip's first frame plays on (default 0). */
 	startFrame?: number;
 	/** Seconds trimmed off the clip's start, as on its media layer (default 0). */
@@ -58,6 +73,7 @@ export interface PersonPlacement {
 }
 
 interface FrameResult {
+	score?: number;
 	/** 17 × [x, y, visibility], source px; null when no person was found. */
 	kp: Float32Array | null;
 	/** cellW × cellH, 0–255; null when no person was found. */
@@ -71,6 +87,20 @@ interface SubjectResult {
 	/** (value, run length) pairs over the source-sized 0–255 mask. */
 	values: Uint8Array;
 	lengths: Uint32Array;
+	/**
+	 * Prompted (SAM) frames only: presence probability per track ID. The runs then hold a
+	 * label map (track ID per pixel, 0 for none) instead of alpha.
+	 */
+	scores?: number[];
+}
+
+/** A subject as written to the subjects cache file. */
+interface StoredSubject {
+	category: string;
+	area: number;
+	scores?: number[];
+	values: string;
+	lengths: string;
 }
 
 interface Transform {
@@ -84,6 +114,26 @@ interface Transform {
 const HOLD = 24;
 
 const CACHE_VERSION = 1;
+
+type VisionSam = typeof import("@framefields/vision-sam");
+
+let visionSam: Promise<VisionSam> | undefined;
+let clipVisionIds = 0;
+
+/**
+ * SAM lives in `@framefields/vision-sam`, an optional peer (SAM 3's weights are under Meta's SAM License), so it
+ * is imported only when a clip asks for `sam2` or `sam3`.
+ */
+function loadVisionSam(): Promise<VisionSam> {
+	visionSam ??= import("@framefields/vision-sam").catch((cause: unknown) => {
+		visionSam = undefined;
+		throw new Error(
+			"Prompted sam2/sam3 tracking needs the optional @framefields/vision-sam package. Install it next to framefields.",
+			{ cause },
+		);
+	});
+	return visionSam;
+}
 
 /**
  * Vision results for one clip, computed per frame on demand and shared by
@@ -115,6 +165,20 @@ export class ClipVision implements ClipSubjectSource {
 	private readonly cell: number;
 	private queue: Promise<void> = Promise.resolve();
 	private runner?: VisionRunner;
+	private sam2Tracker?: Sam2Tracker;
+	private sam2Frame = -1;
+	private sam3Tracker?: Sam3Tracker;
+	private sam3Frame = -1;
+	private sam?: Promise<VisionSam>;
+	/** Clips walk their source independently, so each owns a decoder (requests to one supersede). */
+	private readonly decoderId = `clip-vision#${++clipVisionIds}#`;
+	private signalBundle?: VisionBundle;
+	private publishedSignals = new Set<number>();
+	private signalMaskFrame = -1;
+	/** Masks of `signalMaskFrame` by track ID (0: all tracks merged). */
+	private readonly signalMasks = new Map<number, InstanceMask>();
+	/** Prompted track count per source frame, including frames where every track is absent. */
+	private readonly trackCounts = new Map<number, number>();
 	private cacheLoaded?: Promise<void>;
 	private unsaved = 0;
 	private unsavedSubjects = 0;
@@ -129,13 +193,103 @@ export class ClipVision implements ClipSubjectSource {
 	/** @internal Use `comp.vision(source, options)`. */
 	constructor(source: string, fps: number, options: ClipVisionOptions = {}) {
 		this.source = source;
-		this.options = options;
+		if (options.sam2 && options.sam3)
+			throw new Error("Choose one prompted backend: sam2 or sam3.");
+		this.options = options.sam2
+			? {
+					...options,
+					sam2: {
+						...options.sam2,
+						prompts: options.sam2.prompts.map((prompt) => ({
+							...prompt,
+							points: prompt.points.map((point) => ({ ...point })),
+						})),
+					},
+				}
+			: options.sam3
+				? {
+						...options,
+						sam3: {
+							...options.sam3,
+							prompts: (
+								options.sam3.prompts ??
+								(options.sam3.text
+									? [{ frame: 0, text: options.sam3.text }]
+									: [])
+							).map((prompt) => ({
+								...prompt,
+								...(prompt.points
+									? {
+											points: prompt.points.map((point) => ({
+												...point,
+											})),
+										}
+									: {}),
+							})),
+						},
+					}
+				: options;
 		this.compositionFps = fps;
 		this.fps = options.fps ?? fps;
 		this.startFrame = Math.round(options.startFrame ?? 0);
 		this.trimStartSec = options.trimStartSec ?? 0;
-		this.smoothing = Math.max(0, Math.round(options.smoothing ?? 2));
+		this.smoothing = Math.max(
+			0,
+			Math.round(options.smoothing ?? (options.sam2 || options.sam3 ? 0 : 2)),
+		);
 		this.cell = Math.max(1, Math.round(options.maskCell ?? 8));
+		if (options.sam2 || options.sam3) this.wantSubjects = true;
+	}
+
+	/** @internal Explicit selections must never fall back to another detected subject. */
+	get exact(): boolean {
+		return this.options.sam2 !== undefined || this.options.sam3 !== undefined;
+	}
+
+	/** Object, mask and optional pose signals on the composition clock, in source geometry. */
+	get signals(): VisionBundle {
+		this.keepSubjects();
+		this.signalBundle ??= new VisionBundle({
+			fps: this.compositionFps,
+			totalFrames: Number.MAX_SAFE_INTEGER,
+			maskSource: (frame) =>
+				this.trackIds(frame).flatMap((id) => {
+					const mask = this.maskAt(frame, id);
+					return mask && mask.area > 0 ? [mask] : [];
+				}),
+			matteSource: (frame) => {
+				const mask = this.maskAt(frame);
+				return mask
+					? {
+							mask: mask.mask,
+							width: mask.width,
+							height: mask.height,
+							coverage: mask.coverage,
+						}
+					: undefined;
+			},
+		});
+		return this.signalBundle;
+	}
+
+	private decoder(): ReturnType<typeof mediaDecoderCache.getVideo> {
+		return mediaDecoderCache.getVideo(this.source, true, this.decoderId);
+	}
+
+	/** Free inference sessions and the decoder. Analysed frames remain readable; later frames replay memory. */
+	release(): void {
+		mediaDecoderCache.clearNode(this.decoderId);
+		this.sam2Tracker?.release();
+		this.sam2Tracker = undefined;
+		this.sam2Frame = -1;
+		this.sam3Tracker?.release();
+		this.sam3Tracker = undefined;
+		this.sam3Frame = -1;
+		this.runner?.close();
+		this.runner = undefined;
+		this.signalMaskFrame = -1;
+		this.signalMasks.clear();
+		this.publishedSignals.clear();
 	}
 
 	/** The tracked person in source pixels; `.place()` maps it into the composition. */
@@ -151,14 +305,24 @@ export class ClipVision implements ClipSubjectSource {
 	 */
 	ready(frame: number, toFrame: number = frame): Promise<void> {
 		const [from, to] = this.window(frame, toFrame);
-		this.queue = this.queue.then(() => this.compute(from, to));
-		return this.queue;
+		const run = this.queue.then(async () => {
+			try {
+				await this.compute(from, to);
+			} catch (error) {
+				this.release();
+				throw error;
+			}
+			if (this.signalBundle)
+				this.publishSignals(Math.min(frame, toFrame), Math.max(frame, toFrame));
+		});
+		this.queue = run.catch(() => undefined);
+		return run;
 	}
 
 	/** True when composition frame `frame` can be read synchronously. */
 	isReady(frame: number): boolean {
 		const [from, to] = this.window(frame, frame);
-		for (let c = from; c <= to; c++) if (!this.results.has(c)) return false;
+		for (let c = from; c <= to; c++) if (!this.analysed(c)) return false;
 		return true;
 	}
 
@@ -178,11 +342,16 @@ export class ClipVision implements ClipSubjectSource {
 	 */
 	subject(frame: number, fps: number): InstanceMask | null | undefined {
 		const c = (frame * this.fps) / fps;
-		if (!this.options.timeRemap && Math.abs(c - Math.round(c)) > 1e-6)
+		if (
+			!this.exact &&
+			!this.options.timeRemap &&
+			Math.abs(c - Math.round(c)) > 1e-6
+		)
 			return undefined;
-		const sourceFrame = this.options.timeRemap
-			? Math.floor(c + 1e-6)
-			: Math.round(c);
+		const sourceFrame =
+			this.options.timeRemap || this.exact
+				? Math.floor(c + 1e-6)
+				: Math.round(c);
 		const s = this.subjects.get(sourceFrame);
 		if (s === undefined) return s;
 		if (s === null || !this.sourceWidth) return null;
@@ -190,7 +359,7 @@ export class ClipVision implements ClipSubjectSource {
 		const height = this.sourceHeight;
 		return {
 			category: s.category,
-			mask: decodeRuns(s, width * height),
+			mask: subjectAlpha(s, width * height),
 			width,
 			height,
 			area: s.area,
@@ -247,7 +416,18 @@ export class ClipVision implements ClipSubjectSource {
 		return this.results.has(c) && (!this.wantSubjects || this.subjects.has(c));
 	}
 
+	/** Loads `@framefields/vision-sam` and validates the prompts once, on first use. */
+	private prompted(): Promise<VisionSam> {
+		this.sam ??= loadVisionSam().then((sam) => {
+			if (this.options.sam2) sam.validateSam2Prompts(this.options.sam2.prompts);
+			if (this.options.sam3) sam.validateSam3Prompts(this.options.sam3);
+			return sam;
+		});
+		return this.sam;
+	}
+
 	private async compute(from: number, to: number): Promise<void> {
+		if (this.exact) await this.prompted();
 		this.cacheLoaded ??= this.loadCache();
 		await this.cacheLoaded;
 		if (this.wantSubjects) {
@@ -258,6 +438,14 @@ export class ClipVision implements ClipSubjectSource {
 		for (let c = from; c <= to; c++) if (!this.analysed(c)) missing = true;
 		if (!missing) return;
 
+		if (this.options.sam2) {
+			await this.computeSam2(to);
+			return;
+		}
+		if (this.options.sam3) {
+			await this.computeSam3(to);
+			return;
+		}
 		const wantPose = this.options.pose ?? true;
 		const wantMask = this.options.mask ?? true;
 		this.runner ??= VisionRunner.create({
@@ -270,11 +458,7 @@ export class ClipVision implements ClipSubjectSource {
 				variant: this.options.variant,
 			}),
 		});
-		const decoder = mediaDecoderCache.getVideo(
-			this.source,
-			true,
-			"clip-vision",
-		);
+		const decoder = this.decoder();
 		for (let c = from; c <= to; c++) {
 			if (this.analysed(c)) continue;
 			const image = await decodedPixels(await decoder.getFrame(c / this.fps));
@@ -339,6 +523,303 @@ export class ClipVision implements ClipSubjectSource {
 		if (this.unsavedSubjects > 0) await this.saveSubjects();
 	}
 
+	private async computeSam2(to: number): Promise<void> {
+		const settings = this.options.sam2;
+		if (!settings) return;
+		const first = settings.prompts[0]?.frame ?? 0;
+		for (let frame = 0; frame < Math.min(first, to + 1); frame++) {
+			this.results.set(frame, { kp: null, mask: null, score: 0 });
+			this.subjects.set(frame, null);
+		}
+		if (to < first) return;
+		const decoder = this.decoder();
+		if (!this.sam2Tracker) {
+			const frameCount = Math.max(
+				1,
+				Math.ceil((await decoder.durationSec()) * this.fps - 1e-6),
+			);
+			if (settings.prompts.some((prompt) => prompt.frame >= frameCount)) {
+				throw new Error("SAM 2 prompt frames must be inside the source video.");
+			}
+			const { Sam2Tracker } = await this.prompted();
+			this.sam2Tracker = await Sam2Tracker.create({
+				modelsDir: this.options.modelsDir,
+				baseUrl: this.options.baseUrl,
+				frameCount,
+				model: settings.model,
+			});
+			this.sam2Frame = first - 1;
+		}
+		for (let frame = this.sam2Frame + 1; frame <= to; frame++) {
+			const image = await decodedPixels(
+				await decoder.getFrame(frame / this.fps),
+			);
+			if (!image) throw new Error(`Cannot decode SAM 2 source frame ${frame}.`);
+			if (!this.sourceWidth) this.setSize(image.width, image.height);
+			const prompt = settings.prompts.find((item) => item.frame === frame);
+			const result = await this.sam2Tracker.process(
+				image,
+				frame,
+				prompt?.points,
+			);
+			const kp = this.options.pose
+				? await this.matchedPose(image, result.mask)
+				: null;
+			this.storeSamFrame(frame, result.width, result.height, [result], kp);
+			if (this.unsaved >= 24) {
+				await this.saveCache();
+				await this.saveSubjects();
+			}
+		}
+		await this.saveCache();
+		await this.saveSubjects();
+	}
+
+	private async computeSam3(to: number): Promise<void> {
+		const settings = this.options.sam3;
+		if (!settings) return;
+		const first = settings.prompts[0]?.frame ?? 0;
+		for (let frame = 0; frame < Math.min(first, to + 1); frame++) {
+			this.results.set(frame, { kp: null, mask: null, score: 0 });
+			this.subjects.set(frame, null);
+		}
+		if (to < first) return;
+		const decoder = this.decoder();
+		if (!this.sam3Tracker) {
+			const frameCount = Math.max(
+				1,
+				Math.ceil((await decoder.durationSec()) * this.fps - 1e-6),
+			);
+			if (settings.prompts.some((prompt) => prompt.frame >= frameCount)) {
+				throw new Error("SAM 3 prompt frames must be inside the source video.");
+			}
+			const { Sam3Tracker } = await this.prompted();
+			this.sam3Tracker = await Sam3Tracker.create({
+				modelsDir: this.options.modelsDir,
+				baseUrl: this.options.baseUrl,
+				frameCount,
+				textThreshold: settings.textThreshold,
+				maxObjects: settings.maxObjects,
+				merge: settings.merge,
+				precision: settings.precision,
+				acceptLicense:
+					this.options.acceptSamLicense ?? this.options.sam3?.acceptLicense,
+			});
+			this.sam3Frame = first - 1;
+		}
+		for (let frame = this.sam3Frame + 1; frame <= to; frame++) {
+			const image = await decodedPixels(
+				await decoder.getFrame(frame / this.fps),
+			);
+			if (!image) throw new Error(`Cannot decode SAM 3 source frame ${frame}.`);
+			if (!this.sourceWidth) this.setSize(image.width, image.height);
+			const prompt = settings.prompts.find((item) => item.frame === frame);
+			const result = await this.sam3Tracker.process(image, frame, prompt);
+			const kp = this.options.pose
+				? await this.matchedPose(image, unionMask(result.objects, image))
+				: null;
+			this.storeSamFrame(
+				frame,
+				result.width,
+				result.height,
+				result.objects,
+				kp,
+			);
+			if (this.unsaved >= 24) {
+				await this.saveCache();
+				await this.saveSubjects();
+			}
+		}
+		await this.saveCache();
+		await this.saveSubjects();
+	}
+
+	/** Stores a prompted frame: every track's mask as one label map, the union as the subject. */
+	private storeSamFrame(
+		frame: number,
+		width: number,
+		height: number,
+		objects: readonly Pick<Sam3ObjectResult, "mask" | "score">[],
+		kp: Float32Array | null,
+	): void {
+		const labels = new Uint8Array(width * height);
+		// Ascending presence, so where tracks overlap the most confident one keeps the pixel.
+		const order = [...objects.keys()].sort(
+			(a, b) => (objects[a]?.score ?? 0) - (objects[b]?.score ?? 0),
+		);
+		for (const index of order) {
+			const mask = objects[index]?.mask;
+			if (!mask) continue;
+			for (let i = 0; i < mask.length; i++)
+				if ((mask[i] ?? 0) >= 128) labels[i] = index + 1;
+		}
+		const union = Uint8Array.from(labels, (id) => (id ? 255 : 0));
+		const grid = new Uint8Array(this.cellW * this.cellH);
+		downsampleMean(
+			union,
+			width,
+			height,
+			this.cell,
+			grid,
+			this.cellW,
+			this.cellH,
+		);
+		let area = 0;
+		for (const id of labels) if (id) area++;
+		const scores = objects.map((o) => 1 / (1 + Math.exp(-o.score)));
+		this.results.set(frame, {
+			kp,
+			mask: grid,
+			score: Math.max(0, ...scores),
+		});
+		this.subjects.set(
+			frame,
+			area > 0
+				? { category: this.samCategory(), area, scores, ...encodeRuns(labels) }
+				: null,
+		);
+		this.trackCounts.set(frame, objects.length);
+		this.blurred.delete(frame);
+		if (this.options.sam3) this.sam3Frame = frame;
+		else this.sam2Frame = frame;
+		this.unsaved++;
+		this.unsavedSubjects++;
+	}
+
+	private samCategory(): string {
+		return (
+			this.options.sam2?.category ?? this.options.sam3?.category ?? "object"
+		);
+	}
+
+	private async matchedPose(
+		image: {
+			data: Uint8Array | Uint8ClampedArray;
+			width: number;
+			height: number;
+		},
+		mask: Uint8Array,
+	): Promise<Float32Array | null> {
+		this.runner ??= VisionRunner.create({
+			modelsDir: this.options.modelsDir,
+			baseUrl: this.options.baseUrl,
+			variant: this.options.variant,
+		});
+		const { people } = await this.runner.pose(image);
+		const ranked = people
+			.map((person) => ({
+				person,
+				overlap: person.keypoints.reduce((sum, point) => {
+					const x = Math.max(0, Math.min(image.width - 1, Math.round(point.x)));
+					const y = Math.max(
+						0,
+						Math.min(image.height - 1, Math.round(point.y)),
+					);
+					return (
+						sum + ((mask[y * image.width + x] ?? 0) / 255) * point.visibility
+					);
+				}, 0),
+			}))
+			.sort((a, b) => b.overlap - a.overlap);
+		const match = ranked[0];
+		if (!match || match.overlap < 2) return null;
+		return Float32Array.from(
+			match.person.keypoints.flatMap((point) => [
+				point.x,
+				point.y,
+				point.visibility,
+			]),
+		);
+	}
+
+	/** Track IDs at a composition frame: every prompted track, else the one subject. */
+	private trackIds(frame: number): number[] {
+		const c = Math.max(0, Math.floor(this.clipFrame(frame)));
+		const count =
+			this.subjects.get(c)?.scores?.length ?? this.trackCounts.get(c) ?? 1;
+		return Array.from({ length: count }, (_, i) => i + 1);
+	}
+
+	/** The subject (all tracks merged) or, with `id`, one track's mask, in source pixels. */
+	private maskAt(frame: number, id?: number): InstanceMask | undefined {
+		const c = Math.max(0, Math.floor(this.clipFrame(frame)));
+		if (this.signalMaskFrame !== c) {
+			this.signalMaskFrame = c;
+			this.signalMasks.clear();
+		}
+		const hit = this.signalMasks.get(id ?? 0);
+		if (hit) return hit;
+		if (!this.results.has(c) || !this.sourceWidth) return undefined;
+		const stored = this.subjects.get(c);
+		const size = this.sourceWidth * this.sourceHeight;
+		const data = stored ? subjectAlpha(stored, size, id) : new Uint8Array(size);
+		let area = stored?.area ?? 0;
+		if (id !== undefined && stored?.scores) {
+			area = 0;
+			for (const alpha of data) if (alpha) area++;
+		}
+		const mask: InstanceMask = {
+			category: stored?.category ?? this.samCategory(),
+			mask: data,
+			width: this.sourceWidth,
+			height: this.sourceHeight,
+			area,
+			coverage: area / size,
+			detectionIndex: (id ?? 1) - 1,
+			trackId: id ?? 1,
+		};
+		this.signalMasks.set(id ?? 0, mask);
+		return mask;
+	}
+
+	private publishSignals(from: number, to: number): void {
+		const bundle = this.signalBundle;
+		if (!bundle || !this.sourceWidth) return;
+		bundle.setFrameSize(this.sourceWidth, this.sourceHeight);
+		for (let frame = from; frame <= to; frame++) {
+			if (this.publishedSignals.has(frame)) continue;
+			this.publishedSignals.add(frame);
+			const c = Math.max(0, Math.floor(this.clipFrame(frame)));
+			const mask = this.maskAt(frame);
+			if (!mask) continue;
+			const before = bundle.getObjectResult(frame - 1).objects;
+			const scores = this.subjects.get(c)?.scores;
+			const objects = this.trackIds(frame).flatMap((id) => {
+				const track = this.maskAt(frame, id);
+				if (!track) return [];
+				return [
+					maskObject(
+						track,
+						frame,
+						this.compositionFps,
+						scores?.[id - 1] ?? this.results.get(c)?.score ?? 1,
+						before.find((object) => object.trackId === id),
+					),
+				];
+			});
+			bundle.setObjectResult(frame, objects);
+			const object =
+				objects[0] ?? maskObject(mask, frame, this.compositionFps, 0);
+			const kp = this.results.get(c)?.kp;
+			bundle.setPoseResult(frame, {
+				people: kp
+					? [
+							{
+								score: object.score,
+								boundingBox: object.boundingBox,
+								trackId: 1,
+								keypoints: Array.from({ length: 17 }, (_, i) => ({
+									x: (kp[i * 3] ?? 0) / mask.width,
+									y: (kp[i * 3 + 1] ?? 0) / mask.height,
+									visibility: kp[i * 3 + 2] ?? 0,
+								})),
+							},
+						]
+					: [],
+			});
+		}
+	}
+
 	private setSize(width: number, height: number): void {
 		this.sourceWidth = width;
 		this.sourceHeight = height;
@@ -392,7 +873,9 @@ export class ClipVision implements ClipSubjectSource {
 		c = Math.max(0, c);
 		if (this.blurred.has(c)) return this.blurred.get(c) ?? null;
 		this.mustHave(c);
-		const mask = bridgedMask(this.results, c, this.smoothing);
+		const mask = this.exact
+			? (this.results.get(c)?.mask ?? null)
+			: bridgedMask(this.results, c, this.smoothing);
 		const grid = mask ? boxBlur(mask, this.cellW, this.cellH, 2) : null;
 		this.blurred.set(c, grid);
 		return grid;
@@ -440,6 +923,7 @@ export class ClipVision implements ClipSubjectSource {
 				process.env.FRAMEFIELDS_VISION_CACHE_DIR ??
 				path.join(os.homedir(), ".cache", "framefields", "vision");
 			const o = this.options;
+			const sam = this.exact ? await this.prompted() : undefined;
 			const key = JSON.stringify([
 				CACHE_VERSION,
 				path.resolve(this.source),
@@ -451,6 +935,19 @@ export class ClipVision implements ClipSubjectSource {
 				this.cell,
 				o.variant ?? "s",
 				o.confidence ?? null,
+				// Prompted subjects are track-ID label maps (format 2).
+				...(o.sam2 ? [[sam?.sam2Revision(o.sam2.model), o.sam2, 2]] : []),
+				...(o.sam3 && sam
+					? [
+							[
+								sam.sam3Revision(
+									await sam.sam3Precision(undefined, o.sam3.precision),
+								),
+								o.sam3,
+								2,
+							],
+						]
+					: []),
 			]);
 			const hash = crypto
 				.createHash("sha256")
@@ -478,13 +975,17 @@ export class ClipVision implements ClipSubjectSource {
 				width: number;
 				height: number;
 				cell: number;
-				frames: Record<string, { kp: number[] | null; mask: string | null }>;
+				frames: Record<
+					string,
+					{ kp: number[] | null; mask: string | null; score?: number }
+				>;
 			};
 			if (json.cell !== this.cell) return;
 			this.setSize(json.width, json.height);
 			for (const [c, r] of Object.entries(json.frames)) {
 				this.results.set(Number(c), {
 					kp: r.kp ? Float32Array.from(r.kp) : null,
+					score: r.score,
 					mask: r.mask ? new Uint8Array(Buffer.from(r.mask, "base64")) : null,
 				});
 			}
@@ -497,12 +998,15 @@ export class ClipVision implements ClipSubjectSource {
 		this.unsaved = 0;
 		const file = await this.cachePath();
 		if (!file || !this.sourceWidth) return;
-		const frames: Record<string, { kp: number[] | null; mask: string | null }> =
-			{};
+		const frames: Record<
+			string,
+			{ kp: number[] | null; mask: string | null; score?: number }
+		> = {};
 		for (const [c, r] of this.results) {
 			frames[c] = {
 				kp: r.kp ? Array.from(r.kp, (v) => Math.round(v * 100) / 100) : null,
 				mask: r.mask ? Buffer.from(r.mask).toString("base64") : null,
+				score: r.score,
 			};
 		}
 		const fs = await import("node:fs");
@@ -534,15 +1038,7 @@ export class ClipVision implements ClipSubjectSource {
 			const json = JSON.parse(fs.readFileSync(file, "utf8")) as {
 				width: number;
 				height: number;
-				frames: Record<
-					string,
-					{
-						category: string;
-						area: number;
-						values: string;
-						lengths: string;
-					} | null
-				>;
+				frames: Record<string, StoredSubject | null>;
 			};
 			if (this.sourceWidth && json.width !== this.sourceWidth) return;
 			if (!this.sourceWidth) this.setSize(json.width, json.height);
@@ -553,6 +1049,7 @@ export class ClipVision implements ClipSubjectSource {
 					s && {
 						category: s.category,
 						area: s.area,
+						...(s.scores && { scores: s.scores }),
 						values: new Uint8Array(Buffer.from(s.values, "base64")),
 						lengths: new Uint32Array(
 							lengths.buffer.slice(
@@ -572,14 +1069,12 @@ export class ClipVision implements ClipSubjectSource {
 		this.unsavedSubjects = 0;
 		const file = await this.subjectsPath();
 		if (!file || !this.sourceWidth) return;
-		const frames: Record<
-			string,
-			{ category: string; area: number; values: string; lengths: string } | null
-		> = {};
+		const frames: Record<string, StoredSubject | null> = {};
 		for (const [c, s] of this.subjects) {
 			frames[c] = s && {
 				category: s.category,
 				area: s.area,
+				...(s.scores && { scores: s.scores }),
 				values: Buffer.from(s.values).toString("base64"),
 				lengths: Buffer.from(
 					s.lengths.buffer,
@@ -1011,4 +1506,29 @@ export function seedClipVision(
 		);
 	});
 	return clip;
+}
+
+/** A stored subject as 0/255 alpha: label maps merge every track, or keep track `id` only. */
+function subjectAlpha(
+	stored: SubjectResult,
+	size: number,
+	id?: number,
+): Uint8Array {
+	const values = decodeRuns(stored, size);
+	if (!stored.scores) return values;
+	return values.map((label) =>
+		(id === undefined ? label > 0 : label === id) ? 255 : 0,
+	);
+}
+
+/** Every track's mask merged, for matching one pose to the whole selection. */
+function unionMask(
+	objects: readonly Pick<Sam3ObjectResult, "mask">[],
+	image: { width: number; height: number },
+): Uint8Array {
+	const union = new Uint8Array(image.width * image.height);
+	for (const { mask } of objects)
+		for (let i = 0; i < union.length; i++)
+			union[i] = Math.max(union[i] ?? 0, mask[i] ?? 0);
+	return union;
 }

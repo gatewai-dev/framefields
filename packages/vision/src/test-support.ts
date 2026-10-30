@@ -27,6 +27,17 @@ export class ScriptedSession implements VisionSession {
 		});
 		return this.outputs;
 	}
+	async runMany(
+		inputs: readonly VisionTensorInput[],
+	): Promise<VisionTensorOutputs> {
+		for (const input of inputs)
+			this.inputs.push({
+				...input,
+				data: input.data.slice(),
+				dims: [...input.dims],
+			});
+		return this.outputs;
+	}
 	release(): void {}
 }
 

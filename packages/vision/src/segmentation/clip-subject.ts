@@ -11,6 +11,8 @@ export const CLIP_SUBJECT: unique symbol = Symbol.for(
 ) as never;
 
 export interface ClipSubjectSource {
+	/** An explicit selection must not silently fall back to automatic subject detection. */
+	readonly exact?: boolean;
 	/**
 	 * The merged subject mask for a source frame of the clip (`frame` at `fps`),
 	 * in source pixels; `null` when the frame was analysed and holds no subject;

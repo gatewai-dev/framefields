@@ -350,31 +350,6 @@ importers:
         specifier: ^4.1.11
         version: 4.1.11(@opentelemetry/api@1.9.0)(@types/node@24.10.14)(@vitest/coverage-v8@4.1.11)(jsdom@29.1.0(@noble/hashes@2.0.1)(canvas@3.2.3))(vite@8.2.1(@types/node@24.10.14)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.3))
 
-  examples/25_bakery:
-    dependencies:
-      '@framefields/compositions':
-        specifier: workspace:*
-        version: link:../../packages/compositions
-      framefields:
-        specifier: workspace:*
-        version: link:../../packages/framefields
-      mediabunny:
-        specifier: ^1.61.6
-        version: 1.61.6
-    devDependencies:
-      '@framefields/tsconfig':
-        specifier: workspace:*
-        version: link:../../packages/tsconfig
-      '@types/node':
-        specifier: ^24.1.0
-        version: 24.10.14
-      tsx:
-        specifier: ^4.20.3
-        version: 4.21.0
-      typescript:
-        specifier: ^5.8.3
-        version: 5.9.3
-
   examples/26_mac_keyboard_from_3d_primitives:
     dependencies:
       framefields:
@@ -3030,6 +3005,9 @@ importers:
       '@framefields/vision':
         specifier: workspace:*
         version: link:../vision
+      '@framefields/vision-sam':
+        specifier: workspace:*
+        version: link:../vision-sam
       '@framefields/webgpu-renderers':
         specifier: workspace:*
         version: link:../webgpu-renderers
@@ -3455,6 +3433,46 @@ importers:
       skia-canvas:
         specifier: ^3.0.8
         version: 3.0.8
+      tsdown:
+        specifier: ^0.19.0
+        version: 0.19.0(oxc-resolver@11.19.1)(typescript@5.9.3)
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      vitest:
+        specifier: ^4.1.11
+        version: 4.1.11(@opentelemetry/api@1.9.0)(@types/node@24.10.14)(@vitest/coverage-v8@4.1.11)(jsdom@29.1.0(@noble/hashes@2.0.1)(canvas@3.2.3))(vite@8.2.1(@types/node@24.10.14)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.3))
+
+  packages/vision-sam:
+    dependencies:
+      '@framefields/core':
+        specifier: workspace:*
+        version: link:../core
+      '@framefields/vision':
+        specifier: workspace:*
+        version: link:../vision
+      '@huggingface/tokenizers':
+        specifier: ^0.2.0
+        version: 0.2.0
+      onnxruntime-node:
+        specifier: ^1.24.0
+        version: 1.30.0
+      onnxruntime-web:
+        specifier: ^1.24.0
+        version: 1.30.0
+      webgpu:
+        specifier: ^0.4.0
+        version: 0.4.0
+      zod:
+        specifier: ^4.3.6
+        version: 4.3.6
+    devDependencies:
+      '@framefields/tsconfig':
+        specifier: workspace:*
+        version: link:../tsconfig
+      '@types/node':
+        specifier: ^24.1.0
+        version: 24.10.14
       tsdown:
         specifier: ^0.19.0
         version: 0.19.0(oxc-resolver@11.19.1)(typescript@5.9.3)
@@ -4009,6 +4027,9 @@ packages:
     engines: {node: '>=20'}
     peerDependencies:
       hono: '>=4.13.7'
+
+  '@huggingface/tokenizers@0.2.0':
+    resolution: {integrity: sha512-LidMHe1FpcSYH4vcSjXooda34pC0M8m1gmDOv7SQi6Iv+ib1zX7J3sHBCC9/3FPCkn2k1b55FneVqMRxrr99pg==}
 
   '@img/colour@1.1.0':
     resolution: {integrity: sha512-Td76q7j57o/tLVdgS746cYARfSyxk8iEfRxewL9h4OMzYhbW4TAcppl0mT4eyqXddh6L/jwoM75mo7ixa/pCeQ==}
@@ -7409,6 +7430,8 @@ snapshots:
     dependencies:
       hono: 4.13.13
 
+  '@huggingface/tokenizers@0.2.0': {}
+
   '@img/colour@1.1.0': {}
 
   '@img/sharp-darwin-arm64@0.35.5':
@@ -8302,7 +8325,7 @@ snapshots:
       obug: 2.2.1
       std-env: 4.2.0
       tinyrainbow: 3.1.0
-      vitest: 4.1.11(@opentelemetry/api@1.9.0)(@types/node@25.9.9)(@vitest/coverage-v8@4.1.11)(jsdom@29.1.0(@noble/hashes@2.0.1)(canvas@3.2.3))(vite@8.2.1(@types/node@25.9.9)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.3))
+      vitest: 4.1.11(@opentelemetry/api@1.9.0)(@types/node@24.10.14)(@vitest/coverage-v8@4.1.11)(jsdom@29.1.0(@noble/hashes@2.0.1)(canvas@3.2.3))(vite@8.2.1(@types/node@24.10.14)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.3))
 
   '@vitest/expect@4.1.11':
     dependencies:

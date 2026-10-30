@@ -86,6 +86,8 @@ examples/**/output/
 *.tflite
 *.task
 packages/**/models/
+# Source modules named models/ are code, not weights.
+!packages/**/src/models/
 
 # Local agent workspace (Hermes plans, scratch probes)
 .hermes/

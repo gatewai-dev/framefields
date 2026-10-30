@@ -35,6 +35,11 @@ export interface VisionModelStoreOptions {
 		bytesLoaded: number,
 		totalBytes: number,
 	) => void;
+	/**
+	 * Explicitly agree to non-Apache licenses (such as Meta's SAM License)
+	 * required by downloaded models.
+	 */
+	readonly acceptLicense?: boolean;
 }
 
 /**
@@ -65,6 +70,7 @@ export class VisionModelStore {
 	private readonly _verify: boolean;
 	private readonly _fetch: typeof fetch;
 	private readonly _onProgress?: VisionModelStoreOptions["onProgress"];
+	private readonly _acceptLicense: boolean;
 
 	private _inflight = new Map<VisionModelKey, Promise<Uint8Array>>();
 	private _buffers = new Map<VisionModelKey, Uint8Array>();
@@ -82,6 +88,7 @@ export class VisionModelStore {
 		this._verify = options.verify !== false;
 		this._fetch = options.fetchImpl ?? globalThis.fetch;
 		this._onProgress = options.onProgress;
+		this._acceptLicense = options.acceptLicense === true;
 	}
 
 	public get modelsDir(): string {
@@ -89,29 +96,37 @@ export class VisionModelStore {
 	}
 
 	public pathFor(key: VisionModelKey): string {
-		return join(this._modelsDir, VISION_MODELS[key].filename);
+		return join(this._modelsDir, this.descriptor(key).filename);
 	}
 
 	public descriptor(key: VisionModelKey): VisionModelDescriptor {
-		return VISION_MODELS[key];
+		const desc = VISION_MODELS[key];
+		if (!desc) {
+			throw new Error(
+				`Vision model '${key}' is not registered in the model store.`,
+			);
+		}
+		return desc;
 	}
 
 	/** The URL `ensure(key)` downloads from (mirror when `baseUrl` is set). */
 	public urlFor(key: VisionModelKey): string {
-		const desc = VISION_MODELS[key];
+		const desc = this.descriptor(key);
 		if (!this._baseUrl) return desc.url;
 		return `${this._baseUrl.replace(/\/+$/, "")}/${desc.filename}`;
 	}
 
 	/** True when a complete cached file exists (exact registry size when verifying). */
 	public has(key: VisionModelKey): boolean {
-		const targetPath = this.pathFor(key);
+		const desc = VISION_MODELS[key];
+		if (!desc) return false;
+		const targetPath = join(this._modelsDir, desc.filename);
 		if (!existsSync(targetPath)) {
 			return false;
 		}
 		try {
 			const size = statSync(targetPath).size;
-			return this._verify ? size === VISION_MODELS[key].bytes : size > 0;
+			return this._verify ? size === desc.bytes : size > 0;
 		} catch {
 			return false;
 		}
@@ -162,11 +177,25 @@ export class VisionModelStore {
 	}
 
 	private async load(key: VisionModelKey): Promise<Uint8Array> {
+		const desc = this.descriptor(key);
 		const targetPath = this.pathFor(key);
 
 		if (this.has(key)) {
 			this._status.set(key, "ready");
 			return this.readBuffer(key, targetPath);
+		}
+
+		if (desc.license && desc.license !== "Apache-2.0") {
+			if (
+				!this._acceptLicense &&
+				process.env.FRAMEFIELDS_ACCEPT_SAM_LICENSE !== "1"
+			) {
+				throw new Error(
+					`License agreement required for model "${key}":\n` +
+						`This model is licensed under "${desc.license}".\n` +
+						`To download and use this model, you must accept its license terms by passing 'acceptLicense: true' or setting FRAMEFIELDS_ACCEPT_SAM_LICENSE=1.`,
+				);
+			}
 		}
 
 		const downloadUrl = this.urlFor(key);
@@ -248,7 +277,9 @@ export class VisionModelStore {
 					{ cause: transient },
 				);
 			}
-			await new Promise((r) => setTimeout(r, this._retryDelayMs * 2 ** attempt));
+			await new Promise((r) =>
+				setTimeout(r, this._retryDelayMs * 2 ** attempt),
+			);
 		}
 	}
 

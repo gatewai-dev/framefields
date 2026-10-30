@@ -37,6 +37,9 @@ export interface VisionBundleOptions {
 	readonly height?: number;
 	readonly cameraFov?: number;
 	readonly config?: VisionConfig;
+	/** Lazy source-frame masks, for clips retaining compressed masks instead of RGBA-sized histories. */
+	readonly maskSource?: (frame: number) => readonly InstanceMask[] | undefined;
+	readonly matteSource?: (frame: number) => PersonMatte | undefined;
 }
 
 // ── Signal surface types ────────────────────────────────────────────────────
@@ -225,6 +228,9 @@ export class VisionBundle {
 	private _height: number;
 	private _transformer: SpatialLandmarkTransformer;
 	private _stencilTexture?: GPUTexture;
+	private readonly _maskSource?: VisionBundleOptions["maskSource"];
+	private readonly _matteSource?: VisionBundleOptions["matteSource"];
+	private readonly _cameraFov: number;
 
 	private _poseCache = new Map<number, PoseResult>();
 	private _objectCache = new Map<
@@ -245,6 +251,9 @@ export class VisionBundle {
 	private _registeredSignals = new Set<ProgrammaticSignal>();
 
 	constructor(options: VisionBundleOptions = {}) {
+		this._maskSource = options.maskSource;
+		this._matteSource = options.matteSource;
+		this._cameraFov = options.cameraFov ?? 60;
 		this._totalFrames = options.totalFrames ?? 120;
 		this._fps = options.fps ?? 24;
 		this._width = options.width ?? 1920;
@@ -1109,6 +1118,19 @@ export class VisionBundle {
 		};
 	}
 
+	/** Update source geometry once a lazily decoded clip's size is known. */
+	public setFrameSize(width: number, height: number): void {
+		if (this._width === width && this._height === height) return;
+		this._width = width;
+		this._height = height;
+		this._transformer = new SpatialLandmarkTransformer({
+			width,
+			height,
+			fov: this._cameraFov,
+		});
+		this.invalidateSignals();
+	}
+
 	public setStencilTexture(texture: GPUTexture): void {
 		this._stencilTexture = texture;
 	}
@@ -1193,7 +1215,11 @@ export class VisionBundle {
 	}
 
 	public getMaskResult(frame: number): readonly InstanceMask[] {
-		return this.latestAtOrBefore(this._maskCache, frame) ?? [];
+		return (
+			this._maskSource?.(frame) ??
+			this.latestAtOrBefore(this._maskCache, frame) ??
+			[]
+		);
 	}
 
 	public setMatteResult(frame: number, matte: PersonMatte): void {
@@ -1202,7 +1228,10 @@ export class VisionBundle {
 	}
 
 	public getMatteResult(frame: number): PersonMatte | undefined {
-		return this.latestAtOrBefore(this._matteCache, frame);
+		return (
+			this._matteSource?.(frame) ??
+			this.latestAtOrBefore(this._matteCache, frame)
+		);
 	}
 
 	// ── Agent DX snapshot ─────────────────────────────────────────────────

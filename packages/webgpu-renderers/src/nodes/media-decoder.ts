@@ -106,6 +106,14 @@ export class VideoDecoder extends BaseMediaDecoder<
 		reject: (err: unknown) => void;
 	} | null = null;
 
+	/** Precise video-track duration, independent of a potentially longer audio track. */
+	async durationSec(): Promise<number> {
+		await this.init();
+		const track = await this.input?.getPrimaryVideoTrack();
+		if (!track) throw new Error(`No video track in ${this.url}`);
+		return track.computeDuration();
+	}
+
 	private pushHeadlessQueue(sample: VideoSample) {
 		const index = this.headlessQueue.findIndex(
 			(s) => s.timestamp > sample.timestamp,

@@ -28,6 +28,7 @@ class MovingProvider implements SessionProvider {
 				step++;
 				return out;
 			},
+			runMany: async () => rtmdetInsOutput(),
 			release: () => {},
 		};
 	}

@@ -136,6 +136,18 @@ export {
 	type VisionVariant,
 } from "@framefields/vision";
 
+// Types only: the trackers ship in the optional @framefields/vision-sam peer.
+export type {
+	Sam2FrameResult,
+	Sam2Model,
+	Sam2Options,
+	Sam2Point,
+	Sam2Prompt,
+	Sam3Options,
+	Sam3Precision,
+	Sam3Prompt,
+} from "@framefields/vision-sam";
+
 import fs from "node:fs/promises";
 import path from "node:path";
 import { preflightMediaTime } from "@framefields/compositions";

@@ -6,6 +6,8 @@ import type { VisionTask, VisionVariant } from "@framefields/core";
  *
  * Every model is Apache-2.0 and pinned to an immutable Hugging Face revision; the store
  * verifies the SHA-256 below after download, so a moved or tampered file fails loudly.
+ * Separately licensed packages (e.g. `@framefields/vision-sam`) add their own pinned
+ * models with `registerVisionModel`.
  *
  * Downloads are ALWAYS lazy: nothing here touches the network. The store (model-store.ts)
  * fetches a model only when an inference function that needs it is first called.
@@ -30,10 +32,15 @@ export type VisionModelKey =
 	| "rtmo-s"
 	| "rtmo-m"
 	| "selfie-square"
-	| "selfie-landscape";
+	| "selfie-landscape"
+	| (string & {});
 
 /** Which decoder a model's outputs feed (see runner/vision-runner.ts). */
-export type VisionModelFamily = "rtmdet-ins" | "rtmo" | "selfie";
+export type VisionModelFamily =
+	| "rtmdet-ins"
+	| "rtmo"
+	| "selfie"
+	| (string & {});
 
 export interface VisionModelDescriptor {
 	readonly key: VisionModelKey;
@@ -50,6 +57,8 @@ export interface VisionModelDescriptor {
 	readonly input: readonly [number, number];
 	/** Upstream project and license, surfaced in docs and errors. */
 	readonly source: string;
+	/** License identifier when not Apache-2.0; the store requires acceptance to download it. */
+	readonly license?: string;
 }
 
 const hf = (repo: string, revision: string, path: string): string =>
@@ -63,9 +72,7 @@ const RTMO_SOURCE = "RTMO (OpenMMLab mmpose, Apache-2.0), ONNX export";
 const SELFIE_SOURCE =
 	"MediaPipe Selfie Segmenter (Google, Apache-2.0), ONNX export";
 
-export const VISION_MODELS: Readonly<
-	Record<VisionModelKey, VisionModelDescriptor>
-> = {
+const models: Record<VisionModelKey, VisionModelDescriptor> = {
 	// ── Detection + instance segmentation (COCO 80) ─────────────────────
 	"rtmdet-ins-t": {
 		key: "rtmdet-ins-t",
@@ -182,6 +189,15 @@ export const VISION_MODELS: Readonly<
 		source: SELFIE_SOURCE,
 	},
 };
+
+export const VISION_MODELS: Readonly<
+	Record<VisionModelKey, VisionModelDescriptor>
+> = models;
+
+/** Adds a pinned model from a separately licensed package to the registry. */
+export function registerVisionModel(descriptor: VisionModelDescriptor): void {
+	models[descriptor.key] = descriptor;
+}
 
 /**
  * Resolves the model for a task. `detect` and `segment` share RTMDet-Ins (one forward pass

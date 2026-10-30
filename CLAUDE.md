@@ -18,12 +18,13 @@ Code-first video engine on native WebGPU (Dawn) in Node, no browser. pnpm + turb
 - `packages/compositions`: Yoga layout (`utils/layout/resolve-layout.ts`), program schema (`program/schema.ts`), lint (`program/lint.ts`), animation/evaluator.
 - `packages/webgpu-renderers`: WGSL shaders, 2D/3D pipelines, Slug text (`src/slug/`), audio DSP.
 - `packages/renderer`: headless Node renderer (Dawn, WebCodecs/mediabunny).
+- `packages/vision-sam`: SAM 2.1 Tiny/Small and SAM 3 trackers (Apache-2.0 code; SAM 3 weights need runtime SAM License acceptance), an optional peer of `framefields`. `clip-vision.ts` imports it only for `comp.vision(..., { sam2 | sam3 })`; keep runtime imports of it out of `framefields` (types only). Pins in `src/models/registry.ts`.
 - `packages/core`: shared types, `Effect` base, signals, `emojiPresentation` (the one UTS #51 rule used by layout, preload and lint).
 - Others: `renderers`, `media`, `node-sdk`, `server-utils`, `client-utils`, `tensor-webgpu`, `vision`, `tsconfig`.
 - `nodes/node-*`: one VFX/audio/layout node each (`src/shared/`, `src/renderers/`, `src/index.ts`). Only `node-compositor` has a `SKILL.md`; update it when Compositor behavior changes (guarded by `skillmd-check.test.ts`).
 - `apps/renderer-service`: HTTP render service (Docker, RunPod).
 - `examples/NN_*`: reference films. Study `19_framefields_film` (structure), `22_framefields_launch` (lyric sync), `28_physics_dancer` (physics, vision, GPU particles) before writing one.
-- `plugins/framefields/skills/framefields{,-compose,-effects,-render}`: agent skills, symlinked from `.agents/skills` and `.claude/skills`.
+- `plugins/framefields/skills/framefields{,-compose,-effects,-render,-vision}`: agent skills, symlinked from `.agents/skills` and `.claude/skills`.
 - Package `exports` have a `development` condition pointing at `src/`; otherwise `dist/`, so `pnpm build` after changing a dependency.
 - Docs site is a separate repo: `/Users/okanaslankan/framefields-dev/docs` (Astro Starlight). `docs/lab` pins the published `framefields` version and builds the component demos; deploy with `pnpm run deploy`.
 

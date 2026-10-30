@@ -1,3 +1,4 @@
+import { probeModel } from "../model/probe-model.js";
 import { NodeWebGPUProvider } from "./node-webgpu-provider.js";
 
 /**
@@ -15,7 +16,7 @@ export interface VisionTensor {
 export interface VisionTensorInput {
 	readonly name: string;
 	/** Ignored (may be empty) when `gpuBuffer` is set. */
-	readonly data: Float32Array;
+	readonly data: Float32Array | Int32Array | BigInt64Array | Uint8Array;
 	/** The input already on the GPU; only for providers with a `device` (it must be that device's). */
 	readonly gpuBuffer?: GPUBuffer;
 	readonly dims: readonly number[];
@@ -25,14 +26,43 @@ export type VisionTensorOutputs = Readonly<Record<string, VisionTensor>>;
 
 export interface VisionSession {
 	run(input: VisionTensorInput): Promise<VisionTensorOutputs>;
+	/** Multi-input graphs; optional for compatibility with existing custom providers. */
+	runMany?(inputs: readonly VisionTensorInput[]): Promise<VisionTensorOutputs>;
 	release(): void;
 }
+
+/** External ONNX tensor files, verified by the model store before session creation. */
+export interface VisionSessionOptions {
+	readonly externalData?: readonly {
+		readonly path: string;
+		readonly data: Uint8Array;
+	}[];
+}
+
+/** The hardware sessions run on; it decides which model precision runs fastest. */
+export type VisionCompute = "webgpu" | "cuda" | "cpu";
 
 export interface SessionProvider {
 	readonly kind: "node" | "webgpu";
 	/** The GPU device sessions run on, when they accept `gpuBuffer` inputs from it. */
 	readonly device?: GPUDevice;
-	createSession(modelBytes: Uint8Array): Promise<VisionSession>;
+	/**
+	 * Where sessions will run, known before any model is downloaded (see
+	 * {@link sessionCompute}). Optional for custom providers.
+	 */
+	backend?(): Promise<VisionCompute>;
+	createSession(
+		modelBytes: Uint8Array,
+		options?: VisionSessionOptions,
+	): Promise<VisionSession>;
+}
+
+/** Where a provider's sessions run: its own answer, else WebGPU for WebGPU providers, else CPU. */
+export function sessionCompute(
+	provider: SessionProvider,
+): Promise<VisionCompute> {
+	if (provider.backend) return provider.backend();
+	return Promise.resolve(provider.kind === "webgpu" ? "webgpu" : "cpu");
 }
 
 let defaultProvider: (() => SessionProvider) | undefined;
@@ -61,7 +91,7 @@ export function setDefaultSessionProvider(
 
 /** Which backend the process's default provider chose, reported once. */
 export interface VisionBackendInfo {
-	readonly backend: "webgpu" | "cpu" | "cuda";
+	readonly backend: VisionCompute;
 	/** WebGPU on the renderer's device: frames reach the models without leaving the GPU. */
 	readonly sharedDevice: boolean;
 	/** Why WebGPU wasn't used, when it fell back. */
@@ -126,24 +156,50 @@ export class AutoSessionProvider implements SessionProvider {
 		return this._resolved?.device;
 	}
 
-	public async createSession(modelBytes: Uint8Array): Promise<VisionSession> {
-		if (this._resolved) return this._resolved.createSession(modelBytes);
-		if (!this._resolving) {
-			this._resolving = this.resolve(modelBytes);
-			this._resolving.catch(() => {
+	public async createSession(
+		modelBytes: Uint8Array,
+		options?: VisionSessionOptions,
+	): Promise<VisionSession> {
+		if (this._resolved)
+			return this._resolved.createSession(modelBytes, options);
+		if (this._resolving)
+			return (await this._resolving).provider.createSession(
+				modelBytes,
+				options,
+			);
+		const { provider, first } = await this.start(modelBytes, options);
+		return first ?? provider.createSession(modelBytes, options);
+	}
+
+	/** Where sessions run. Before the first session it decides with a one-node probe graph. */
+	public async backend(): Promise<VisionCompute> {
+		if (!this._resolved && !this._resolving)
+			(await this.start(probeModel())).first?.release();
+		const provider = this._resolved ?? (await this._resolving)?.provider;
+		if (!provider) throw new Error("No vision backend could be resolved.");
+		return sessionCompute(provider);
+	}
+
+	private start(
+		modelBytes: Uint8Array,
+		options?: VisionSessionOptions,
+	): Promise<{ provider: SessionProvider; first?: VisionSession }> {
+		const resolving = this.resolve(modelBytes, options);
+		this._resolving = resolving;
+		resolving.then(
+			({ provider }) => {
+				this._resolved = provider;
+			},
+			() => {
 				this._resolving = undefined;
-			});
-			const { provider, first } = await this._resolving;
-			this._resolved = provider;
-			if (first) return first;
-			return provider.createSession(modelBytes);
-		}
-		const { provider } = await this._resolving;
-		return provider.createSession(modelBytes);
+			},
+		);
+		return resolving;
 	}
 
 	private async resolve(
 		modelBytes: Uint8Array,
+		options?: VisionSessionOptions,
 	): Promise<{ provider: SessionProvider; first?: VisionSession }> {
 		const backend = requestedVisionBackend();
 		if (backend === "cpu") {
@@ -156,18 +212,27 @@ export class AutoSessionProvider implements SessionProvider {
 		}
 		if (backend === "cuda") {
 			reportBackend({ backend: "cuda", sharedDevice: false });
-			return {
-				provider: new NodeSessionProvider({
-					executionProviders: ["cuda", "cpu"],
-				}),
-			};
+			return { provider: cudaProvider() };
+		}
+		if (backend === "auto" && (await hasNvidiaDriver())) {
+			// NVIDIA on Linux: CUDA when onnxruntime-node can load its CUDA EP, else WebGPU/CPU.
+			try {
+				const first = await new NodeSessionProvider({
+					executionProviders: ["cuda"],
+				}).createSession(modelBytes, options);
+				reportBackend({ backend: "cuda", sharedDevice: false });
+				first.release();
+				return { provider: cudaProvider() };
+			} catch {
+				// No CUDA 12 / cuDNN 9 libraries: fall through.
+			}
 		}
 		const webgpu = new NodeWebGPUProvider({
 			wasmFallback: false,
 			device: visionDevice,
 		});
 		try {
-			const first = await webgpu.createSession(modelBytes);
+			const first = await webgpu.createSession(modelBytes, options);
 			reportBackend({ backend: "webgpu", sharedDevice: !!visionDevice });
 			return { provider: webgpu, first };
 		} catch (err) {
@@ -180,6 +245,23 @@ export class AutoSessionProvider implements SessionProvider {
 			});
 			return { provider: new NodeSessionProvider() };
 		}
+	}
+}
+
+function cudaProvider(): NodeSessionProvider {
+	return new NodeSessionProvider({ executionProviders: ["cuda", "cpu"] });
+}
+
+/** True on Linux with the NVIDIA kernel driver loaded (checked without touching CUDA). */
+async function hasNvidiaDriver(): Promise<boolean> {
+	if (typeof process === "undefined" || process.platform !== "linux")
+		return false;
+	try {
+		const { access } = await import("node:fs/promises");
+		await access("/proc/driver/nvidia/version");
+		return true;
+	} catch {
+		return false;
 	}
 }
 
@@ -267,6 +349,12 @@ export class NodeSessionProvider implements SessionProvider {
 		this._executionProviders = options.executionProviders ?? ["cpu"];
 	}
 
+	public backend(): Promise<VisionCompute> {
+		return Promise.resolve(
+			this._executionProviders.includes("cuda") ? "cuda" : "cpu",
+		);
+	}
+
 	private ortPromise?: Promise<typeof import("onnxruntime-node")>;
 
 	private async ort(): Promise<typeof import("onnxruntime-node")> {
@@ -282,11 +370,18 @@ export class NodeSessionProvider implements SessionProvider {
 		return this.ortPromise;
 	}
 
-	public async createSession(modelBytes: Uint8Array): Promise<VisionSession> {
+	public async createSession(
+		modelBytes: Uint8Array,
+		options?: VisionSessionOptions,
+	): Promise<VisionSession> {
 		const ort = await this.ort();
 		const threads = await cpuSessionThreads();
 		const session = await ort.InferenceSession.create(modelBytes, {
 			executionProviders: [...this._executionProviders],
+			externalData: options?.externalData?.map(({ path, data }) => ({
+				path,
+				data,
+			})),
 			graphOptimizationLevel: "all",
 			...(threads !== undefined
 				? { intraOpNumThreads: threads, interOpNumThreads: 1 }
@@ -294,24 +389,39 @@ export class NodeSessionProvider implements SessionProvider {
 		});
 		type OrtTensor = InstanceType<typeof ort.Tensor>;
 
-		return {
-			run: async (input: VisionTensorInput): Promise<VisionTensorOutputs> => {
-				const inputName = session.inputNames.includes(input.name)
-					? input.name
-					: (session.inputNames[0] ?? input.name);
-				const feeds: Record<string, OrtTensor> = {
-					[inputName]: new ort.Tensor("float32", input.data, [...input.dims]),
+		const runMany = async (
+			inputs: readonly VisionTensorInput[],
+		): Promise<VisionTensorOutputs> => {
+			const feeds: Record<string, OrtTensor> = {};
+			for (const input of inputs) {
+				const name =
+					inputs.length === 1 && !session.inputNames.includes(input.name)
+						? (session.inputNames[0] ?? input.name)
+						: input.name;
+				if (input.gpuBuffer)
+					throw new Error("CPU vision sessions do not accept GPU buffers.");
+				feeds[name] =
+					input.data instanceof Uint8Array
+						? new ort.Tensor("bool", input.data, [...input.dims])
+						: input.data instanceof BigInt64Array
+							? new ort.Tensor("int64", input.data, [...input.dims])
+							: input.data instanceof Int32Array
+								? new ort.Tensor("int32", input.data, [...input.dims])
+								: new ort.Tensor("float32", input.data, [...input.dims]);
+			}
+			const results = await session.run(feeds);
+			const outputs: Record<string, VisionTensor> = {};
+			for (const [name, tensor] of Object.entries(results)) {
+				outputs[name] = {
+					data: tensor.data as VisionTensor["data"],
+					dims: [...tensor.dims],
 				};
-				const results = await session.run(feeds);
-				const outputs: Record<string, VisionTensor> = {};
-				for (const [name, tensor] of Object.entries(results)) {
-					outputs[name] = {
-						data: tensor.data as VisionTensor["data"],
-						dims: [...tensor.dims],
-					};
-				}
-				return outputs;
-			},
+			}
+			return outputs;
+		};
+		return {
+			run: (input) => runMany([input]),
+			runMany,
 			release: () => {
 				void session.release();
 			},

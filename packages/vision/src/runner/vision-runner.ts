@@ -2,6 +2,7 @@ import type { DetectedObject } from "@framefields/core";
 import {
 	type InputTransform,
 	imageToTensor,
+	isPreprocessFamily,
 	preprocessSpec,
 } from "../decode/preprocess.js";
 import {
@@ -361,6 +362,10 @@ export class VisionRunner {
 	): Promise<{ outputs: VisionTensorOutputs; transform: InputTransform }> {
 		const session = await this.session(key);
 		const desc = VISION_MODELS[key];
+		if (!isPreprocessFamily(desc.family))
+			throw new Error(
+				`VisionRunner cannot run '${desc.family}' models; use the family's own tracker (e.g. Sam2Tracker or Sam3Tracker from @framefields/vision-sam).`,
+			);
 		const spec = preprocessSpec(desc.family, desc.input);
 		const dims = [1, 3, spec.height, spec.width];
 		let image: VisionImageInput;

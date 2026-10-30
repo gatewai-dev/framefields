@@ -10,7 +10,11 @@
  * specifiers, so the browser entry never pulls this module's runtime imports.
  */
 
-import type { SessionProvider, VisionSession } from "./session-provider.js";
+import type {
+	SessionProvider,
+	VisionSession,
+	VisionSessionOptions,
+} from "./session-provider.js";
 import {
 	type OrtWebModule,
 	WebGPUProvider,
@@ -186,8 +190,11 @@ export class NodeWebGPUProvider implements SessionProvider {
 		});
 	}
 
-	public createSession(modelBytes: Uint8Array): Promise<VisionSession> {
-		return this._inner.createSession(modelBytes);
+	public createSession(
+		modelBytes: Uint8Array,
+		options?: VisionSessionOptions,
+	): Promise<VisionSession> {
+		return this._inner.createSession(modelBytes, options);
 	}
 }
 

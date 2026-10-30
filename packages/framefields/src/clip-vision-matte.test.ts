@@ -68,6 +68,58 @@ const cutout = (clip: string, vision: Record<string, unknown> = {}) =>
 	});
 
 describe("matte reuses comp.vision", () => {
+	it("fails clearly when an explicit prompted mask cannot align with the layer aspect", async () => {
+		const file = await greenClip();
+		const c = stage();
+		const layer = Layer.video(file, {
+			width: SIZE,
+			height: SIZE / 2,
+			fit: "cover",
+			muted: true,
+		}).withVision({ mode: "matte" });
+		c.add(layer);
+		const clip = c.vision(layer, {
+			cacheDir: false,
+			sam2: {
+				prompts: [{ frame: 0, points: [{ x: 0.25, y: 0.5, label: 1 }] }],
+			},
+		});
+		seedClipVision(
+			clip,
+			{ width: SIZE, height: SIZE },
+			Array.from({ length: 40 }, () => ({
+				kp: null,
+				mask: null,
+				subject: leftHalf(),
+			})),
+		);
+		await expect(c.renderFrame({ frame: 0 })).rejects.toThrow(/aspect ratio/);
+	});
+
+	it("renders an authoritative absent subject as empty instead of holding an earlier mask", async () => {
+		const file = await greenClip();
+		const c = stage("#0000ff");
+		const layer = cutout(file);
+		c.add(layer);
+		const clip = c.vision(layer, { cacheDir: false, smoothing: 0 });
+		seedClipVision(
+			clip,
+			{ width: SIZE, height: SIZE },
+			Array.from({ length: 40 }, (_, frame) => ({
+				kp: null,
+				mask: null,
+				subject: frame === 0 ? leftHalf() : null,
+			})),
+		);
+		const renderer = new HeadlessMediaRenderer();
+		await c.renderFrame({ frame: 0, renderer });
+		const image = await decodePngPixels(
+			await c.renderFrame({ frame: 1, renderer }),
+		);
+		expect(getPixel(image, 50, 100).b).toBeGreaterThan(240);
+		expect(getPixel(image, 50, 100).g).toBeLessThan(15);
+	});
+
 	it("follows a clip's subject while its media plays in reverse", async () => {
 		const file = await greenClip();
 		const c = stage("#0000ff");

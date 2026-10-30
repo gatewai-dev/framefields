@@ -14,6 +14,7 @@ import { needsNchwLayout } from "../model/conv-layout.js";
 import type {
 	SessionProvider,
 	VisionSession,
+	VisionSessionOptions,
 	VisionTensorInput,
 	VisionTensorOutputs,
 } from "./session-provider.js";
@@ -44,6 +45,7 @@ export interface OrtWebModule {
 			modelBytes: Uint8Array,
 			options: {
 				executionProviders: (string | OrtWebExecutionProvider)[];
+				externalData?: { path: string; data: Uint8Array }[];
 				graphOptimizationLevel?: "disabled" | "basic" | "extended" | "all";
 				/** 0 verbose … 4 fatal. */
 				logSeverityLevel?: 0 | 1 | 2 | 3 | 4;
@@ -52,8 +54,8 @@ export interface OrtWebModule {
 	};
 	/** ORT tensor constructor (called with `new`), with `fromGpuBuffer` on WebGPU builds. */
 	readonly Tensor: (new (
-		type: "float32",
-		data: Float32Array,
+		type: "float32" | "int32" | "int64" | "bool",
+		data: Float32Array | Int32Array | BigInt64Array | Uint8Array,
 		dims: readonly number[],
 	) => unknown) & {
 		fromGpuBuffer?(
@@ -113,55 +115,95 @@ export class WebGPUProvider implements SessionProvider {
 		return this._ortPromise;
 	}
 
-	public async createSession(modelBytes: Uint8Array): Promise<VisionSession> {
-		const ort = await this.ort();
-
-		let session: OrtWebSession;
+	private async createOrtSession(
+		ort: OrtWebModule,
+		modelBytes: Uint8Array,
+		options?: VisionSessionOptions,
+	): Promise<OrtWebSession> {
 		try {
 			const device = this.device;
 			const layout = needsNchwLayout(modelBytes) ? "NCHW" : "NHWC";
-			session = await ort.InferenceSession.create(modelBytes, {
+			return await ort.InferenceSession.create(modelBytes, {
 				executionProviders: this._providers.map((name) =>
 					withProviderOptions(name, device, layout),
 				),
 				graphOptimizationLevel: "all",
+				externalData: options?.externalData?.map(({ path, data }) => ({
+					path,
+					data,
+				})),
 				// Errors only: node-placement notes print as console errors otherwise.
 				logSeverityLevel: 3,
 			});
 		} catch (err) {
 			if (!this._wasmFallback || !this._providers.includes("webgpu")) throw err;
-			session = await ort.InferenceSession.create(modelBytes, {
+			return await ort.InferenceSession.create(modelBytes, {
 				executionProviders: ["wasm"],
 				graphOptimizationLevel: "all",
+				externalData: options?.externalData?.map(({ path, data }) => ({
+					path,
+					data,
+				})),
 				// Errors only: node-placement notes print as console errors otherwise.
 				logSeverityLevel: 3,
 			});
 		}
+	}
 
-		return {
-			run: async (input: VisionTensorInput): Promise<VisionTensorOutputs> => {
-				const inputName = session.inputNames.includes(input.name)
-					? input.name
-					: (session.inputNames[0] ?? input.name);
-				const tensor =
+	public async createSession(
+		modelBytes: Uint8Array,
+		options?: VisionSessionOptions,
+	): Promise<VisionSession> {
+		const ort = await this.ort();
+		const session = await exclusive(ort, () =>
+			this.createOrtSession(ort, modelBytes, options),
+		);
+
+		const runMany = async (
+			inputs: readonly VisionTensorInput[],
+		): Promise<VisionTensorOutputs> => {
+			const feeds: Record<string, unknown> = {};
+			for (const input of inputs) {
+				const name =
+					inputs.length === 1 && !session.inputNames.includes(input.name)
+						? (session.inputNames[0] ?? input.name)
+						: input.name;
+				if (input.gpuBuffer && !(input.data instanceof Float32Array)) {
+					throw new Error("GPU-buffer vision inputs must be float32.");
+				}
+				feeds[name] =
 					input.gpuBuffer && ort.Tensor.fromGpuBuffer
 						? ort.Tensor.fromGpuBuffer(input.gpuBuffer, {
 								dataType: "float32",
 								dims: [...input.dims],
 							})
-						: new ort.Tensor("float32", input.data, [...input.dims]);
-				const results = await session.run({ [inputName]: tensor });
-				const outputs: Record<string, VisionTensorOutputs[string]> = {};
-				for (const [name, tensor] of Object.entries(results)) {
-					outputs[name] = {
-						data: tensor.data,
-						dims: [...tensor.dims],
-					};
-				}
-				return outputs;
-			},
+						: new ort.Tensor(
+								input.data instanceof Uint8Array
+									? "bool"
+									: input.data instanceof BigInt64Array
+										? "int64"
+										: input.data instanceof Int32Array
+											? "int32"
+											: "float32",
+								input.data,
+								[...input.dims],
+							);
+			}
+			const results = await exclusive(ort, () => session.run(feeds));
+			const outputs: Record<string, VisionTensorOutputs[string]> = {};
+			for (const [name, tensor] of Object.entries(results)) {
+				outputs[name] = {
+					data: tensor.data,
+					dims: [...tensor.dims],
+				};
+			}
+			return outputs;
+		};
+		return {
+			run: (input) => runMany([input]),
+			runMany,
 			release: () => {
-				void session.release();
+				void exclusive(ort, () => session.release());
 			},
 		};
 	}
@@ -195,4 +237,20 @@ function withProviderOptions(
 ): string | OrtWebExecutionProvider {
 	if (name !== "webgpu") return name;
 	return device ? { name, preferredLayout, device } : { name, preferredLayout };
+}
+
+/**
+ * ORT Web's WebGPU build takes one call at a time per runtime: a concurrent session create
+ * throws, and a run entered while another awaits the GPU corrupts its wasm heap. Every
+ * create, run and release on one module therefore queues here.
+ */
+const queues = new WeakMap<OrtWebModule, Promise<unknown>>();
+
+function exclusive<T>(ort: OrtWebModule, call: () => Promise<T>): Promise<T> {
+	const result = (queues.get(ort) ?? Promise.resolve()).then(call, call);
+	queues.set(
+		ort,
+		result.catch(() => undefined),
+	);
+	return result;
 }

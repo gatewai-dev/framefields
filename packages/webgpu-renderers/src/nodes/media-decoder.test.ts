@@ -55,7 +55,9 @@ vi.mock("mediabunny", () => {
 // Mock inputStore
 vi.mock("../input-store.js", () => {
 	const mockInput = {
-		getPrimaryVideoTrack: vi.fn().mockResolvedValue({ id: "video-track" }),
+		getPrimaryVideoTrack: vi
+			.fn()
+			.mockResolvedValue({ id: "video-track", computeDuration: async () => 3 }),
 		getPrimaryAudioTrack: vi.fn().mockResolvedValue({ id: "audio-track" }),
 		dispose: vi.fn(),
 	};
@@ -68,6 +70,12 @@ vi.mock("../input-store.js", () => {
 });
 
 describe("Media Decoder", () => {
+	it("reads video-track duration without decoding frames", async () => {
+		const decoder = new VideoDecoder("duration-test", true);
+		expect(await decoder.durationSec()).toBe(3);
+		decoder.destroy();
+	});
+
 	beforeEach(() => {
 		vi.clearAllMocks();
 	});

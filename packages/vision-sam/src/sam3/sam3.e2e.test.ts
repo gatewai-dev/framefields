@@ -47,9 +47,44 @@ describe.skipIf(!enabled)("SAM 3 / 3.1 on native Dawn WebGPU", () => {
 					frame,
 					frame === 0 ? { points: [{ x: 0.28, y: 0.5, label: 1 }] } : undefined,
 				);
-				expect(result.score).toBeGreaterThan(0);
-				expect(result.mask[48 * 128 + 36 + frame * 3]).toBe(255);
-				expect(result.mask[48 * 128 + 110]).toBe(0);
+				const [selected] = result.objects;
+				expect(result.objects).toHaveLength(1);
+				expect(selected?.score).toBeGreaterThan(0);
+				expect(selected?.mask[48 * 128 + 36 + frame * 3]).toBe(255);
+				expect(selected?.mask[48 * 128 + 110]).toBe(0);
+			}
+		} finally {
+			tracker.release();
+		}
+	}, 120_000);
+
+	it("tracks two prompted objects with separate memories", async () => {
+		const tracker = await Sam3Tracker.create({
+			provider: new NodeWebGPUProvider(),
+			frameCount: 8,
+			acceptLicense: true,
+		});
+		try {
+			for (let frame = 0; frame < 8; frame++) {
+				// Seed object 1 on frame 0 and add object 2 on frame 1.
+				const prompt =
+					frame === 0
+						? { points: [{ x: 0.28, y: 0.5, label: 1 as const }] }
+						: frame === 1
+							? { object: 2, points: [{ x: 0.86, y: 0.5, label: 1 as const }] }
+							: undefined;
+				const { objects } = await tracker.process(
+					picture(frame),
+					frame,
+					prompt,
+				);
+				const [moving, still] = objects;
+				expect(moving?.mask[48 * 128 + 36 + frame * 3]).toBe(255);
+				expect(moving?.mask[48 * 128 + 110]).toBe(0);
+				if (frame === 0) continue;
+				expect(objects).toHaveLength(2);
+				expect(still?.mask[48 * 128 + 110]).toBe(255);
+				expect(still?.mask[48 * 128 + 36 + frame * 3]).toBe(0);
 			}
 		} finally {
 			tracker.release();

@@ -1,7 +1,7 @@
 import type { TrackedObject } from "@framefields/core";
 import type { InstanceMask } from "../types.js";
 
-/** Tracked-object geometry of one selected mask (bounds, center, velocity), with no detector involved. */
+/** Tracked-object geometry of one selected mask (bounds, center, velocity), with no detector involved; the track ID is the mask's (default 1). */
 export function maskObject(
 	mask: InstanceMask,
 	frame: number,
@@ -33,7 +33,7 @@ export function maskObject(
 	const vy =
 		active && previous?.active ? (centerY - previous.centerY) * fps : 0;
 	return {
-		trackId: 1,
+		trackId: mask.trackId ?? 1,
 		category: mask.category,
 		score,
 		boundingBox: {

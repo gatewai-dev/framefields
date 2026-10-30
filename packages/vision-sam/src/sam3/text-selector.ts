@@ -78,11 +78,17 @@ export class Sam3TextSelector {
 		}
 	}
 
+	/**
+	 * Masks (288², binary) of the instances matching `text` with sigmoid score of at least
+	 * `threshold`, best first and at most `max`. Queries that repeat an accepted instance
+	 * (mask IoU above 0.5) are skipped.
+	 */
 	async select(
 		pixels: Float32Array,
 		text: string,
 		threshold: number,
-	): Promise<Float32Array> {
+		max = 1,
+	): Promise<Float32Array[]> {
 		const [visionSession, textSession, decoder] = this.sessions;
 		if (!visionSession || !textSession || !decoder)
 			throw new Error("SAM 3 text selector has been released.");
@@ -121,26 +127,48 @@ export class Sam3TextSelector {
 			inputs.push({ name, data: sam3Floats(vision, name), dims: value.dims });
 		}
 		const result = await sam3Run(decoder, inputs),
-			scores = sam3Floats(result, "pred_logits");
-		let best = 0;
-		for (let i = 1; i < scores.length; i++)
-			if ((scores[i] ?? -Infinity) > (scores[best] ?? -Infinity)) best = i;
-		const probability = 1 / (1 + Math.exp(-(scores[best] ?? -Infinity)));
-		if (probability < threshold)
-			throw new Error(
-				`SAM 3 found no confident instance for text ${JSON.stringify(text)} (score ${probability.toFixed(3)}, threshold ${threshold}).`,
-			);
-		const masks = sam3Floats(result, "pred_masks");
-		if (masks.length !== scores.length * 288 * 288)
+			scores = sam3Floats(result, "pred_logits"),
+			masks = sam3Floats(result, "pred_masks");
+		if (masks.length !== scores.length * CELLS)
 			throw new Error("Invalid SAM 3 concept mask shape.");
-		return Float32Array.from(
-			masks.subarray(best * 288 * 288, (best + 1) * 288 * 288),
-			(v) => (v > 0 ? 1 : 0),
+		const ranked = [...scores.keys()].sort(
+			(a, b) => (scores[b] ?? -Infinity) - (scores[a] ?? -Infinity),
 		);
+		const best = 1 / (1 + Math.exp(-(scores[ranked[0] ?? 0] ?? -Infinity)));
+		if (best < threshold)
+			throw new Error(
+				`SAM 3 found no confident instance for text ${JSON.stringify(text)} (score ${best.toFixed(3)}, threshold ${threshold}).`,
+			);
+		const logit = Math.log(threshold / (1 - threshold));
+		const selected: Float32Array[] = [];
+		for (const query of ranked) {
+			if (selected.length >= max || (scores[query] ?? -Infinity) < logit) break;
+			const candidate = Float32Array.from(
+				masks.subarray(query * CELLS, (query + 1) * CELLS),
+				(v) => (v > 0 ? 1 : 0),
+			);
+			if (selected.every((kept) => maskIou(kept, candidate) <= 0.5))
+				selected.push(candidate);
+		}
+		return selected;
 	}
 
 	release(): void {
 		for (const session of this.sessions) session.release();
 		this.sessions.length = 0;
 	}
+}
+
+const CELLS = 288 * 288;
+
+function maskIou(a: Float32Array, b: Float32Array): number {
+	let both = 0,
+		either = 0;
+	for (let i = 0; i < a.length; i++) {
+		const x = a[i] ?? 0,
+			y = b[i] ?? 0;
+		both += x * y;
+		either += Math.max(x, y);
+	}
+	return either ? both / either : 0;
 }

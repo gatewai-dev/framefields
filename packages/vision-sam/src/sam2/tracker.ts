@@ -7,7 +7,7 @@
  */
 
 import {
-	AutoSessionProvider,
+	createDefaultSessionProvider,
 	imageToTensor,
 	type SessionProvider,
 	type VisionImageInput,
@@ -119,7 +119,7 @@ export class Sam2Tracker {
 		)
 			throw new Error("SAM 2 frameCount must be a positive integer.");
 		const tracker = new Sam2Tracker(constants, options.frameCount);
-		const provider = options.provider ?? new AutoSessionProvider();
+		const provider = options.provider ?? createDefaultSessionProvider();
 		try {
 			for (const graph of GRAPHS) {
 				const session = await provider.createSession(

@@ -260,6 +260,13 @@ const trackedBox = comp.vision(subject, {
   },
 });
 
+// Option C: several instances at once — one SAM 3 pipeline, tracks 1…N by score
+const crowd = comp.vision("assets/source.mp4", {
+  acceptSamLicense: true,
+  sam3: { text: "student in blazer", category: "person", maxObjects: 6 },
+});
+crowd.signals.objects.get(2); // second-best match; points prompts can add or correct one: { frame, object: 3, points }
+
 const signals = tracked.signals; // stable VisionBundle; request before rendering
 const target = signals.objects.get(1);
 // target.bounds, anchors, confidence, active, kinematics and pose use the existing signals API.
@@ -269,7 +276,7 @@ const mask = signals.segmentation.matte.at(0); // source-sized selected-object a
 
 Coordinates are normalized to the original source image, before layer placement. Labels are foreground `1`, background `0`, and box corners `2`/`3`. Prompt frames are nonnegative increasing integers on the source analysis clock (`options.fps`, default composition FPS), before trimming/time remapping. SAM propagates forward from the earliest prompt; frames before it are empty. Corrections reset the conditioning memory. Reset/re-prompt across cuts or when identity is lost; appearance tracking cannot guarantee re-identification after occlusion. `sam2` and `sam3` are mutually exclusive on a single clip.
 
-SAM masks do not merge other detected people. Default smoothing is zero and a missing object stays empty. Pose is disabled unless explicitly requested; SAM itself provides no skeleton. `tracked.person` continues to expose silhouette sampling and optional matched pose; `.place(...)` maps those into a layer's layout. The `tracked.signals` bundle uses source geometry on the composition clock; object and mask signals refer to track ID `1`. Full masks are reconstructed lazily from compressed history, avoiding an uncompressed mask per frame.
+Text prompts are concepts: describe what sets the target apart ("man with shaved head", not "man in white shirt" in a crowd of white shirts). With `maxObjects`, one encoder pass per frame serves every track; each track keeps its own memory, overlaps go to the more confident track, and the clip's matte/subject is all tracks merged. A later text prompt re-selects every track; a points prompt with `object: k` seeds or corrects only track k (k = next unused ID adds one). SAM masks do not merge other detected people. Default smoothing is zero and a missing object stays empty. Pose is disabled unless explicitly requested; SAM itself provides no skeleton. `tracked.person` continues to expose silhouette sampling and optional matched pose; `.place(...)` maps those into a layer's layout. The `tracked.signals` bundle uses source geometry on the composition clock; object and mask signals refer to track ID `1`. Full masks are reconstructed lazily from compressed history, avoiding an uncompressed mask per frame.
 
 Frame requests analyze intervening source frames in order, so a seek forward can take time; a backward seek, hold, reverse, and time-remapped playback reuse source-frame results. When analysis FPS is lower than playback FPS, intermediate frames reuse the preceding analysis mask. Source masks are persisted separately from low-resolution silhouette/pose data; cache identity includes all prompts and the model revision. `pnpm --filter @framefields/vision-sam test:sam2` and `test:sam3` run real-model tests on native Dawn (requires GPU access; downloads are cached). A matte/mask/crop layer of the same clip reuses the selected masks through the existing clip-matte link. Use the default matte settings and matching source aspect ratio for that link; crop after source-space matting. An explicit selection fails clearly instead of falling back to another detected person when the mask cannot align. `tracked.release()` frees SAM sessions, keeps results readable, and replays the source memory if further uncached frames are requested.
 

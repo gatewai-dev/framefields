@@ -15,8 +15,13 @@ export interface Sam3Prompt {
 	readonly frame: number;
 	/** Normalized source coordinates; labels 2/3 define a box. */
 	readonly points?: readonly Sam2Point[];
-	/** Select the highest-scoring semantic instance, then propagate its mask. */
+	/** Select matching instances (up to `maxObjects`, best first), then propagate their masks. */
 	readonly text?: string;
+	/**
+	 * Track ID (1-based) a points prompt seeds or corrects; defaults to 1. The next unused
+	 * ID adds an object. Text prompts re-select every object, so they take no ID.
+	 */
+	readonly object?: number;
 }
 
 export interface Sam3Options extends SamLicenseOptions {
@@ -26,8 +31,10 @@ export interface Sam3Options extends SamLicenseOptions {
 	readonly text?: string;
 	/** Signal category metadata; defaults to "object". */
 	readonly category?: string;
-	/** Minimum sigmoid score for the initial text-selected instance. Default 0.5. */
+	/** Minimum sigmoid score for a text-selected instance. Default 0.5. */
 	readonly textThreshold?: number;
+	/** Most instances a text prompt selects, as track IDs 1…N by score. Default 1. */
+	readonly maxObjects?: number;
 }
 
 export function validateSam3Prompts(options: Sam3Options): void {
@@ -48,8 +55,38 @@ export function validateSam3Prompts(options: Sam3Options): void {
 			validateSam2Prompts([{ frame: prompt.frame, points: prompt.points }]);
 		if (prompt.text !== undefined && !prompt.text.trim())
 			throw new Error("SAM 3 text prompts must not be empty.");
+		if (
+			prompt.object !== undefined &&
+			(prompt.text !== undefined ||
+				!Number.isSafeInteger(prompt.object) ||
+				prompt.object < 1)
+		)
+			throw new Error(
+				"SAM 3 prompt objects are positive track IDs on points prompts.",
+			);
 	}
+	const maxObjects = options.maxObjects ?? 1;
+	if (!Number.isSafeInteger(maxObjects) || maxObjects < 1)
+		throw new Error("SAM 3 maxObjects must be a positive integer.");
 	const threshold = options.textThreshold ?? 0.5;
 	if (!Number.isFinite(threshold) || threshold <= 0 || threshold >= 1)
 		throw new Error("SAM 3 textThreshold must be between zero and one.");
+}
+
+/** One tracked SAM 3 object at a frame; an empty mask means it is absent there. */
+export interface Sam3ObjectResult {
+	/** Track ID, 1-based and stable until a text prompt re-selects every object. */
+	readonly id: number;
+	/** Source-sized binary mask (0 or 255). */
+	readonly mask: Uint8Array;
+	/** Object-presence logit; positive means present. */
+	readonly score: number;
+	readonly iou: number;
+}
+
+export interface Sam3FrameResult {
+	readonly width: number;
+	readonly height: number;
+	/** Every tracked object, ordered by track ID. */
+	readonly objects: readonly Sam3ObjectResult[];
 }

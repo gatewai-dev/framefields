@@ -15,9 +15,9 @@ import {
 	VisionRunner,
 } from "@framefields/vision";
 import type {
-	Sam2FrameResult,
 	Sam2Options,
 	Sam2Tracker,
+	Sam3ObjectResult,
 	Sam3Options,
 	Sam3Tracker,
 } from "@framefields/vision-sam";
@@ -87,6 +87,20 @@ interface SubjectResult {
 	/** (value, run length) pairs over the source-sized 0–255 mask. */
 	values: Uint8Array;
 	lengths: Uint32Array;
+	/**
+	 * Prompted (SAM) frames only: presence probability per track ID. The runs then hold a
+	 * label map (track ID per pixel, 0 for none) instead of alpha.
+	 */
+	scores?: number[];
+}
+
+/** A subject as written to the subjects cache file. */
+interface StoredSubject {
+	category: string;
+	area: number;
+	scores?: number[];
+	values: string;
+	lengths: string;
 }
 
 interface Transform {
@@ -104,6 +118,7 @@ const CACHE_VERSION = 1;
 type VisionSam = typeof import("@framefields/vision-sam");
 
 let visionSam: Promise<VisionSam> | undefined;
+let clipVisionIds = 0;
 
 /**
  * SAM lives in `@framefields/vision-sam`, an optional peer under Meta's SAM License, so it
@@ -155,10 +170,15 @@ export class ClipVision implements ClipSubjectSource {
 	private sam3Tracker?: Sam3Tracker;
 	private sam3Frame = -1;
 	private sam?: Promise<VisionSam>;
+	/** Clips walk their source independently, so each owns a decoder (requests to one supersede). */
+	private readonly decoderId = `clip-vision#${++clipVisionIds}#`;
 	private signalBundle?: VisionBundle;
 	private publishedSignals = new Set<number>();
 	private signalMaskFrame = -1;
-	private signalMask?: InstanceMask;
+	/** Masks of `signalMaskFrame` by track ID (0: all tracks merged). */
+	private readonly signalMasks = new Map<number, InstanceMask>();
+	/** Prompted track count per source frame, including frames where every track is absent. */
+	private readonly trackCounts = new Map<number, number>();
 	private cacheLoaded?: Promise<void>;
 	private unsaved = 0;
 	private unsavedSubjects = 0;
@@ -232,10 +252,11 @@ export class ClipVision implements ClipSubjectSource {
 		this.signalBundle ??= new VisionBundle({
 			fps: this.compositionFps,
 			totalFrames: Number.MAX_SAFE_INTEGER,
-			maskSource: (frame) => {
-				const mask = this.maskAt(frame);
-				return mask && mask.area > 0 ? [mask] : [];
-			},
+			maskSource: (frame) =>
+				this.trackIds(frame).flatMap((id) => {
+					const mask = this.maskAt(frame, id);
+					return mask && mask.area > 0 ? [mask] : [];
+				}),
 			matteSource: (frame) => {
 				const mask = this.maskAt(frame);
 				return mask
@@ -251,8 +272,13 @@ export class ClipVision implements ClipSubjectSource {
 		return this.signalBundle;
 	}
 
-	/** Free inference sessions. Analysed frames remain readable; later frames replay memory. */
+	private decoder(): ReturnType<typeof mediaDecoderCache.getVideo> {
+		return mediaDecoderCache.getVideo(this.source, true, this.decoderId);
+	}
+
+	/** Free inference sessions and the decoder. Analysed frames remain readable; later frames replay memory. */
 	release(): void {
+		mediaDecoderCache.clearNode(this.decoderId);
 		this.sam2Tracker?.release();
 		this.sam2Tracker = undefined;
 		this.sam2Frame = -1;
@@ -262,6 +288,7 @@ export class ClipVision implements ClipSubjectSource {
 		this.runner?.close();
 		this.runner = undefined;
 		this.signalMaskFrame = -1;
+		this.signalMasks.clear();
 		this.publishedSignals.clear();
 	}
 
@@ -332,7 +359,7 @@ export class ClipVision implements ClipSubjectSource {
 		const height = this.sourceHeight;
 		return {
 			category: s.category,
-			mask: decodeRuns(s, width * height),
+			mask: subjectAlpha(s, width * height),
 			width,
 			height,
 			area: s.area,
@@ -431,11 +458,7 @@ export class ClipVision implements ClipSubjectSource {
 				variant: this.options.variant,
 			}),
 		});
-		const decoder = mediaDecoderCache.getVideo(
-			this.source,
-			true,
-			"clip-vision",
-		);
+		const decoder = this.decoder();
 		for (let c = from; c <= to; c++) {
 			if (this.analysed(c)) continue;
 			const image = await decodedPixels(await decoder.getFrame(c / this.fps));
@@ -509,11 +532,7 @@ export class ClipVision implements ClipSubjectSource {
 			this.subjects.set(frame, null);
 		}
 		if (to < first) return;
-		const decoder = mediaDecoderCache.getVideo(
-			this.source,
-			true,
-			"clip-vision",
-		);
+		const decoder = this.decoder();
 		if (!this.sam2Tracker) {
 			const frameCount = Math.max(
 				1,
@@ -547,7 +566,7 @@ export class ClipVision implements ClipSubjectSource {
 			const kp = this.options.pose
 				? await this.matchedPose(image, result.mask)
 				: null;
-			this.storeSam2Frame(frame, result, kp);
+			this.storeSamFrame(frame, result.width, result.height, [result], kp);
 			if (this.unsaved >= 24) {
 				await this.saveCache();
 				await this.saveSubjects();
@@ -566,11 +585,7 @@ export class ClipVision implements ClipSubjectSource {
 			this.subjects.set(frame, null);
 		}
 		if (to < first) return;
-		const decoder = mediaDecoderCache.getVideo(
-			this.source,
-			true,
-			"clip-vision",
-		);
+		const decoder = this.decoder();
 		if (!this.sam3Tracker) {
 			const frameCount = Math.max(
 				1,
@@ -585,6 +600,7 @@ export class ClipVision implements ClipSubjectSource {
 				baseUrl: this.options.baseUrl,
 				frameCount,
 				textThreshold: settings.textThreshold,
+				maxObjects: settings.maxObjects,
 				acceptLicense:
 					this.options.acceptSamLicense ?? this.options.sam3?.acceptLicense,
 			});
@@ -599,9 +615,15 @@ export class ClipVision implements ClipSubjectSource {
 			const prompt = settings.prompts.find((item) => item.frame === frame);
 			const result = await this.sam3Tracker.process(image, frame, prompt);
 			const kp = this.options.pose
-				? await this.matchedPose(image, result.mask)
+				? await this.matchedPose(image, unionMask(result.objects, image))
 				: null;
-			this.storeSam2Frame(frame, result, kp);
+			this.storeSamFrame(
+				frame,
+				result.width,
+				result.height,
+				result.objects,
+				kp,
+			);
 			if (this.unsaved >= 24) {
 				await this.saveCache();
 				await this.saveSubjects();
@@ -611,46 +633,62 @@ export class ClipVision implements ClipSubjectSource {
 		await this.saveSubjects();
 	}
 
-	private storeSam2Frame(
+	/** Stores a prompted frame: every track's mask as one label map, the union as the subject. */
+	private storeSamFrame(
 		frame: number,
-		result: Sam2FrameResult,
+		width: number,
+		height: number,
+		objects: readonly Pick<Sam3ObjectResult, "mask" | "score">[],
 		kp: Float32Array | null,
 	): void {
+		const labels = new Uint8Array(width * height);
+		// Ascending presence, so where tracks overlap the most confident one keeps the pixel.
+		const order = [...objects.keys()].sort(
+			(a, b) => (objects[a]?.score ?? 0) - (objects[b]?.score ?? 0),
+		);
+		for (const index of order) {
+			const mask = objects[index]?.mask;
+			if (!mask) continue;
+			for (let i = 0; i < mask.length; i++)
+				if ((mask[i] ?? 0) >= 128) labels[i] = index + 1;
+		}
+		const union = Uint8Array.from(labels, (id) => (id ? 255 : 0));
 		const grid = new Uint8Array(this.cellW * this.cellH);
 		downsampleMean(
-			result.mask,
-			result.width,
-			result.height,
+			union,
+			width,
+			height,
 			this.cell,
 			grid,
 			this.cellW,
 			this.cellH,
 		);
 		let area = 0;
-		for (const alpha of result.mask) area += alpha / 255;
+		for (const id of labels) if (id) area++;
+		const scores = objects.map((o) => 1 / (1 + Math.exp(-o.score)));
 		this.results.set(frame, {
 			kp,
 			mask: grid,
-			score: 1 / (1 + Math.exp(-result.score)),
+			score: Math.max(0, ...scores),
 		});
 		this.subjects.set(
 			frame,
 			area > 0
-				? {
-						category:
-							this.options.sam2?.category ??
-							this.options.sam3?.category ??
-							"object",
-						area,
-						...encodeRuns(result.mask),
-					}
+				? { category: this.samCategory(), area, scores, ...encodeRuns(labels) }
 				: null,
 		);
+		this.trackCounts.set(frame, objects.length);
 		this.blurred.delete(frame);
 		if (this.options.sam3) this.sam3Frame = frame;
 		else this.sam2Frame = frame;
 		this.unsaved++;
 		this.unsavedSubjects++;
+	}
+
+	private samCategory(): string {
+		return (
+			this.options.sam2?.category ?? this.options.sam3?.category ?? "object"
+		);
 	}
 
 	private async matchedPose(
@@ -693,30 +731,44 @@ export class ClipVision implements ClipSubjectSource {
 		);
 	}
 
-	private maskAt(frame: number): InstanceMask | undefined {
+	/** Track IDs at a composition frame: every prompted track, else the one subject. */
+	private trackIds(frame: number): number[] {
 		const c = Math.max(0, Math.floor(this.clipFrame(frame)));
-		if (this.signalMaskFrame === c) return this.signalMask;
+		const count =
+			this.subjects.get(c)?.scores?.length ?? this.trackCounts.get(c) ?? 1;
+		return Array.from({ length: count }, (_, i) => i + 1);
+	}
+
+	/** The subject (all tracks merged) or, with `id`, one track's mask, in source pixels. */
+	private maskAt(frame: number, id?: number): InstanceMask | undefined {
+		const c = Math.max(0, Math.floor(this.clipFrame(frame)));
+		if (this.signalMaskFrame !== c) {
+			this.signalMaskFrame = c;
+			this.signalMasks.clear();
+		}
+		const hit = this.signalMasks.get(id ?? 0);
+		if (hit) return hit;
 		if (!this.results.has(c) || !this.sourceWidth) return undefined;
 		const stored = this.subjects.get(c);
-		const data = stored
-			? decodeRuns(stored, this.sourceWidth * this.sourceHeight)
-			: new Uint8Array(this.sourceWidth * this.sourceHeight);
-		this.signalMaskFrame = c;
-		this.signalMask = {
-			category:
-				stored?.category ??
-				this.options.sam2?.category ??
-				this.options.sam3?.category ??
-				"object",
+		const size = this.sourceWidth * this.sourceHeight;
+		const data = stored ? subjectAlpha(stored, size, id) : new Uint8Array(size);
+		let area = stored?.area ?? 0;
+		if (id !== undefined && stored?.scores) {
+			area = 0;
+			for (const alpha of data) if (alpha) area++;
+		}
+		const mask: InstanceMask = {
+			category: stored?.category ?? this.samCategory(),
 			mask: data,
 			width: this.sourceWidth,
 			height: this.sourceHeight,
-			area: stored?.area ?? 0,
-			coverage: (stored?.area ?? 0) / data.length,
-			detectionIndex: 0,
-			trackId: 1,
+			area,
+			coverage: area / size,
+			detectionIndex: (id ?? 1) - 1,
+			trackId: id ?? 1,
 		};
-		return this.signalMask;
+		this.signalMasks.set(id ?? 0, mask);
+		return mask;
 	}
 
 	private publishSignals(from: number, to: number): void {
@@ -729,17 +781,24 @@ export class ClipVision implements ClipSubjectSource {
 			const c = Math.max(0, Math.floor(this.clipFrame(frame)));
 			const mask = this.maskAt(frame);
 			if (!mask) continue;
-			const previous = bundle
-				.getObjectResult(frame - 1)
-				.objects.find((object) => object.trackId === 1);
-			const object = maskObject(
-				mask,
-				frame,
-				this.compositionFps,
-				this.results.get(c)?.score ?? 1,
-				previous,
-			);
-			bundle.setObjectResult(frame, [object]);
+			const before = bundle.getObjectResult(frame - 1).objects;
+			const scores = this.subjects.get(c)?.scores;
+			const objects = this.trackIds(frame).flatMap((id) => {
+				const track = this.maskAt(frame, id);
+				if (!track) return [];
+				return [
+					maskObject(
+						track,
+						frame,
+						this.compositionFps,
+						scores?.[id - 1] ?? this.results.get(c)?.score ?? 1,
+						before.find((object) => object.trackId === id),
+					),
+				];
+			});
+			bundle.setObjectResult(frame, objects);
+			const object =
+				objects[0] ?? maskObject(mask, frame, this.compositionFps, 0);
 			const kp = this.results.get(c)?.kp;
 			bundle.setPoseResult(frame, {
 				people: kp
@@ -875,8 +934,9 @@ export class ClipVision implements ClipSubjectSource {
 				this.cell,
 				o.variant ?? "s",
 				o.confidence ?? null,
-				...(o.sam2 ? [[sam?.SAM2_TINY_REVISION, o.sam2]] : []),
-				...(o.sam3 ? [[sam?.SAM3_REVISION, o.sam3]] : []),
+				// Prompted subjects are track-ID label maps (format 2).
+				...(o.sam2 ? [[sam?.SAM2_TINY_REVISION, o.sam2, 2]] : []),
+				...(o.sam3 ? [[sam?.SAM3_REVISION, o.sam3, 2]] : []),
 			]);
 			const hash = crypto
 				.createHash("sha256")
@@ -967,15 +1027,7 @@ export class ClipVision implements ClipSubjectSource {
 			const json = JSON.parse(fs.readFileSync(file, "utf8")) as {
 				width: number;
 				height: number;
-				frames: Record<
-					string,
-					{
-						category: string;
-						area: number;
-						values: string;
-						lengths: string;
-					} | null
-				>;
+				frames: Record<string, StoredSubject | null>;
 			};
 			if (this.sourceWidth && json.width !== this.sourceWidth) return;
 			if (!this.sourceWidth) this.setSize(json.width, json.height);
@@ -986,6 +1038,7 @@ export class ClipVision implements ClipSubjectSource {
 					s && {
 						category: s.category,
 						area: s.area,
+						...(s.scores && { scores: s.scores }),
 						values: new Uint8Array(Buffer.from(s.values, "base64")),
 						lengths: new Uint32Array(
 							lengths.buffer.slice(
@@ -1005,14 +1058,12 @@ export class ClipVision implements ClipSubjectSource {
 		this.unsavedSubjects = 0;
 		const file = await this.subjectsPath();
 		if (!file || !this.sourceWidth) return;
-		const frames: Record<
-			string,
-			{ category: string; area: number; values: string; lengths: string } | null
-		> = {};
+		const frames: Record<string, StoredSubject | null> = {};
 		for (const [c, s] of this.subjects) {
 			frames[c] = s && {
 				category: s.category,
 				area: s.area,
+				...(s.scores && { scores: s.scores }),
 				values: Buffer.from(s.values).toString("base64"),
 				lengths: Buffer.from(
 					s.lengths.buffer,
@@ -1444,4 +1495,29 @@ export function seedClipVision(
 		);
 	});
 	return clip;
+}
+
+/** A stored subject as 0/255 alpha: label maps merge every track, or keep track `id` only. */
+function subjectAlpha(
+	stored: SubjectResult,
+	size: number,
+	id?: number,
+): Uint8Array {
+	const values = decodeRuns(stored, size);
+	if (!stored.scores) return values;
+	return values.map((label) =>
+		(id === undefined ? label > 0 : label === id) ? 255 : 0,
+	);
+}
+
+/** Every track's mask merged, for matching one pose to the whole selection. */
+function unionMask(
+	objects: readonly Pick<Sam3ObjectResult, "mask">[],
+	image: { width: number; height: number },
+): Uint8Array {
+	const union = new Uint8Array(image.width * image.height);
+	for (const { mask } of objects)
+		for (let i = 0; i < union.length; i++)
+			union[i] = Math.max(union[i] ?? 0, mask[i] ?? 0);
+	return union;
 }

@@ -115,17 +115,15 @@ export class WebGPUProvider implements SessionProvider {
 		return this._ortPromise;
 	}
 
-	public async createSession(
+	private async createOrtSession(
+		ort: OrtWebModule,
 		modelBytes: Uint8Array,
 		options?: VisionSessionOptions,
-	): Promise<VisionSession> {
-		const ort = await this.ort();
-
-		let session: OrtWebSession;
+	): Promise<OrtWebSession> {
 		try {
 			const device = this.device;
 			const layout = needsNchwLayout(modelBytes) ? "NCHW" : "NHWC";
-			session = await ort.InferenceSession.create(modelBytes, {
+			return await ort.InferenceSession.create(modelBytes, {
 				executionProviders: this._providers.map((name) =>
 					withProviderOptions(name, device, layout),
 				),
@@ -139,7 +137,7 @@ export class WebGPUProvider implements SessionProvider {
 			});
 		} catch (err) {
 			if (!this._wasmFallback || !this._providers.includes("webgpu")) throw err;
-			session = await ort.InferenceSession.create(modelBytes, {
+			return await ort.InferenceSession.create(modelBytes, {
 				executionProviders: ["wasm"],
 				graphOptimizationLevel: "all",
 				externalData: options?.externalData?.map(({ path, data }) => ({
@@ -150,6 +148,16 @@ export class WebGPUProvider implements SessionProvider {
 				logSeverityLevel: 3,
 			});
 		}
+	}
+
+	public async createSession(
+		modelBytes: Uint8Array,
+		options?: VisionSessionOptions,
+	): Promise<VisionSession> {
+		const ort = await this.ort();
+		const session = await exclusive(ort, () =>
+			this.createOrtSession(ort, modelBytes, options),
+		);
 
 		const runMany = async (
 			inputs: readonly VisionTensorInput[],
@@ -181,7 +189,7 @@ export class WebGPUProvider implements SessionProvider {
 								[...input.dims],
 							);
 			}
-			const results = await session.run(feeds);
+			const results = await exclusive(ort, () => session.run(feeds));
 			const outputs: Record<string, VisionTensorOutputs[string]> = {};
 			for (const [name, tensor] of Object.entries(results)) {
 				outputs[name] = {
@@ -195,7 +203,7 @@ export class WebGPUProvider implements SessionProvider {
 			run: (input) => runMany([input]),
 			runMany,
 			release: () => {
-				void session.release();
+				void exclusive(ort, () => session.release());
 			},
 		};
 	}
@@ -229,4 +237,20 @@ function withProviderOptions(
 ): string | OrtWebExecutionProvider {
 	if (name !== "webgpu") return name;
 	return device ? { name, preferredLayout, device } : { name, preferredLayout };
+}
+
+/**
+ * ORT Web's WebGPU build takes one call at a time per runtime: a concurrent session create
+ * throws, and a run entered while another awaits the GPU corrupts its wasm heap. Every
+ * create, run and release on one module therefore queues here.
+ */
+const queues = new WeakMap<OrtWebModule, Promise<unknown>>();
+
+function exclusive<T>(ort: OrtWebModule, call: () => Promise<T>): Promise<T> {
+	const result = (queues.get(ort) ?? Promise.resolve()).then(call, call);
+	queues.set(
+		ort,
+		result.catch(() => undefined),
+	);
+	return result;
 }

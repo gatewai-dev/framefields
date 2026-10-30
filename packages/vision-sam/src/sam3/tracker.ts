@@ -7,7 +7,7 @@
  */
 
 import {
-	AutoSessionProvider,
+	createDefaultSessionProvider,
 	imageToTensor,
 	type SessionProvider,
 	type VisionImageInput,
@@ -20,11 +20,16 @@ import {
 import { assertSamLicenseAccepted } from "../license.js";
 import { ensureSamModelsRegistered } from "../models/registry.js";
 import { sam2Tokens } from "../sam2/memory.js";
-import type { Sam2FrameResult } from "../sam2/types.js";
+import type { Sam2Point } from "../sam2/types.js";
 import { sam3DenseDecoder, sam3SupportGraphs } from "./graphs.js";
 import { Sam3MemoryBank, sam3Position } from "./memory.js";
 import { Sam3TextSelector, sam3Floats, sam3Run } from "./text-selector.js";
-import { type Sam3Prompt, validateSam3Prompts } from "./types.js";
+import {
+	type Sam3FrameResult,
+	type Sam3ObjectResult,
+	type Sam3Prompt,
+	validateSam3Prompts,
+} from "./types.js";
 
 /** All graph and tokenizer revisions participate in ClipVision's persistent cache identity. */
 export const SAM3_REVISION =
@@ -35,6 +40,8 @@ export interface Sam3TrackerOptions extends VisionModelStoreOptions {
 	readonly store?: VisionModelStore;
 	readonly frameCount?: number;
 	readonly textThreshold?: number;
+	/** Most instances a text prompt selects. Default 1. */
+	readonly maxObjects?: number;
 	/** Explicitly agree to Meta's SAM License terms to download or run SAM models. */
 	readonly acceptLicense?: boolean;
 }
@@ -48,6 +55,12 @@ type Graph =
 	| "memory_encoder"
 	| "memory_attention";
 
+/** How an object is (re)seeded on a prompted frame. */
+interface Seed {
+	readonly points?: readonly Sam2Point[];
+	readonly dense?: Float32Array;
+}
+
 function tensor(
 	name: string,
 	data: VisionTensorInput["data"],
@@ -56,11 +69,15 @@ function tensor(
 	return { name, data, dims };
 }
 
-/** One explicitly selected SAM 3 instance, with full neural memory propagation on the provider. */
+/**
+ * Explicitly selected SAM 3 instances with full neural memory propagation on the provider.
+ * The image encoder runs once per frame; each object keeps its own memory bank.
+ */
 export class Sam3Tracker {
 	private readonly sessions = new Map<Graph, VisionSession>();
 	private readonly position = sam3Position();
-	private bank?: Sam3MemoryBank;
+	private readonly banks: Sam3MemoryBank[] = [];
+	private temporal?: Float32Array;
 	private noMemory?: Float32Array;
 	private selector?: Sam3TextSelector;
 	private lastFrame = -1;
@@ -87,6 +104,11 @@ export class Sam3Tracker {
 				options.textThreshold >= 1)
 		)
 			throw new Error("SAM 3 textThreshold must be between zero and one.");
+		if (
+			options.maxObjects !== undefined &&
+			(!Number.isSafeInteger(options.maxObjects) || options.maxObjects < 1)
+		)
+			throw new Error("SAM 3 maxObjects must be a positive integer.");
 
 		const store =
 			options.store ??
@@ -94,7 +116,7 @@ export class Sam3Tracker {
 				...options,
 				acceptLicense: options.acceptLicense ?? true,
 			});
-		const provider = options.provider ?? new AutoSessionProvider();
+		const provider = options.provider ?? createDefaultSessionProvider();
 		const tracker = new Sam3Tracker(store, provider, options);
 		try {
 			tracker.sessions.set(
@@ -115,7 +137,7 @@ export class Sam3Tracker {
 				await store.ensure("sam3-support"),
 				await store.ensure("sam3-support-data"),
 			);
-			tracker.bank = new Sam3MemoryBank(support.temporal);
+			tracker.temporal = support.temporal;
 			tracker.noMemory = support.noMemory;
 			tracker.sessions.set(
 				"dense_prompt",
@@ -160,7 +182,7 @@ export class Sam3Tracker {
 		image: VisionImageInput,
 		frame: number,
 		prompt?: Omit<Sam3Prompt, "frame">,
-	): Promise<Sam2FrameResult> {
+	): Promise<Sam3FrameResult> {
 		if (this.released) throw new Error("SAM 3 tracker has been released.");
 		if (
 			!Number.isSafeInteger(frame) ||
@@ -184,12 +206,8 @@ export class Sam3Tracker {
 		const vision = await this.run("vision_encoder", [
 			tensor("pixel_values", pixels, [1, 3, 1008, 1008]),
 		]);
-		const raw = sam3Floats(vision, "image_embeddings.2"),
-			features = prompt
-				? this.initialFeatures(raw)
-				: await this.condition(raw, frame);
-		const points = prompt?.points ?? [{ x: 0, y: 0, label: -1 }];
-		const inputs = [
+		const raw = sam3Floats(vision, "image_embeddings.2");
+		const shared = [
 			tensor(
 				"feats0",
 				sam3Floats(vision, "image_embeddings.0"),
@@ -200,6 +218,85 @@ export class Sam3Tracker {
 				sam3Floats(vision, "image_embeddings.1"),
 				[1, 64, 144, 144],
 			),
+		];
+		const seeds = await this.seeds(pixels, prompt);
+		const objects: Sam3ObjectResult[] = [];
+		for (const [index, bank] of this.banks.entries()) {
+			const seed = seeds.get(index);
+			const features = seed
+				? this.initialFeatures(raw)
+				: await this.condition(raw, frame, bank);
+			const decoded = await this.decode(shared, features, seed);
+			await this.remember(bank, raw, decoded, frame, seed !== undefined);
+			const score = sam3Floats(decoded, "object_score_logits")[0] ?? -Infinity;
+			objects.push({
+				id: index + 1,
+				mask: sam3Mask(
+					sam3Floats(decoded, "high_res_masks"),
+					image.width,
+					image.height,
+					score,
+				),
+				score,
+				iou: Math.max(...sam3Floats(decoded, "iou_scores")),
+			});
+		}
+		this.lastFrame = frame;
+		return { width: image.width, height: image.height, objects };
+	}
+
+	/** Objects a prompt (re)seeds, by index. Text re-selects every object; points address one. */
+	private async seeds(
+		pixels: Float32Array,
+		prompt?: Omit<Sam3Prompt, "frame">,
+	): Promise<Map<number, Seed>> {
+		const seeds = new Map<number, Seed>();
+		if (prompt?.points) {
+			const index = (prompt.object ?? 1) - 1;
+			if (index > this.banks.length)
+				throw new Error(
+					`SAM 3 prompt object ${index + 1} skips track IDs; the next new ID is ${this.banks.length + 1}.`,
+				);
+			if (index === this.banks.length) this.banks.push(this.newBank());
+			seeds.set(index, { points: prompt.points });
+		}
+		if (prompt?.text !== undefined) {
+			this.selector ??= await Sam3TextSelector.create(
+				this.store,
+				this.provider,
+			);
+			if (!this.options.store) this.store.clearMemoryCache();
+			const masks = await this.selector.select(
+				pixels,
+				prompt.text,
+				this.options.textThreshold ?? 0.5,
+				this.options.maxObjects ?? 1,
+			);
+			this.banks.length = 0;
+			for (const [index, mask] of masks.entries()) {
+				this.banks.push(this.newBank());
+				const dense = await this.run("dense_prompt", [
+					tensor("mask", mask, [1, 1, 288, 288]),
+				]);
+				seeds.set(index, { dense: sam3Floats(dense, "dense_prompt") });
+			}
+		}
+		return seeds;
+	}
+
+	private newBank(): Sam3MemoryBank {
+		if (!this.temporal) throw new Error("SAM 3 tracker has been released.");
+		return new Sam3MemoryBank(this.temporal);
+	}
+
+	private decode(
+		shared: readonly VisionTensorInput[],
+		features: Float32Array,
+		seed?: Seed,
+	): Promise<VisionTensorOutputs> {
+		const points = seed?.points ?? [{ x: 0, y: 0, label: -1 }];
+		const inputs = [
+			...shared,
 			tensor("feats2", features, [1, 256, 72, 72]),
 			tensor(
 				"input_points",
@@ -212,49 +309,11 @@ export class Sam3Tracker {
 				points.length,
 			]),
 		];
-
-		if (prompt?.text !== undefined) {
-			this.selector ??= await Sam3TextSelector.create(
-				this.store,
-				this.provider,
-			);
-			if (!this.options.store) this.store.clearMemoryCache();
-			const mask = await this.selector.select(
-				pixels,
-				prompt.text,
-				this.options.textThreshold ?? 0.5,
-			);
-			const dense = await this.run("dense_prompt", [
-				tensor("mask", mask, [1, 1, 288, 288]),
-			]);
-			inputs.push(
-				tensor(
-					"dense_prompt",
-					sam3Floats(dense, "dense_prompt"),
-					[1, 256, 72, 72],
-				),
-			);
-		}
-
-		const decoded = await this.run(
-			prompt?.text !== undefined ? "dense_decoder" : "mask_decoder",
-			inputs,
-		);
-		await this.remember(raw, decoded, frame, prompt !== undefined);
-		this.lastFrame = frame;
-		const score = sam3Floats(decoded, "object_score_logits")[0] ?? -Infinity;
-		return {
-			mask: sam3Mask(
-				sam3Floats(decoded, "high_res_masks"),
-				image.width,
-				image.height,
-				score,
-			),
-			width: image.width,
-			height: image.height,
-			score,
-			iou: Math.max(...sam3Floats(decoded, "iou_scores")),
-		};
+		if (!seed?.dense) return this.run("mask_decoder", inputs);
+		return this.run("dense_decoder", [
+			...inputs,
+			tensor("dense_prompt", seed.dense, [1, 256, 72, 72]),
+		]);
 	}
 
 	private initialFeatures(raw: Float32Array): Float32Array {
@@ -268,9 +327,9 @@ export class Sam3Tracker {
 	private async condition(
 		raw: Float32Array,
 		frame: number,
+		memory: Sam3MemoryBank,
 	): Promise<Float32Array> {
-		const bank = this.bank?.assemble(frame, this.options.frameCount ?? 16);
-		if (!bank) throw new Error("Missing SAM 3 memory bank.");
+		const bank = memory.assemble(frame, this.options.frameCount ?? 16);
 		const positions = await this.run("pointer_position", [
 			tensor("encoding", bank.encoding, [16, 256]),
 		]);
@@ -311,6 +370,7 @@ export class Sam3Tracker {
 	}
 
 	private async remember(
+		bank: Sam3MemoryBank,
 		raw: Float32Array,
 		decoded: VisionTensorOutputs,
 		frame: number,
@@ -330,7 +390,7 @@ export class Sam3Tracker {
 			),
 			tensor("is_mask_from_pts", new Uint8Array([prompted ? 1 : 0]), [1]),
 		]);
-		this.bank?.remember(
+		bank.remember(
 			{
 				frame,
 				tokens: sam3Floats(memory, "memory_tokens").slice(),
@@ -345,7 +405,8 @@ export class Sam3Tracker {
 		for (const session of this.sessions.values()) session.release();
 		this.sessions.clear();
 		this.selector?.release();
-		this.bank = undefined;
+		this.banks.length = 0;
+		this.temporal = undefined;
 		this.noMemory = undefined;
 		this.released = true;
 	}

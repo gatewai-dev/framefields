@@ -132,11 +132,6 @@ export class VisionModelStore {
 		}
 	}
 
-	/** Dynamically registers an external model descriptor into the store registry. */
-	public registerModel(descriptor: VisionModelDescriptor): void {
-		VISION_MODELS[descriptor.key] = descriptor;
-	}
-
 	/** Drops a cached model (file + memory) so the next `ensure` re-downloads it. */
 	public async evict(key: VisionModelKey): Promise<void> {
 		this._buffers.delete(key);

@@ -77,8 +77,15 @@ export const PREPROCESS_BY_FAMILY: Readonly<
 	},
 };
 
+export type PreprocessFamily = keyof typeof PREPROCESS_BY_FAMILY;
+
+/** True for the families `VisionRunner` can preprocess and decode itself. */
+export function isPreprocessFamily(family: string): family is PreprocessFamily {
+	return Object.hasOwn(PREPROCESS_BY_FAMILY, family);
+}
+
 export function preprocessSpec(
-	family: keyof typeof PREPROCESS_BY_FAMILY,
+	family: PreprocessFamily,
 	input: readonly [number, number],
 ): PreprocessSpec {
 	return { ...PREPROCESS_BY_FAMILY[family], width: input[0], height: input[1] };

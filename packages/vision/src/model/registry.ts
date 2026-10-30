@@ -4,8 +4,10 @@ import type { VisionTask, VisionVariant } from "@framefields/core";
  * Vision model registry — single source of truth for what exists, where it lives, and which
  * model serves which task + variant.
  *
- * Every model in this package is Apache-2.0 and pinned to an immutable Hugging Face revision.
- * The store verifies the SHA-256 below after download, so a moved or tampered file fails loudly.
+ * Every model is Apache-2.0 and pinned to an immutable Hugging Face revision; the store
+ * verifies the SHA-256 below after download, so a moved or tampered file fails loudly.
+ * Separately licensed packages (e.g. `@framefields/vision-sam`) add their own pinned
+ * models with `registerVisionModel`.
  *
  * Downloads are ALWAYS lazy: nothing here touches the network. The store (model-store.ts)
  * fetches a model only when an inference function that needs it is first called.
@@ -55,7 +57,7 @@ export interface VisionModelDescriptor {
 	readonly input: readonly [number, number];
 	/** Upstream project and license, surfaced in docs and errors. */
 	readonly source: string;
-	/** License identifier (e.g. "Apache-2.0" or "Meta SAM License"). Defaults to "Apache-2.0". */
+	/** License identifier when not Apache-2.0; the store requires acceptance to download it. */
 	readonly license?: string;
 }
 
@@ -70,7 +72,7 @@ const RTMO_SOURCE = "RTMO (OpenMMLab mmpose, Apache-2.0), ONNX export";
 const SELFIE_SOURCE =
 	"MediaPipe Selfie Segmenter (Google, Apache-2.0), ONNX export";
 
-export const VISION_MODELS: Record<string, VisionModelDescriptor> = {
+const models: Record<VisionModelKey, VisionModelDescriptor> = {
 	// ── Detection + instance segmentation (COCO 80) ─────────────────────
 	"rtmdet-ins-t": {
 		key: "rtmdet-ins-t",
@@ -85,7 +87,6 @@ export const VISION_MODELS: Record<string, VisionModelDescriptor> = {
 		sha256: "99ee670820c4493aa13e20578b6a8e39781c319846dc41796a77765734beac5c",
 		input: [640, 640],
 		source: RTMDET_INS_SOURCE,
-		license: "Apache-2.0",
 	},
 	"rtmdet-ins-s": {
 		key: "rtmdet-ins-s",
@@ -94,13 +95,12 @@ export const VISION_MODELS: Record<string, VisionModelDescriptor> = {
 		url: hf(
 			RTMDET_INS_REPO,
 			RTMDET_INS_REV,
-			"models/small/rtmdet-ins_s_640x640.onnx",
+			"models/s/rtmdet-ins_s_640x640.onnx",
 		),
-		bytes: 38_745_918,
-		sha256: "0faef2be711666ff726d40026e6d11e5fc24c6c45ea4e4cb3ddf295b77e83492",
+		bytes: 43_236_976,
+		sha256: "9cd1787fbf3eb2bd64cc2d8154f41c036f5484b85599e1cbe0227a2dc5a4a08b",
 		input: [640, 640],
 		source: RTMDET_INS_SOURCE,
-		license: "Apache-2.0",
 	},
 	"rtmdet-ins-m": {
 		key: "rtmdet-ins-m",
@@ -109,77 +109,70 @@ export const VISION_MODELS: Record<string, VisionModelDescriptor> = {
 		url: hf(
 			RTMDET_INS_REPO,
 			RTMDET_INS_REV,
-			"models/medium/rtmdet-ins_m_640x640.onnx",
+			"models/m/rtmdet-ins_m_640x640.onnx",
 		),
-		bytes: 104_139_518,
-		sha256: "c18fa83ee42a5c37894a896d8e8b615c4d3ddf8b7ffda62fa1e1b12b591b61c9",
+		bytes: 115_735_979,
+		sha256: "a003bce80316e03467c2c2b483df2d5c0398220c2357a44f9bf985929f7eb052",
 		input: [640, 640],
 		source: RTMDET_INS_SOURCE,
-		license: "Apache-2.0",
 	},
-
-	// ── Top-down pose estimation (COCO 17 keypoints) ──────────────────
+	// ── Multi-person pose (COCO-17) ─────────────────────────────────────
 	"rtmo-t": {
 		key: "rtmo-t",
 		family: "rtmo",
 		filename: "rtmo-t.onnx",
 		url: hf(
-			"tori29umai/rtmo-onnx-pose",
-			"550cbb91cfc29013b35eb65ce90c42d3c907d884",
-			"models/tiny/rtmo_tiny_640x640.onnx",
+			"Xenova/RTMO-t",
+			"f29d13ce5ee291fbe505e9d06a049992f05699dc",
+			"onnx/model.onnx",
 		),
-		bytes: 20_814_230,
-		sha256: "a1a8c08198f8a14b534958ea346ecce43867c2966bfb578c74d39f40c74ceca5",
-		input: [640, 640],
+		bytes: 27_360_569,
+		sha256: "cb54dd042bf997df86d938721c94238940f2bff98ba8d2ccc834430de5c65c13",
+		input: [416, 416],
 		source: RTMO_SOURCE,
-		license: "Apache-2.0",
 	},
 	"rtmo-s": {
 		key: "rtmo-s",
 		family: "rtmo",
 		filename: "rtmo-s.onnx",
 		url: hf(
-			"tori29umai/rtmo-onnx-pose",
-			"550cbb91cfc29013b35eb65ce90c42d3c907d884",
-			"models/small/rtmo_s_640x640.onnx",
+			"Xenova/RTMO-s",
+			"d8c526187f341d287753831c9c8b1ecc4855bba1",
+			"onnx/model.onnx",
 		),
-		bytes: 69_097_650,
-		sha256: "25064e7a8585e509aa09fb6fbff3eeae0c1c875d9e512cb59bf4ceab90604b38",
+		bytes: 39_636_400,
+		sha256: "1cd6a3517658903233e9ccb78666554862f57f0944b6886e2048093594aef4e7",
 		input: [640, 640],
 		source: RTMO_SOURCE,
-		license: "Apache-2.0",
 	},
 	"rtmo-m": {
 		key: "rtmo-m",
 		family: "rtmo",
 		filename: "rtmo-m.onnx",
 		url: hf(
-			"tori29umai/rtmo-onnx-pose",
-			"550cbb91cfc29013b35eb65ce90c42d3c907d884",
-			"models/medium/rtmo_m_640x640.onnx",
+			"Xenova/RTMO-m",
+			"3aba1280472b98ee2bf663482e27e243038d23fe",
+			"onnx/model.onnx",
 		),
-		bytes: 139_067_314,
-		sha256: "36009f4dd45a271701b2ca7226f318357f4fb2bc13d702d849509df6c2763f35",
+		bytes: 89_291_929,
+		sha256: "76d82c45e5c4810baf587ecf2638d15cbf7ed196afb2055e977382532021b59e",
 		input: [640, 640],
 		source: RTMO_SOURCE,
-		license: "Apache-2.0",
 	},
-
-	// ── Binary selfie segmenter (matte) ───────────────────────────────
+	// ── Person matte ────────────────────────────────────────────────────
 	"selfie-square": {
 		key: "selfie-square",
 		family: "selfie",
 		filename: "selfie-square.onnx",
 		url: hf(
-			"onnx-community/mediapipe_selfie_segmentation_square",
-			"b5066db2bc1be0c926a84f331ea06eb6e91f0a14",
+			"onnx-community/mediapipe_selfie_segmentation",
+			"be49485c8e027524be38591817fc5cd31bd9d00e",
 			"onnx/model.onnx",
 		),
-		bytes: 462_338,
-		sha256: "13511eb85ca8eb90b9f0bc94be6bc961448b30efab31f49635beea7b7a2bbcd2",
+		bytes: 462_352,
+		sha256: "3241ac4ad8aa35bdaf33946776db29f7c283a413aa0b0dacb9483594b4531aad",
 		input: [256, 256],
 		source: SELFIE_SOURCE,
-		license: "Apache-2.0",
 	},
 	"selfie-landscape": {
 		key: "selfie-landscape",
@@ -194,13 +187,16 @@ export const VISION_MODELS: Record<string, VisionModelDescriptor> = {
 		sha256: "7a0adcfdb1715d3b0ff0f61486d8a181c33f4a208343a5abfccbc6540e872d24",
 		input: [256, 144],
 		source: SELFIE_SOURCE,
-		license: "Apache-2.0",
 	},
 };
 
-/** Register external or plugin vision models into the runtime registry. */
+export const VISION_MODELS: Readonly<
+	Record<VisionModelKey, VisionModelDescriptor>
+> = models;
+
+/** Adds a pinned model from a separately licensed package to the registry. */
 export function registerVisionModel(descriptor: VisionModelDescriptor): void {
-	VISION_MODELS[descriptor.key] = descriptor;
+	models[descriptor.key] = descriptor;
 }
 
 /**

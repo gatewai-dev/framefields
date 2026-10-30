@@ -58,6 +58,44 @@ function fakeModule(opts: { failWebGPU?: boolean } = {}) {
 }
 
 describe("WebGPUProvider", () => {
+	it("passes multiple named float and integer tensors without renaming", async () => {
+		const { module } = fakeModule();
+		let feeds: Record<string, unknown> = {};
+		const baseCreate = module.InferenceSession.create;
+		const provider = new WebGPUProvider({
+			loader: async () => ({
+				...module,
+				InferenceSession: {
+					create: async (bytes, options) => {
+						const session = await baseCreate(bytes, options);
+						return {
+							...session,
+							inputNames: ["features", "labels"],
+							run: async (input: Record<string, unknown>) => {
+								feeds = input;
+								return {};
+							},
+							release: async () => {},
+						};
+					},
+				},
+			}),
+		});
+		const session = await provider.createSession(new Uint8Array([1]));
+		await session.runMany?.([
+			{ name: "features", data: new Float32Array([1]), dims: [1] },
+			{ name: "labels", data: new Int32Array([2]), dims: [1] },
+		]);
+		expect(feeds.features).toMatchObject({
+			type: "float32",
+			data: new Float32Array([1]),
+		});
+		expect(feeds.labels).toMatchObject({
+			type: "int32",
+			data: new Int32Array([2]),
+		});
+	});
+
 	it("runs sessions on a given device and feeds GPU-buffer inputs", async () => {
 		const { module, calls, fromGpuBuffer } = fakeModule();
 		const device = { label: "renderer" } as unknown as GPUDevice;

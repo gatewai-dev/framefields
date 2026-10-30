@@ -748,7 +748,10 @@ export const VisionWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 	let subject: InstanceMask | undefined;
 
 	if (fromClip) {
-		subject = selectSubject(clipSubject ?? undefined, nodeKeyStr, frameIdx);
+		subject = clipSubject ?? undefined;
+		if (subject)
+			lastSubjectByNode.set(nodeKeyStr, { mask: subject, frame: frameIdx });
+		else lastSubjectByNode.delete(nodeKeyStr);
 	} else if (cached) {
 		frameObjects = cached.objects;
 		if (wantsDetection) {
@@ -1077,7 +1080,12 @@ function clipSubjectFor(
 	const subject = source?.subject(frame, fps);
 	if (!subject) return subject;
 	const aspect = subject.width / subject.height / (width / height);
-	return Math.abs(aspect - 1) < 0.01 ? subject : undefined;
+	if (Math.abs(aspect - 1) < 0.01) return subject;
+	if (source?.exact)
+		throw new Error(
+			"A prompted clip matte requires the source aspect ratio. Apply layout cropping after the source matte.",
+		);
+	return undefined;
 }
 
 /** Adapts a Selfie Segmenter matte to the instance-mask shape the composite path takes. */

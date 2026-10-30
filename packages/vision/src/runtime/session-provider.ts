@@ -15,7 +15,7 @@ export interface VisionTensor {
 export interface VisionTensorInput {
 	readonly name: string;
 	/** Ignored (may be empty) when `gpuBuffer` is set. */
-	readonly data: Float32Array;
+	readonly data: Float32Array | Int32Array;
 	/** The input already on the GPU; only for providers with a `device` (it must be that device's). */
 	readonly gpuBuffer?: GPUBuffer;
 	readonly dims: readonly number[];
@@ -25,6 +25,8 @@ export type VisionTensorOutputs = Readonly<Record<string, VisionTensor>>;
 
 export interface VisionSession {
 	run(input: VisionTensorInput): Promise<VisionTensorOutputs>;
+	/** Multi-input graphs; optional for compatibility with existing custom providers. */
+	runMany?(inputs: readonly VisionTensorInput[]): Promise<VisionTensorOutputs>;
 	release(): void;
 }
 
@@ -294,24 +296,35 @@ export class NodeSessionProvider implements SessionProvider {
 		});
 		type OrtTensor = InstanceType<typeof ort.Tensor>;
 
-		return {
-			run: async (input: VisionTensorInput): Promise<VisionTensorOutputs> => {
-				const inputName = session.inputNames.includes(input.name)
-					? input.name
-					: (session.inputNames[0] ?? input.name);
-				const feeds: Record<string, OrtTensor> = {
-					[inputName]: new ort.Tensor("float32", input.data, [...input.dims]),
+		const runMany = async (
+			inputs: readonly VisionTensorInput[],
+		): Promise<VisionTensorOutputs> => {
+			const feeds: Record<string, OrtTensor> = {};
+			for (const input of inputs) {
+				const name =
+					inputs.length === 1 && !session.inputNames.includes(input.name)
+						? (session.inputNames[0] ?? input.name)
+						: input.name;
+				if (input.gpuBuffer)
+					throw new Error("CPU vision sessions do not accept GPU buffers.");
+				feeds[name] =
+					input.data instanceof Int32Array
+						? new ort.Tensor("int32", input.data, [...input.dims])
+						: new ort.Tensor("float32", input.data, [...input.dims]);
+			}
+			const results = await session.run(feeds);
+			const outputs: Record<string, VisionTensor> = {};
+			for (const [name, tensor] of Object.entries(results)) {
+				outputs[name] = {
+					data: tensor.data as VisionTensor["data"],
+					dims: [...tensor.dims],
 				};
-				const results = await session.run(feeds);
-				const outputs: Record<string, VisionTensor> = {};
-				for (const [name, tensor] of Object.entries(results)) {
-					outputs[name] = {
-						data: tensor.data as VisionTensor["data"],
-						dims: [...tensor.dims],
-					};
-				}
-				return outputs;
-			},
+			}
+			return outputs;
+		};
+		return {
+			run: (input) => runMany([input]),
+			runMany,
 			release: () => {
 				void session.release();
 			},

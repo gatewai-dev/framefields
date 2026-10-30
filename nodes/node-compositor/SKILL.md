@@ -28,6 +28,8 @@ layout nodes (`flex` / `block` / `box` / `text` / `media`) with HTML-like auto-l
 (`dir`, `gap`, `padding`, `justify`, `align`, `wrap`) and per-node keyframe animations.
 Rendering is deterministic: `(document, frame) → pixels`, identical in preview and final render.
 
+When a video layer uses a cached clip-vision matte, the source frame's mask is authoritative: a known absent subject renders empty rather than holding an earlier silhouette. Prompted SAM clip mattes require matching source aspect ratio; apply layout cropping after source-space matting rather than silently detecting another subject.
+
 ## When to Use
 - **Title cards / hero layouts:** Flex stacks with title + subtitle text and box chips (see example below).
 - **Overlays / Watermarks:** Absolute-positioned text or media over video/image backgrounds.

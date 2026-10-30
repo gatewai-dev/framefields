@@ -52,8 +52,8 @@ export interface OrtWebModule {
 	};
 	/** ORT tensor constructor (called with `new`), with `fromGpuBuffer` on WebGPU builds. */
 	readonly Tensor: (new (
-		type: "float32",
-		data: Float32Array,
+		type: "float32" | "int32",
+		data: Float32Array | Int32Array,
 		dims: readonly number[],
 	) => unknown) & {
 		fromGpuBuffer?(
@@ -138,28 +138,43 @@ export class WebGPUProvider implements SessionProvider {
 			});
 		}
 
-		return {
-			run: async (input: VisionTensorInput): Promise<VisionTensorOutputs> => {
-				const inputName = session.inputNames.includes(input.name)
-					? input.name
-					: (session.inputNames[0] ?? input.name);
-				const tensor =
+		const runMany = async (
+			inputs: readonly VisionTensorInput[],
+		): Promise<VisionTensorOutputs> => {
+			const feeds: Record<string, unknown> = {};
+			for (const input of inputs) {
+				const name =
+					inputs.length === 1 && !session.inputNames.includes(input.name)
+						? (session.inputNames[0] ?? input.name)
+						: input.name;
+				if (input.gpuBuffer && input.data instanceof Int32Array) {
+					throw new Error("GPU-buffer vision inputs must be float32.");
+				}
+				feeds[name] =
 					input.gpuBuffer && ort.Tensor.fromGpuBuffer
 						? ort.Tensor.fromGpuBuffer(input.gpuBuffer, {
 								dataType: "float32",
 								dims: [...input.dims],
 							})
-						: new ort.Tensor("float32", input.data, [...input.dims]);
-				const results = await session.run({ [inputName]: tensor });
-				const outputs: Record<string, VisionTensorOutputs[string]> = {};
-				for (const [name, tensor] of Object.entries(results)) {
-					outputs[name] = {
-						data: tensor.data,
-						dims: [...tensor.dims],
-					};
-				}
-				return outputs;
-			},
+						: new ort.Tensor(
+								input.data instanceof Int32Array ? "int32" : "float32",
+								input.data,
+								[...input.dims],
+							);
+			}
+			const results = await session.run(feeds);
+			const outputs: Record<string, VisionTensorOutputs[string]> = {};
+			for (const [name, tensor] of Object.entries(results)) {
+				outputs[name] = {
+					data: tensor.data,
+					dims: [...tensor.dims],
+				};
+			}
+			return outputs;
+		};
+		return {
+			run: (input) => runMany([input]),
+			runMany,
 			release: () => {
 				void session.release();
 			},

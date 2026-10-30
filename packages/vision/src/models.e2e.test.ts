@@ -62,7 +62,9 @@ describe.skipIf(!enabled)("vision models (real weights)", () => {
 	});
 
 	it.each(
-		Object.keys(VISION_MODELS) as VisionModelKey[],
+		(Object.keys(VISION_MODELS) as VisionModelKey[]).filter(
+			(key) => VISION_MODELS[key].family !== "sam2",
+		),
 	)("%s downloads, verifies and matches its registry input shape", async (key) => {
 		const bytes = await new VisionModelStore().ensure(key);
 		const ort = await import("onnxruntime-node");

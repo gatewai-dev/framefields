@@ -361,6 +361,8 @@ export class VisionRunner {
 	): Promise<{ outputs: VisionTensorOutputs; transform: InputTransform }> {
 		const session = await this.session(key);
 		const desc = VISION_MODELS[key];
+		if (desc.family === "sam2")
+			throw new Error("Use Sam2Tracker for prompted video segmentation.");
 		const spec = preprocessSpec(desc.family, desc.input);
 		const dims = [1, 3, spec.height, spec.width];
 		let image: VisionImageInput;

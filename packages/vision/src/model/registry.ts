@@ -30,10 +30,16 @@ export type VisionModelKey =
 	| "rtmo-s"
 	| "rtmo-m"
 	| "selfie-square"
-	| "selfie-landscape";
+	| "selfie-landscape"
+	| "sam2.1-tiny-constants"
+	| "sam2.1-tiny-vision_encoder"
+	| "sam2.1-tiny-mask_decoder"
+	| "sam2.1-tiny-memory_encoder"
+	| "sam2.1-tiny-memory_attention"
+	| "sam2.1-tiny-pointer_tpos";
 
 /** Which decoder a model's outputs feed (see runner/vision-runner.ts). */
-export type VisionModelFamily = "rtmdet-ins" | "rtmo" | "selfie";
+export type VisionModelFamily = "rtmdet-ins" | "rtmo" | "selfie" | "sam2";
 
 export interface VisionModelDescriptor {
 	readonly key: VisionModelKey;
@@ -66,6 +72,72 @@ const SELFIE_SOURCE =
 export const VISION_MODELS: Readonly<
 	Record<VisionModelKey, VisionModelDescriptor>
 > = {
+	"sam2.1-tiny-constants": {
+		key: "sam2.1-tiny-constants",
+		family: "sam2",
+		filename: "sam2.1-tiny-constants.json",
+		url: "https://huggingface.co/diffusionstudio/sam2.1-tiny-video-onnx-fp16/resolve/66673b5db39371b7dd7847f4d3bc0d4f4179b79e/constants.json",
+		bytes: 9781,
+		sha256: "67583810f4b80b762285377a5cc1066bbe19cdf8ef7fc87ff6aa78fc79830ef2",
+		input: [512, 512],
+		source:
+			"Meta SAM 2.1 Hiera Tiny (Apache-2.0), Diffusion Studio 512px fp16 video export",
+	},
+	"sam2.1-tiny-vision_encoder": {
+		key: "sam2.1-tiny-vision_encoder",
+		family: "sam2",
+		filename: "sam2.1-tiny-vision_encoder.onnx",
+		url: "https://huggingface.co/diffusionstudio/sam2.1-tiny-video-onnx-fp16/resolve/66673b5db39371b7dd7847f4d3bc0d4f4179b79e/onnx/vision_encoder.onnx",
+		bytes: 58385353,
+		sha256: "24e9ccf5994be5c8dd93ebe771a4cc4f8bb122d0524555ac3ba4e7141710b133",
+		input: [512, 512],
+		source:
+			"Meta SAM 2.1 Hiera Tiny (Apache-2.0), Diffusion Studio 512px fp16 video export",
+	},
+	"sam2.1-tiny-mask_decoder": {
+		key: "sam2.1-tiny-mask_decoder",
+		family: "sam2",
+		filename: "sam2.1-tiny-mask_decoder.onnx",
+		url: "https://huggingface.co/diffusionstudio/sam2.1-tiny-video-onnx-fp16/resolve/66673b5db39371b7dd7847f4d3bc0d4f4179b79e/onnx/mask_decoder.onnx",
+		bytes: 8898805,
+		sha256: "6bc158b0d028777ca2e25203ece0f27429c436de39a5c7fe301b3858d6059789",
+		input: [512, 512],
+		source:
+			"Meta SAM 2.1 Hiera Tiny (Apache-2.0), Diffusion Studio 512px fp16 video export",
+	},
+	"sam2.1-tiny-memory_encoder": {
+		key: "sam2.1-tiny-memory_encoder",
+		family: "sam2",
+		filename: "sam2.1-tiny-memory_encoder.onnx",
+		url: "https://huggingface.co/diffusionstudio/sam2.1-tiny-video-onnx-fp16/resolve/66673b5db39371b7dd7847f4d3bc0d4f4179b79e/onnx/memory_encoder.onnx",
+		bytes: 2807753,
+		sha256: "8b2bb6810444cee684ef938b7464c5645653f236014f5497c3db3654818cc7ce",
+		input: [512, 512],
+		source:
+			"Meta SAM 2.1 Hiera Tiny (Apache-2.0), Diffusion Studio 512px fp16 video export",
+	},
+	"sam2.1-tiny-memory_attention": {
+		key: "sam2.1-tiny-memory_attention",
+		family: "sam2",
+		filename: "sam2.1-tiny-memory_attention.onnx",
+		url: "https://huggingface.co/diffusionstudio/sam2.1-tiny-video-onnx-fp16/resolve/66673b5db39371b7dd7847f4d3bc0d4f4179b79e/onnx/memory_attention.onnx",
+		bytes: 13029470,
+		sha256: "67c4e4da01bc7f501b88294bb19a8200362915ece04e9d7e367a437658f342c9",
+		input: [512, 512],
+		source:
+			"Meta SAM 2.1 Hiera Tiny (Apache-2.0), Diffusion Studio 512px fp16 video export",
+	},
+	"sam2.1-tiny-pointer_tpos": {
+		key: "sam2.1-tiny-pointer_tpos",
+		family: "sam2",
+		filename: "sam2.1-tiny-pointer_tpos.onnx",
+		url: "https://huggingface.co/diffusionstudio/sam2.1-tiny-video-onnx-fp16/resolve/66673b5db39371b7dd7847f4d3bc0d4f4179b79e/onnx/pointer_tpos.onnx",
+		bytes: 34228,
+		sha256: "3ab5bfce40ed01208301b2d8f596b9c9f7f493dcd7e09ef01ec22e5be3694bd7",
+		input: [512, 512],
+		source:
+			"Meta SAM 2.1 Hiera Tiny (Apache-2.0), Diffusion Studio 512px fp16 video export",
+	},
 	// ── Detection + instance segmentation (COCO 80) ─────────────────────
 	"rtmdet-ins-t": {
 		key: "rtmdet-ins-t",

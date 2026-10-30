@@ -230,6 +230,21 @@ Layer.box({
 - SAM gives masks, not skeletons: `pose: true` matches an RTMO pose to the selection. Default smoothing is 0, and an absent object stays empty.
 - `clip.release()` frees the SAM sessions. Analysed frames stay readable.
 
+### Singular or plural: one selection per group
+
+Read the request's number before writing any vision code.
+
+| The user asks for | Means | Write |
+| --- | --- | --- |
+| **One** thing: "the man in white", "the ball", "her" | one object | one `sam3` text prompt (default `maxObjects: 1`), or `sam2` points |
+| **A group** of look-alikes as a whole: "the students", "all dancers", "everyone in black jackets", "the crowd", "the cars" | one entity | **one** `comp.vision` clip, **one** text prompt, `merge: true` |
+| **Each member** separately: "box every student", "label each car", "count them" | N objects | one clip, one text prompt, `maxObjects: N` |
+
+- **Never select a group one member at a time.** One clip or detection per student, or several clips with the same or overlapping prompts, re-detect the same people. That gives duplicate and overlapping masks, members claimed twice or missed, and N times the cost. A group is always one prompt on one clip.
+- Plural wording is fine in the prompt itself: "students in black jackets" and "student in black jacket" selected the same group (87% of the frame either way). Grammatical number does not change which instances SAM 3 matches; `merge` decides whether they are one entity, and `maxObjects` whether they are separate tracks.
+- Name the group by what its members share and others lack ("in black jackets" excluded the main character in a white shirt). If the group still includes someone it shouldn't, describe the group more precisely; don't add a second clip to subtract them.
+- A group plus a different individual (the crowd and the main character) is two clips with prompts that exclude each other: `merge` on the group, a single object for the individual.
+
 ### Cost and caching
 
 - Every SAM 3 clip in a process shares one image encoder and reuses its result per frame. Tracking the hero and the crowd of one source costs one encoder pass, not two.

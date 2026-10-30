@@ -14,6 +14,7 @@ import { needsNchwLayout } from "../model/conv-layout.js";
 import type {
 	SessionProvider,
 	VisionSession,
+	VisionSessionOptions,
 	VisionTensorInput,
 	VisionTensorOutputs,
 } from "./session-provider.js";
@@ -44,6 +45,7 @@ export interface OrtWebModule {
 			modelBytes: Uint8Array,
 			options: {
 				executionProviders: (string | OrtWebExecutionProvider)[];
+				externalData?: { path: string; data: Uint8Array }[];
 				graphOptimizationLevel?: "disabled" | "basic" | "extended" | "all";
 				/** 0 verbose … 4 fatal. */
 				logSeverityLevel?: 0 | 1 | 2 | 3 | 4;
@@ -52,8 +54,8 @@ export interface OrtWebModule {
 	};
 	/** ORT tensor constructor (called with `new`), with `fromGpuBuffer` on WebGPU builds. */
 	readonly Tensor: (new (
-		type: "float32" | "int32",
-		data: Float32Array | Int32Array,
+		type: "float32" | "int32" | "int64" | "bool",
+		data: Float32Array | Int32Array | BigInt64Array | Uint8Array,
 		dims: readonly number[],
 	) => unknown) & {
 		fromGpuBuffer?(
@@ -113,7 +115,10 @@ export class WebGPUProvider implements SessionProvider {
 		return this._ortPromise;
 	}
 
-	public async createSession(modelBytes: Uint8Array): Promise<VisionSession> {
+	public async createSession(
+		modelBytes: Uint8Array,
+		options?: VisionSessionOptions,
+	): Promise<VisionSession> {
 		const ort = await this.ort();
 
 		let session: OrtWebSession;
@@ -125,6 +130,10 @@ export class WebGPUProvider implements SessionProvider {
 					withProviderOptions(name, device, layout),
 				),
 				graphOptimizationLevel: "all",
+				externalData: options?.externalData?.map(({ path, data }) => ({
+					path,
+					data,
+				})),
 				// Errors only: node-placement notes print as console errors otherwise.
 				logSeverityLevel: 3,
 			});
@@ -133,6 +142,10 @@ export class WebGPUProvider implements SessionProvider {
 			session = await ort.InferenceSession.create(modelBytes, {
 				executionProviders: ["wasm"],
 				graphOptimizationLevel: "all",
+				externalData: options?.externalData?.map(({ path, data }) => ({
+					path,
+					data,
+				})),
 				// Errors only: node-placement notes print as console errors otherwise.
 				logSeverityLevel: 3,
 			});
@@ -147,7 +160,7 @@ export class WebGPUProvider implements SessionProvider {
 					inputs.length === 1 && !session.inputNames.includes(input.name)
 						? (session.inputNames[0] ?? input.name)
 						: input.name;
-				if (input.gpuBuffer && input.data instanceof Int32Array) {
+				if (input.gpuBuffer && !(input.data instanceof Float32Array)) {
 					throw new Error("GPU-buffer vision inputs must be float32.");
 				}
 				feeds[name] =
@@ -157,7 +170,13 @@ export class WebGPUProvider implements SessionProvider {
 								dims: [...input.dims],
 							})
 						: new ort.Tensor(
-								input.data instanceof Int32Array ? "int32" : "float32",
+								input.data instanceof Uint8Array
+									? "bool"
+									: input.data instanceof BigInt64Array
+										? "int64"
+										: input.data instanceof Int32Array
+											? "int32"
+											: "float32",
 								input.data,
 								[...input.dims],
 							);

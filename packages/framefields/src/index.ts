@@ -123,12 +123,6 @@ export {
 	PoseSkeletonRenderer,
 	pinNodeToLandmark,
 	pinNodeToObject,
-	type Sam2FrameResult,
-	type Sam2Options,
-	type Sam2Point,
-	type Sam2Prompt,
-	Sam2Tracker,
-	type Sam2TrackerOptions,
 	type SegmentationResult,
 	SegmentationTexturePool,
 	SpatialLandmarkTransformer,
@@ -141,6 +135,19 @@ export {
 	type VisionTask,
 	type VisionVariant,
 } from "@framefields/vision";
+
+export {
+	type Sam2FrameResult,
+	type Sam2Options,
+	type Sam2Point,
+	type Sam2Prompt,
+	Sam2Tracker,
+	type Sam2TrackerOptions,
+	type Sam3Options,
+	type Sam3Prompt,
+	Sam3Tracker,
+	type Sam3TrackerOptions,
+} from "@framefields/vision-sam";
 
 import fs from "node:fs/promises";
 import path from "node:path";

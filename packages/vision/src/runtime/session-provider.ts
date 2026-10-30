@@ -15,7 +15,7 @@ export interface VisionTensor {
 export interface VisionTensorInput {
 	readonly name: string;
 	/** Ignored (may be empty) when `gpuBuffer` is set. */
-	readonly data: Float32Array | Int32Array;
+	readonly data: Float32Array | Int32Array | BigInt64Array | Uint8Array;
 	/** The input already on the GPU; only for providers with a `device` (it must be that device's). */
 	readonly gpuBuffer?: GPUBuffer;
 	readonly dims: readonly number[];
@@ -30,11 +30,22 @@ export interface VisionSession {
 	release(): void;
 }
 
+/** External ONNX tensor files, verified by the model store before session creation. */
+export interface VisionSessionOptions {
+	readonly externalData?: readonly {
+		readonly path: string;
+		readonly data: Uint8Array;
+	}[];
+}
+
 export interface SessionProvider {
 	readonly kind: "node" | "webgpu";
 	/** The GPU device sessions run on, when they accept `gpuBuffer` inputs from it. */
 	readonly device?: GPUDevice;
-	createSession(modelBytes: Uint8Array): Promise<VisionSession>;
+	createSession(
+		modelBytes: Uint8Array,
+		options?: VisionSessionOptions,
+	): Promise<VisionSession>;
 }
 
 let defaultProvider: (() => SessionProvider) | undefined;
@@ -128,24 +139,29 @@ export class AutoSessionProvider implements SessionProvider {
 		return this._resolved?.device;
 	}
 
-	public async createSession(modelBytes: Uint8Array): Promise<VisionSession> {
-		if (this._resolved) return this._resolved.createSession(modelBytes);
+	public async createSession(
+		modelBytes: Uint8Array,
+		options?: VisionSessionOptions,
+	): Promise<VisionSession> {
+		if (this._resolved)
+			return this._resolved.createSession(modelBytes, options);
 		if (!this._resolving) {
-			this._resolving = this.resolve(modelBytes);
+			this._resolving = this.resolve(modelBytes, options);
 			this._resolving.catch(() => {
 				this._resolving = undefined;
 			});
 			const { provider, first } = await this._resolving;
 			this._resolved = provider;
 			if (first) return first;
-			return provider.createSession(modelBytes);
+			return provider.createSession(modelBytes, options);
 		}
 		const { provider } = await this._resolving;
-		return provider.createSession(modelBytes);
+		return provider.createSession(modelBytes, options);
 	}
 
 	private async resolve(
 		modelBytes: Uint8Array,
+		options?: VisionSessionOptions,
 	): Promise<{ provider: SessionProvider; first?: VisionSession }> {
 		const backend = requestedVisionBackend();
 		if (backend === "cpu") {
@@ -169,7 +185,7 @@ export class AutoSessionProvider implements SessionProvider {
 			device: visionDevice,
 		});
 		try {
-			const first = await webgpu.createSession(modelBytes);
+			const first = await webgpu.createSession(modelBytes, options);
 			reportBackend({ backend: "webgpu", sharedDevice: !!visionDevice });
 			return { provider: webgpu, first };
 		} catch (err) {
@@ -284,11 +300,18 @@ export class NodeSessionProvider implements SessionProvider {
 		return this.ortPromise;
 	}
 
-	public async createSession(modelBytes: Uint8Array): Promise<VisionSession> {
+	public async createSession(
+		modelBytes: Uint8Array,
+		options?: VisionSessionOptions,
+	): Promise<VisionSession> {
 		const ort = await this.ort();
 		const threads = await cpuSessionThreads();
 		const session = await ort.InferenceSession.create(modelBytes, {
 			executionProviders: [...this._executionProviders],
+			externalData: options?.externalData?.map(({ path, data }) => ({
+				path,
+				data,
+			})),
 			graphOptimizationLevel: "all",
 			...(threads !== undefined
 				? { intraOpNumThreads: threads, interOpNumThreads: 1 }
@@ -308,9 +331,13 @@ export class NodeSessionProvider implements SessionProvider {
 				if (input.gpuBuffer)
 					throw new Error("CPU vision sessions do not accept GPU buffers.");
 				feeds[name] =
-					input.data instanceof Int32Array
-						? new ort.Tensor("int32", input.data, [...input.dims])
-						: new ort.Tensor("float32", input.data, [...input.dims]);
+					input.data instanceof Uint8Array
+						? new ort.Tensor("bool", input.data, [...input.dims])
+						: input.data instanceof BigInt64Array
+							? new ort.Tensor("int64", input.data, [...input.dims])
+							: input.data instanceof Int32Array
+								? new ort.Tensor("int32", input.data, [...input.dims])
+								: new ort.Tensor("float32", input.data, [...input.dims]);
 			}
 			const results = await session.run(feeds);
 			const outputs: Record<string, VisionTensor> = {};

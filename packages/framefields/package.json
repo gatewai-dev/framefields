@@ -121,6 +121,7 @@
 	"optionalDependencies": {
 		"@dimforge/rapier2d-deterministic-compat": "0.21.0",
 		"@dimforge/rapier3d-deterministic-compat": "0.21.0",
+		"@framefields/vision-sam": "workspace:*",
 		"onnxruntime-web": "^1.24.0"
 	},
 	"devDependencies": {
@@ -180,6 +181,7 @@
 		"@framefields/tensor-webgpu": "workspace:*",
 		"@framefields/tsconfig": "workspace:*",
 		"@framefields/vision": "workspace:*",
+		"@framefields/vision-sam": "workspace:*",
 		"@framefields/webgpu-renderers": "workspace:*",
 		"@types/d3-format": "^3.0.4",
 		"@types/d3-scale": "^4.0.9",

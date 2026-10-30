@@ -1,18 +1,26 @@
-import { z } from "zod";
-import { imageToTensor } from "../decode/preprocess.js";
-import {
-	VisionModelStore,
-	type VisionModelStoreOptions,
-} from "../model/model-store.js";
+/**
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ * All rights reserved.
+ *
+ * This source code is licensed under the SAM License found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
 import {
 	AutoSessionProvider,
+	imageToTensor,
 	type SessionProvider,
+	type VisionImageInput,
+	VisionModelStore,
+	type VisionModelStoreOptions,
 	type VisionSession,
 	type VisionTensor,
 	type VisionTensorInput,
 	type VisionTensorOutputs,
-} from "../runtime/session-provider.js";
-import type { VisionImageInput } from "../types.js";
+} from "@framefields/vision";
+import { z } from "zod";
+import { assertSamLicenseAccepted } from "../license.js";
+import { ensureSamModelsRegistered } from "../models/registry.js";
 import { Sam2MemoryBank, sam2Tokens } from "./memory.js";
 import {
 	type Sam2FrameResult,
@@ -54,6 +62,8 @@ export interface Sam2TrackerOptions extends VisionModelStoreOptions {
 	readonly store?: VisionModelStore;
 	/** Source sequence length; used to normalize object-pointer time positions for short videos. */
 	readonly frameCount?: number;
+	/** Explicitly agree to Meta's SAM License terms to download or run SAM models. */
+	readonly acceptLicense?: boolean;
 }
 
 function floats(outputs: VisionTensorOutputs, name: string): Float32Array {
@@ -91,7 +101,14 @@ export class Sam2Tracker {
 	}
 
 	static async create(options: Sam2TrackerOptions = {}): Promise<Sam2Tracker> {
-		const store = options.store ?? new VisionModelStore(options);
+		assertSamLicenseAccepted("SAM 2.1", options);
+		ensureSamModelsRegistered();
+		const store =
+			options.store ??
+			new VisionModelStore({
+				...options,
+				acceptLicense: options.acceptLicense ?? true,
+			});
 		const bytes = await store.ensure("sam2.1-tiny-constants");
 		const constants = constantsSchema.parse(
 			JSON.parse(new TextDecoder().decode(bytes)),

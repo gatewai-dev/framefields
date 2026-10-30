@@ -10,15 +10,21 @@ import {
 	COCO17_KEYPOINT_NAMES,
 	type InstanceMask,
 	mergeSubjectMask,
+	VisionBundle,
+	VisionRunner,
+} from "@framefields/vision";
+import {
 	SAM2_TINY_REVISION,
+	SAM3_REVISION,
 	type Sam2FrameResult,
 	type Sam2Options,
 	Sam2Tracker,
+	type Sam3Options,
+	Sam3Tracker,
 	sam2Object,
-	VisionBundle,
-	VisionRunner,
 	validateSam2Prompts,
-} from "@framefields/vision";
+	validateSam3Prompts,
+} from "@framefields/vision-sam";
 import { mediaDecoderCache } from "@framefields/webgpu-renderers";
 import type { VisionProps } from "./effects/index.js";
 
@@ -27,6 +33,10 @@ export type PoseKeypointName = (typeof COCO17_KEYPOINT_NAMES)[number];
 export interface ClipVisionOptions {
 	/** Prompted SAM 2.1 Tiny video segmentation. Pose is opt-in in this mode. */
 	sam2?: Sam2Options;
+	/** Optional SAM 3.1 / SAM 3 point/box or text selection with temporal tracking. Mutually exclusive with sam2. */
+	sam3?: Sam3Options;
+	/** Explicitly agree to Meta's SAM License terms for downloading/running SAM models. */
+	acceptSamLicense?: boolean;
 	/** Composition frame the clip's first frame plays on (default 0). */
 	startFrame?: number;
 	/** Seconds trimmed off the clip's start, as on its media layer (default 0). */
@@ -127,6 +137,8 @@ export class ClipVision implements ClipSubjectSource {
 	private runner?: VisionRunner;
 	private sam2Tracker?: Sam2Tracker;
 	private sam2Frame = -1;
+	private sam3Tracker?: Sam3Tracker;
+	private sam3Frame = -1;
 	private signalBundle?: VisionBundle;
 	private publishedSignals = new Set<number>();
 	private signalMaskFrame = -1;
@@ -145,6 +157,8 @@ export class ClipVision implements ClipSubjectSource {
 	/** @internal Use `comp.vision(source, options)`. */
 	constructor(source: string, fps: number, options: ClipVisionOptions = {}) {
 		this.source = source;
+		if (options.sam2 && options.sam3)
+			throw new Error("Choose one prompted backend: sam2 or sam3.");
 		this.options = options.sam2
 			? {
 					...options,
@@ -156,25 +170,51 @@ export class ClipVision implements ClipSubjectSource {
 						})),
 					},
 				}
-			: options;
+			: options.sam3
+				? {
+						...options,
+						sam3: {
+							...options.sam3,
+							prompts: (
+								options.sam3.prompts ??
+								(options.sam3.text
+									? [{ frame: 0, text: options.sam3.text }]
+									: [])
+							).map((prompt) => ({
+								...prompt,
+								...(prompt.points
+									? {
+											points: prompt.points.map((point) => ({
+												...point,
+											})),
+										}
+									: {}),
+							})),
+						},
+					}
+				: options;
 		this.compositionFps = fps;
 		this.fps = options.fps ?? fps;
 		this.startFrame = Math.round(options.startFrame ?? 0);
 		this.trimStartSec = options.trimStartSec ?? 0;
 		this.smoothing = Math.max(
 			0,
-			Math.round(options.smoothing ?? (options.sam2 ? 0 : 2)),
+			Math.round(options.smoothing ?? (options.sam2 || options.sam3 ? 0 : 2)),
 		);
 		this.cell = Math.max(1, Math.round(options.maskCell ?? 8));
 		if (options.sam2) {
 			validateSam2Prompts(options.sam2.prompts);
 			this.wantSubjects = true;
 		}
+		if (options.sam3) {
+			validateSam3Prompts(options.sam3);
+			this.wantSubjects = true;
+		}
 	}
 
 	/** @internal Explicit selections must never fall back to another detected subject. */
 	get exact(): boolean {
-		return this.options.sam2 !== undefined;
+		return this.options.sam2 !== undefined || this.options.sam3 !== undefined;
 	}
 
 	/** Object, mask and optional pose signals on the composition clock, in source geometry. */
@@ -207,6 +247,9 @@ export class ClipVision implements ClipSubjectSource {
 		this.sam2Tracker?.release();
 		this.sam2Tracker = undefined;
 		this.sam2Frame = -1;
+		this.sam3Tracker?.release();
+		this.sam3Tracker = undefined;
+		this.sam3Frame = -1;
 		this.runner?.close();
 		this.runner = undefined;
 		this.signalMaskFrame = -1;
@@ -264,13 +307,13 @@ export class ClipVision implements ClipSubjectSource {
 	subject(frame: number, fps: number): InstanceMask | null | undefined {
 		const c = (frame * this.fps) / fps;
 		if (
-			!this.options.sam2 &&
+			!this.exact &&
 			!this.options.timeRemap &&
 			Math.abs(c - Math.round(c)) > 1e-6
 		)
 			return undefined;
 		const sourceFrame =
-			this.options.timeRemap || this.options.sam2
+			this.options.timeRemap || this.exact
 				? Math.floor(c + 1e-6)
 				: Math.round(c);
 		const s = this.subjects.get(sourceFrame);
@@ -350,6 +393,10 @@ export class ClipVision implements ClipSubjectSource {
 
 		if (this.options.sam2) {
 			await this.computeSam2(to);
+			return;
+		}
+		if (this.options.sam3) {
+			await this.computeSam3(to);
 			return;
 		}
 		const wantPose = this.options.pose ?? true;
@@ -459,6 +506,8 @@ export class ClipVision implements ClipSubjectSource {
 				modelsDir: this.options.modelsDir,
 				baseUrl: this.options.baseUrl,
 				frameCount,
+				acceptLicense:
+					this.options.acceptSamLicense ?? this.options.sam2?.acceptLicense,
 			});
 			this.sam2Frame = first - 1;
 		}
@@ -474,6 +523,59 @@ export class ClipVision implements ClipSubjectSource {
 				frame,
 				prompt?.points,
 			);
+			const kp = this.options.pose
+				? await this.matchedPose(image, result.mask)
+				: null;
+			this.storeSam2Frame(frame, result, kp);
+			if (this.unsaved >= 24) {
+				await this.saveCache();
+				await this.saveSubjects();
+			}
+		}
+		await this.saveCache();
+		await this.saveSubjects();
+	}
+
+	private async computeSam3(to: number): Promise<void> {
+		const settings = this.options.sam3;
+		if (!settings) return;
+		const first = settings.prompts[0]?.frame ?? 0;
+		for (let frame = 0; frame < Math.min(first, to + 1); frame++) {
+			this.results.set(frame, { kp: null, mask: null, score: 0 });
+			this.subjects.set(frame, null);
+		}
+		if (to < first) return;
+		const decoder = mediaDecoderCache.getVideo(
+			this.source,
+			true,
+			"clip-vision",
+		);
+		if (!this.sam3Tracker) {
+			const frameCount = Math.max(
+				1,
+				Math.ceil((await decoder.durationSec()) * this.fps - 1e-6),
+			);
+			if (settings.prompts.some((prompt) => prompt.frame >= frameCount)) {
+				throw new Error("SAM 3 prompt frames must be inside the source video.");
+			}
+			this.sam3Tracker = await Sam3Tracker.create({
+				modelsDir: this.options.modelsDir,
+				baseUrl: this.options.baseUrl,
+				frameCount,
+				textThreshold: settings.textThreshold,
+				acceptLicense:
+					this.options.acceptSamLicense ?? this.options.sam3?.acceptLicense,
+			});
+			this.sam3Frame = first - 1;
+		}
+		for (let frame = this.sam3Frame + 1; frame <= to; frame++) {
+			const image = await decodedPixels(
+				await decoder.getFrame(frame / this.fps),
+			);
+			if (!image) throw new Error(`Cannot decode SAM 3 source frame ${frame}.`);
+			if (!this.sourceWidth) this.setSize(image.width, image.height);
+			const prompt = settings.prompts.find((item) => item.frame === frame);
+			const result = await this.sam3Tracker.process(image, frame, prompt);
 			const kp = this.options.pose
 				? await this.matchedPose(image, result.mask)
 				: null;
@@ -513,14 +615,18 @@ export class ClipVision implements ClipSubjectSource {
 			frame,
 			area > 0
 				? {
-						category: this.options.sam2?.category ?? "object",
+						category:
+							this.options.sam2?.category ??
+							this.options.sam3?.category ??
+							"object",
 						area,
 						...encodeRuns(result.mask),
 					}
 				: null,
 		);
 		this.blurred.delete(frame);
-		this.sam2Frame = frame;
+		if (this.options.sam3) this.sam3Frame = frame;
+		else this.sam2Frame = frame;
 		this.unsaved++;
 		this.unsavedSubjects++;
 	}
@@ -575,7 +681,11 @@ export class ClipVision implements ClipSubjectSource {
 			: new Uint8Array(this.sourceWidth * this.sourceHeight);
 		this.signalMaskFrame = c;
 		this.signalMask = {
-			category: stored?.category ?? this.options.sam2?.category ?? "object",
+			category:
+				stored?.category ??
+				this.options.sam2?.category ??
+				this.options.sam3?.category ??
+				"object",
 			mask: data,
 			width: this.sourceWidth,
 			height: this.sourceHeight,
@@ -681,7 +791,7 @@ export class ClipVision implements ClipSubjectSource {
 		c = Math.max(0, c);
 		if (this.blurred.has(c)) return this.blurred.get(c) ?? null;
 		this.mustHave(c);
-		const mask = this.options.sam2
+		const mask = this.exact
 			? (this.results.get(c)?.mask ?? null)
 			: bridgedMask(this.results, c, this.smoothing);
 		const grid = mask ? boxBlur(mask, this.cellW, this.cellH, 2) : null;
@@ -743,6 +853,7 @@ export class ClipVision implements ClipSubjectSource {
 				o.variant ?? "s",
 				o.confidence ?? null,
 				...(o.sam2 ? [[SAM2_TINY_REVISION, o.sam2]] : []),
+				...(o.sam3 ? [[SAM3_REVISION, o.sam3]] : []),
 			]);
 			const hash = crypto
 				.createHash("sha256")

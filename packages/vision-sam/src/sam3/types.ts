@@ -1,0 +1,55 @@
+/**
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ * All rights reserved.
+ *
+ * This source code is licensed under the SAM License found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+import type { SamLicenseOptions } from "../license.js";
+import type { Sam2Point } from "../sam2/types.js";
+import { validateSam2Prompts } from "../sam2/types.js";
+
+export interface Sam3Prompt {
+	/** Source analysis frame, before trimming or time remapping. */
+	readonly frame: number;
+	/** Normalized source coordinates; labels 2/3 define a box. */
+	readonly points?: readonly Sam2Point[];
+	/** Select the highest-scoring semantic instance, then propagate its mask. */
+	readonly text?: string;
+}
+
+export interface Sam3Options extends SamLicenseOptions {
+	/** Prompt list across frames. Optional if shorthand `text` is supplied. */
+	readonly prompts?: readonly Sam3Prompt[];
+	/** Convenience shorthand to select by text at frame 0. */
+	readonly text?: string;
+	/** Signal category metadata; defaults to "object". */
+	readonly category?: string;
+	/** Minimum sigmoid score for the initial text-selected instance. Default 0.5. */
+	readonly textThreshold?: number;
+}
+
+export function validateSam3Prompts(options: Sam3Options): void {
+	const prompts =
+		options.prompts ?? (options.text ? [{ frame: 0, text: options.text }] : []);
+	if (!prompts.length)
+		throw new Error("SAM 3 requires at least one prompt or text description.");
+	let previous = -1;
+	for (const prompt of prompts) {
+		if (!Number.isSafeInteger(prompt.frame) || prompt.frame <= previous)
+			throw new Error(
+				"SAM 3 prompt frames must be nonnegative, unique and increasing.",
+			);
+		previous = prompt.frame;
+		if ((prompt.points !== undefined) === (prompt.text !== undefined))
+			throw new Error("SAM 3 prompts need either points/a box or text.");
+		if (prompt.points)
+			validateSam2Prompts([{ frame: prompt.frame, points: prompt.points }]);
+		if (prompt.text !== undefined && !prompt.text.trim())
+			throw new Error("SAM 3 text prompts must not be empty.");
+	}
+	const threshold = options.textThreshold ?? 0.5;
+	if (!Number.isFinite(threshold) || threshold <= 0 || threshold >= 1)
+		throw new Error("SAM 3 textThreshold must be between zero and one.");
+}

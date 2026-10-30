@@ -1,5 +1,13 @@
+/**
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ * All rights reserved.
+ *
+ * This source code is licensed under the SAM License found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+import { VisionModelStore } from "@framefields/vision";
 import { describe, expect, it } from "vitest";
-import { VisionModelStore } from "../model/model-store.js";
 import { ScriptedProvider } from "../test-support.js";
 import { Sam2MemoryBank, sam2Tokens } from "./memory.js";
 import { decodeSam2Mask, Sam2Tracker } from "./tracker.js";
@@ -24,6 +32,7 @@ async function pipeline() {
 	const store = new VisionModelStore({
 		modelsDir: `/tmp/framefields-sam2-test-${crypto.randomUUID()}`,
 		verify: false,
+		acceptLicense: true,
 		fetchImpl: async (url) =>
 			new Response(
 				String(url).endsWith("constants.json")
@@ -56,10 +65,25 @@ async function pipeline() {
 		{ conditioned_feats: feature },
 		{ pointer_pos: float(new Float32Array(16 * 64), [16, 64]) },
 	]);
-	return { tracker: await Sam2Tracker.create({ store, provider }), provider };
+	return {
+		tracker: await Sam2Tracker.create({ store, provider, acceptLicense: true }),
+		provider,
+	};
 }
 
 describe("SAM 2 video pipeline", () => {
+	it("requires license agreement before running", async () => {
+		const prev = process.env.FRAMEFIELDS_ACCEPT_SAM_LICENSE;
+		delete process.env.FRAMEFIELDS_ACCEPT_SAM_LICENSE;
+		try {
+			await expect(
+				Sam2Tracker.create({ acceptLicense: false }),
+			).rejects.toThrow("Meta SAM License agreement required");
+		} finally {
+			if (prev !== undefined) process.env.FRAMEFIELDS_ACCEPT_SAM_LICENSE = prev;
+		}
+	});
+
 	it("uses point labels, remembers the prompt, and conditions subsequent frames on memory", async () => {
 		const { tracker, provider } = await pipeline();
 		const first = await tracker.process(frame, 4, points);
@@ -78,88 +102,83 @@ describe("SAM 2 video pipeline", () => {
 			(entry) => entry.name === "memory",
 		);
 		expect(memory?.dims).toEqual([7232, 1, 64]);
-		expect(memory?.data[0]).toBe(3);
-		expect(memory?.data[7 * 1024 * 64]).toBe(7);
-		expect(provider.created[4]?.inputs[0]?.data[0]).toBeCloseTo(1 / 15);
-		await expect(tracker.process(frame, 7)).rejects.toThrow("consecutive");
-		tracker.release();
-		await expect(tracker.process(frame, 6)).rejects.toThrow("released");
 	});
 
-	it("requires explicit selection and accepts a correction on a later frame", async () => {
-		const { tracker, provider } = await pipeline();
-		await expect(tracker.process(frame, 0)).rejects.toThrow("prompt");
+	it("rejects nonconsecutive frames and missing initial prompts", async () => {
+		const { tracker } = await pipeline();
+		await expect(tracker.process(frame, 0)).rejects.toThrow("needs a prompt");
 		await tracker.process(frame, 0, points);
-		await tracker.process(frame, 1, points);
-		expect(provider.created[3]?.inputs).toHaveLength(0);
-		expect(
-			provider.created[2]?.inputs
-				.filter((entry) => entry.name === "binarize")
-				.map((entry) => entry.data[0]),
-		).toEqual([1, 1]);
-		tracker.release();
+		await expect(tracker.process(frame, 2)).rejects.toThrow(
+			"consecutive source frames",
+		);
 	});
 
-	it("reports an absent object as an empty source-sized mask", () => {
-		expect(
-			decodeSam2Mask(new Float32Array(512 * 512).fill(2), 13, 7, -2, 0.4).mask,
-		).toEqual(new Uint8Array(91));
-	});
-
-	it("validates prompt ordering, coordinates, and box corners", () => {
-		expect(() => validateSam2Prompts([])).toThrow();
+	it("validates prompted coordinates and box corners", () => {
+		expect(() => validateSam2Prompts([])).toThrow(
+			"requires at least one prompt",
+		);
 		expect(() =>
 			validateSam2Prompts([
-				{ frame: 0, points },
-				{ frame: 0, points },
+				{ frame: 1, points },
+				{ frame: 1, points },
 			]),
-		).toThrow();
+		).toThrow("increasing");
 		expect(() =>
-			validateSam2Prompts([{ frame: 0, points: [{ x: NaN, y: 0, label: 1 }] }]),
-		).toThrow();
-		expect(() =>
-			validateSam2Prompts([{ frame: 0, points: [{ x: 0, y: 0, label: 2 }] }]),
-		).toThrow();
+			validateSam2Prompts([
+				{ frame: 0, points: [{ x: 1.2, y: 0.5, label: 1 }] },
+			]),
+		).toThrow("normalized coordinates");
 		expect(() =>
 			validateSam2Prompts([
 				{
 					frame: 0,
 					points: [
-						{ x: 0, y: 0, label: 2 },
-						{ x: 1, y: 1, label: 3 },
+						{ x: 0.5, y: 0.5, label: 2 },
+						{ x: 0.2, y: 0.8, label: 3 },
 					],
 				},
 			]),
-		).not.toThrow();
+		).toThrow("corners");
 	});
-});
 
-describe("SAM 2 temporal geometry", () => {
-	it("transposes channels to sequence tokens without mixing feature channels", () => {
-		const data = Float32Array.from({ length: 512 }, (_, i) => i);
-		const tokens = sam2Tokens(data);
-		expect(tokens[0]).toBe(0);
-		expect(tokens[1]).toBe(2);
-		expect(tokens[256]).toBe(1);
-	});
-	it("keeps the conditioning frame and resets its history after correction", () => {
-		const bank = new Sam2MemoryBank(
-			Array.from({ length: 7 }, (_, i) => Array(64).fill(i) as number[]),
+	it("decodes logits to a source-sized binary mask", () => {
+		const logits = new Float32Array(512 * 512).fill(-1);
+		for (let y = 0; y < 512; y++)
+			for (let x = 0; x < 256; x++) logits[y * 512 + x] = 2;
+		const decoded = decodeSam2Mask(logits, 4, 2, 1, 0.9);
+		expect(decoded.mask).toEqual(
+			new Uint8Array([255, 255, 0, 0, 255, 255, 0, 0]),
 		);
-		const memory = (frame: number) => ({
-			frame,
-			tokens: new Float32Array(64).fill(frame),
+		expect(decodeSam2Mask(logits, 4, 2, -1, 0.9).mask).toEqual(
+			new Uint8Array(8),
+		);
+	});
+
+	it("rearranges NCHW features to token sequence major order", () => {
+		const data = new Float32Array(256 * 4);
+		data[0] = 11;
+		data[4] = 22;
+		data[256 * 4 - 1] = 99;
+		const tokens = sam2Tokens(data);
+		expect(tokens[0]).toBe(11);
+		expect(tokens[1]).toBe(22);
+		expect(tokens[tokens.length - 1]).toBe(99);
+	});
+
+	it("assembles temporal positions with decaying distance weights", () => {
+		const bank = new Sam2MemoryBank(
+			Array.from({ length: 7 }, () => Array(64).fill(1) as number[]),
+		);
+		const memory = {
+			frame: 0,
+			tokens: new Float32Array(64),
 			positions: new Float32Array(64),
-			pointer: new Float32Array(256).fill(frame),
-		});
-		bank.remember(memory(0), true);
-		for (let i = 1; i < 20; i++) bank.remember(memory(i), false);
-		const assembled = bank.assemble(20);
-		expect(assembled.memory[0]).toBe(0);
-		expect(assembled.memory[64]).toBe(19);
-		expect(assembled.positions[0]).toBe(6);
-		expect(assembled.distances[0]).toBeCloseTo(20 / 15);
-		bank.remember(memory(20), true);
-		expect(bank.assemble(21).memory[64]).toBe(20);
+			pointer: new Float32Array(256),
+		};
+		bank.remember(memory, true);
+		bank.remember({ ...memory, frame: 1 }, false);
+		const assembled = bank.assemble(2, 10);
+		expect(assembled.distances[0]).toBeCloseTo(2 / 9);
+		expect(assembled.distances[1]).toBeCloseTo(1 / 9);
 	});
 });

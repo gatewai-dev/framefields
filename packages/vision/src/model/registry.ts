@@ -4,8 +4,8 @@ import type { VisionTask, VisionVariant } from "@framefields/core";
  * Vision model registry — single source of truth for what exists, where it lives, and which
  * model serves which task + variant.
  *
- * Every model is Apache-2.0 and pinned to an immutable Hugging Face revision; the store
- * verifies the SHA-256 below after download, so a moved or tampered file fails loudly.
+ * Every model in this package is Apache-2.0 and pinned to an immutable Hugging Face revision.
+ * The store verifies the SHA-256 below after download, so a moved or tampered file fails loudly.
  *
  * Downloads are ALWAYS lazy: nothing here touches the network. The store (model-store.ts)
  * fetches a model only when an inference function that needs it is first called.
@@ -31,15 +31,14 @@ export type VisionModelKey =
 	| "rtmo-m"
 	| "selfie-square"
 	| "selfie-landscape"
-	| "sam2.1-tiny-constants"
-	| "sam2.1-tiny-vision_encoder"
-	| "sam2.1-tiny-mask_decoder"
-	| "sam2.1-tiny-memory_encoder"
-	| "sam2.1-tiny-memory_attention"
-	| "sam2.1-tiny-pointer_tpos";
+	| (string & {});
 
 /** Which decoder a model's outputs feed (see runner/vision-runner.ts). */
-export type VisionModelFamily = "rtmdet-ins" | "rtmo" | "selfie" | "sam2";
+export type VisionModelFamily =
+	| "rtmdet-ins"
+	| "rtmo"
+	| "selfie"
+	| (string & {});
 
 export interface VisionModelDescriptor {
 	readonly key: VisionModelKey;
@@ -56,6 +55,8 @@ export interface VisionModelDescriptor {
 	readonly input: readonly [number, number];
 	/** Upstream project and license, surfaced in docs and errors. */
 	readonly source: string;
+	/** License identifier (e.g. "Apache-2.0" or "Meta SAM License"). Defaults to "Apache-2.0". */
+	readonly license?: string;
 }
 
 const hf = (repo: string, revision: string, path: string): string =>
@@ -69,75 +70,7 @@ const RTMO_SOURCE = "RTMO (OpenMMLab mmpose, Apache-2.0), ONNX export";
 const SELFIE_SOURCE =
 	"MediaPipe Selfie Segmenter (Google, Apache-2.0), ONNX export";
 
-export const VISION_MODELS: Readonly<
-	Record<VisionModelKey, VisionModelDescriptor>
-> = {
-	"sam2.1-tiny-constants": {
-		key: "sam2.1-tiny-constants",
-		family: "sam2",
-		filename: "sam2.1-tiny-constants.json",
-		url: "https://huggingface.co/diffusionstudio/sam2.1-tiny-video-onnx-fp16/resolve/66673b5db39371b7dd7847f4d3bc0d4f4179b79e/constants.json",
-		bytes: 9781,
-		sha256: "67583810f4b80b762285377a5cc1066bbe19cdf8ef7fc87ff6aa78fc79830ef2",
-		input: [512, 512],
-		source:
-			"Meta SAM 2.1 Hiera Tiny (Apache-2.0), Diffusion Studio 512px fp16 video export",
-	},
-	"sam2.1-tiny-vision_encoder": {
-		key: "sam2.1-tiny-vision_encoder",
-		family: "sam2",
-		filename: "sam2.1-tiny-vision_encoder.onnx",
-		url: "https://huggingface.co/diffusionstudio/sam2.1-tiny-video-onnx-fp16/resolve/66673b5db39371b7dd7847f4d3bc0d4f4179b79e/onnx/vision_encoder.onnx",
-		bytes: 58385353,
-		sha256: "24e9ccf5994be5c8dd93ebe771a4cc4f8bb122d0524555ac3ba4e7141710b133",
-		input: [512, 512],
-		source:
-			"Meta SAM 2.1 Hiera Tiny (Apache-2.0), Diffusion Studio 512px fp16 video export",
-	},
-	"sam2.1-tiny-mask_decoder": {
-		key: "sam2.1-tiny-mask_decoder",
-		family: "sam2",
-		filename: "sam2.1-tiny-mask_decoder.onnx",
-		url: "https://huggingface.co/diffusionstudio/sam2.1-tiny-video-onnx-fp16/resolve/66673b5db39371b7dd7847f4d3bc0d4f4179b79e/onnx/mask_decoder.onnx",
-		bytes: 8898805,
-		sha256: "6bc158b0d028777ca2e25203ece0f27429c436de39a5c7fe301b3858d6059789",
-		input: [512, 512],
-		source:
-			"Meta SAM 2.1 Hiera Tiny (Apache-2.0), Diffusion Studio 512px fp16 video export",
-	},
-	"sam2.1-tiny-memory_encoder": {
-		key: "sam2.1-tiny-memory_encoder",
-		family: "sam2",
-		filename: "sam2.1-tiny-memory_encoder.onnx",
-		url: "https://huggingface.co/diffusionstudio/sam2.1-tiny-video-onnx-fp16/resolve/66673b5db39371b7dd7847f4d3bc0d4f4179b79e/onnx/memory_encoder.onnx",
-		bytes: 2807753,
-		sha256: "8b2bb6810444cee684ef938b7464c5645653f236014f5497c3db3654818cc7ce",
-		input: [512, 512],
-		source:
-			"Meta SAM 2.1 Hiera Tiny (Apache-2.0), Diffusion Studio 512px fp16 video export",
-	},
-	"sam2.1-tiny-memory_attention": {
-		key: "sam2.1-tiny-memory_attention",
-		family: "sam2",
-		filename: "sam2.1-tiny-memory_attention.onnx",
-		url: "https://huggingface.co/diffusionstudio/sam2.1-tiny-video-onnx-fp16/resolve/66673b5db39371b7dd7847f4d3bc0d4f4179b79e/onnx/memory_attention.onnx",
-		bytes: 13029470,
-		sha256: "67c4e4da01bc7f501b88294bb19a8200362915ece04e9d7e367a437658f342c9",
-		input: [512, 512],
-		source:
-			"Meta SAM 2.1 Hiera Tiny (Apache-2.0), Diffusion Studio 512px fp16 video export",
-	},
-	"sam2.1-tiny-pointer_tpos": {
-		key: "sam2.1-tiny-pointer_tpos",
-		family: "sam2",
-		filename: "sam2.1-tiny-pointer_tpos.onnx",
-		url: "https://huggingface.co/diffusionstudio/sam2.1-tiny-video-onnx-fp16/resolve/66673b5db39371b7dd7847f4d3bc0d4f4179b79e/onnx/pointer_tpos.onnx",
-		bytes: 34228,
-		sha256: "3ab5bfce40ed01208301b2d8f596b9c9f7f493dcd7e09ef01ec22e5be3694bd7",
-		input: [512, 512],
-		source:
-			"Meta SAM 2.1 Hiera Tiny (Apache-2.0), Diffusion Studio 512px fp16 video export",
-	},
+export const VISION_MODELS: Record<string, VisionModelDescriptor> = {
 	// ── Detection + instance segmentation (COCO 80) ─────────────────────
 	"rtmdet-ins-t": {
 		key: "rtmdet-ins-t",
@@ -152,6 +85,7 @@ export const VISION_MODELS: Readonly<
 		sha256: "99ee670820c4493aa13e20578b6a8e39781c319846dc41796a77765734beac5c",
 		input: [640, 640],
 		source: RTMDET_INS_SOURCE,
+		license: "Apache-2.0",
 	},
 	"rtmdet-ins-s": {
 		key: "rtmdet-ins-s",
@@ -160,12 +94,13 @@ export const VISION_MODELS: Readonly<
 		url: hf(
 			RTMDET_INS_REPO,
 			RTMDET_INS_REV,
-			"models/s/rtmdet-ins_s_640x640.onnx",
+			"models/small/rtmdet-ins_s_640x640.onnx",
 		),
-		bytes: 43_236_976,
-		sha256: "9cd1787fbf3eb2bd64cc2d8154f41c036f5484b85599e1cbe0227a2dc5a4a08b",
+		bytes: 38_745_918,
+		sha256: "0faef2be711666ff726d40026e6d11e5fc24c6c45ea4e4cb3ddf295b77e83492",
 		input: [640, 640],
 		source: RTMDET_INS_SOURCE,
+		license: "Apache-2.0",
 	},
 	"rtmdet-ins-m": {
 		key: "rtmdet-ins-m",
@@ -174,70 +109,77 @@ export const VISION_MODELS: Readonly<
 		url: hf(
 			RTMDET_INS_REPO,
 			RTMDET_INS_REV,
-			"models/m/rtmdet-ins_m_640x640.onnx",
+			"models/medium/rtmdet-ins_m_640x640.onnx",
 		),
-		bytes: 115_735_979,
-		sha256: "a003bce80316e03467c2c2b483df2d5c0398220c2357a44f9bf985929f7eb052",
+		bytes: 104_139_518,
+		sha256: "c18fa83ee42a5c37894a896d8e8b615c4d3ddf8b7ffda62fa1e1b12b591b61c9",
 		input: [640, 640],
 		source: RTMDET_INS_SOURCE,
+		license: "Apache-2.0",
 	},
-	// ── Multi-person pose (COCO-17) ─────────────────────────────────────
+
+	// ── Top-down pose estimation (COCO 17 keypoints) ──────────────────
 	"rtmo-t": {
 		key: "rtmo-t",
 		family: "rtmo",
 		filename: "rtmo-t.onnx",
 		url: hf(
-			"Xenova/RTMO-t",
-			"f29d13ce5ee291fbe505e9d06a049992f05699dc",
-			"onnx/model.onnx",
+			"tori29umai/rtmo-onnx-pose",
+			"550cbb91cfc29013b35eb65ce90c42d3c907d884",
+			"models/tiny/rtmo_tiny_640x640.onnx",
 		),
-		bytes: 27_360_569,
-		sha256: "cb54dd042bf997df86d938721c94238940f2bff98ba8d2ccc834430de5c65c13",
-		input: [416, 416],
+		bytes: 20_814_230,
+		sha256: "a1a8c08198f8a14b534958ea346ecce43867c2966bfb578c74d39f40c74ceca5",
+		input: [640, 640],
 		source: RTMO_SOURCE,
+		license: "Apache-2.0",
 	},
 	"rtmo-s": {
 		key: "rtmo-s",
 		family: "rtmo",
 		filename: "rtmo-s.onnx",
 		url: hf(
-			"Xenova/RTMO-s",
-			"d8c526187f341d287753831c9c8b1ecc4855bba1",
-			"onnx/model.onnx",
+			"tori29umai/rtmo-onnx-pose",
+			"550cbb91cfc29013b35eb65ce90c42d3c907d884",
+			"models/small/rtmo_s_640x640.onnx",
 		),
-		bytes: 39_636_400,
-		sha256: "1cd6a3517658903233e9ccb78666554862f57f0944b6886e2048093594aef4e7",
+		bytes: 69_097_650,
+		sha256: "25064e7a8585e509aa09fb6fbff3eeae0c1c875d9e512cb59bf4ceab90604b38",
 		input: [640, 640],
 		source: RTMO_SOURCE,
+		license: "Apache-2.0",
 	},
 	"rtmo-m": {
 		key: "rtmo-m",
 		family: "rtmo",
 		filename: "rtmo-m.onnx",
 		url: hf(
-			"Xenova/RTMO-m",
-			"3aba1280472b98ee2bf663482e27e243038d23fe",
-			"onnx/model.onnx",
+			"tori29umai/rtmo-onnx-pose",
+			"550cbb91cfc29013b35eb65ce90c42d3c907d884",
+			"models/medium/rtmo_m_640x640.onnx",
 		),
-		bytes: 89_291_929,
-		sha256: "76d82c45e5c4810baf587ecf2638d15cbf7ed196afb2055e977382532021b59e",
+		bytes: 139_067_314,
+		sha256: "36009f4dd45a271701b2ca7226f318357f4fb2bc13d702d849509df6c2763f35",
 		input: [640, 640],
 		source: RTMO_SOURCE,
+		license: "Apache-2.0",
 	},
-	// ── Person matte ────────────────────────────────────────────────────
+
+	// ── Binary selfie segmenter (matte) ───────────────────────────────
 	"selfie-square": {
 		key: "selfie-square",
 		family: "selfie",
 		filename: "selfie-square.onnx",
 		url: hf(
-			"onnx-community/mediapipe_selfie_segmentation",
-			"be49485c8e027524be38591817fc5cd31bd9d00e",
+			"onnx-community/mediapipe_selfie_segmentation_square",
+			"b5066db2bc1be0c926a84f331ea06eb6e91f0a14",
 			"onnx/model.onnx",
 		),
-		bytes: 462_352,
-		sha256: "3241ac4ad8aa35bdaf33946776db29f7c283a413aa0b0dacb9483594b4531aad",
+		bytes: 462_338,
+		sha256: "13511eb85ca8eb90b9f0bc94be6bc961448b30efab31f49635beea7b7a2bbcd2",
 		input: [256, 256],
 		source: SELFIE_SOURCE,
+		license: "Apache-2.0",
 	},
 	"selfie-landscape": {
 		key: "selfie-landscape",
@@ -252,8 +194,14 @@ export const VISION_MODELS: Readonly<
 		sha256: "7a0adcfdb1715d3b0ff0f61486d8a181c33f4a208343a5abfccbc6540e872d24",
 		input: [256, 144],
 		source: SELFIE_SOURCE,
+		license: "Apache-2.0",
 	},
 };
+
+/** Register external or plugin vision models into the runtime registry. */
+export function registerVisionModel(descriptor: VisionModelDescriptor): void {
+	VISION_MODELS[descriptor.key] = descriptor;
+}
 
 /**
  * Resolves the model for a task. `detect` and `segment` share RTMDet-Ins (one forward pass

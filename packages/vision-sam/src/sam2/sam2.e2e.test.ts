@@ -1,5 +1,13 @@
+/**
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ * All rights reserved.
+ *
+ * This source code is licensed under the SAM License found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+import { NodeWebGPUProvider } from "@framefields/vision";
 import { describe, expect, it } from "vitest";
-import { NodeWebGPUProvider } from "../runtime/node-webgpu-provider.js";
 import { Sam2Tracker } from "./tracker.js";
 
 const enabled = process.env.FRAMEFIELDS_SAM2_E2E === "1";
@@ -31,6 +39,7 @@ describe.skipIf(!enabled)("SAM 2.1 Tiny on native Dawn", () => {
 		const tracker = await Sam2Tracker.create({
 			provider: new NodeWebGPUProvider(),
 			frameCount: 8,
+			acceptLicense: true,
 		});
 		try {
 			for (let frame = 0; frame < 8; frame++) {

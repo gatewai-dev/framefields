@@ -1,7 +1,7 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { type Sam2Point, Sam2Tracker } from "@framefields/vision";
+import { type Sam2Point, Sam2Tracker } from "@framefields/vision-sam";
 import { mediaDecoderCache } from "@framefields/webgpu-renderers";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ClipVision } from "./clip-vision.js";

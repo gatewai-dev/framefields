@@ -59,5 +59,6 @@ export default defineConfig({
 		"pino",
 		"file-type",
 		"dotenv",
+		"@framefields/vision-sam",
 	],
 });

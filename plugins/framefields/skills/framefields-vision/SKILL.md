@@ -40,7 +40,7 @@ Meta SAM 2.1 Hiera checkpoints in Diffusion Studio's fp16 video exports, with th
 | `"tiny"` (default) | 512² (32×32 features) | 58 MB | 13 MB | ~83 MB | ~0.27 s |
 | `"small"` | 1024², SAM 2's native size (64×64) | 84 MB | 16 MB | ~112 MB | ~1.1 s |
 
-### SAM 3 (`sam3`, Meta SAM License)
+### SAM 3 (`sam3`, weights under Meta's SAM License)
 Video tracking at 1008², plus text ("concept") selection. Only the image encoder the backend runs fastest is downloaded:
 
 | Graph | Size | Source |
@@ -157,7 +157,7 @@ Detection picks "the largest person". Use SAM when the subject is **a specific**
 pnpm add @framefields/vision-sam
 ```
 
-`@framefields/vision-sam` is an optional peer of `framefields`. It is loaded only when a clip uses `sam2` or `sam3`; without it, those clips fail with an install message. SAM 2.1's weights are Apache-2.0 and need no acceptance. SAM 3's weights are under Meta's SAM License, so `sam3` needs explicit acceptance before anything downloads: `acceptSamLicense: true` on the clip (or `acceptLicense: true` inside `sam3`), or `FRAMEFIELDS_ACCEPT_SAM_LICENSE=1`. Ask the user before accepting it on their behalf. Import `Sam2Tracker` / `Sam3Tracker` from `@framefields/vision-sam` when you drive SAM directly.
+`@framefields/vision-sam` is an optional peer of `framefields`, Apache-2.0 like the rest of framefields. It is loaded only when a clip uses `sam2` or `sam3`; without it, those clips fail with an install message. SAM 2.1's weights are Apache-2.0 and need no acceptance. SAM 3's weights are under Meta's SAM License, so `sam3` needs explicit acceptance before anything downloads: `acceptSamLicense: true` on the clip (or `acceptLicense: true` inside `sam3`), or `FRAMEFIELDS_ACCEPT_SAM_LICENSE=1`. Ask the user before accepting it on their behalf. Import `Sam2Tracker` / `Sam3Tracker` from `@framefields/vision-sam` when you drive SAM directly.
 
 ### Prompts
 

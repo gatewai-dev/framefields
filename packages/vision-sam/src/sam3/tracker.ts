@@ -53,7 +53,7 @@ export interface Sam3TrackerOptions extends VisionModelStoreOptions {
 	readonly merge?: boolean;
 	/** Image-encoder weights; defaults to the fastest for the provider's backend (`SAM3_ENCODER`). */
 	readonly precision?: Sam3Precision;
-	/** Explicitly agree to Meta's SAM License terms to download or run SAM models. */
+	/** Explicitly agree to Meta's SAM License terms to download or run SAM 3's weights. */
 	readonly acceptLicense?: boolean;
 }
 

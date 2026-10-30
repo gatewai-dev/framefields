@@ -121,14 +121,14 @@ let visionSam: Promise<VisionSam> | undefined;
 let clipVisionIds = 0;
 
 /**
- * SAM lives in `@framefields/vision-sam`, an optional peer under Meta's SAM License, so it
+ * SAM lives in `@framefields/vision-sam`, an optional peer (SAM 3's weights are under Meta's SAM License), so it
  * is imported only when a clip asks for `sam2` or `sam3`.
  */
 function loadVisionSam(): Promise<VisionSam> {
 	visionSam ??= import("@framefields/vision-sam").catch((cause: unknown) => {
 		visionSam = undefined;
 		throw new Error(
-			"Prompted sam2/sam3 tracking needs the optional @framefields/vision-sam package (Meta SAM License). Install it next to framefields.",
+			"Prompted sam2/sam3 tracking needs the optional @framefields/vision-sam package. Install it next to framefields.",
 			{ cause },
 		);
 	});

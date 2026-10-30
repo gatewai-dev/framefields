@@ -136,7 +136,7 @@ export {
 	type VisionVariant,
 } from "@framefields/vision";
 
-// Types only: the trackers ship in the optional @framefields/vision-sam peer (Meta SAM License).
+// Types only: the trackers ship in the optional @framefields/vision-sam peer.
 export type {
 	Sam2FrameResult,
 	Sam2Model,

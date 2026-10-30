@@ -1,6 +1,6 @@
 # Notice: @framefields/vision-sam
 
-This package provides prompted video tracking for framefields with Meta's Segment Anything models: SAM 2.1 (Tiny and Small) and SAM 3. Its source code is written for framefields; it contains no code or weights distributed by Meta.
+This package provides prompted video tracking for framefields with Meta's Segment Anything models: SAM 2.1 (Tiny and Small) and SAM 3. Its source code is written for framefields and, like the rest of framefields, licensed under Apache-2.0; it contains no code or weights distributed by Meta. The licenses below apply to the model weights it downloads.
 
 ## Model weights
 

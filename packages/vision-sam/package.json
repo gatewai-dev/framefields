@@ -1,6 +1,6 @@
 {
 	"name": "@framefields/vision-sam",
-	"description": "Prompted video tracking for framefields: SAM 2.1 Tiny / Small and SAM 3 (text selection, several objects). SAM 3 weights are under Meta's SAM License.",
+	"description": "Prompted video tracking for framefields: SAM 2.1 Tiny / Small and SAM 3 (text selection, several objects). SAM 3's model weights, downloaded at runtime, are under Meta's SAM License.",
 	"version": "2.8.1",
 	"private": false,
 	"publishConfig": {
@@ -8,7 +8,7 @@
 	},
 	"type": "module",
 	"sideEffects": false,
-	"license": "SEE LICENSE IN LICENSE",
+	"license": "Apache-2.0",
 	"module": "./dist/index.mjs",
 	"types": "./dist/index.d.mts",
 	"exports": {
@@ -21,7 +21,6 @@
 	},
 	"files": [
 		"dist/**",
-		"LICENSE",
 		"NOTICE.md"
 	],
 	"scripts": {

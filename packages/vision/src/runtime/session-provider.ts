@@ -1,3 +1,4 @@
+import { probeModel } from "../model/probe-model.js";
 import { NodeWebGPUProvider } from "./node-webgpu-provider.js";
 
 /**
@@ -38,14 +39,30 @@ export interface VisionSessionOptions {
 	}[];
 }
 
+/** The hardware sessions run on; it decides which model precision runs fastest. */
+export type VisionCompute = "webgpu" | "cuda" | "cpu";
+
 export interface SessionProvider {
 	readonly kind: "node" | "webgpu";
 	/** The GPU device sessions run on, when they accept `gpuBuffer` inputs from it. */
 	readonly device?: GPUDevice;
+	/**
+	 * Where sessions will run, known before any model is downloaded (see
+	 * {@link sessionCompute}). Optional for custom providers.
+	 */
+	backend?(): Promise<VisionCompute>;
 	createSession(
 		modelBytes: Uint8Array,
 		options?: VisionSessionOptions,
 	): Promise<VisionSession>;
+}
+
+/** Where a provider's sessions run: its own answer, else WebGPU for WebGPU providers, else CPU. */
+export function sessionCompute(
+	provider: SessionProvider,
+): Promise<VisionCompute> {
+	if (provider.backend) return provider.backend();
+	return Promise.resolve(provider.kind === "webgpu" ? "webgpu" : "cpu");
 }
 
 let defaultProvider: (() => SessionProvider) | undefined;
@@ -74,7 +91,7 @@ export function setDefaultSessionProvider(
 
 /** Which backend the process's default provider chose, reported once. */
 export interface VisionBackendInfo {
-	readonly backend: "webgpu" | "cpu" | "cuda";
+	readonly backend: VisionCompute;
 	/** WebGPU on the renderer's device: frames reach the models without leaving the GPU. */
 	readonly sharedDevice: boolean;
 	/** Why WebGPU wasn't used, when it fell back. */
@@ -145,18 +162,39 @@ export class AutoSessionProvider implements SessionProvider {
 	): Promise<VisionSession> {
 		if (this._resolved)
 			return this._resolved.createSession(modelBytes, options);
-		if (!this._resolving) {
-			this._resolving = this.resolve(modelBytes, options);
-			this._resolving.catch(() => {
+		if (this._resolving)
+			return (await this._resolving).provider.createSession(
+				modelBytes,
+				options,
+			);
+		const { provider, first } = await this.start(modelBytes, options);
+		return first ?? provider.createSession(modelBytes, options);
+	}
+
+	/** Where sessions run. Before the first session it decides with a one-node probe graph. */
+	public async backend(): Promise<VisionCompute> {
+		if (!this._resolved && !this._resolving)
+			(await this.start(probeModel())).first?.release();
+		const provider = this._resolved ?? (await this._resolving)?.provider;
+		if (!provider) throw new Error("No vision backend could be resolved.");
+		return sessionCompute(provider);
+	}
+
+	private start(
+		modelBytes: Uint8Array,
+		options?: VisionSessionOptions,
+	): Promise<{ provider: SessionProvider; first?: VisionSession }> {
+		const resolving = this.resolve(modelBytes, options);
+		this._resolving = resolving;
+		resolving.then(
+			({ provider }) => {
+				this._resolved = provider;
+			},
+			() => {
 				this._resolving = undefined;
-			});
-			const { provider, first } = await this._resolving;
-			this._resolved = provider;
-			if (first) return first;
-			return provider.createSession(modelBytes, options);
-		}
-		const { provider } = await this._resolving;
-		return provider.createSession(modelBytes, options);
+			},
+		);
+		return resolving;
 	}
 
 	private async resolve(
@@ -174,11 +212,20 @@ export class AutoSessionProvider implements SessionProvider {
 		}
 		if (backend === "cuda") {
 			reportBackend({ backend: "cuda", sharedDevice: false });
-			return {
-				provider: new NodeSessionProvider({
-					executionProviders: ["cuda", "cpu"],
-				}),
-			};
+			return { provider: cudaProvider() };
+		}
+		if (backend === "auto" && (await hasNvidiaDriver())) {
+			// NVIDIA on Linux: CUDA when onnxruntime-node can load its CUDA EP, else WebGPU/CPU.
+			try {
+				const first = await new NodeSessionProvider({
+					executionProviders: ["cuda"],
+				}).createSession(modelBytes, options);
+				reportBackend({ backend: "cuda", sharedDevice: false });
+				first.release();
+				return { provider: cudaProvider() };
+			} catch {
+				// No CUDA 12 / cuDNN 9 libraries: fall through.
+			}
 		}
 		const webgpu = new NodeWebGPUProvider({
 			wasmFallback: false,
@@ -198,6 +245,23 @@ export class AutoSessionProvider implements SessionProvider {
 			});
 			return { provider: new NodeSessionProvider() };
 		}
+	}
+}
+
+function cudaProvider(): NodeSessionProvider {
+	return new NodeSessionProvider({ executionProviders: ["cuda", "cpu"] });
+}
+
+/** True on Linux with the NVIDIA kernel driver loaded (checked without touching CUDA). */
+async function hasNvidiaDriver(): Promise<boolean> {
+	if (typeof process === "undefined" || process.platform !== "linux")
+		return false;
+	try {
+		const { access } = await import("node:fs/promises");
+		await access("/proc/driver/nvidia/version");
+		return true;
+	} catch {
+		return false;
 	}
 }
 
@@ -283,6 +347,12 @@ export class NodeSessionProvider implements SessionProvider {
 
 	constructor(options: NodeSessionProviderOptions = {}) {
 		this._executionProviders = options.executionProviders ?? ["cpu"];
+	}
+
+	public backend(): Promise<VisionCompute> {
+		return Promise.resolve(
+			this._executionProviders.includes("cuda") ? "cuda" : "cpu",
+		);
 	}
 
 	private ortPromise?: Promise<typeof import("onnxruntime-node")>;

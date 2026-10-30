@@ -9,6 +9,7 @@
 import {
 	registerVisionModel,
 	VISION_MODELS,
+	type VisionCompute,
 	type VisionModelDescriptor,
 } from "@framefields/vision";
 
@@ -27,9 +28,25 @@ export type Sam2ModelKey =
 	| "sam2.1-tiny-memory_attention"
 	| "sam2.1-tiny-pointer_tpos";
 
+/** Weight formats published for the SAM 3 tracker's image encoder. */
+export type Sam3Precision = "fp16" | "q4f16" | "q4";
+
+/**
+ * The encoder precision each backend runs fastest. Measured on an M1 Pro (one 1008² frame):
+ * WebGPU fp16 3.65 s, q4f16 4.43 s, q4 6.63 s, int8 140 s (its ops fall back to the CPU);
+ * fp16 is also the closest to full precision. On WebGPU, 4-bit weights are dequantized
+ * before every matmul, so they only save memory. CUDA runs fp16 on tensor cores. CPUs have
+ * no fast fp16 path, so they get fp32-activation q4.
+ */
+export const SAM3_ENCODER: Readonly<Record<VisionCompute, Sam3Precision>> = {
+	webgpu: "fp16",
+	cuda: "fp16",
+	cpu: "q4",
+};
+
 export type Sam3ModelKey =
-	| "sam3-vision_encoder"
-	| "sam3-vision_encoder-data"
+	| `sam3-vision_encoder-${Sam3Precision}`
+	| `sam3-vision_encoder-${Sam3Precision}-data`
 	| "sam3-mask_decoder"
 	| "sam3-memory_encoder"
 	| "sam3-memory_attention"
@@ -92,6 +109,36 @@ const tracker = sam3(
 	"onnx-community/sam3-tracker-ONNX",
 	"429305c8a5b3de597243d919a07e4e6bdcd00ef7",
 );
+/** The tracker encoder at `precision`: its graph and the weights file the graph names. */
+function encoder(
+	precision: Sam3Precision,
+	[graphBytes, graphSha]: readonly [number, string],
+	[dataBytes, dataSha]: readonly [number, string],
+): VisionModelDescriptor[] {
+	const { graph, data } = sam3EncoderFiles(precision);
+	return [
+		tracker(`sam3-vision_encoder-${precision}`, `sam3-${graph}`, [
+			`onnx/${graph}`,
+			graphBytes,
+			graphSha,
+		]),
+		tracker(`sam3-vision_encoder-${precision}-data`, `sam3-${data}`, [
+			`onnx/${data}`,
+			dataBytes,
+			dataSha,
+		]),
+	];
+}
+
+/** File names of the encoder at `precision`; the graph refers to its weights by `data`. */
+export function sam3EncoderFiles(precision: Sam3Precision): {
+	graph: string;
+	data: string;
+} {
+	const graph = `vision_encoder_${precision}.onnx`;
+	return { graph, data: `${graph}_data` };
+}
+
 const video = sam3(
 	"jax-image-tools/sam3-video-onnx",
 	"e942689a73d942f83c69b5965881cb3a0f6153ba",
@@ -138,16 +185,39 @@ export const SAM_MODELS: readonly VisionModelDescriptor[] = [
 		34228,
 		"3ab5bfce40ed01208301b2d8f596b9c9f7f493dcd7e09ef01ec22e5be3694bd7",
 	]),
-	tracker("sam3-vision_encoder", "sam3-vision_encoder_q4f16.onnx", [
-		"onnx/vision_encoder_q4f16.onnx",
-		1307816,
-		"4b96732adab3d7d70ac0964ce540a61fad097fbc10c9b27612f47d676877cefc",
-	]),
-	tracker("sam3-vision_encoder-data", "sam3-vision_encoder_q4f16.onnx_data", [
-		"onnx/vision_encoder_q4f16.onnx_data",
-		295622656,
-		"d1d60808376dbd48e34cf89feaee708c13abed229f2398ab512149db34fdab07",
-	]),
+	...encoder(
+		"fp16",
+		[
+			1263005,
+			"f8c52be6de99124bb17f25792054406abc482ce3502166f948d5c5849cd14d02",
+		],
+		[
+			934729728,
+			"4b021a4d3068c9e9153f2f2fcc9e6d280156228671c00ab6c2ddfa737da7f151",
+		],
+	),
+	...encoder(
+		"q4f16",
+		[
+			1307816,
+			"4b96732adab3d7d70ac0964ce540a61fad097fbc10c9b27612f47d676877cefc",
+		],
+		[
+			295622656,
+			"d1d60808376dbd48e34cf89feaee708c13abed229f2398ab512149db34fdab07",
+		],
+	),
+	...encoder(
+		"q4",
+		[
+			1320396,
+			"b80cb1cb6ab80efe646ad49ffa11d398af76e8912eb966971932ef2d8e7fe11b",
+		],
+		[
+			368954368,
+			"be632cacb4a82ef8be28285e49821b9dd7f96e3231cb90df631890f367110555",
+		],
+	),
 	video("sam3-mask_decoder", "sam3-mask_decoder.onnx", [
 		"mask_decoder.onnx",
 		17809322,

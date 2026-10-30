@@ -7,6 +7,7 @@
  */
 
 import type { SamLicenseOptions } from "../license.js";
+import type { Sam3Precision } from "../models/registry.js";
 import type { Sam2Point } from "../sam2/types.js";
 import { validateSam2Prompts } from "../sam2/types.js";
 
@@ -35,6 +36,8 @@ export interface Sam3Options extends SamLicenseOptions {
 	readonly textThreshold?: number;
 	/** Most instances a text prompt selects, as track IDs 1…N by score. Default 1. */
 	readonly maxObjects?: number;
+	/** Image-encoder weights; defaults to the fastest for the backend in use (`SAM3_ENCODER`). */
+	readonly precision?: Sam3Precision;
 }
 
 export function validateSam3Prompts(options: Sam3Options): void {

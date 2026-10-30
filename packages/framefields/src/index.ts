@@ -143,6 +143,7 @@ export type {
 	Sam2Point,
 	Sam2Prompt,
 	Sam3Options,
+	Sam3Precision,
 	Sam3Prompt,
 } from "@framefields/vision-sam";
 

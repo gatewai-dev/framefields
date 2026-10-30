@@ -47,6 +47,15 @@ describe("session provider selection", () => {
 		}
 	});
 
+	it("knows its backend before the first real session, then keeps it", async () => {
+		vi.stubEnv("FRAMEFIELDS_VISION_PROVIDER", "cpu");
+		const provider = new AutoSessionProvider();
+		expect(await provider.backend()).toBe("cpu");
+		expect(provider.kind).toBe("node");
+		vi.stubEnv("FRAMEFIELDS_VISION_PROVIDER", "webgpu");
+		expect(await provider.backend()).toBe("cpu");
+	});
+
 	it("shares one default provider per process", () => {
 		expect(createDefaultSessionProvider()).toBe(createDefaultSessionProvider());
 	});

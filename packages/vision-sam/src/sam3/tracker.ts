@@ -8,8 +8,8 @@
 
 import {
 	createDefaultSessionProvider,
-	imageToTensor,
 	type SessionProvider,
+	sessionCompute,
 	type VisionImageInput,
 	VisionModelStore,
 	type VisionModelStoreOptions,
@@ -18,9 +18,14 @@ import {
 	type VisionTensorOutputs,
 } from "@framefields/vision";
 import { assertSamLicenseAccepted } from "../license.js";
-import { ensureSamModelsRegistered } from "../models/registry.js";
+import {
+	ensureSamModelsRegistered,
+	SAM3_ENCODER,
+	type Sam3Precision,
+} from "../models/registry.js";
 import { sam2Tokens } from "../sam2/memory.js";
 import type { Sam2Point } from "../sam2/types.js";
+import { holdSam3Encoder, type Sam3EncoderHandle } from "./encoder.js";
 import { sam3DenseDecoder, sam3SupportGraphs } from "./graphs.js";
 import { Sam3MemoryBank, sam3Position } from "./memory.js";
 import { Sam3TextSelector, sam3Floats, sam3Run } from "./text-selector.js";
@@ -31,9 +36,18 @@ import {
 	validateSam3Prompts,
 } from "./types.js";
 
-/** All graph and tokenizer revisions participate in ClipVision's persistent cache identity. */
-export const SAM3_REVISION =
-	"sam3-q4f16-429305c8-video-e942689a-support-68ce2746-text-fe8f8e12-v1";
+/** Every graph and tokenizer revision, and the encoder precision: ClipVision's cache identity. */
+export function sam3Revision(precision: Sam3Precision): string {
+	return `sam3-${precision}-429305c8-video-e942689a-support-68ce2746-text-fe8f8e12-v2`;
+}
+
+/** The encoder precision a tracker on `provider` uses: the override, else the backend's best. */
+export async function sam3Precision(
+	provider: SessionProvider = createDefaultSessionProvider(),
+	override?: Sam3Precision,
+): Promise<Sam3Precision> {
+	return override ?? SAM3_ENCODER[await sessionCompute(provider)];
+}
 
 export interface Sam3TrackerOptions extends VisionModelStoreOptions {
 	readonly provider?: SessionProvider;
@@ -42,12 +56,13 @@ export interface Sam3TrackerOptions extends VisionModelStoreOptions {
 	readonly textThreshold?: number;
 	/** Most instances a text prompt selects. Default 1. */
 	readonly maxObjects?: number;
+	/** Image-encoder weights; defaults to the fastest for the provider's backend (`SAM3_ENCODER`). */
+	readonly precision?: Sam3Precision;
 	/** Explicitly agree to Meta's SAM License terms to download or run SAM models. */
 	readonly acceptLicense?: boolean;
 }
 
 type Graph =
-	| "vision_encoder"
 	| "mask_decoder"
 	| "dense_decoder"
 	| "dense_prompt"
@@ -59,7 +74,15 @@ type Graph =
 interface Seed {
 	readonly points?: readonly Sam2Point[];
 	readonly dense?: Float32Array;
+	/**
+	 * A mask seed's own 1008² logits (±10). Like SAM's `_use_mask_as_output`, the seed
+	 * frame outputs and remembers the given mask; the decoder only supplies its pointer.
+	 */
+	readonly mask?: Float32Array;
 }
+
+/** Logit SAM uses for a given mask's pixels (and its object score): ±10. */
+const MASK_LOGIT = 10;
 
 function tensor(
 	name: string,
@@ -75,6 +98,7 @@ function tensor(
  */
 export class Sam3Tracker {
 	private readonly sessions = new Map<Graph, VisionSession>();
+	private encoder?: Sam3EncoderHandle;
 	private readonly position = sam3Position();
 	private readonly banks: Sam3MemoryBank[] = [];
 	private temporal?: Float32Array;
@@ -119,19 +143,10 @@ export class Sam3Tracker {
 		const provider = options.provider ?? createDefaultSessionProvider();
 		const tracker = new Sam3Tracker(store, provider, options);
 		try {
-			tracker.sessions.set(
-				"vision_encoder",
-				await provider.createSession(
-					await store.ensure("sam3-vision_encoder"),
-					{
-						externalData: [
-							{
-								path: "vision_encoder_q4f16.onnx_data",
-								data: await store.ensure("sam3-vision_encoder-data"),
-							},
-						],
-					},
-				),
+			tracker.encoder = await holdSam3Encoder(
+				store,
+				provider,
+				await sam3Precision(provider, options.precision),
 			);
 			const support = sam3SupportGraphs(
 				await store.ensure("sam3-support"),
@@ -194,30 +209,11 @@ export class Sam3Tracker {
 		if (this.lastFrame < 0 && !prompt)
 			throw new Error("SAM 3 needs a prompt on its first frame.");
 
-		const { tensor: pixels } = imageToTensor(image, {
-			width: 1008,
-			height: 1008,
-			fit: "stretch",
-			channels: "rgb",
-			padValue: 0,
-			mean: [127.5, 127.5, 127.5],
-			std: [127.5, 127.5, 127.5],
-		});
-		const vision = await this.run("vision_encoder", [
-			tensor("pixel_values", pixels, [1, 3, 1008, 1008]),
-		]);
-		const raw = sam3Floats(vision, "image_embeddings.2");
+		if (!this.encoder) throw new Error("SAM 3 tracker has been released.");
+		const { pixels, feats0, feats1, raw } = await this.encoder.encode(image);
 		const shared = [
-			tensor(
-				"feats0",
-				sam3Floats(vision, "image_embeddings.0"),
-				[1, 32, 288, 288],
-			),
-			tensor(
-				"feats1",
-				sam3Floats(vision, "image_embeddings.1"),
-				[1, 64, 144, 144],
-			),
+			tensor("feats0", feats0, [1, 32, 288, 288]),
+			tensor("feats1", feats1, [1, 64, 144, 144]),
 		];
 		const seeds = await this.seeds(pixels, prompt);
 		const objects: Sam3ObjectResult[] = [];
@@ -227,18 +223,16 @@ export class Sam3Tracker {
 				? this.initialFeatures(raw)
 				: await this.condition(raw, frame, bank);
 			const decoded = await this.decode(shared, features, seed);
-			await this.remember(bank, raw, decoded, frame, seed !== undefined);
-			const score = sam3Floats(decoded, "object_score_logits")[0] ?? -Infinity;
+			const logits = seed?.mask ?? sam3Floats(decoded, "high_res_masks");
+			const score = seed?.mask
+				? MASK_LOGIT
+				: (sam3Floats(decoded, "object_score_logits")[0] ?? -Infinity);
+			await this.remember(bank, raw, decoded, frame, seed, logits, score);
 			objects.push({
 				id: index + 1,
-				mask: sam3Mask(
-					sam3Floats(decoded, "high_res_masks"),
-					image.width,
-					image.height,
-					score,
-				),
+				mask: sam3Mask(logits, image.width, image.height, score),
 				score,
-				iou: Math.max(...sam3Floats(decoded, "iou_scores")),
+				iou: seed?.mask ? 1 : Math.max(...sam3Floats(decoded, "iou_scores")),
 			});
 		}
 		this.lastFrame = frame;
@@ -273,12 +267,16 @@ export class Sam3Tracker {
 				this.options.maxObjects ?? 1,
 			);
 			this.banks.length = 0;
-			for (const [index, mask] of masks.entries()) {
+			for (const [index, logits] of masks.entries()) {
 				this.banks.push(this.newBank());
+				const binary = Float32Array.from(logits, (v) => (v > 0 ? 1 : 0));
 				const dense = await this.run("dense_prompt", [
-					tensor("mask", mask, [1, 1, 288, 288]),
+					tensor("mask", binary, [1, 1, 288, 288]),
 				]);
-				seeds.set(index, { dense: sam3Floats(dense, "dense_prompt") });
+				seeds.set(index, {
+					dense: sam3Floats(dense, "dense_prompt"),
+					mask: seedLogits(logits),
+				});
 			}
 		}
 		return seeds;
@@ -374,21 +372,15 @@ export class Sam3Tracker {
 		raw: Float32Array,
 		decoded: VisionTensorOutputs,
 		frame: number,
-		prompted: boolean,
+		seed: Seed | undefined,
+		logits: Float32Array,
+		score: number,
 	): Promise<void> {
 		const memory = await this.run("memory_encoder", [
 			tensor("vision_features", raw, [1, 256, 72, 72]),
-			tensor(
-				"pred_masks_high_res",
-				sam3Floats(decoded, "high_res_masks"),
-				[1, 1, 1008, 1008],
-			),
-			tensor(
-				"object_score_logits",
-				sam3Floats(decoded, "object_score_logits"),
-				[1, 1],
-			),
-			tensor("is_mask_from_pts", new Uint8Array([prompted ? 1 : 0]), [1]),
+			tensor("pred_masks_high_res", logits, [1, 1, 1008, 1008]),
+			tensor("object_score_logits", Float32Array.of(score), [1, 1]),
+			tensor("is_mask_from_pts", new Uint8Array([seed ? 1 : 0]), [1]),
 		]);
 		bank.remember(
 			{
@@ -397,13 +389,15 @@ export class Sam3Tracker {
 				positions: sam3Floats(memory, "memory_pos_enc").slice(),
 				pointer: sam3Floats(decoded, "object_pointer").slice(),
 			},
-			prompted,
+			seed !== undefined,
 		);
 	}
 
 	release(): void {
 		for (const session of this.sessions.values()) session.release();
 		this.sessions.clear();
+		this.encoder?.release();
+		this.encoder = undefined;
 		this.selector?.release();
 		this.banks.length = 0;
 		this.temporal = undefined;
@@ -442,4 +436,30 @@ export function sam3Mask(
 			mask[y * width + x] = top * (1 - fy) + bottom * fy > 0 ? 255 : 0;
 		}
 	return mask;
+}
+
+/** A 288² concept mask's logits as SAM's 1008² seed logits: bilinear, then ±10. */
+function seedLogits(logits: Float32Array): Float32Array {
+	const out = new Float32Array(1008 * 1008);
+	for (let y = 0; y < 1008; y++) {
+		const sy = Math.max(0, Math.min(287, ((y + 0.5) * 288) / 1008 - 0.5)),
+			y0 = Math.floor(sy),
+			y1 = Math.min(287, y0 + 1),
+			fy = sy - y0;
+		for (let x = 0; x < 1008; x++) {
+			const sx = Math.max(0, Math.min(287, ((x + 0.5) * 288) / 1008 - 0.5)),
+				x0 = Math.floor(sx),
+				x1 = Math.min(287, x0 + 1),
+				fx = sx - x0;
+			const top =
+					(logits[y0 * 288 + x0] ?? 0) * (1 - fx) +
+					(logits[y0 * 288 + x1] ?? 0) * fx,
+				bottom =
+					(logits[y1 * 288 + x0] ?? 0) * (1 - fx) +
+					(logits[y1 * 288 + x1] ?? 0) * fx;
+			out[y * 1008 + x] =
+				top * (1 - fy) + bottom * fy > 0 ? MASK_LOGIT : -MASK_LOGIT;
+		}
+	}
+	return out;
 }

@@ -79,7 +79,7 @@ export class Sam3TextSelector {
 	}
 
 	/**
-	 * Masks (288², binary) of the instances matching `text` with sigmoid score of at least
+	 * Mask logits (288²) of the instances matching `text` with sigmoid score of at least
 	 * `threshold`, best first and at most `max`. Queries that repeat an accepted instance
 	 * (mask IoU above 0.5) are skipped.
 	 */
@@ -143,10 +143,7 @@ export class Sam3TextSelector {
 		const selected: Float32Array[] = [];
 		for (const query of ranked) {
 			if (selected.length >= max || (scores[query] ?? -Infinity) < logit) break;
-			const candidate = Float32Array.from(
-				masks.subarray(query * CELLS, (query + 1) * CELLS),
-				(v) => (v > 0 ? 1 : 0),
-			);
+			const candidate = masks.slice(query * CELLS, (query + 1) * CELLS);
 			if (selected.every((kept) => maskIou(kept, candidate) <= 0.5))
 				selected.push(candidate);
 		}
@@ -165,10 +162,10 @@ function maskIou(a: Float32Array, b: Float32Array): number {
 	let both = 0,
 		either = 0;
 	for (let i = 0; i < a.length; i++) {
-		const x = a[i] ?? 0,
-			y = b[i] ?? 0;
-		both += x * y;
-		either += Math.max(x, y);
+		const x = (a[i] ?? 0) > 0,
+			y = (b[i] ?? 0) > 0;
+		if (x && y) both++;
+		if (x || y) either++;
 	}
 	return either ? both / either : 0;
 }

@@ -202,7 +202,7 @@ Inference runs on the GPU through `onnxruntime-web`'s WebGPU backend (an optiona
 
 | Variable | Effect |
 | --- | --- |
-| `FRAMEFIELDS_VISION_PROVIDER` | `auto` (default), `webgpu`, `cpu`, or `cuda` (onnxruntime-node's CUDA EP on Linux x64; needs the CUDA 12 and cuDNN 9 libraries). A forced backend that fails throws instead of falling back. |
+| `FRAMEFIELDS_VISION_PROVIDER` | `auto` (default: CUDA first on Linux with the NVIDIA driver loaded, then WebGPU, then CPU), `webgpu`, `cpu`, or `cuda` (onnxruntime-node's CUDA EP on Linux x64; needs the CUDA 12 and cuDNN 9 libraries). A forced backend that fails throws instead of falling back. |
 | `FRAMEFIELDS_VISION_THREADS` | CPU threads per model. Default on Linux: the CPUs the process may use, cgroup quota included; elsewhere ONNX Runtime's default. |
 
 ### How it behaves at render time
@@ -226,7 +226,7 @@ Inference runs on the GPU through `onnxruntime-web`'s WebGPU backend (an optiona
 
 Use SAM for a specific object among similar objects, or to select an object via semantic text prompt (e.g. "performer in black suit"). SAM tracking and text selection run via `@framefields/vision-sam`, an optional peer under Meta's SAM License: install it next to `framefields` (`pnpm add @framefields/vision-sam`); `framefields` imports it only when a clip uses `sam2` or `sam3`, and prompts are validated on that first use. Import `Sam2Tracker`/`Sam3Tracker` from `@framefields/vision-sam`. To use SAM at runtime, license acceptance is required via `acceptSamLicense: true`, `sam2: { acceptLicense: true, ... }`, `sam3: { acceptLicense: true, ... }`, or the environment variable `FRAMEFIELDS_ACCEPT_SAM_LICENSE=1`.
 
-`comp.vision(layer, { sam2 })` runs the complete 512px SAM 2.1 Tiny video pipeline, including temporal memory. `comp.vision(layer, { sam3 })` runs SAM 3 / 3.1 quantized temporal tracking with optional CLIP/tokenizer-driven concept text selection. The pinned model assets download dynamically to the local cache (`~/.cache/framefields/models`) with size/SHA-256 integrity verification.
+`comp.vision(layer, { sam2 })` runs the complete 512px SAM 2.1 Tiny video pipeline, including temporal memory. `comp.vision(layer, { sam3 })` runs SAM 3 / 3.1 temporal tracking with optional CLIP/tokenizer-driven concept text selection. The pinned model assets download dynamically to the local cache (`~/.cache/framefields/models`) with size/SHA-256 integrity verification, and only the image encoder the backend runs fastest is fetched: fp16 on WebGPU (Macs, the preview) and CUDA, q4 on the CPU (`SAM3_ENCODER`; override with `sam3.precision: "fp16" | "q4f16" | "q4"`). Every SAM 3 clip in a process shares that encoder and its result per frame, so tracking several clips of one source costs one encoder pass per frame (about 3.6 s at 1008² on an M1 Pro; CPU-only tracking is roughly 10× slower).
 
 ```ts
 const subject = Layer.video("assets/source.mp4", {

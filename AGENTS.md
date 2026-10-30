@@ -24,7 +24,7 @@ Code-first video engine on native WebGPU (Dawn) in Node, no browser. pnpm + turb
 - `nodes/node-*`: one VFX/audio/layout node each (`src/shared/`, `src/renderers/`, `src/index.ts`). Only `node-compositor` has a `SKILL.md`; update it when Compositor behavior changes (guarded by `skillmd-check.test.ts`).
 - `apps/renderer-service`: HTTP render service (Docker, RunPod).
 - `examples/NN_*`: reference films. Study `19_framefields_film` (structure), `22_framefields_launch` (lyric sync), `28_physics_dancer` (physics, vision, GPU particles) before writing one.
-- `plugins/framefields/skills/framefields{,-compose,-effects,-render}`: agent skills, symlinked from `.agents/skills` and `.Codex/skills`.
+- `plugins/framefields/skills/framefields{,-compose,-effects,-render,-vision}`: agent skills, symlinked from `.agents/skills` and `.Codex/skills`.
 - Package `exports` have a `development` condition pointing at `src/`; otherwise `dist/`, so `pnpm build` after changing a dependency.
 - Docs site is a separate repo: `/Users/okanaslankan/framefields-dev/docs` (Astro Starlight). `docs/lab` pins the published `framefields` version and builds the component demos; deploy with `pnpm run deploy`.
 

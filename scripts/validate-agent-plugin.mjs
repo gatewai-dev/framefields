@@ -36,6 +36,7 @@ const SKILL_NAMES = [
 	"framefields-compose",
 	"framefields-effects",
 	"framefields-render",
+	"framefields-vision",
 ];
 const PORTABLE_FIELDS = new Set([
 	"$schema",

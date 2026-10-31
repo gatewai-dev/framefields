@@ -1,6 +1,6 @@
 {
 	"name": "@framefields/core",
-	"version": "2.9.0",
+	"version": "2.9.2",
 	"private": false,
 	"publishConfig": {
 		"access": "public"

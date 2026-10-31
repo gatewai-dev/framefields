@@ -1,5 +1,7 @@
 # @framefields/node-camera-parallax-3d
 
+## 2.9.2
+
 ## 2.9.0
 
 ## 2.8.1

@@ -1149,6 +1149,8 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 		const is3DScene = Boolean(cameraVM || has3DLayer || lightVMs.length > 0);
 
 		let camera: Camera3DPose | null = null;
+		/** Where a relief keeps its look from: the default camera at the scene's field of view. */
+		let reliefEye: [number, number, number] = [0, 0, 0];
 		let dofEnabled = false;
 		const sceneLights: Light3DOptions[] = [];
 		let sceneEnvironment: Environment3DOptions | null = null;
@@ -1160,6 +1162,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 			const camStub = camOp?.id ? targetsById[camOp.id] : undefined;
 			const fov = camStub?.cameraFov ?? camOp?.lens?.fov ?? 50;
 			camera = Camera3D.createDefaultCamera(nativeWidth, nativeHeight, fov);
+			reliefEye = [...camera.eye] as [number, number, number];
 			camera.near = camOp?.lens?.near ?? 1.0;
 			camera.far = camOp?.lens?.far ?? 50000.0;
 			camera.zoom = camStub?.cameraZoom ?? camOp?.lens?.zoom ?? 1.0;
@@ -1355,11 +1358,37 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					meshBuffers?: GPUMeshBuffers;
 			  };
 		const pending3DItems: Pending3DItem[] = [];
-		/** Textures the queued 3D items still read: their layers and mattes. */
+		/** Textures the queued 3D items still read: their layers, mattes and reliefs. */
 		const pendingTextures = (): GPUTexture[] =>
 			pending3DItems
-				.flatMap((q) => [q.texture, q.opts.matte])
+				.flatMap((q) => [
+					q.texture,
+					q.opts.matte,
+					q.kind === "quad" ? q.opts.relief?.texture : undefined,
+				])
 				.filter((t): t is GPUTexture => Boolean(t));
+		/** Reliefs of 3D layers by owner id, drawn just before their owner. */
+		const reliefs = new Map<string, { texture: GPUTexture; amount: number }>();
+		/** The relief a 3D layer drawn at (x, y, w, h) of its pass carries, if any. */
+		const reliefOpts = (
+			id: string | undefined,
+			x: number,
+			y: number,
+			w: number,
+			h: number,
+		): Pick<DrawQuad3DOpts, "relief"> => {
+			const r = id === undefined ? undefined : reliefs.get(id);
+			if (!r) return {};
+			const { width, height } = r.texture;
+			return {
+				relief: {
+					texture: r.texture,
+					uvRect: [x / width, y / height, w / width, h / height],
+					amount: r.amount,
+					eye: reliefEye,
+				},
+			};
+		};
 
 		const flush3DPass = (
 			curTex: GPUTexture,
@@ -1812,16 +1841,18 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 			let activeTex = initialTex;
 			let activeView = initialView;
 			let activeExcludes = excludes;
-			// Matte layers are not drawn on their own: their owner draws them.
+			// Matte and relief layers are not drawn on their own: their owner draws them.
 			const mattesByOwner = new Map<string, VirtualMediaData>();
+			const reliefsByOwner = new Map<string, VirtualMediaData>();
 			for (const vm of vms) {
-				const owner = (vm.operation as any)?.matteOf;
-				if (owner) mattesByOwner.set(owner, vm);
+				const op = vm.operation as any;
+				if (op?.matteOf) mattesByOwner.set(op.matteOf, vm);
+				if (op?.reliefOf) reliefsByOwner.set(op.reliefOf, vm);
 			}
 			for (const child of sorted) {
 				const lop = child.operation as any;
 				if (lop.kind === "camera" || lop.kind === "light") continue;
-				if (lop.matteOf) continue;
+				if (lop.matteOf || lop.reliefOf) continue;
 				const targetId = lop.id || lop.inputHandleId;
 				const target = targetId ? targetsById[targetId] : undefined;
 				const isChild3D =
@@ -1860,53 +1891,64 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					continue;
 				}
 				nodeIndex += 1;
+				// Draws a layer alone on transparent. 3D content it queues is
+				// rendered into it right away, in a pass of its own.
+				const isolate = async (vm: VirtualMediaData, index: number) => {
+					const queued = pending3DItems.splice(0);
+					const busy = [
+						targetTexture,
+						activeTex,
+						...activeExcludes,
+						...queued.flatMap((q) => [
+							q.texture,
+							q.opts.matte,
+							q.kind === "quad" ? q.opts.relief?.texture : undefined,
+						]),
+					].filter((t): t is GPUTexture => Boolean(t));
+					const tex = ctx.renderer.getTemporaryTexture(targetW, targetH, busy);
+					const view = tex.createView();
+					ctx.renderer
+						.beginFrame(
+							encoder,
+							view,
+							{ r: 0, g: 0, b: 0, a: 0 },
+							targetW,
+							targetH,
+							"clear",
+						)
+						.end();
+					const out = await renderLayerVM(
+						vm,
+						index,
+						tex,
+						view,
+						busy.filter((t) => t !== targetTexture),
+						accumulatedOpacity,
+						parentMatrix,
+						parentRect,
+						targetW,
+						targetH,
+						parent3DMatrix,
+						false,
+					);
+					const drawn = out?.finalTex ?? tex;
+					const flat = flush3DPass(drawn, drawn.createView(), busy).finalTex;
+					pending3DItems.push(...queued);
+					return flat;
+				};
+				// A 3D layer's relief is drawn flat first; its quads then read it.
+				const reliefVM = lop.reliefId ? reliefsByOwner.get(lop.id) : undefined;
+				if (reliefVM && isChild3D) {
+					const texture = await isolate(reliefVM, nodeIndex);
+					activeExcludes = [...activeExcludes, texture];
+					nodeIndex += 1;
+					reliefs.set(lop.id, {
+						texture,
+						amount: lop.reliefAmount ?? 0,
+					});
+				}
 				const matteVM = lop.matteId ? mattesByOwner.get(lop.id) : undefined;
 				if (matteVM) {
-					// Draws a layer alone on transparent. 3D content it queues is
-					// rendered into it right away, in a pass of its own.
-					const isolate = async (vm: VirtualMediaData, index: number) => {
-						const queued = pending3DItems.splice(0);
-						const busy = [
-							targetTexture,
-							activeTex,
-							...activeExcludes,
-							...queued.flatMap((q) => [q.texture, q.opts.matte]),
-						].filter((t): t is GPUTexture => Boolean(t));
-						const tex = ctx.renderer.getTemporaryTexture(
-							targetW,
-							targetH,
-							busy,
-						);
-						const view = tex.createView();
-						ctx.renderer
-							.beginFrame(
-								encoder,
-								view,
-								{ r: 0, g: 0, b: 0, a: 0 },
-								targetW,
-								targetH,
-								"clear",
-							)
-							.end();
-						const out = await renderLayerVM(
-							vm,
-							index,
-							tex,
-							view,
-							busy.filter((t) => t !== targetTexture),
-							accumulatedOpacity,
-							parentMatrix,
-							parentRect,
-							targetW,
-							targetH,
-							parent3DMatrix,
-							false,
-						);
-						const drawn = out?.finalTex ?? tex;
-						const flat = flush3DPass(drawn, drawn.createView(), busy).finalTex;
-						pending3DItems.push(...queued);
-						return flat;
-					};
 					const mode: string = (matteVM.operation as any).matteMode ?? "alpha";
 					const blend =
 						mode === "luma"
@@ -3839,6 +3881,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 						metallic: target?.metallic ?? lop.metallic,
 						...surfaceProps(target, lop),
 						...(modelMatrix && { modelMatrix }),
+						...reliefOpts(lop.id, localX, localY, layerW, layerH),
 					};
 
 					pending3DItems.push({
@@ -5519,6 +5562,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					metallic: target?.metallic ?? lop.metallic,
 					...surfaceProps(target, lop),
 					...(modelMatrix && { modelMatrix }),
+					...reliefOpts(lop.id, localX, localY, layerW, layerH),
 				};
 
 				// The texture quad carries the layer's backdrop and border; a

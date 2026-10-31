@@ -9,6 +9,9 @@ import { matte3dWgsl } from "./matte3d.js";
 
 export const quad3dWgsl = `
 ${lighting3dWgsl}
+// Grid cells either side a relief's normals span.
+const RELIEF_NORMAL_CELLS : f32 = 4.0;
+
 struct ModelUniforms {
     modelMatrix    : mat4x4<f32>,
     normalMatrix   : mat4x4<f32>,
@@ -19,11 +22,15 @@ struct ModelUniforms {
     materialParams : vec4<f32>, // x = shininess, y = specularIntensity, z = ambientIntensity, w = materialMode (0=unlit, 1=lit)
     pbr            : vec4<f32>, // x = roughness (<0 = default), y = metallic
     emissive       : vec4<f32>, // rgb = sRGB emissive color, w = strength
+    relief         : vec4<f32>, // x = amount (px), y = on, w = grid cells per side
+    reliefRect     : vec4<f32>, // xy = where the layer's box starts in reliefTex (0..1), zw = its size
+    reliefEye      : vec4<f32>, // xyz = the eye the surface keeps its look from (the default camera)
 };
 
 @group(0) @binding(0) var<uniform> cam    : CameraUniforms;
 @group(1) @binding(0) var<uniform> model  : ModelUniforms;
-${matte3dWgsl(1, 1)}@group(2) @binding(0) var texSampler      : sampler;
+${matte3dWgsl(1, 1)}@group(1) @binding(2) var reliefTex : texture_2d<f32>;
+@group(2) @binding(0) var texSampler      : sampler;
 @group(2) @binding(1) var mainTex         : texture_2d<f32>;
 ${lightsBindingsWgsl}
 
@@ -42,13 +49,48 @@ struct VertexOutput {
     @location(4)       localPos    : vec2<f32>,
 };
 
+// Relief: the layer's plane pushed toward the eye by the brightness of a
+// second picture, so a flat quad becomes a surface (see DrawQuad3DOpts.relief).
+fn reliefAt(uv: vec2<f32>) -> f32 {
+    let dims = vec2<f32>(textureDimensions(reliefTex));
+    let p = (model.reliefRect.xy + clamp(uv, vec2<f32>(0.0), vec2<f32>(1.0)) * model.reliefRect.zw) * dims - 0.5;
+    let i = floor(p);
+    let f = p - i;
+    // Texels of the layer's own box only: past its edge the relief was never drawn.
+    let lo = max(floor(model.reliefRect.xy * dims), vec2<f32>(0.0));
+    let hi = min(ceil((model.reliefRect.xy + model.reliefRect.zw) * dims) - 1.0, dims - 1.0);
+    let a = textureLoad(reliefTex, vec2<i32>(clamp(i, lo, hi)), 0).rgb;
+    let b = textureLoad(reliefTex, vec2<i32>(clamp(i + vec2<f32>(1.0, 0.0), lo, hi)), 0).rgb;
+    let c = textureLoad(reliefTex, vec2<i32>(clamp(i + vec2<f32>(0.0, 1.0), lo, hi)), 0).rgb;
+    let d = textureLoad(reliefTex, vec2<i32>(clamp(i + vec2<f32>(1.0, 1.0), lo, hi)), 0).rgb;
+    let rgb = mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+    return dot(rgb, vec3<f32>(0.2126, 0.7152, 0.0722));
+}
+
+// The plane's front: the side the default camera sees.
+fn reliefFront() -> vec3<f32> {
+    return normalize((model.normalMatrix * vec4<f32>(0.0, 0.0, -1.0, 0.0)).xyz);
+}
+
+// A point of the plane lifted by its relief along the ray to the eye, so from
+// the eye it lands on the same pixel as the flat picture.
+fn reliefPoint(local: vec2<f32>, uv: vec2<f32>) -> vec3<f32> {
+    let flat = (model.modelMatrix * vec4<f32>(local, 0.0, 1.0)).xyz;
+    let n = reliefFront();
+    let h = model.relief.x * reliefAt(uv);
+    let toEye = model.reliefEye.xyz - flat;
+    let along = dot(toEye, n);
+    return select(flat + n * h, flat + toEye * (h / along), along > 1.0);
+}
+
 @vertex
 fn vs_main(in: VertexInput) -> VertexOutput {
     var out: VertexOutput;
     
     let hasDimensions = model.dimensions.x > 0.0 && model.dimensions.y > 0.0;
+    let hasRelief = model.relief.y > 0.5;
     var pad = 0.0;
-    if (hasDimensions) {
+    if (hasDimensions && !hasRelief) {
         let viewPos = cam.viewMatrix * model.modelMatrix * vec4<f32>(0.0, 0.0, 0.0, 1.0);
         let viewDepth = max(abs(viewPos.z), 0.1);
         let projScale = max(cam.projMatrix[1][1], 0.001);
@@ -58,12 +100,28 @@ fn vs_main(in: VertexInput) -> VertexOutput {
     let scalePad = select(vec2<f32>(1.0), 1.0 + vec2<f32>(2.0 * pad) / model.dimensions.xy, hasDimensions);
     
     let paddedPos = vec3<f32>(in.position.xy * scalePad, in.position.z);
-    let worldPos4 = model.modelMatrix * vec4<f32>(paddedPos, 1.0);
-    out.worldPos = worldPos4.xyz;
+    var worldPos4 = model.modelMatrix * vec4<f32>(paddedPos, 1.0);
     
     // Normal transformed by 3x3 normal matrix
     let norm4 = model.normalMatrix * vec4<f32>(in.normal, 0.0);
     out.worldNormal = normalize(norm4.xyz);
+    if (hasRelief) {
+        let p = reliefPoint(in.position.xy, in.uv);
+        // Central differences a few cells wide: an 8-bit height map steps every
+        // level, and normals from adjacent cells would light those steps as rings.
+        let e = RELIEF_NORMAL_CELLS / max(model.relief.w, 1.0);
+        let dx = vec2<f32>(e, 0.0);
+        let dy = vec2<f32>(0.0, e);
+        let tx = reliefPoint(in.position.xy + dx, in.uv + dx) - reliefPoint(in.position.xy - dx, in.uv - dx);
+        let ty = reliefPoint(in.position.xy + dy, in.uv + dy) - reliefPoint(in.position.xy - dy, in.uv - dy);
+        var nrm = normalize(cross(tx, ty));
+        if (dot(nrm, reliefFront()) < 0.0) {
+            nrm = -nrm;
+        }
+        worldPos4 = vec4<f32>(p, 1.0);
+        out.worldNormal = nrm;
+    }
+    out.worldPos = worldPos4.xyz;
     
     out.clipPos = cam.viewProjMatrix * worldPos4;
     

@@ -778,6 +778,23 @@ const BaseNodeFields = {
 	/** Set by the compiler: this layer is the matte of node `matteOf` (not drawn by itself). */
 	matteOf: z.string().optional(),
 	matteMode: MatteModeSchema.optional(),
+	/**
+	 * Relief (3D layers): another layer whose brightness pushes this one's
+	 * surface toward the camera, white by `amount` px, along the default
+	 * camera's rays, so that lens still sees the flat picture. Laid out and
+	 * timed like a matte; drawn flat over this node's box.
+	 */
+	relief: z
+		.object({
+			node: z.custom<unknown>((v) => typeof v === "object" && v !== null),
+			amount: z.number().optional(),
+		})
+		.optional(),
+	/** Set by the compiler: the id of this node's hoisted relief layer. */
+	reliefId: z.string().optional(),
+	/** Set by the compiler: this layer is the relief of node `reliefOf` (not drawn by itself). */
+	reliefOf: z.string().optional(),
+	reliefAmount: z.number().optional(),
 	/** Per-node motion: tracks keyed by node id. */
 	animation: LayerAnimationSchema.default({ tracks: [] }),
 	/** Vision configuration or effect attached directly to the node. */
@@ -839,6 +856,10 @@ export interface CompositionNodeBase {
 	matteId?: string;
 	matteOf?: string;
 	matteMode?: MatteMode;
+	relief?: { node: unknown; amount?: number };
+	reliefId?: string;
+	reliefOf?: string;
+	reliefAmount?: number;
 	envIntensity?: number;
 	startFrame?: number;
 	durationFrames?: number;

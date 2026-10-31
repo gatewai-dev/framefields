@@ -54,7 +54,7 @@ import {
 	type MeshMaterialMaps,
 } from "./mesh3d-pipeline.js";
 import { MorphPipeline } from "./morph-pipeline.js";
-import { Quad3DPipeline } from "./quad3d-pipeline.js";
+import { Quad3DPipeline, type Relief3D } from "./quad3d-pipeline.js";
 import { SHADOW_DEPTH_FORMAT } from "./shadow-depth.js";
 import {
 	type Aabb,
@@ -119,6 +119,8 @@ export interface DrawQuad3DOpts extends SurfaceParams {
 	 * this texture's alpha does and keeps its place in the depth buffer.
 	 */
 	matte?: GPUTexture;
+	/** Lifts the layer's plane into a surface by another picture's brightness. */
+	relief?: Relief3D;
 }
 
 /**
@@ -913,6 +915,7 @@ export class Renderer3D {
 						textureExtent: c.opts.textureExtent,
 						opacity: c.opts.opacity,
 						colorTint: c.opts.colorTint,
+						relief: c.opts.relief,
 					},
 				);
 			}
@@ -1385,6 +1388,7 @@ export class Renderer3D {
 				emissive: opts.emissive,
 				emissiveIntensity: opts.emissiveIntensity,
 				matte: opts.matte,
+				relief: opts.relief,
 			},
 			useMrt,
 			this.passWritesHdr,

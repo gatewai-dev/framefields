@@ -1,10 +1,11 @@
-import type { InstanceMask, PoseKeypoint } from "../types.js";
+import type { DepthMap, InstanceMask, PoseKeypoint } from "../types.js";
 
 /**
  * Where a render-time Vision effect finds subject masks someone already
  * computed for its clip (`comp.vision(clip)` in framefields), so a matte layer
- * reuses them instead of segmenting the frame again, and a skeleton layer draws
- * the pose matched to that subject instead of the first person it detects. Set
+ * reuses them instead of segmenting the frame again, a skeleton layer draws
+ * the pose matched to that subject instead of the first person it detects, and
+ * a depth layer shows the depth analysed for each frame (not one behind). Set
  * on the Vision effect instance under this key; the renderer reads it from the effect.
  */
 export const CLIP_SUBJECT: unique symbol = Symbol.for(
@@ -26,6 +27,11 @@ export interface ClipSubjectSource {
 	 * clip tracks no pose).
 	 */
 	pose?(frame: number, fps: number): ClipPose | null | undefined;
+	/**
+	 * The frame's relative depth (near = 1); `null` when the frame could not be
+	 * decoded; `undefined` when it was not analysed (or the clip tracks no depth).
+	 */
+	depth?(frame: number, fps: number): DepthMap | null | undefined;
 }
 
 export interface ClipPose {

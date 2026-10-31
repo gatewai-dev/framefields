@@ -9,6 +9,7 @@ import {
 	type ClipPose,
 	type ClipSubjectSource,
 	COCO17_KEYPOINT_NAMES,
+	type DepthMap,
 	type InstanceMask,
 	maskObject,
 	mergeSubjectMask,
@@ -51,6 +52,12 @@ export interface ClipVisionOptions {
 	pose?: boolean;
 	/** Track the person's silhouette, dress and held things included (default true). */
 	mask?: boolean;
+	/**
+	 * Relative depth of every frame (Depth Anything V2 Small, near = 1), read by
+	 * `withVision({ mode: "depth" })` layers and {@link ClipVision.depthMap}. A depth
+	 * clip tracks no pose or silhouette unless `pose` / `mask` ask for them.
+	 */
+	depth?: boolean;
 	/** Silhouette cell size in source pixels (default 8: a 1920×1080 clip gives a 240×135 grid). */
 	maskCell?: number;
 	/** Keypoints are averaged over ±`smoothing` frames, weighted by confidence (default 2; 0 = raw). */
@@ -118,6 +125,17 @@ interface Transform {
 const HOLD = 24;
 
 const CACHE_VERSION = 1;
+const DEPTH_CACHE_VERSION = 1;
+const DEPTH_MODEL = "depth-anything-v2-s";
+/** Depth frames held in memory when they also live on disk (each is about 1 MB). */
+const DEPTH_MEMORY = 48;
+
+/** A frame's depth as stored: 0 … 65535 for far … near. */
+interface StoredDepth {
+	width: number;
+	height: number;
+	data: Uint16Array;
+}
 
 type VisionSam = typeof import("@framefields/vision-sam");
 
@@ -184,6 +202,17 @@ export class ClipVision implements ClipSubjectSource {
 	private readonly subjects = new Map<number, SubjectResult | null>();
 	private wantSubjects = false;
 	private subjectsLoaded?: Promise<void>;
+	/** Depth per source frame; null when the frame did not decode. Bounded when on disk. */
+	private readonly depths = new Map<number, StoredDepth | null>();
+	/** Source frames whose depth is on disk. */
+	private readonly depthsOnDisk = new Set<number>();
+	private depthDir?: Promise<string | null>;
+	/** Set once the depth folder is known: render-time reads are synchronous. */
+	private depthDisk?: {
+		dir: string;
+		fs: NodeModules["fs"];
+		path: NodeModules["path"];
+	};
 
 	/** @internal Use `comp.vision(source, options)`. */
 	constructor(source: string, fps: number, options: ClipVisionOptions = {}) {
@@ -382,7 +411,41 @@ export class ClipVision implements ClipSubjectSource {
 	get tracksPose(): boolean {
 		return this.exact
 			? this.options.pose === true
-			: (this.options.pose ?? true);
+			: (this.options.pose ?? !this.tracksDepth);
+	}
+
+	/** Whether frames carry the person's silhouette: on by default, off for depth clips. */
+	get tracksMask(): boolean {
+		return this.options.mask ?? !this.tracksDepth;
+	}
+
+	/** Whether frames carry relative depth. */
+	get tracksDepth(): boolean {
+		return this.options.depth === true;
+	}
+
+	/**
+	 * The relative depth (near = 1) of composition frame `frame`, at the depth
+	 * model's resolution; undefined until that frame is analysed (`ready`).
+	 */
+	depthMap(frame: number): DepthMap | undefined {
+		return this.depth(frame, this.compositionFps) ?? undefined;
+	}
+
+	/**
+	 * @internal The relative depth of a source frame of the clip (`frame` at
+	 * `fps`) for a render-time depth layer: undefined until analysed, null when
+	 * the frame did not decode.
+	 */
+	depth(frame: number, fps: number): DepthMap | null | undefined {
+		const c = this.sourceFrame(frame, fps);
+		if (c === undefined || !this.tracksDepth) return undefined;
+		const stored = this.storedDepth(c);
+		if (!stored) return stored;
+		const data = new Float32Array(stored.data.length);
+		for (let i = 0; i < data.length; i++)
+			data[i] = (stored.data[i] as number) / 65535;
+		return { data, width: stored.width, height: stored.height };
 	}
 
 	/**
@@ -447,6 +510,11 @@ export class ClipVision implements ClipSubjectSource {
 	}
 
 	private analysed(c: number): boolean {
+		return this.analysedSubject(c) && (!this.tracksDepth || this.hasDepth(c));
+	}
+
+	/** Everything but depth, which is a pass of its own. */
+	private analysedSubject(c: number): boolean {
 		return this.results.has(c) && (!this.wantSubjects || this.subjects.has(c));
 	}
 
@@ -468,8 +536,10 @@ export class ClipVision implements ClipSubjectSource {
 			this.subjectsLoaded ??= this.loadSubjects();
 			await this.subjectsLoaded;
 		}
+		if (this.tracksDepth) await this.computeDepth(from, to);
 		let missing = false;
-		for (let c = from; c <= to; c++) if (!this.analysed(c)) missing = true;
+		for (let c = from; c <= to; c++)
+			if (!this.analysedSubject(c)) missing = true;
 		if (!missing) return;
 
 		if (this.options.sam2) {
@@ -481,20 +551,11 @@ export class ClipVision implements ClipSubjectSource {
 			return;
 		}
 		const wantPose = this.tracksPose;
-		const wantMask = this.options.mask ?? true;
-		this.runner ??= VisionRunner.create({
-			modelsDir: this.options.modelsDir,
-			baseUrl: this.options.baseUrl,
-			...(this.options.confidence !== undefined && {
-				confidence: this.options.confidence,
-			}),
-			...(this.options.variant !== undefined && {
-				variant: this.options.variant,
-			}),
-		});
+		const wantMask = this.tracksMask;
+		const runner = this.visionRunner();
 		const decoder = this.decoder();
 		for (let c = from; c <= to; c++) {
-			if (this.analysed(c)) continue;
+			if (this.analysedSubject(c)) continue;
 			const image = await decodedPixels(await decoder.getFrame(c / this.fps));
 			if (!image) {
 				this.results.set(c, { kp: null, mask: null });
@@ -507,7 +568,7 @@ export class ClipVision implements ClipSubjectSource {
 			let kp: Float32Array | null = known?.kp ?? null;
 			let mask: Uint8Array | null = known?.mask ?? null;
 			if (wantPose && !known) {
-				const person = (await this.runner.pose(image)).people[0];
+				const person = (await runner.pose(image)).people[0];
 				if (person) {
 					kp = new Float32Array(51);
 					for (const [k, p] of person.keypoints.entries()) {
@@ -517,7 +578,7 @@ export class ClipVision implements ClipSubjectSource {
 			}
 			const seg =
 				(wantMask && !known) || this.wantSubjects
-					? await this.runner.segment(image)
+					? await runner.segment(image)
 					: undefined;
 			if (seg && this.wantSubjects) {
 				const subject = mergeSubjectMask(seg.masks);
@@ -555,6 +616,140 @@ export class ClipVision implements ClipSubjectSource {
 		}
 		if (this.unsaved > 0) await this.saveCache();
 		if (this.unsavedSubjects > 0) await this.saveSubjects();
+	}
+
+	private visionRunner(): VisionRunner {
+		this.runner ??= VisionRunner.create({
+			modelsDir: this.options.modelsDir,
+			baseUrl: this.options.baseUrl,
+			...(this.options.confidence !== undefined && {
+				confidence: this.options.confidence,
+			}),
+			...(this.options.variant !== undefined && {
+				variant: this.options.variant,
+			}),
+		});
+		return this.runner;
+	}
+
+	/** Depth of every source frame in `from…to` not analysed yet, saved one file per frame. */
+	private async computeDepth(from: number, to: number): Promise<void> {
+		const dir = await this.depthCacheDir();
+		let decoder: ReturnType<typeof mediaDecoderCache.getVideo> | undefined;
+		for (let c = from; c <= to; c++) {
+			if (this.hasDepth(c)) continue;
+			decoder ??= this.decoder();
+			const image = await decodedPixels(await decoder.getFrame(c / this.fps));
+			if (!image) {
+				this.depths.set(c, null);
+				continue;
+			}
+			if (!this.sourceWidth) this.setSize(image.width, image.height);
+			const map = await this.visionRunner().depth(image);
+			const stored: StoredDepth = {
+				width: map.width,
+				height: map.height,
+				data: Uint16Array.from(map.data, (v) => Math.round(v * 65535)),
+			};
+			this.keepDepth(c, stored);
+			if (dir) await this.saveDepth(dir, c, stored);
+		}
+	}
+
+	private hasDepth(c: number): boolean {
+		return this.depths.has(c) || this.depthsOnDisk.has(c);
+	}
+
+	private keepDepth(c: number, depth: StoredDepth | null): void {
+		this.depths.delete(c);
+		this.depths.set(c, depth);
+		if (this.depthsOnDisk.size === 0) return;
+		for (const k of this.depths.keys()) {
+			if (this.depths.size <= DEPTH_MEMORY) break;
+			if (this.depthsOnDisk.has(k)) this.depths.delete(k);
+		}
+	}
+
+	private storedDepth(c: number): StoredDepth | null | undefined {
+		const held = this.depths.get(c);
+		if (held !== undefined || !this.depthsOnDisk.has(c)) return held;
+		const disk = this.depthDisk;
+		if (!disk) return undefined;
+		const stored = readDepthFile(disk.fs, disk.path.join(disk.dir, `${c}.bin`));
+		if (stored) this.keepDepth(c, stored);
+		return stored ?? undefined;
+	}
+
+	/**
+	 * Where depth frames persist: a folder of its own, keyed only by the clip
+	 * and the model, so other options never invalidate it.
+	 */
+	private depthCacheDir(): Promise<string | null> {
+		this.depthDir ??= (async () => {
+			const node = await nodeModules();
+			if (!node || this.options.cacheDir === false) return null;
+			const { fs, path, os, crypto } = node;
+			try {
+				const stat = fs.statSync(this.source);
+				const root =
+					this.options.cacheDir ??
+					process.env.FRAMEFIELDS_VISION_CACHE_DIR ??
+					path.join(os.homedir(), ".cache", "framefields", "vision");
+				const key = JSON.stringify([
+					DEPTH_CACHE_VERSION,
+					path.resolve(this.source),
+					stat.size,
+					stat.mtimeMs,
+					this.fps,
+					DEPTH_MODEL,
+				]);
+				const hash = crypto
+					.createHash("sha256")
+					.update(key)
+					.digest("hex")
+					.slice(0, 24);
+				const dir = path.join(
+					root,
+					`${path.basename(this.source)}.${hash}.depth`,
+				);
+				fs.mkdirSync(dir, { recursive: true });
+				for (const name of fs.readdirSync(dir)) {
+					const m = /^(\d+)\.bin$/.exec(name);
+					if (m) this.depthsOnDisk.add(Number(m[1]));
+				}
+				this.depthDisk = { dir, fs, path };
+				return dir;
+			} catch {
+				return null; // remote URL or unreadable: memory only
+			}
+		})();
+		return this.depthDir;
+	}
+
+	private async saveDepth(
+		dir: string,
+		c: number,
+		depth: StoredDepth,
+	): Promise<void> {
+		const node = await nodeModules();
+		if (!node) return;
+		const header = new Uint32Array([depth.width, depth.height]);
+		const file = node.path.join(dir, `${c}.bin`);
+		const tmp = `${file}.${process.pid}.tmp`;
+		node.fs.writeFileSync(
+			tmp,
+			Buffer.concat([
+				Buffer.from(header.buffer),
+				Buffer.from(
+					depth.data.buffer,
+					depth.data.byteOffset,
+					depth.data.byteLength,
+				),
+			]),
+		);
+		node.fs.renameSync(tmp, file);
+		this.depthsOnDisk.add(c);
+		this.keepDepth(c, depth);
 	}
 
 	private async computeSam2(to: number): Promise<void> {
@@ -966,7 +1161,7 @@ export class ClipVision implements ClipSubjectSource {
 				stat.mtimeMs,
 				this.fps,
 				this.tracksPose,
-				o.mask ?? true,
+				this.tracksMask,
 				this.cell,
 				o.variant ?? "s",
 				o.confidence ?? null,
@@ -1567,4 +1762,46 @@ function unionMask(
 		for (let i = 0; i < union.length; i++)
 			union[i] = Math.max(union[i] ?? 0, mask[i] ?? 0);
 	return union;
+}
+
+interface NodeModules {
+	fs: typeof import("node:fs");
+	path: typeof import("node:path");
+	os: typeof import("node:os");
+	crypto: typeof import("node:crypto");
+}
+
+let nodeModulesLoaded: Promise<NodeModules | null> | undefined;
+
+/** Node's file modules, or null in a browser. */
+function nodeModules(): Promise<NodeModules | null> {
+	nodeModulesLoaded ??=
+		typeof process === "undefined" || !process.versions?.node
+			? Promise.resolve(null)
+			: Promise.all([
+					import("node:fs"),
+					import("node:path"),
+					import("node:os"),
+					import("node:crypto"),
+				]).then(([fs, path, os, crypto]) => ({ fs, path, os, crypto }));
+	return nodeModulesLoaded;
+}
+
+/** A depth frame written by `saveDepth`; null when the file is missing or damaged. */
+function readDepthFile(
+	fs: NodeModules["fs"],
+	file: string,
+): StoredDepth | null {
+	try {
+		const buf = fs.readFileSync(file);
+		if (buf.byteLength < 8) return null;
+		const width = buf.readUInt32LE(0);
+		const height = buf.readUInt32LE(4);
+		if (buf.byteLength !== 8 + width * height * 2) return null;
+		const data = new Uint16Array(width * height);
+		Buffer.from(data.buffer).set(buf.subarray(8));
+		return { width, height, data };
+	} catch {
+		return null;
+	}
 }

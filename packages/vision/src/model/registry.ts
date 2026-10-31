@@ -33,6 +33,7 @@ export type VisionModelKey =
 	| "rtmo-m"
 	| "selfie-square"
 	| "selfie-landscape"
+	| "depth-anything-v2-s"
 	| (string & {});
 
 /** Which decoder a model's outputs feed (see runner/vision-runner.ts). */
@@ -40,6 +41,7 @@ export type VisionModelFamily =
 	| "rtmdet-ins"
 	| "rtmo"
 	| "selfie"
+	| "depth-anything"
 	| (string & {});
 
 export interface VisionModelDescriptor {
@@ -71,6 +73,8 @@ const RTMDET_INS_SOURCE =
 const RTMO_SOURCE = "RTMO (OpenMMLab mmpose, Apache-2.0), ONNX export";
 const SELFIE_SOURCE =
 	"MediaPipe Selfie Segmenter (Google, Apache-2.0), ONNX export";
+const DEPTH_SOURCE =
+	"Depth Anything V2 Small (TikTok / HKU, Apache-2.0), ONNX export";
 
 const models: Record<VisionModelKey, VisionModelDescriptor> = {
 	// ── Detection + instance segmentation (COCO 80) ─────────────────────
@@ -187,6 +191,23 @@ const models: Record<VisionModelKey, VisionModelDescriptor> = {
 		sha256: "7a0adcfdb1715d3b0ff0f61486d8a181c33f4a208343a5abfccbc6540e872d24",
 		input: [256, 144],
 		source: SELFIE_SOURCE,
+	},
+	// ── Monocular depth (relative, near = 1) ────────────────────────────
+	// The graph takes any size in multiples of its 14 px patch; `input` is the
+	// short side the runner scales to, keeping the frame's aspect ratio.
+	"depth-anything-v2-s": {
+		key: "depth-anything-v2-s",
+		family: "depth-anything",
+		filename: "depth-anything-v2-s.onnx",
+		url: hf(
+			"onnx-community/depth-anything-v2-small",
+			"4472b7362082ad9968fee890ca0f1e5aca36b93d",
+			"onnx/model.onnx",
+		),
+		bytes: 99_060_839,
+		sha256: "afb6a5c28f3b6bf1618c6e43f02073ef9dfdc70e937502d51603e57b0a1df10c",
+		input: [518, 518],
+		source: DEPTH_SOURCE,
 	},
 };
 

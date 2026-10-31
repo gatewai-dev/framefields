@@ -49,6 +49,28 @@ export function createLightsLayout(
 	});
 }
 
+/**
+ * A layer's relief: the brightness of `texture` over `uvRect` pushes the
+ * layer's plane toward `eye` by up to `amount` px, along the rays to `eye`, so
+ * from there the surface still looks like the flat layer. Where the
+ * brightness jumps (an object's outline) the surface stretches across.
+ */
+export interface Relief3D {
+	texture: GPUTexture;
+	/** Where the layer's box sits in `texture`: [u, v, width, height], 0..1. */
+	uvRect: [number, number, number, number];
+	/** Height of white, in world px. */
+	amount: number;
+	/** The viewpoint the surface keeps its look from: the default camera's eye. */
+	eye: [number, number, number];
+}
+
+/** Grid cells per side of a relief surface. */
+const RELIEF_GRID = 512;
+
+/** Floats in the quad's model uniform: transform, colors, params, material, surface, then relief. */
+const MODEL_FLOATS = 52 + SURFACE_PARAMS_FLOATS + 12;
+
 export interface ModelUniformData extends SurfaceParams {
 	modelMatrix: Float32Array | number[];
 	normalMatrix?: Float32Array | number[];
@@ -65,6 +87,8 @@ export interface ModelUniformData extends SurfaceParams {
 	material?: "lit" | "unlit";
 	/** Screen-space track matte: the layer shows where this texture's alpha does. */
 	matte?: GPUTexture;
+	/** Turns the flat quad into a surface lifted by another picture's brightness. */
+	relief?: Relief3D;
 	shininess?: number;
 	roughness?: number;
 	specularIntensity?: number;
@@ -115,8 +139,14 @@ export class Quad3DPipeline {
 	private modelPool: BufferPool;
 	private vertexBuffer: GPUBuffer;
 	private indexBuffer: GPUBuffer;
-	// 16 (model) + 16 (normal) + 4 (tint) + 4 (borderColor) + 4 (params) + 4 (dimensions) + 4 (materialParams) + 8 (pbr, emissive) = 60 floats (240 bytes)
-	private modelData = new Float32Array(52 + SURFACE_PARAMS_FLOATS);
+	/** The relief grid, built on first use. */
+	private reliefGrid?: {
+		vertices: GPUBuffer;
+		indices: GPUBuffer;
+		count: number;
+	};
+	// 16 (model) + 16 (normal) + 4 (tint) + 4 (borderColor) + 4 (params) + 4 (dimensions) + 4 (materialParams) + 8 (pbr, emissive) + 12 (relief) = 72 floats (288 bytes)
+	private modelData = new Float32Array(MODEL_FLOATS);
 
 	constructor(
 		device: GPUDevice,
@@ -127,7 +157,7 @@ export class Quad3DPipeline {
 	) {
 		this.device = device;
 		this.modelPool = new BufferPool(
-			(52 + SURFACE_PARAMS_FLOATS) * 4,
+			MODEL_FLOATS * 4,
 			GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
 		);
 
@@ -156,6 +186,11 @@ export class Quad3DPipeline {
 					buffer: { type: "uniform" },
 				},
 				matteLayoutEntry(1),
+				{
+					binding: 2,
+					visibility: GPUShaderStage.VERTEX,
+					texture: { sampleType: "float" },
+				},
 			],
 		});
 
@@ -289,6 +324,14 @@ export class Quad3DPipeline {
 
 		this.modelData.set(packMaterialParams(data), 48);
 		packSurfaceParams(data, this.modelData, 52);
+		const relief = data.relief;
+		const r = 52 + SURFACE_PARAMS_FLOATS;
+		this.modelData.set(
+			relief ? [relief.amount, 1, 0, RELIEF_GRID] : [0, 0, 0, 0],
+			r,
+		);
+		this.modelData.set(relief?.uvRect ?? [0, 0, 1, 1], r + 4);
+		this.modelData.set([...(relief?.eye ?? [0, 0, 0]), 0], r + 8);
 
 		const modelBuffer = this.modelPool.getBuffer(this.device, this.modelData);
 		return this.device.createBindGroup({
@@ -299,8 +342,73 @@ export class Quad3DPipeline {
 					binding: 1,
 					resource: data.matte?.createView() ?? fullCoverageView(this.device),
 				},
+				{
+					binding: 2,
+					resource:
+						data.relief?.texture.createView() ?? fullCoverageView(this.device),
+				},
 			],
 		});
+	}
+
+	/** Binds the geometry for `data` and draws it: the quad, or the relief grid. */
+	private drawGeometry(
+		pass: GPURenderPassEncoder,
+		data: ModelUniformData,
+	): void {
+		if (!data.relief) {
+			pass.setVertexBuffer(0, this.vertexBuffer);
+			pass.setIndexBuffer(this.indexBuffer, "uint16");
+			pass.drawIndexed(6);
+			return;
+		}
+		this.reliefGrid ??= this.createReliefGrid();
+		pass.setVertexBuffer(0, this.reliefGrid.vertices);
+		pass.setIndexBuffer(this.reliefGrid.indices, "uint32");
+		pass.drawIndexed(this.reliefGrid.count);
+	}
+
+	/** A RELIEF_GRID² grid over the unit quad, laid out like the quad's vertices. */
+	private createReliefGrid(): {
+		vertices: GPUBuffer;
+		indices: GPUBuffer;
+		count: number;
+	} {
+		const side = RELIEF_GRID + 1;
+		const vertices = new Float32Array(side * side * 8);
+		for (let j = 0; j < side; j++) {
+			for (let i = 0; i < side; i++) {
+				const u = i / RELIEF_GRID;
+				const v = j / RELIEF_GRID;
+				vertices.set([u - 0.5, v - 0.5, 0, u, v, 0, 0, -1], (j * side + i) * 8);
+			}
+		}
+		const indices = new Uint32Array(RELIEF_GRID * RELIEF_GRID * 6);
+		let k = 0;
+		for (let j = 0; j < RELIEF_GRID; j++) {
+			for (let i = 0; i < RELIEF_GRID; i++) {
+				const a = j * side + i;
+				indices.set([a, a + 1, a + side + 1, a, a + side + 1, a + side], k);
+				k += 6;
+			}
+		}
+		const upload = (data: Float32Array | Uint32Array, usage: number) => {
+			const buffer = this.device.createBuffer({
+				size: data.byteLength,
+				usage: usage | GPUBufferUsage.COPY_DST,
+				mappedAtCreation: true,
+			});
+			new (
+				data.constructor as Float32ArrayConstructor | Uint32ArrayConstructor
+			)(buffer.getMappedRange()).set(data);
+			buffer.unmap();
+			return buffer;
+		};
+		return {
+			vertices: upload(vertices, GPUBufferUsage.VERTEX),
+			indices: upload(indices, GPUBufferUsage.INDEX),
+			count: indices.length,
+		};
 	}
 
 	private textureBindGroup(
@@ -340,9 +448,7 @@ export class Quad3DPipeline {
 		pass.setBindGroup(1, modelBindGroup);
 		pass.setBindGroup(2, textureBindGroup);
 		pass.setBindGroup(3, lightsBindGroup);
-		pass.setVertexBuffer(0, this.vertexBuffer);
-		pass.setIndexBuffer(this.indexBuffer, "uint16");
-		pass.drawIndexed(6);
+		this.drawGeometry(pass, data);
 	}
 
 	/** Draws the quad into a shadow map (`lightCameraBindGroup` holds the light's view-projection). */
@@ -357,14 +463,14 @@ export class Quad3DPipeline {
 		pass.setBindGroup(0, lightCameraBindGroup);
 		pass.setBindGroup(1, this.packModel(data));
 		pass.setBindGroup(2, this.textureBindGroup(texture, sampler));
-		pass.setVertexBuffer(0, this.vertexBuffer);
-		pass.setIndexBuffer(this.indexBuffer, "uint16");
-		pass.drawIndexed(6);
+		this.drawGeometry(pass, data);
 	}
 
 	destroy(): void {
 		this.modelPool.destroy();
 		this.vertexBuffer.destroy();
 		this.indexBuffer.destroy();
+		this.reliefGrid?.vertices.destroy();
+		this.reliefGrid?.indices.destroy();
 	}
 }

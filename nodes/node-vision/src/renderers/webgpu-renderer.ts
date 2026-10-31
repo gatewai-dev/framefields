@@ -8,6 +8,7 @@ import {
 	matchPoseToTracks,
 	mergeSubjectMask,
 	type PersonMatte,
+	type PoseKeypoint,
 	type PoseResult,
 	PoseSkeletonRenderer,
 	readTexturePixels,
@@ -644,7 +645,20 @@ export const VisionWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					targetHeight,
 				)
 			: undefined;
-	const fromClip = clipSubject !== undefined;
+	// A skeleton of a `comp.vision` clip draws the pose matched to its subject.
+	const clipPose =
+		mode === "skeleton" && !visionBundle
+			? clipPoseFor(
+					effectKey,
+					props.sourceTimeSec === undefined
+						? frameIdx
+						: props.sourceTimeSec * fps,
+					fps,
+					targetWidth,
+					targetHeight,
+				)
+			: undefined;
+	const fromClip = clipSubject !== undefined || clipPose !== undefined;
 
 	// 3. Results are cached per source frame (selfie mattes and poses are not,
 	//    so nodes that need them always run inference). A frame analysed before
@@ -933,30 +947,34 @@ export const VisionWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 		if (!sharedSkeletonRenderer) {
 			sharedSkeletonRenderer = new PoseSkeletonRenderer(ctx.device);
 		}
-		const poseRes = visionBundle?.getPoseResult(frameIdx) ?? currentPoseRes;
-		const person = poseRes?.people[0];
-		if (person && person.keypoints.length > 0) {
-			const skelTex = sharedSkeletonRenderer.renderToTexture(person.keypoints, {
+		const keypoints =
+			clipPose !== undefined
+				? clipPose
+				: (visionBundle?.getPoseResult(frameIdx) ?? currentPoseRes)?.people[0]
+						?.keypoints;
+		// Only the skeleton: a frame without a pose stays empty, never the footage.
+		const skelPass = ctx.renderer.beginFrame(
+			encoder,
+			targetView,
+			{ r: 0, g: 0, b: 0, a: 0 },
+			targetWidth,
+			targetHeight,
+			"clear",
+		);
+		if (keypoints && keypoints.length > 0) {
+			const skelTex = sharedSkeletonRenderer.renderToTexture(keypoints, {
 				width: targetWidth,
 				height: targetHeight,
 			});
-			const skelPass = ctx.renderer.beginFrame(
-				encoder,
-				targetView,
-				{ r: 0, g: 0, b: 0, a: 0 },
-				targetWidth,
-				targetHeight,
-				"clear",
-			);
 			ctx.renderer.drawTexture(skelPass, skelTex, {
 				x: 0,
 				y: 0,
 				width: targetWidth,
 				height: targetHeight,
 			});
-			skelPass.end();
-			return;
 		}
+		skelPass.end();
+		return;
 	}
 
 	if (mode === "boxes" || mode === "tracking") {
@@ -1074,18 +1092,51 @@ function clipSubjectFor(
 	width: number,
 	height: number,
 ): InstanceMask | null | undefined {
-	const source = (effect as Record<symbol, unknown> | undefined)?.[
-		CLIP_SUBJECT
-	] as ClipSubjectSource | undefined;
+	const source = linkedClip(effect);
 	const subject = source?.subject(frame, fps);
-	if (!subject) return subject;
-	const aspect = subject.width / subject.height / (width / height);
-	if (Math.abs(aspect - 1) < 0.01) return subject;
-	if (source?.exact)
+	if (!subject || !source) return subject;
+	return fitsTarget(source, subject.width / subject.height, width / height)
+		? subject
+		: undefined;
+}
+
+/**
+ * The pose a linked `comp.vision` clip matched to its subject for a source
+ * frame, normalized to the source; it fits targets of the same aspect.
+ */
+function clipPoseFor(
+	effect: object | undefined,
+	frame: number,
+	fps: number,
+	width: number,
+	height: number,
+): readonly PoseKeypoint[] | null | undefined {
+	const source = linkedClip(effect);
+	const pose = source?.pose?.(frame, fps);
+	if (!pose || !source) return pose === null ? null : undefined;
+	return fitsTarget(source, pose.width / pose.height, width / height)
+		? pose.keypoints
+		: undefined;
+}
+
+function linkedClip(effect: object | undefined): ClipSubjectSource | undefined {
+	return (effect as Record<symbol, unknown> | undefined)?.[CLIP_SUBJECT] as
+		| ClipSubjectSource
+		| undefined;
+}
+
+/** Source results map onto a target of the same aspect; a prompted clip must not fall back. */
+function fitsTarget(
+	source: ClipSubjectSource,
+	sourceAspect: number,
+	targetAspect: number,
+): boolean {
+	if (Math.abs(sourceAspect / targetAspect - 1) < 0.01) return true;
+	if (source.exact)
 		throw new Error(
 			"A prompted clip matte requires the source aspect ratio. Apply layout cropping after the source matte.",
 		);
-	return undefined;
+	return false;
 }
 
 /** Adapts a Selfie Segmenter matte to the instance-mask shape the composite path takes. */

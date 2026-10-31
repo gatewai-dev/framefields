@@ -20,7 +20,13 @@ import type { Sam2Point } from "../sam2/types.js";
 import { holdSam3Encoder, type Sam3EncoderHandle } from "./encoder.js";
 import { sam3DenseDecoder, sam3SupportGraphs } from "./graphs.js";
 import { Sam3MemoryBank, sam3Position } from "./memory.js";
-import { mergeSelections } from "./selection.js";
+import {
+	coveredCells,
+	keepTracked,
+	MASK_LOGIT,
+	mergeSelections,
+	uncovered,
+} from "./selection.js";
 import { Sam3TextSelector, sam3Floats, sam3Run } from "./text-selector.js";
 import {
 	type Sam3FrameResult,
@@ -51,6 +57,8 @@ export interface Sam3TrackerOptions extends VisionModelStoreOptions {
 	readonly maxObjects?: number;
 	/** Track every instance a text prompt selects as one object (one mask, one memory). */
 	readonly merge?: boolean;
+	/** Re-run the last text prompt every this many frames and add what no object covers (see `Sam3Options`). */
+	readonly redetect?: number;
 	/** Image-encoder weights; defaults to the fastest for the provider's backend (`SAM3_ENCODER`). */
 	readonly precision?: Sam3Precision;
 	/** Explicitly agree to Meta's SAM License terms to download or run SAM 3's weights. */
@@ -76,8 +84,13 @@ interface Seed {
 	readonly mask?: Float32Array;
 }
 
-/** Logit SAM uses for a given mask's pixels (and its object score): ±10. */
-const MASK_LOGIT = 10;
+/** One object's decoded frame, before it is remembered. */
+interface Tracked {
+	readonly seed?: Seed;
+	readonly decoded: VisionTensorOutputs;
+	readonly logits: Float32Array;
+	readonly score: number;
+}
 
 function tensor(
 	name: string,
@@ -99,6 +112,8 @@ export class Sam3Tracker {
 	private temporal?: Float32Array;
 	private noMemory?: Float32Array;
 	private selector?: Sam3TextSelector;
+	/** The last text prompt and its frame, which re-detection repeats. */
+	private text?: { value: string; frame: number };
 	private lastFrame = -1;
 	private released = false;
 
@@ -128,6 +143,13 @@ export class Sam3Tracker {
 			(!Number.isSafeInteger(options.maxObjects) || options.maxObjects < 1)
 		)
 			throw new Error("SAM 3 maxObjects must be a positive integer.");
+		if (
+			options.redetect !== undefined &&
+			(!Number.isSafeInteger(options.redetect) || options.redetect < 0)
+		)
+			throw new Error(
+				"SAM 3 redetect must be a nonnegative integer frame interval.",
+			);
 
 		const store =
 			options.store ??
@@ -210,18 +232,22 @@ export class Sam3Tracker {
 			tensor("feats0", feats0, [1, 32, 288, 288]),
 			tensor("feats1", feats1, [1, 64, 144, 144]),
 		];
-		const seeds = await this.seeds(pixels, prompt);
-		const objects: Sam3ObjectResult[] = [];
+		const seeds = await this.seeds(pixels, frame, prompt);
+		const tracked: Tracked[] = [];
 		for (const [index, bank] of this.banks.entries()) {
 			const seed = seeds.get(index);
 			const features = seed
 				? this.initialFeatures(raw)
 				: await this.condition(raw, frame, bank);
-			const decoded = await this.decode(shared, features, seed);
-			const logits = seed?.mask ?? sam3Floats(decoded, "high_res_masks");
-			const score = seed?.mask
-				? MASK_LOGIT
-				: (sam3Floats(decoded, "object_score_logits")[0] ?? -Infinity);
+			tracked.push(this.track(seed, await this.decode(shared, features, seed)));
+		}
+		if (!prompt) await this.redetect(pixels, frame, tracked, shared, raw);
+
+		const objects: Sam3ObjectResult[] = [];
+		for (const [index, bank] of this.banks.entries()) {
+			const item = tracked[index];
+			if (!item) continue;
+			const { seed, decoded, logits, score } = item;
 			await this.remember(bank, raw, decoded, frame, seed, logits, score);
 			objects.push({
 				id: index + 1,
@@ -234,9 +260,92 @@ export class Sam3Tracker {
 		return { width: image.width, height: image.height, objects };
 	}
 
+	private track(seed: Seed | undefined, decoded: VisionTensorOutputs): Tracked {
+		return {
+			seed,
+			decoded,
+			logits: seed?.mask ?? sam3Floats(decoded, "high_res_masks"),
+			score: seed?.mask
+				? MASK_LOGIT
+				: (sam3Floats(decoded, "object_score_logits")[0] ?? -Infinity),
+		};
+	}
+
+	/**
+	 * On a `redetect` frame, runs the last text prompt again and seeds what no tracked object
+	 * covers: merged into the one object (keeping what it tracks), or as new objects.
+	 */
+	private async redetect(
+		pixels: Float32Array,
+		frame: number,
+		tracked: Tracked[],
+		shared: readonly VisionTensorInput[],
+		raw: Float32Array,
+	): Promise<void> {
+		const every = this.options.redetect ?? 0;
+		if (!this.text || every <= 0 || (frame - this.text.frame) % every !== 0)
+			return;
+		const room = this.options.merge
+			? Infinity
+			: (this.options.maxObjects ?? 1) - this.banks.length;
+		if (room <= 0) return;
+		const selector = await this.textSelector();
+		const found = await selector.select(
+			pixels,
+			this.text.value,
+			this.options.textThreshold ?? 0.5,
+			Infinity,
+			false,
+		);
+		const covered = coveredCells(tracked);
+		const fresh = uncovered(found, covered).slice(0, room);
+		if (!fresh.length) return;
+
+		const seeded = async (seed: Seed): Promise<Tracked> =>
+			this.track(
+				seed,
+				await this.decode(shared, this.initialFeatures(raw), seed),
+			);
+		if (this.options.merge) {
+			// One object: what it tracks (at full resolution) plus every new instance.
+			const added = mergeSelections(fresh);
+			const kept = tracked[0];
+			if (!kept) this.banks.push(this.newBank());
+			tracked[0] = await seeded({
+				dense: await this.densePrompt(mergeSelections([added, covered])),
+				mask: keepTracked(kept, seedLogits(added)),
+			});
+			return;
+		}
+		for (const logits of fresh) {
+			this.banks.push(this.newBank());
+			tracked.push(await seeded(await this.textSeed(logits)));
+		}
+	}
+
+	private async textSelector(): Promise<Sam3TextSelector> {
+		this.selector ??= await Sam3TextSelector.create(this.store, this.provider);
+		if (!this.options.store) this.store.clearMemoryCache();
+		return this.selector;
+	}
+
+	/** A 288² concept mask as a seed that outputs (and remembers) that mask. */
+	private async textSeed(logits: Float32Array): Promise<Seed> {
+		return { dense: await this.densePrompt(logits), mask: seedLogits(logits) };
+	}
+
+	private async densePrompt(logits: Float32Array): Promise<Float32Array> {
+		const binary = Float32Array.from(logits, (v) => (v > 0 ? 1 : 0));
+		const dense = await this.run("dense_prompt", [
+			tensor("mask", binary, [1, 1, 288, 288]),
+		]);
+		return sam3Floats(dense, "dense_prompt");
+	}
+
 	/** Objects a prompt (re)seeds, by index. Text re-selects every object; points address one. */
 	private async seeds(
 		pixels: Float32Array,
+		frame: number,
 		prompt?: Omit<Sam3Prompt, "frame">,
 	): Promise<Map<number, Seed>> {
 		const seeds = new Map<number, Seed>();
@@ -250,29 +359,19 @@ export class Sam3Tracker {
 			seeds.set(index, { points: prompt.points });
 		}
 		if (prompt?.text !== undefined) {
-			this.selector ??= await Sam3TextSelector.create(
-				this.store,
-				this.provider,
-			);
-			if (!this.options.store) this.store.clearMemoryCache();
-			const selected = await this.selector.select(
+			const selector = await this.textSelector();
+			const selected = await selector.select(
 				pixels,
 				prompt.text,
 				this.options.textThreshold ?? 0.5,
 				this.options.maxObjects ?? (this.options.merge ? Infinity : 1),
 			);
 			const masks = this.options.merge ? [mergeSelections(selected)] : selected;
+			this.text = { value: prompt.text, frame };
 			this.banks.length = 0;
 			for (const [index, logits] of masks.entries()) {
 				this.banks.push(this.newBank());
-				const binary = Float32Array.from(logits, (v) => (v > 0 ? 1 : 0));
-				const dense = await this.run("dense_prompt", [
-					tensor("mask", binary, [1, 1, 288, 288]),
-				]);
-				seeds.set(index, {
-					dense: sam3Floats(dense, "dense_prompt"),
-					mask: seedLogits(logits),
-				});
+				seeds.set(index, await this.textSeed(logits));
 			}
 		}
 		return seeds;

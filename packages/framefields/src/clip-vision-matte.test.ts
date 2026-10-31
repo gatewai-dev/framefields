@@ -198,7 +198,7 @@ describe("matte reuses comp.vision", () => {
 		c.add([first, second]);
 		const a = c.vision(first, { cacheDir: false });
 		const b = c.vision(second, { cacheDir: false });
-		(c as unknown as { linkClipMattes(): void }).linkClipMattes();
+		(c as unknown as { linkClipLayers(): void }).linkClipLayers();
 		expect((first.vision as { [CLIP_SUBJECT]?: unknown })[CLIP_SUBJECT]).toBe(
 			a,
 		);
@@ -243,7 +243,7 @@ describe("matte reuses comp.vision", () => {
 		const keyed = cutout("clip.mp4", { keyBackground: true });
 		const other = cutout("other.mp4");
 		c.add([same, classes, keyed, other]);
-		(c as unknown as { linkClipMattes(): void }).linkClipMattes();
+		(c as unknown as { linkClipLayers(): void }).linkClipLayers();
 		const linked = (n: { vision?: object }) =>
 			CLIP_SUBJECT in (n.vision as object);
 		expect(linked(same as never)).toBe(true);

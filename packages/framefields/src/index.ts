@@ -1335,19 +1335,20 @@ export class Composition {
 	 * frame — physics, particles — always find every frame before it.
 	 */
 	public async prepareVision(frame: number): Promise<void> {
-		this.linkClipMattes();
+		this.linkClipLayers();
 		await Promise.all(
 			[...this._clipVision.values()].map((clip) => clip.ready(0, frame)),
 		);
 	}
 
 	/**
-	 * Points matte-family `withVision` layers at the `comp.vision` clip they
-	 * show, so the cutout reuses that clip's per-frame subject instead of
-	 * segmenting the frame again during render. Only layers whose settings
-	 * would give the same subject are linked; the rest keep their own pass.
+	 * Points matte-family and skeleton `withVision` layers at the `comp.vision`
+	 * clip they show, so the cutout reuses that clip's per-frame subject and the
+	 * skeleton draws its matched pose, instead of analysing the frame again
+	 * during render. Only layers whose settings would give the same subject are
+	 * linked; the rest keep their own pass.
 	 */
-	private linkClipMattes(): void {
+	private linkClipLayers(): void {
 		if (this._clipVision.size === 0) return;
 		let layers:
 			| Map<
@@ -1386,13 +1387,13 @@ export class Composition {
 					}),
 				);
 				const layer = layers.get(n.id);
-				const clip = this.clipForMatte(n.src ?? n.inputHandleId, n.vision, {
+				const clip = this.clipForLayer(n.src ?? n.inputHandleId, n.vision, {
 					trimStartSec: n.trimStartSec,
 					startFrame: layer?.startFrame ?? n.startFrame,
 					timeRemap: layer?.timeRemap,
 				});
 				if (clip) {
-					clip.keepSubjects();
+					if (n.vision.mode !== "skeleton") clip.keepSubjects();
 					Object.defineProperty(n.vision, CLIP_SUBJECT, {
 						value: clip,
 						enumerable: false,
@@ -1405,7 +1406,8 @@ export class Composition {
 		for (const child of this.children) walk(child);
 	}
 
-	private clipForMatte(
+	/** The `comp.vision` clip a matte or skeleton layer of the same source reads instead of analysing. */
+	private clipForLayer(
 		source: string,
 		v: Vision,
 		layer: {
@@ -1415,17 +1417,20 @@ export class Composition {
 		},
 	): ClipVision | undefined {
 		const mode = v.mode ?? "passthrough";
-		if (mode !== "matte" && mode !== "mask" && mode !== "crop") return;
+		const skeleton = mode === "skeleton";
+		if (mode !== "matte" && mode !== "mask" && mode !== "crop" && !skeleton)
+			return;
 		// Anything that changes the subject, or needs results the clip lacks.
 		if (
-			v.matteSource === "selfie" ||
-			v.keyBackground === true ||
 			v.classes !== undefined ||
-			v.enablePose === true ||
 			v.enableMatte === true ||
 			v.visionBundle !== undefined ||
-			(v.maskThreshold ?? 0.5) !== 0.5 ||
-			v.featherRadius !== undefined
+			(!skeleton &&
+				(v.matteSource === "selfie" ||
+					v.keyBackground === true ||
+					v.enablePose === true ||
+					(v.maskThreshold ?? 0.5) !== 0.5 ||
+					v.featherRadius !== undefined))
 		) {
 			return;
 		}
@@ -1439,6 +1444,14 @@ export class Composition {
 				(o.variant ?? "s") === (v.variant ?? "s") &&
 				(o.confidence ?? 0.3) === (v.confidence ?? 0.3)
 			) {
+				// A skeleton of a selected person must draw that person, never whoever is detected first.
+				if (skeleton && !clip.tracksPose) {
+					if (clip.exact)
+						throw new Error(
+							"A skeleton layer of a prompted comp.vision clip needs `pose: true` on that clip.",
+						);
+					continue;
+				}
 				return clip;
 			}
 		}

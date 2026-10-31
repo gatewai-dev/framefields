@@ -1,5 +1,7 @@
 # @framefields/node-mask-math
 
+## 2.9.0
+
 ## 2.8.1
 
 ## 2.8.0

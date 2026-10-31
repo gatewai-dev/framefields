@@ -33,6 +33,13 @@ export interface Sam3Options extends SamLicenseOptions {
 	 * tracking costs the same as a single object however many match (e.g. a whole crowd).
 	 */
 	readonly merge?: boolean;
+	/**
+	 * Every this many frames after a text prompt, run that text again and add the instances no
+	 * tracked object covers yet (people who walk in, turn up from behind someone, or were lost):
+	 * into the one object with `merge`, otherwise as new track IDs up to `maxObjects`. Each
+	 * detection pass costs about one text prompt. Default 0: select once, then only track.
+	 */
+	readonly redetect?: number;
 	/** Image-encoder weights; defaults to the fastest for the backend in use (`SAM3_ENCODER`). */
 	readonly precision?: Sam3Precision;
 }
@@ -68,6 +75,11 @@ export function validateSam3Prompts(options: Sam3Options): void {
 	const maxObjects = options.maxObjects ?? 1;
 	if (!Number.isSafeInteger(maxObjects) || maxObjects < 1)
 		throw new Error("SAM 3 maxObjects must be a positive integer.");
+	const redetect = options.redetect ?? 0;
+	if (!Number.isSafeInteger(redetect) || redetect < 0)
+		throw new Error(
+			"SAM 3 redetect must be a nonnegative integer frame interval.",
+		);
 	const threshold = options.textThreshold ?? 0.5;
 	if (!Number.isFinite(threshold) || threshold <= 0 || threshold >= 1)
 		throw new Error("SAM 3 textThreshold must be between zero and one.");

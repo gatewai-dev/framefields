@@ -93,7 +93,7 @@ const vision = comp.withVision({ enableSegmentation: true, enablePose: true });
 Layer.video("assets/dancer.mp4").withVision({ mode: "matte", enableSegmentation: true });
 ```
 
-Node modes: `passthrough`, `mask`, `matte`, `crop`, `skeleton`, `boxes`, `tracking`. For `mask` / `matte` / `crop`, `matteSource: "instance"` (default; any COCO class, overlapping parts such as a dress merged into the subject) or `"selfie"` (people only, fastest). `confidence` (default 0.3) and `classes: ["person", …]` filter detections.
+Node modes: `passthrough`, `mask`, `matte`, `crop`, `skeleton`, `boxes`, `tracking`. `skeleton` draws only the pose on transparency: the first person detected, or, for a layer of a `comp.vision` clip, the pose that clip matched to its selection. For `mask` / `matte` / `crop`, `matteSource: "instance"` (default; any COCO class, overlapping parts such as a dress merged into the subject) or `"selfie"` (people only, fastest). `confidence` (default 0.3) and `classes: ["person", …]` filter detections.
 
 Measured per 1280–2048 px frame on CPU (`onnxruntime-node`); the GPU is faster:
 
@@ -223,10 +223,11 @@ Layer.box({
 - **Text prompts are concepts.** Name what sets the target apart in that shot. In a crowd where everyone shows a white collar, "man in white shirt" picks a student. In the same film's wide shot, where only he has no blazer, it picks him. Check the first frame of every prompt.
 - **Several objects** (`maxObjects`): one encoder pass per frame serves every track, and each track keeps its own memory. Where tracks overlap, the more confident one keeps the pixel. `signals.objects.get(k)` and `signals.masks` carry tracks `1…N`; the clip's matte and subject are all tracks merged. A later text prompt re-selects every track (IDs renumber); a points prompt with `object: k` seeds or corrects track `k` only (the next unused ID adds one).
 - **One entity for a whole group** (`merge: true`): every instance the text matches (up to `maxObjects`, default all) becomes one seed mask, tracked as one object with one memory. Use it when you need the group's mask or matte (cut out a crowd, grade everyone but the hero), not each member's box; it costs the same as one track however many match (4.1 s per frame for a whole crowd of students on an M1 Pro). Use `maxObjects` without `merge` when each member needs its own track, at about 0.7 s per member per frame.
+- **People who appear later** (`redetect: N`): a text selection is made once, on the prompt frame; anyone missed there, uncovered later, or lost by the tracker never joins on their own. `redetect: N` runs the text again every N frames and adds what no track covers: into the one object with `merge`, as new track IDs up to `maxObjects` otherwise. On a 4 s close-up where the man in front bends away, a merged "students in black blazers" group kept 46–61% of the frame through the end instead of falling to 22–33%. Each pass costs about as much as the prompt frame's selection (about 50 s on an M1 Pro), so pick N for how fast people enter the shot (10–25 frames), not 1.
 - Two text-prompted clips of one shot can claim the same person (a "student" track on the hero). Prefer prompts that exclude each other.
 - **Corrections and cuts.** A prompt on a later frame resets that object's memory. Re-prompt after hard cuts or long occlusions; appearance tracking cannot guarantee re-identification.
 - An explicit selection never falls back to another detected person. If its mask cannot align with a matte layer (a different aspect ratio), the render fails. Matte at the source aspect ratio and crop afterwards.
-- SAM gives masks, not skeletons: `pose: true` matches an RTMO pose to the selection. Default smoothing is 0, and an absent object stays empty.
+- SAM gives masks, not skeletons: `pose: true` (opt-in for SAM clips) matches an RTMO pose to the selection, the person whose keypoints fall most inside its mask. A `withVision({ mode: "skeleton" })` layer of the same clip draws that matched pose for the frame on screen; without `pose: true` on a SAM clip it fails instead of drawing whoever is detected first. Default smoothing is 0, and an absent object stays empty.
 - `clip.release()` frees the SAM sessions. Analysed frames stay readable.
 
 ### Singular or plural: one selection per group

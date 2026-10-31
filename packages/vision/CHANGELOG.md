@@ -1,5 +1,17 @@
 # @framefields/vision
 
+## 2.9.0
+
+### Minor Changes
+
+- dac3694: `@framefields/vision-sam` is now an optional peer of `framefields`, loaded only when a clip uses `sam2` or `sam3`, so the SDK no longer installs or imports SAM-licensed code by default. Install it next to `framefields` to use prompted tracking, and import `Sam2Tracker`/`Sam3Tracker` from `@framefields/vision-sam`. Mask-derived object geometry moved to `@framefields/vision` as `maskObject` (formerly `sam2Object`).
+- 7af1f91: Add prompted SAM 2.1 Tiny and SAM 3 video segmentation and semantic text selection to clip vision, decoupled into a dedicated `@framefields/vision-sam` package under the Meta SAM License. Includes temporal memory, point/box corrections, semantic text selection, cached frame seeking, and time-remapped matte reuse. Selected-object masks, geometry, motion, and optional matched pose are exposed through standard vision signals. Model assets download dynamically at runtime to local cache with SHA-256 verification upon explicit license agreement.
+- 72f6aaa: SAM 3 downloads the image encoder its backend runs fastest: fp16 on WebGPU and CUDA, q4 on the CPU (`SAM3_ENCODER`, override with `sam3.precision`). Providers report their backend before any download (`SessionProvider.backend()`, `sessionCompute`); the auto provider decides with a one-node probe graph and, on Linux with the NVIDIA driver, tries CUDA first. All SAM 3 trackers in a process share one encoder session and reuse its features per frame. Text-seeded objects now output and remember their seed mask on the prompt frame, as SAM does, instead of a speckled re-decode.
+
+### Patch Changes
+
+- f1623c0: SAM 3 tracks several objects at once: `sam3.maxObjects` lets a text prompt select up to N instances (tracks 1…N by score) through one encoder pass per frame, and points prompts take `object` to seed or correct one track. `comp.vision` publishes every track in `signals.objects` and `signals.masks`; the clip matte is their union. Fixes concurrent `comp.vision` clips of one source dropping decoded frames (each clip now owns its decoder) and concurrent ORT WebGPU session creation falling back to the CPU (creation is serialized; SAM trackers share the process provider).
+
 ## 2.8.1
 
 ## 2.8.0

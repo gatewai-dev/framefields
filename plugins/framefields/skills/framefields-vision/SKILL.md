@@ -6,7 +6,7 @@ description: On-device computer vision in framefields — object detection and t
 # framefields-vision
 
 ## Setup
-Import from [`framefields`](https://www.npmjs.com/package/framefields). If the project has no framefields setup yet, follow the `framefields` skill first. Prompted tracking (SAM) also needs `@framefields/vision-sam` (see [SAM](#prompted-tracking-with-sam)). Effects that consume vision (blur, grading, outlines) are in `framefields-effects`; rendering and frame checks in `framefields-render`.
+Import from [`framefields`](https://www.npmjs.com/package/framefields). If the project has no framefields setup yet, follow the `framefields` skill first. Effects that consume vision (blur, grading, outlines) are in `framefields-effects`; rendering and frame checks in `framefields-render`.
 
 Vision runs ONNX models locally. Nothing is sent anywhere. Models download on first use from pinned Hugging Face revisions, are checked against their exact size and SHA-256, and are cached in `$FRAMEFIELDS_MODELS_DIR` (default `~/.cache/framefields/models`).
 
@@ -54,7 +54,7 @@ Video tracking at 1008², plus text ("concept") selection. Only the image encode
 
 That is about 1.75 GB on a GPU and 1.2 GB on the CPU. The text graphs load only for text prompts.
 
-Why fp16 on the GPU, measured for one 1008² frame on an M1 Pro: WebGPU fp16 took 3.65 s, q4f16 4.43 s, q4 6.63 s, and int8 140 s (its ops fall back to the CPU). fp16 is also the closest to full precision. On WebGPU, 4-bit weights are dequantized before every matmul, so they save disk and memory, not time. The backend-to-precision table is `SAM3_ENCODER` in `@framefields/vision-sam`; `sam3.precision: "fp16" | "q4f16" | "q4"` overrides it.
+Why fp16 on the GPU, measured for one 1008² frame on an M1 Pro: WebGPU fp16 took 3.65 s, q4f16 4.43 s, q4 6.63 s, and int8 140 s (its ops fall back to the CPU). fp16 is also the closest to full precision. On WebGPU, 4-bit weights are dequantized before every matmul, so they save disk and memory, not time. The backend-to-precision table is `SAM3_ENCODER` in `framefields/sam`; `sam3.precision: "fp16" | "q4f16" | "q4"` overrides it.
 
 ## Backends
 
@@ -151,13 +151,9 @@ Detection picks "the largest person". Use SAM when the subject is **a specific**
 - **SAM 3:** the subject has to be found from a description, or several people or objects must be tracked at once. It is the most expensive, so trim to the stretch you need.
 - Unsure between Tiny and Small: prototype with Tiny on a short trimmed stretch, inspect the masks, and switch to Small if edges, small parts or identity fail.
 
-### Install and license
+### License
 
-```bash
-pnpm add @framefields/vision-sam
-```
-
-`@framefields/vision-sam` is an optional peer of `framefields`, Apache-2.0 like the rest of framefields. It is loaded only when a clip uses `sam2` or `sam3`; without it, those clips fail with an install message. SAM 2.1's weights are Apache-2.0 and need no acceptance. SAM 3's weights are under Meta's SAM License, so `sam3` needs explicit acceptance before anything downloads: `acceptSamLicense: true` on the clip (or `acceptLicense: true` inside `sam3`), or `FRAMEFIELDS_ACCEPT_SAM_LICENSE=1`. Ask the user before accepting it on their behalf. Import `Sam2Tracker` / `Sam3Tracker` from `@framefields/vision-sam` when you drive SAM directly.
+The SAM code ships in `framefields`, Apache-2.0 like the rest of it, and loads only when a clip uses `sam2` or `sam3`; nothing extra to install. SAM 2.1's weights are Apache-2.0 and need no acceptance. SAM 3's weights are under Meta's SAM License, so `sam3` needs explicit acceptance before anything downloads: `acceptSamLicense: true` on the clip (or `acceptLicense: true` inside `sam3`), or `FRAMEFIELDS_ACCEPT_SAM_LICENSE=1`. Ask the user before accepting it on their behalf. Import `Sam2Tracker` / `Sam3Tracker` from `framefields/sam` when you drive SAM directly.
 
 ### Prompts
 
@@ -250,7 +246,7 @@ Read the request's number before writing any vision code.
 - Every SAM 3 clip in a process shares one image encoder and reuses its result per frame. Tracking the hero and the crowd of one source costs one encoder pass, not two.
 - Setup (loading the models, then text selection on the prompt frame) takes about 2 minutes on an M1 Pro. Measured there: a 20-frame stretch with 6 tracks (hero + 5 others) renders in about 5 minutes; a 15 s clip at 25 fps is estimated at about 55 minutes. A CUDA GPU should be much faster; the CPU image encoder is about 9× slower than WebGPU.
 - Results persist like other clip vision, and the cache key includes every prompt, the model revisions and the encoder precision. Re-rendering after changing layout, colours or effects skips SAM entirely, so prototype prompts on a short trimmed stretch first.
-- Offline or CI: download the weights on a connected machine once, then copy `~/.cache/framefields/models`, or point `FRAMEFIELDS_MODELS_BASE_URL` at a mirror. `SAM_MODELS` (`@framefields/vision-sam`) lists every file with its URL, size and SHA-256.
+- Offline or CI: download the weights on a connected machine once, then copy `~/.cache/framefields/models`, or point `FRAMEFIELDS_MODELS_BASE_URL` at a mirror. `SAM_MODELS` (`framefields/sam`) lists every file with its URL, size and SHA-256.
 
 ## Recipes
 
@@ -310,7 +306,6 @@ report.tracks; // [{ trackId, category, frames: [start, end], centerPath, … }]
 | SAM 3 text picks the wrong one | Name what is unique in **that** shot; or use a box prompt (`points` with labels 2/3) |
 | Part of a fast-moving garment drops out | `variant: "m"`, or `keyBackground: true` |
 | Faint halo on dark backgrounds | Lower `featherRadius`, or raise `maskThreshold` (e.g. `0.6`) |
-| "Prompted sam2/sam3 tracking needs the optional @framefields/vision-sam package" | `pnpm add @framefields/vision-sam` |
 | "Meta SAM License agreement required" (SAM 3) | `acceptSamLicense: true` or `FRAMEFIELDS_ACCEPT_SAM_LICENSE=1`, once the user accepts the license |
 | "A prompted clip matte requires the source aspect ratio" | Matte at the source aspect, crop afterwards |
 | Log says `Inference on the CPU` on a GPU machine | The log's `reason` says why; on Linux NVIDIA check the CUDA 12 / cuDNN 9 libraries, or force `FRAMEFIELDS_VISION_PROVIDER` to see the error |

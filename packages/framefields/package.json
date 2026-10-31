@@ -80,13 +80,20 @@
 			"development": "./src/preview/index.ts",
 			"import": "./dist/preview/index.mjs",
 			"default": "./dist/preview/index.mjs"
+		},
+		"./sam": {
+			"types": "./dist/sam/index.d.mts",
+			"development": "./src/sam/index.ts",
+			"import": "./dist/sam/index.mjs",
+			"default": "./dist/sam/index.mjs"
 		}
 	},
 	"files": [
-		"dist/**"
+		"dist/**",
+		"NOTICE.md"
 	],
 	"scripts": {
-		"build": "tsdown && node ../../scripts/sync-readme.mjs && node scripts/check-dts-bundle.mjs && node scripts/check-components-treeshake.mjs && node scripts/check-registry-types.mjs",
+		"build": "tsdown && node ../../scripts/sync-readme.mjs && node scripts/check-bundled-imports.mjs && node scripts/check-components-treeshake.mjs && node scripts/check-registry-types.mjs",
 		"dev": "tsdown --watch",
 		"gallery": "tsx --conditions=development scripts/components-gallery.ts",
 		"clean": "rm -rf dist .turbo",
@@ -94,6 +101,7 @@
 		"test": "vitest run --passWithNoTests"
 	},
 	"dependencies": {
+		"@huggingface/tokenizers": "^0.2.0",
 		"@lottiefiles/dotlottie-web": "^0.74.0",
 		"@mediabunny/mp3-encoder": "^1.61.6",
 		"@mediabunny/server": "^1.61.6",
@@ -117,14 +125,6 @@
 		"webgpu": "^0.4.0",
 		"yoga-layout": "^3.2.1",
 		"zod": "^4.3.6"
-	},
-	"peerDependencies": {
-		"@framefields/vision-sam": "*"
-	},
-	"peerDependenciesMeta": {
-		"@framefields/vision-sam": {
-			"optional": true
-		}
 	},
 	"optionalDependencies": {
 		"@dimforge/rapier2d-deterministic-compat": "0.21.0",

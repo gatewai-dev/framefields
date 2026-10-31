@@ -136,7 +136,7 @@ export {
 	type VisionVariant,
 } from "@framefields/vision";
 
-// Types only: the trackers ship in the optional @framefields/vision-sam peer.
+// Types only, so SAM stays in its own lazily loaded chunk; the trackers are in `framefields/sam`.
 export type {
 	Sam2FrameResult,
 	Sam2Model,

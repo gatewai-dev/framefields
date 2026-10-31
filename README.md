@@ -194,11 +194,7 @@ Installed components import only `framefields` and the shared toolkit in `framef
 
 ## Select and track a subject
 
-Select a specific object with a point or box (SAM 2.1 Tiny or Small), or by description, several at once, or a whole group as one mask (SAM 3), and track it through video. Masks, bounds, motion and optional matched pose feed the existing vision signals; the same clip masks drive cutouts. SAM ships separately under Meta's SAM License, so install it next to framefields:
-
-```bash
-pnpm add @framefields/vision-sam
-```
+Select a specific object with a point or box (SAM 2.1 Tiny or Small), or by description, several at once, or a whole group as one mask (SAM 3), and track it through video. Masks, bounds, motion and optional matched pose feed the existing vision signals; the same clip masks drive cutouts. The SAM code ships in framefields and loads only when a clip uses it; model weights download on first use, and SAM 3's are under Meta's SAM License, which you accept explicitly (see `NOTICE.md`).
 
 ```ts
 const subject = Layer.video("assets/source.mp4", {

@@ -14,6 +14,7 @@ export default defineConfig({
 		"src/fonts/index.ts",
 		"src/preview/index.ts",
 		"src/components/index.ts",
+		"src/sam/index.ts",
 		"src/cli.ts",
 		"src/cli/check-worker.ts",
 	],
@@ -59,6 +60,6 @@ export default defineConfig({
 		"pino",
 		"file-type",
 		"dotenv",
-		"@framefields/vision-sam",
+		"@huggingface/tokenizers",
 	],
 });

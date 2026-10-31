@@ -1,5 +1,7 @@
 # @framefields/node-vignette
 
+## 2.9.2
+
 ## 2.9.0
 
 ## 2.8.1

@@ -1,5 +1,7 @@
 # @framefields/webgpu-renderers
 
+## 2.9.2
+
 ## 2.9.0
 
 ### Patch Changes

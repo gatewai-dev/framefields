@@ -15,4 +15,4 @@ No model weights ship in this package or in any framefields package. Each model 
 
 Before SAM 3 weights are downloaded or run, you must accept Meta's SAM License (https://github.com/facebookresearch/sam3/blob/main/LICENSE): pass `acceptLicense: true` to `Sam3Tracker` (or `acceptSamLicense: true` in `comp.vision` options), or set `FRAMEFIELDS_ACCEPT_SAM_LICENSE=1`. Your use of SAM 3 is then governed by that license.
 
-`framefields` loads this package only when a clip uses `sam2` or `sam3`; it is an optional peer dependency, so projects that do not use SAM never install it.
+`framefields` bundles this package (and ships this notice as its own `NOTICE.md`), loading it only when a clip uses `sam2` or `sam3`. Use the trackers directly through `framefields/sam`.

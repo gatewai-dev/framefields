@@ -73,6 +73,23 @@ describe("device management", () => {
 			expect(device).toBe(mockDevice);
 		});
 
+		it("requests the adapter's full buffer limits, which shared vision models need", async () => {
+			mockAdapter.limits = {
+				maxTextureDimension2D: 16384,
+				maxStorageBufferBindingSize: 4_294_967_292,
+				maxBufferSize: 4_294_967_296,
+			};
+			await acquireDevice();
+			expect(mockAdapter.requestDevice).toHaveBeenCalledWith(
+				expect.objectContaining({
+					requiredLimits: expect.objectContaining({
+						maxStorageBufferBindingSize: 4_294_967_292,
+						maxBufferSize: 4_294_967_296,
+					}),
+				}),
+			);
+		});
+
 		it("should cache device instance on ensureDevice", async () => {
 			const promise1 = ensureDevice();
 			const promise2 = ensureDevice();

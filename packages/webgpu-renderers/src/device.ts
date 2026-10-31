@@ -113,6 +113,13 @@ export async function acquireDevice(
 			adapter.limits.maxStorageBuffersPerPipelineLayout,
 		);
 	}
+	// Vision models share this device; their large intermediates (Depth Anything's
+	// attention is ~140 MB at 518 px) exceed the 128 MiB / 256 MiB defaults, and
+	// an undersized binding computes on truncated data instead of failing.
+	for (const limit of ["maxStorageBufferBindingSize", "maxBufferSize"]) {
+		const max = adapter.limits?.[limit];
+		if (Number.isFinite(max)) requiredLimits[limit] = max;
+	}
 
 	return adapter.requestDevice({
 		requiredFeatures: requiredFeatures as unknown as GPUFeatureName[],

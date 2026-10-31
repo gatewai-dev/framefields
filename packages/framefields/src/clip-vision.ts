@@ -6,6 +6,7 @@ import {
 	Signal,
 } from "@framefields/core";
 import {
+	type ClipPose,
 	type ClipSubjectSource,
 	COCO17_KEYPOINT_NAMES,
 	type InstanceMask,
@@ -27,7 +28,7 @@ import type { VisionProps } from "./effects/index.js";
 export type PoseKeypointName = (typeof COCO17_KEYPOINT_NAMES)[number];
 
 export interface ClipVisionOptions {
-	/** Prompted SAM 2.1 (Tiny or Small) video segmentation. Pose is opt-in in this mode. */
+	/** Prompted SAM 2.1 (Tiny or Small) video segmentation. Pose is opt-in in this mode, as with sam3. */
 	sam2?: Sam2Options;
 	/** SAM 3 point/box or text selection with temporal tracking. Mutually exclusive with sam2. */
 	sam3?: Sam3Options;
@@ -43,7 +44,10 @@ export interface ClipVisionOptions {
 	durationFrames?: number;
 	/** Analysis frame rate (default: the composition's). */
 	fps?: number;
-	/** Track 17 COCO keypoints (default true). */
+	/**
+	 * Track 17 COCO keypoints (default true; opt-in with sam2/sam3, where each frame's pose
+	 * is the detected person whose keypoints fall most inside the selection).
+	 */
 	pose?: boolean;
 	/** Track the person's silhouette, dress and held things included (default true). */
 	mask?: boolean;
@@ -341,17 +345,8 @@ export class ClipVision implements ClipSubjectSource {
 	 * subjects kept, null when it holds no subject.
 	 */
 	subject(frame: number, fps: number): InstanceMask | null | undefined {
-		const c = (frame * this.fps) / fps;
-		if (
-			!this.exact &&
-			!this.options.timeRemap &&
-			Math.abs(c - Math.round(c)) > 1e-6
-		)
-			return undefined;
-		const sourceFrame =
-			this.options.timeRemap || this.exact
-				? Math.floor(c + 1e-6)
-				: Math.round(c);
+		const sourceFrame = this.sourceFrame(frame, fps);
+		if (sourceFrame === undefined) return undefined;
 		const s = this.subjects.get(sourceFrame);
 		if (s === undefined) return s;
 		if (s === null || !this.sourceWidth) return null;
@@ -366,6 +361,54 @@ export class ClipVision implements ClipSubjectSource {
 			coverage: s.area / (width * height),
 			detectionIndex: -1,
 		};
+	}
+
+	/**
+	 * @internal The pose matched to the subject at a source frame of the clip
+	 * (`frame` at `fps`), normalized to the source size, for a render-time
+	 * skeleton: undefined until that frame and its smoothing window are
+	 * analysed, null when no pose matched there.
+	 */
+	pose(frame: number, fps: number): ClipPose | null | undefined {
+		const c = this.sourceFrame(frame, fps);
+		if (c === undefined || !this.tracksPose || !this.sourceWidth) return;
+		for (let g = c - this.smoothing; g <= c + this.smoothing; g++)
+			if (!this.results.has(Math.max(0, g))) return undefined;
+		if (!this.results.get(c)?.kp) return null;
+		const width = this.sourceWidth;
+		const height = this.sourceHeight;
+		return {
+			width,
+			height,
+			keypoints: Array.from({ length: 17 }, (_, k) => {
+				const [x, y, visibility] = this.keypoint(k, c);
+				return { x: x / width, y: y / height, visibility };
+			}),
+		};
+	}
+
+	/** Whether frames carry keypoints: on by default, opt-in for prompted (SAM) clips. */
+	get tracksPose(): boolean {
+		return this.exact
+			? this.options.pose === true
+			: (this.options.pose ?? true);
+	}
+
+	/**
+	 * The analysed source frame a render-time read at `frame` (at `fps`) maps to;
+	 * undefined for an unprompted clip read between its analysed frames.
+	 */
+	private sourceFrame(frame: number, fps: number): number | undefined {
+		const c = (frame * this.fps) / fps;
+		if (
+			!this.exact &&
+			!this.options.timeRemap &&
+			Math.abs(c - Math.round(c)) > 1e-6
+		)
+			return undefined;
+		return this.options.timeRemap || this.exact
+			? Math.floor(c + 1e-6)
+			: Math.round(c);
 	}
 
 	/** Composition frame → clip frame (fractional). */
@@ -446,7 +489,7 @@ export class ClipVision implements ClipSubjectSource {
 			await this.computeSam3(to);
 			return;
 		}
-		const wantPose = this.options.pose ?? true;
+		const wantPose = this.tracksPose;
 		const wantMask = this.options.mask ?? true;
 		this.runner ??= VisionRunner.create({
 			modelsDir: this.options.modelsDir,
@@ -562,7 +605,7 @@ export class ClipVision implements ClipSubjectSource {
 				frame,
 				prompt?.points,
 			);
-			const kp = this.options.pose
+			const kp = this.tracksPose
 				? await this.matchedPose(image, result.mask)
 				: null;
 			this.storeSamFrame(frame, result.width, result.height, [result], kp);
@@ -615,7 +658,7 @@ export class ClipVision implements ClipSubjectSource {
 			if (!this.sourceWidth) this.setSize(image.width, image.height);
 			const prompt = settings.prompts.find((item) => item.frame === frame);
 			const result = await this.sam3Tracker.process(image, frame, prompt);
-			const kp = this.options.pose
+			const kp = this.tracksPose
 				? await this.matchedPose(image, unionMask(result.objects, image))
 				: null;
 			this.storeSamFrame(
@@ -930,13 +973,14 @@ export class ClipVision implements ClipSubjectSource {
 				stat.size,
 				stat.mtimeMs,
 				this.fps,
-				o.pose ?? true,
+				this.tracksPose,
 				o.mask ?? true,
 				this.cell,
 				o.variant ?? "s",
 				o.confidence ?? null,
-				// Prompted subjects are track-ID label maps (format 2).
-				...(o.sam2 ? [[sam?.sam2Revision(o.sam2.model), o.sam2, 2]] : []),
+				// Prompted subjects are track-ID label maps (format 2); format 3 drops
+				// entries keyed as tracking pose when SAM clips left it off by default.
+				...(o.sam2 ? [[sam?.sam2Revision(o.sam2.model), o.sam2, 3]] : []),
 				...(o.sam3 && sam
 					? [
 							[
@@ -944,7 +988,7 @@ export class ClipVision implements ClipSubjectSource {
 									await sam.sam3Precision(undefined, o.sam3.precision),
 								),
 								o.sam3,
-								2,
+								3,
 							],
 						]
 					: []),

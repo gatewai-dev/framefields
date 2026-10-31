@@ -29,6 +29,11 @@ export async function sam3Run(
 /** Semantic model is separate from the visual tracker and loads only for text prompts. */
 export class Sam3TextSelector {
 	private readonly sessions: VisionSession[] = [];
+	private encoded?: {
+		text: string;
+		features: Float32Array;
+		mask: BigInt64Array;
+	};
 	private constructor(private readonly tokenizer: Tokenizer) {}
 
 	static async create(
@@ -73,37 +78,26 @@ export class Sam3TextSelector {
 	/**
 	 * Mask logits (288²) of the instances matching `text` with sigmoid score of at least
 	 * `threshold`, best first and at most `max`. Queries that repeat an accepted instance
-	 * (mask IoU above 0.5) are skipped.
+	 * (mask IoU above 0.5) are skipped. Throws when nothing matches unless `required` is false.
 	 */
 	async select(
 		pixels: Float32Array,
 		text: string,
 		threshold: number,
 		max = 1,
+		required = true,
 	): Promise<Float32Array[]> {
 		const [visionSession, textSession, decoder] = this.sessions;
 		if (!visionSession || !textSession || !decoder)
 			throw new Error("SAM 3 text selector has been released.");
-		const tokens: readonly number[] = this.tokenizer.encode(text).ids;
-		if (tokens.length > 32)
-			throw new Error("SAM 3 text prompts must fit within 32 CLIP tokens.");
-		const ids = new BigInt64Array(32).fill(49407n),
-			mask = new BigInt64Array(32);
-		tokens.forEach((id, i) => {
-			ids[i] = BigInt(id);
-			mask[i] = 1n;
-		});
-		const encoded = await sam3Run(textSession, [
-			{ name: "input_ids", data: ids, dims: [1, 32] },
-			{ name: "attention_mask", data: mask, dims: [1, 32] },
-		]);
+		const { features, mask } = await this.encodeText(textSession, text);
 		const vision = await sam3Run(visionSession, [
 			{ name: "pixel_values", data: pixels, dims: [1, 3, 1008, 1008] },
 		]);
 		const inputs: VisionTensorInput[] = [
 			{
 				name: "text_features",
-				data: sam3Floats(encoded, "text_features"),
+				data: features,
 				dims: [1, 32, 256],
 			},
 			{ name: "attention_mask", data: mask, dims: [1, 32] },
@@ -127,6 +121,7 @@ export class Sam3TextSelector {
 			(a, b) => (scores[b] ?? -Infinity) - (scores[a] ?? -Infinity),
 		);
 		const best = 1 / (1 + Math.exp(-(scores[ranked[0] ?? 0] ?? -Infinity)));
+		if (best < threshold && !required) return [];
 		if (best < threshold)
 			throw new Error(
 				`SAM 3 found no confident instance for text ${JSON.stringify(text)} (score ${best.toFixed(3)}, threshold ${threshold}).`,
@@ -142,9 +137,37 @@ export class Sam3TextSelector {
 		return selected;
 	}
 
+	/** Text features for a prompt; the last one is kept, since re-detection repeats it every few frames. */
+	private async encodeText(
+		session: VisionSession,
+		text: string,
+	): Promise<{ features: Float32Array; mask: BigInt64Array }> {
+		if (this.encoded?.text === text) return this.encoded;
+		const tokens: readonly number[] = this.tokenizer.encode(text).ids;
+		if (tokens.length > 32)
+			throw new Error("SAM 3 text prompts must fit within 32 CLIP tokens.");
+		const ids = new BigInt64Array(32).fill(49407n),
+			mask = new BigInt64Array(32);
+		tokens.forEach((id, i) => {
+			ids[i] = BigInt(id);
+			mask[i] = 1n;
+		});
+		const encoded = await sam3Run(session, [
+			{ name: "input_ids", data: ids, dims: [1, 32] },
+			{ name: "attention_mask", data: mask, dims: [1, 32] },
+		]);
+		this.encoded = {
+			text,
+			features: sam3Floats(encoded, "text_features").slice(),
+			mask,
+		};
+		return this.encoded;
+	}
+
 	release(): void {
 		for (const session of this.sessions) session.release();
 		this.sessions.length = 0;
+		this.encoded = undefined;
 	}
 }
 

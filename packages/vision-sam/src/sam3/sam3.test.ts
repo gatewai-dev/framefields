@@ -50,6 +50,12 @@ describe("SAM 3 video tracker", () => {
 				textThreshold: 1.5,
 			}),
 		).toThrow("textThreshold must be between zero and one");
+		expect(() =>
+			validateSam3Prompts({
+				prompts: [{ frame: 0, text: "valid" }],
+				redetect: 2.5,
+			}),
+		).toThrow("redetect must be a nonnegative integer");
 	});
 
 	it("computes 2D sinusoidal position embeddings with expected dimension", () => {

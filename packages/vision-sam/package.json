@@ -1,7 +1,7 @@
 {
 	"name": "@framefields/vision-sam",
 	"description": "Prompted video tracking for framefields: SAM 2.1 Tiny / Small and SAM 3 (text selection, several objects). SAM 3's model weights, downloaded at runtime, are under Meta's SAM License.",
-	"version": "2.9.2",
+	"version": "2.9.3",
 	"private": true,
 	"type": "module",
 	"sideEffects": false,

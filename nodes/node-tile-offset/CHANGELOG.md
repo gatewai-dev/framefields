@@ -1,5 +1,7 @@
 # @framefields/node-tile-offset
 
+## 2.9.3
+
 ## 2.9.2
 
 ## 2.9.0

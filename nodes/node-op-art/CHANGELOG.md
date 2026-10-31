@@ -1,5 +1,7 @@
 # @framefields/node-op-art
 
+## 2.9.3
+
 ## 2.9.2
 
 ## 2.9.0

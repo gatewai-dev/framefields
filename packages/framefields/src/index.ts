@@ -12,6 +12,8 @@ export {
 	ValidationError,
 } from "@framefields/ai";
 export {
+	type AudioPitchOptions,
+	type AudioPitchSignals,
 	AudioSignal,
 	type AudioSignalOptions,
 	computed,
@@ -1179,6 +1181,19 @@ export interface RenderVideoOptions {
 	 * (GIF only) and "done". The engine logs the same phases on its own.
 	 */
 	onProgress?: (progress: RenderProgress) => void;
+	/**
+	 * Renders only frames `start` (inclusive) to `end` (exclusive): one chunk
+	 * of a render split across workers. Chunks start on a keyframe with
+	 * timestamps from 0; join them with `stitchChunks` from
+	 * `framefields/renderer`. Effects that carry state between frames
+	 * (trails, particles, datamosh) rebuild it before `start`.
+	 */
+	frames?: { start: number; end: number };
+	/**
+	 * `false` writes no audio track, as for chunks: render the timeline's
+	 * audio once with `codec: "aac"` and pass it to `stitchChunks`.
+	 */
+	audio?: boolean;
 }
 
 export interface RenderVideoResult {
@@ -3511,8 +3526,11 @@ export {
 } from "./preview/index.js";
 export {
 	type AudioQaStats,
+	type ChunkPlan,
+	type ChunkPlanOptions,
 	computeGridLayout,
 	describeGpu,
+	type FrameCostSample,
 	type FrameGridOptions,
 	type FrameGridRenderable,
 	type FrameSamplePoint,
@@ -3520,6 +3538,8 @@ export {
 	type GpuAdapterDescription,
 	HeadlessMediaRenderer,
 	HeadlessWebGPURenderer,
+	type PlannedChunk,
+	planChunks,
 	type QaIssue,
 	type QaSegment,
 	type RenderProgress,
@@ -3527,6 +3547,9 @@ export {
 	renderSemaphore,
 	resetRenderCaches,
 	resolveSamplePoints,
+	type StitchOptions,
+	type StitchResult,
+	stitchChunks,
 	type VideoQaOptions,
 	type VideoQaReport,
 	type VideoQaStats,

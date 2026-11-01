@@ -1,6 +1,8 @@
-import { createReadStream } from "node:fs";
+import { createReadStream, createWriteStream } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
+import type { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import {
 	GetObjectCommand,
 	HeadObjectCommand,
@@ -85,6 +87,41 @@ export function s3Client(config: RendererConfig): S3Client {
 		maxAttempts: 2,
 	});
 	return client;
+}
+
+/** Downloads an object to `file`: a stitch job's chunks, read with the worker's own credentials. */
+export async function downloadS3(
+	config: RendererConfig,
+	bucket: string,
+	key: string,
+	file: string,
+	signal: AbortSignal,
+): Promise<void> {
+	try {
+		await withRetries(signal, async () => {
+			const res = await s3Client(config).send(
+				new GetObjectCommand({ Bucket: bucket, Key: key }),
+				{ abortSignal: signal },
+			);
+			if (!res.Body) throw new Error(`s3://${bucket}/${key} has no body`);
+			await pipeline(res.Body as Readable, createWriteStream(file), {
+				signal,
+			});
+		});
+	} catch (err) {
+		const missing =
+			err instanceof S3ServiceException && err.name === "NoSuchKey";
+		if (
+			missing ||
+			(err instanceof RenderError && /NoSuchKey/.test(err.message))
+		)
+			throw new RenderError(
+				"ASSET_NOT_FOUND",
+				`Stitch input s3://${bucket}/${key} does not exist.`,
+				{ phase: "render" },
+			);
+		throw err;
+	}
 }
 
 export function publicUrl(

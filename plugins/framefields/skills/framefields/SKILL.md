@@ -225,9 +225,12 @@ Add scripts to `package.json`:
   "frames": "tsx src/render.ts frames",
   "grid": "tsx src/render.ts grid",
   "preview": "tsx src/render.ts preview",
-  "render": "tsx src/render.ts"
+  "render": "tsx src/render.ts",
+  "render:cloud": "framefields render src/film.ts --cloud --workers auto"
 }
 ```
+
+`render:cloud` renders on framefields' GPUs (api.framefields.dev) from the pushed commit, with the same `FRAMEFIELDS_API_KEY` as the AI gateway; `framefields-render` covers it.
 
 ### Video assets & Git LFS
 

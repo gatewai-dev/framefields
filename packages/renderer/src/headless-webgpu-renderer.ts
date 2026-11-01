@@ -68,6 +68,7 @@ import { type RenderProgress, RenderReporter } from "./render-reporter.js";
 	);
 };
 
+import type { FrameCostSample } from "./chunk-plan.js";
 import {
 	type AudioQaStats,
 	analyzeAudio,
@@ -357,6 +358,112 @@ async function fileSize(file: string): Promise<number | undefined> {
 	} catch {
 		return undefined;
 	}
+}
+
+/** Composition frames `start` (inclusive) to `end` (exclusive). */
+export interface FrameRange {
+	start: number;
+	end: number;
+}
+
+/** The frames a render covers, checked against the composition's length. */
+function resolveFrameRange(
+	frames: FrameRange | undefined,
+	total: number,
+): FrameRange & { total: number } {
+	if (!frames) return { start: 0, end: total, total };
+	const { start, end } = frames;
+	if (
+		!Number.isInteger(start) ||
+		!Number.isInteger(end) ||
+		start < 0 ||
+		end <= start ||
+		end > total
+	)
+		throw new Error(
+			`Invalid frames { start: ${start}, end: ${end} }: need integers with 0 <= start < end <= ${total} (the composition's frame count).`,
+		);
+	return { start, end, total };
+}
+
+/**
+ * Mixes the composition's whole audio timeline and encodes it into `source`
+ * in 100 ms samples. Returns its QA stats when `qaOptions` is set.
+ */
+async function encodeAudioTrack(job: {
+	virtualMedia: VirtualMediaData;
+	fps: number;
+	device: GPUDevice;
+	renderId: string;
+	source: AudioSampleSource;
+	codec: string;
+	reporter: RenderReporter;
+	qaOptions?: VideoQaOptions;
+}): Promise<AudioQaStats | undefined> {
+	const { reporter } = job;
+	reporter.stage("audio", "Mixing audio");
+	const { channels, sampleRate } = await mixAudioTracks(
+		job.virtualMedia,
+		job.fps,
+		48_000,
+		job.device,
+		job.renderId,
+		{
+			onProgress: ({ done, total, source }) =>
+				reporter.update(
+					total > 0
+						? `${done}/${total} clips${source ? `: ${source}` : ""}`
+						: "no audio clips",
+					total > 0 ? done / total : undefined,
+				),
+		},
+	);
+
+	const numChannels = channels.length;
+	if (numChannels === 0) throw new Error("mixAudioTracks returned no channels");
+
+	const totalSamples = channels[0].length;
+	const chunkSize = Math.round(0.1 * sampleRate);
+	reporter.stage(
+		"audio-encode",
+		`Encoding ${(totalSamples / sampleRate).toFixed(1)}s of audio (${job.codec})`,
+	);
+
+	for (let offset = 0; offset < totalSamples; offset += chunkSize) {
+		const currentChunk = Math.min(chunkSize, totalSamples - offset);
+		// A fresh buffer per chunk: the encoder may read a sample's data after
+		// add() resolves, so a buffer reused across chunks gets overwritten by
+		// the next chunk before it is encoded (audible as 100 ms garbling).
+		const interleaved = new Float32Array(currentChunk * numChannels);
+
+		for (let i = 0; i < currentChunk; i++) {
+			for (let ch = 0; ch < numChannels; ch++) {
+				interleaved[i * numChannels + ch] = channels[ch]?.[offset + i] ?? 0;
+			}
+		}
+
+		const sample = new AudioSample({
+			data: interleaved,
+			format: "f32",
+			numberOfChannels: numChannels,
+			sampleRate,
+			timestamp: offset / sampleRate,
+		});
+		try {
+			await job.source.add(sample);
+		} finally {
+			sample.close();
+		}
+		const written = offset + currentChunk;
+		reporter.update(
+			`${(written / sampleRate).toFixed(1)}s/${(totalSamples / sampleRate).toFixed(1)}s`,
+			written / totalSamples,
+		);
+	}
+
+	return job.qaOptions
+		? analyzeAudio(channels, sampleRate, job.qaOptions)
+		: undefined;
 }
 
 function toEvenDimension(n: number): number {
@@ -795,6 +902,71 @@ export class HeadlessWebGPURenderer {
 	}
 
 	/**
+	 * Measures what frames cost to render across the timeline, for planning a
+	 * split render (`planChunks`). At `samples` evenly spaced points (default
+	 * 12) it renders three consecutive frames and times the last two, so
+	 * effects that carry state (trails, particles) are caught up and their
+	 * replay is not counted. Encoding is not included.
+	 */
+	public async probeRender(
+		source: VirtualMediaData | { toVirtualMedia(): VirtualMediaData },
+		options: {
+			samples?: number;
+			signal?: AbortSignal;
+			/** Called after each sample point with how many are done. */
+			onSample?: (done: number, total: number) => void;
+		} = {},
+	): Promise<{
+		totalFrames: number;
+		fps: number;
+		durationMs: number;
+		samples: FrameCostSample[];
+	}> {
+		const vm =
+			"toVirtualMedia" in source
+				? (source as { toVirtualMedia(): VirtualMediaData }).toVirtualMedia()
+				: source;
+		const fps = vm.metadata.fps;
+		if (!fps) throw new Error("probeRender: the composition has no fps.");
+		let durationMs = vm.metadata.durationMs;
+		if (!durationMs || durationMs <= 0) {
+			durationMs = await this.resolveMediaDuration(vm, fps);
+			vm.metadata.durationMs = durationMs;
+		}
+		const totalFrames = frameCount(durationMs, fps);
+		const count = Math.max(
+			1,
+			Math.min(Math.floor(options.samples ?? 12), totalFrames),
+		);
+		const last = Math.max(0, totalFrames - 3);
+		const renderId = `probe-${randomUUID()}`;
+		const render = (frame: number) =>
+			this.renderImage(vm, Math.min(frame, totalFrames - 1), fps, {
+				renderId,
+				format: "rgba",
+			});
+		const samples: FrameCostSample[] = [];
+		try {
+			for (let i = 0; i < count; i++) {
+				options.signal?.throwIfAborted();
+				const at = count === 1 ? 0 : Math.round((i * last) / (count - 1));
+				await render(at);
+				const started = performance.now();
+				await render(at + 1);
+				await render(at + 2);
+				samples.push({
+					frame: Math.min(at + 1, totalFrames - 1),
+					ms: (performance.now() - started) / 2,
+				});
+				options.onSample?.(i + 1, count);
+			}
+		} finally {
+			mediaDecoderCache.clearNode(renderId);
+		}
+		return { totalFrames, fps, durationMs, samples };
+	}
+
+	/**
 	 * Mixes the composition's full audio timeline (clips, effects, synthesized
 	 * tracks) to stereo PCM, exactly as `renderVideo` muxes it.
 	 */
@@ -1060,6 +1232,19 @@ export class HeadlessWebGPURenderer {
 			 * "mux", "convert" (GIF only) and "done".
 			 */
 			onProgress?: (progress: RenderProgress) => void;
+			/**
+			 * Renders only composition frames `start` (inclusive) to `end`
+			 * (exclusive), as one chunk of a render split across workers. The
+			 * chunk's timestamps start at 0 and its first frame is a keyframe,
+			 * so `stitchChunks` joins chunks without re-encoding. Effects that
+			 * carry state between frames rebuild it before `start`.
+			 */
+			frames?: FrameRange;
+			/**
+			 * `false` writes no audio track, as for chunks: the timeline's audio
+			 * is exported once with `codec: "aac"` and added by `stitchChunks`.
+			 */
+			audio?: boolean;
 		},
 	): Promise<{
 		filePath: string;
@@ -1110,7 +1295,15 @@ export class HeadlessWebGPURenderer {
 			durationMs = await this.resolveMediaDuration(virtualMedia, fps);
 			virtualMedia.metadata.durationMs = durationMs;
 		}
-		const totalFrames = frameCount(durationMs, fps);
+		const range = resolveFrameRange(
+			options?.frames,
+			frameCount(durationMs, fps),
+		);
+		if (isAudioOnly && (options?.frames || options?.audio === false))
+			throw new Error(
+				`An audio-only render (codec "${codecOption}") takes neither \`frames\` nor \`audio: false\`.`,
+			);
+		const totalFrames = range.end - range.start;
 
 		const renderId = `vid-${randomUUID()}`;
 		const qaOptions: VideoQaOptions | undefined =
@@ -1232,11 +1425,14 @@ export class HeadlessWebGPURenderer {
 			} as any);
 			output.addVideoTrack(videoSource);
 		}
-		const audioSource = new AudioSampleSource({
-			codec: audioCodec,
-			bitrate: quality,
-		});
-		output.addAudioTrack(audioSource);
+		let audioSource: AudioSampleSource | undefined;
+		if (options?.audio !== false) {
+			audioSource = new AudioSampleSource({
+				codec: audioCodec,
+				bitrate: quality,
+			});
+			output.addAudioTrack(audioSource);
+		}
 
 		let outputStarted = false;
 		let outputFinalized = false;
@@ -1309,18 +1505,25 @@ export class HeadlessWebGPURenderer {
 					device.queue.submit([preEncoder.finish()]);
 					await lutStore.awaitAllPending(device);
 				};
-				await prePass(0);
+				updateClockSignals(range.start, fps, durationMs);
+				await prePass(range.start);
 
-				reporter.stage("render", `Rendering ${totalFrames} frames`);
+				reporter.stage(
+					"render",
+					range.start === 0 && totalFrames === range.total
+						? `Rendering ${totalFrames} frames`
+						: `Rendering frames ${range.start}–${range.end - 1} of ${range.total}`,
+				);
 				// Render and encode frames using pipelined double-buffered DMA staging ring
-				for (let i = 0; i < totalFrames; i++) {
+				for (let i = range.start; i < range.end; i++) {
 					options?.signal?.throwIfAborted();
 
 					if (ctx && surface && renderer && pipeline) {
 						// Assets first used on a later frame (a LUT, a glyph) get the
-						// same pre-pass as frame 0, as renderImage and the preview do.
+						// same pre-pass as the first frame, as renderImage and the
+						// preview do.
 						if (
-							i > 0 &&
+							i > range.start &&
 							(lutStore.hasPending(device) || SlugFontCache.hasPending())
 						) {
 							updateClockSignals(i, fps, durationMs);
@@ -1366,8 +1569,10 @@ export class HeadlessWebGPURenderer {
 							},
 						);
 
-						await pipeline.enqueueFrame(i, targetTexture, encoder);
-						if (i + 1 < totalFrames) reporter.frameDone(i + 1);
+						// Chunk-local index: the pipeline timestamps frames from it.
+						const done = i - range.start + 1;
+						await pipeline.enqueueFrame(done - 1, targetTexture, encoder);
+						if (done < totalFrames) reporter.frameDone(done);
 					} else {
 						throw new Error("Invalid render context state");
 					}
@@ -1396,68 +1601,18 @@ export class HeadlessWebGPURenderer {
 			}
 
 			// ── Audio ──────────────────────────────────────────────────────────────
-			options?.signal?.throwIfAborted();
-			reporter.stage("audio", "Mixing audio");
-			const { channels, sampleRate } = await mixAudioTracks(
-				virtualMedia,
-				fps,
-				48_000,
-				device,
-				renderId,
-				{
-					onProgress: ({ done, total, source }) =>
-						reporter.update(
-							total > 0
-								? `${done}/${total} clips${source ? `: ${source}` : ""}`
-								: "no audio clips",
-							total > 0 ? done / total : undefined,
-						),
-				},
-			);
-
-			const numChannels = channels.length;
-			if (numChannels === 0)
-				throw new Error("mixAudioTracks returned no channels");
-
-			if (qaOptions) audioQa = analyzeAudio(channels, sampleRate, qaOptions);
-
-			const totalSamples = channels[0].length;
-			const chunkSize = Math.round(0.1 * sampleRate);
-			reporter.stage(
-				"audio-encode",
-				`Encoding ${(totalSamples / sampleRate).toFixed(1)}s of audio (${audioCodec})`,
-			);
-
-			for (let offset = 0; offset < totalSamples; offset += chunkSize) {
-				const currentChunk = Math.min(chunkSize, totalSamples - offset);
-				// A fresh buffer per chunk: the encoder may read a sample's data after
-				// add() resolves, so a buffer reused across chunks gets overwritten by
-				// the next chunk before it is encoded (audible as 100 ms garbling).
-				const interleaved = new Float32Array(currentChunk * numChannels);
-
-				for (let i = 0; i < currentChunk; i++) {
-					for (let ch = 0; ch < numChannels; ch++) {
-						interleaved[i * numChannels + ch] = channels[ch]?.[offset + i] ?? 0;
-					}
-				}
-
-				const sample = new AudioSample({
-					data: interleaved,
-					format: "f32",
-					numberOfChannels: numChannels,
-					sampleRate,
-					timestamp: offset / sampleRate,
+			if (audioSource) {
+				options?.signal?.throwIfAborted();
+				audioQa = await encodeAudioTrack({
+					virtualMedia,
+					fps,
+					device,
+					renderId,
+					source: audioSource,
+					codec: audioCodec,
+					reporter,
+					qaOptions,
 				});
-				try {
-					await audioSource.add(sample);
-				} finally {
-					sample.close();
-				}
-				const written = offset + currentChunk;
-				reporter.update(
-					`${(written / sampleRate).toFixed(1)}s/${(totalSamples / sampleRate).toFixed(1)}s`,
-					written / totalSamples,
-				);
 			}
 
 			options?.signal?.throwIfAborted();

@@ -1,6 +1,6 @@
 {
 	"name": "framefields",
-	"version": "2.9.3",
+	"version": "2.11.0",
 	"private": false,
 	"description": "High-performance WebGPU rendering SDK for video composition, Photoshop-grade 2D VFX, audio DSP, and reactive signals. Built for AI Agents.",
 	"license": "Apache-2.0",
@@ -80,6 +80,12 @@
 			"development": "./src/preview/index.ts",
 			"import": "./dist/preview/index.mjs",
 			"default": "./dist/preview/index.mjs"
+		},
+		"./cloud": {
+			"types": "./dist/cloud/index.d.mts",
+			"development": "./src/cloud/index.ts",
+			"import": "./dist/cloud/index.mjs",
+			"default": "./dist/cloud/index.mjs"
 		},
 		"./sam": {
 			"types": "./dist/sam/index.d.mts",

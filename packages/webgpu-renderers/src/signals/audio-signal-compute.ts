@@ -340,6 +340,17 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
 // Audio Signal Compute Engine Class
 // ---------------------------------------------------------------------------
 
+/** Averages every channel into one mono buffer for storage buffer upload. */
+export function downmixToMono(channels: Float32Array[]): Float32Array {
+	const mono = new Float32Array(channels[0]?.length ?? 0);
+	for (const ch of channels) {
+		for (let i = 0; i < mono.length; i++) {
+			mono[i] += ch[i] / channels.length;
+		}
+	}
+	return mono;
+}
+
 function calculateBiquadBandpassCoeffs(
 	sampleRate: number,
 	centerFreq: number,
@@ -457,14 +468,7 @@ export class AudioSignalComputePipeline {
 		const hopSize = Math.max(1, Math.round(sampleRate / fps));
 		const windowSize = Math.max(32, Math.round(hopSize * 2));
 
-		// Downmix channels to mono on CPU for storage buffer upload
-		const monoPcm = new Float32Array(numAudioSamples);
-		for (let c = 0; c < numChannels; c++) {
-			const ch = audioChannels[c];
-			for (let i = 0; i < numAudioSamples; i++) {
-				monoPcm[i] += ch[i] / numChannels;
-			}
-		}
+		const monoPcm = downmixToMono(audioChannels);
 
 		// 1. Allocate GPU Buffers
 		const rawAudioBuffer = device.createBuffer({

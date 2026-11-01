@@ -127,6 +127,7 @@ describe("framefields init", () => {
 			"grid",
 			"preview",
 			"render",
+			"render:cloud",
 		]);
 		expect(Object.keys(pkg.devDependencies).sort()).toEqual([
 			"@types/node",

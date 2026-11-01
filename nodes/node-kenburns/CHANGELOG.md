@@ -1,5 +1,7 @@
 # @framefields/node-kenburns
 
+## 2.11.0
+
 ## 2.9.3
 
 ## 2.9.2

@@ -7,6 +7,7 @@
  *   npx framefields list                 the components you can add
  *   npx framefields fonts add <role...>  install fonts (emoji)
  *   npx framefields fonts list           the fonts you can install
+ *   npx framefields render <entry> --cloud   render on api.framefields.dev
  */
 import { readFileSync } from "node:fs";
 import { relative, resolve } from "node:path";
@@ -14,6 +15,7 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { type AddReport, add } from "./cli/add.js";
 import { runCheck } from "./cli/check.js";
+import { runCloudRender } from "./cli/cloud.js";
 import { readConfig } from "./cli/config.js";
 import {
 	FONTS,
@@ -51,6 +53,10 @@ Commands:
                   Install fonts (pinned, hash-checked, with their license)
                   and register them in the generated <components>/fonts.ts.
   fonts list      List the fonts you can install.
+  render <entry> --cloud
+                  Render on api.framefields.dev from the pushed commit of
+                  this git repo, and download the video. Needs
+                  FRAMEFIELDS_API_KEY. --export defaults to buildFilm.
 
 Options for check:
   --export <name>   Composition or builder export (default buildFilm).
@@ -59,6 +65,20 @@ Options for check:
   --timeout <ms>    Worker timeout in milliseconds (default 60000).
   --warnings-as-errors  Fail on lint warnings.
   --json            Machine-readable check, component list, or font list result.
+
+Options for render --cloud:
+  --workers <n|auto>  1 (default) renders on one GPU. auto measures the film
+                    first and splits it across as many GPUs as stay
+                    efficient; a number splits it into that many.
+  --max-workers <n> Upper bound for auto.
+  --plan            Measure and plan only: prints workers, time and the
+                    estimated cost, renders nothing.
+  --output <file>   Where the video goes (default output/<entry>.mp4).
+  --codec <codec>   h264 (default) or vp9.
+  --quality <q>     very_low, low, high or very_high (default).
+  --select <name>   When the export returns several compositions.
+  --json            Print the final status as JSON.
+  Ctrl-C cancels the render; GPU time already used is charged.
 
 Options for init:
   --name <name>     Package name (default: the folder's name).
@@ -87,6 +107,7 @@ Examples:
   npx framefields init my-film --install
   npx framefields add mouse-pointer focus-zoom
   npx framefields fonts add emoji
+  npx framefields render src/film.ts --cloud --workers auto --plan
 `;
 
 async function main(argv: string[]): Promise<number> {
@@ -112,6 +133,13 @@ async function main(argv: string[]): Promise<number> {
 			output: { type: "string" },
 			timeout: { type: "string" },
 			"warnings-as-errors": { type: "boolean" },
+			cloud: { type: "boolean" },
+			workers: { type: "string" },
+			"max-workers": { type: "string" },
+			plan: { type: "boolean" },
+			codec: { type: "string" },
+			quality: { type: "string" },
+			select: { type: "string" },
 			help: { type: "boolean", short: "h" },
 		},
 	});
@@ -163,6 +191,29 @@ async function main(argv: string[]): Promise<number> {
 			for (const file of report.artifacts) log(`Wrote ${file}`);
 		}
 		return report.status === "passed" ? 0 : 1;
+	}
+	if (command === "render") {
+		if (names.length !== 1 || !values.cloud) {
+			process.stderr.write(
+				"Usage: framefields render <entry> --cloud [--workers auto] [--plan]\nLocal renders run your project's render script (`npm run render`).\n",
+			);
+			return 2;
+		}
+		return runCloudRender(
+			{
+				entry: names[0],
+				export: values.export,
+				select: values.select,
+				workers: values.workers,
+				maxWorkers: values["max-workers"],
+				codec: values.codec,
+				quality: values.quality,
+				output: values.output,
+				plan: values.plan,
+				json: values.json,
+			},
+			log,
+		);
 	}
 	if (command === "fonts") return fonts(names, cwd, values, log);
 	if (command === "init") {

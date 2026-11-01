@@ -13,7 +13,7 @@ Code-first video engine on native WebGPU (Dawn) in Node, no browser. pnpm + turb
 - Keep this file current when structure or dev patterns change but do not bloat it.
 
 ## Repo map
-- `packages/framefields`: public SDK. `Composition`, `Layer.*`, `LayerAnimation`, `Signal`, effects (`src/effects/classes.ts`), `FontManager`, `renderFrameGrid`. `src/index.ts` is the export surface. CLI in `src/cli/` (`init`, `add`, `list`, `fonts add|list`); `init` never prompts or overwrites, and its file templates are strings in `templates.ts` (a test parses them).
+- `packages/framefields`: public SDK. `Composition`, `Layer.*`, `LayerAnimation`, `Signal`, effects (`src/effects/classes.ts`), `FontManager`, `renderFrameGrid`. `src/index.ts` is the export surface. CLI in `src/cli/` (`init`, `add`, `list`, `fonts add|list`, `check`, `render --cloud`); `framefields/cloud` (`renderCloud`) is the GPU-free client for api.framefields.dev; `init` never prompts or overwrites, and its file templates are strings in `templates.ts` (a test parses them).
 - `packages/components`: the component registry `framefields add` copies into user projects (shadcn-style). `defineComponent`/`bind` contract in `src/core/contract.ts`, shared helpers in `src/core/` (keys, color, layout, surface, theme). Components import only `framefields` and `../core`. Registry items declare font needs (e.g. emoji); CLI fonts are pinned by URL, size and SHA-256 in `cli/fonts.ts`. Prop docs in `components.json` are generated (drift test). Tree-shake size budgets are tested.
 - `packages/compositions`: Yoga layout (`utils/layout/resolve-layout.ts`), program schema (`program/schema.ts`), lint (`program/lint.ts`), animation/evaluator.
 - `packages/webgpu-renderers`: WGSL shaders, 2D/3D pipelines, Slug text (`src/slug/`), audio DSP.
@@ -22,7 +22,7 @@ Code-first video engine on native WebGPU (Dawn) in Node, no browser. pnpm + turb
 - `packages/core`: shared types, `Effect` base, signals, `emojiPresentation` (the one UTS #51 rule used by layout, preload and lint).
 - Others: `renderers`, `media`, `node-sdk`, `server-utils`, `client-utils`, `tensor-webgpu`, `vision`, `tsconfig`.
 - `nodes/node-*`: one VFX/audio/layout node each (`src/shared/`, `src/renderers/`, `src/index.ts`). Only `node-compositor` has a `SKILL.md`; update it when Compositor behavior changes (guarded by `skillmd-check.test.ts`).
-- `apps/renderer-service`: HTTP render service (Docker, RunPod).
+- `apps/renderer-service`: HTTP render service (Docker, RunPod). It renders single jobs, including the pieces of a split render (`probe`, `range` chunks, `stitch`); the API repo (`/Users/okanaslankan/framefields-dev/api`, `src/render/`) plans, dispatches and bills them.
 - `examples/NN_*`: reference films. Study `19_framefields_film` (structure), `22_framefields_launch` (lyric sync), `28_physics_dancer` (physics, vision, GPU particles) before writing one.
 - `plugins/framefields/skills/framefields{,-compose,-effects,-render,-vision}`: agent skills, symlinked from `.agents/skills` and `.claude/skills`.
 - `framefields` is the only published package: it bundles every `@framefields/*` workspace package, and its build fails if `dist` still imports one (`scripts/check-bundled-imports.mjs`).

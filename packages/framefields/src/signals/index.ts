@@ -24,6 +24,8 @@ export {
 	signalRegistry,
 } from "@framefields/webgpu-renderers";
 export {
+	type AudioPitchOptions,
+	type AudioPitchSignals,
 	AudioSignal,
 	type AudioSignalOptions,
 	type ExtractedAudioSignalsBundle,

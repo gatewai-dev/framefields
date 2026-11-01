@@ -149,10 +149,14 @@ function count(column: number, x: number, t: Timeline): LayoutNode[] {
 	];
 }
 
+/**
+ * The columns, each settling into place in turn as the board arrives,
+ * Ready first (the new card is headed there) and the rest rippling out.
+ */
 function columns(t: Timeline): LayoutNode[] {
-	const nodes: LayoutNode[] = [];
 	const makeRoom = cardLands(t) - sec(0.35);
-	COLUMNS.forEach((col, i) => {
+	return COLUMNS.map((col, i) => {
+		const nodes: LayoutNode[] = [];
 		const x = columnX(i);
 		const nameWidth = FontManager.measure(col.name, {
 			fontFamily: SANS,
@@ -192,8 +196,28 @@ function columns(t: Timeline): LayoutNode[] {
 			}
 			nodes.push(node);
 		});
+		const at = boardIn(t) + Math.abs(i - READY) * 3;
+		return Layer.box({
+			position: "absolute",
+			x: 0,
+			y: 0,
+			width: CW,
+			height: CH,
+			children: nodes,
+		}).animate(
+			LayerAnimation.create()
+				.keys("y", [
+					[0, 36],
+					[at, 36, "hold"],
+					[at + sec(0.7), 0, "expo.out"],
+				])
+				.keys("opacity", [
+					[0, 0],
+					[at, 0, "hold"],
+					[at + 8, 1, "power2.out"],
+				]),
+		);
 	});
-	return nodes;
 }
 
 /**

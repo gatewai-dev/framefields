@@ -2,49 +2,78 @@
 	"voice": {
 		"ask": {
 			"text": "A client asks a simple question.",
-			"prompt": "Warm, clear and conversational, at an easy natural pace with no long pauses, like a founder showing a friend their product. Read the following: 'A client asks a simple question.'",
+			"input": {
+				"prompt": "A client asks a simple question.",
+				"voice": "Sulafat",
+				"style_instructions": "A warm, confident American woman narrating a calm product film. Natural and conversational, smiling slightly, at an easy pace with no long pauses. Standard American English accent."
+			},
 			"heard": "A client asks a simple question",
-			"seconds": 2.179
+			"seconds": 2.2
 		},
 		"inbox": {
 			"text": "In Relay, it becomes a task in one click.",
-			"prompt": "Warm, clear and conversational, at an easy natural pace with no long pauses, like a founder showing a friend their product. Read the following: 'In Relay, it becomes a task in one click.'",
+			"input": {
+				"prompt": "In Relay, it becomes a task in one click.",
+				"voice": "Sulafat",
+				"style_instructions": "A warm, confident American woman narrating a calm product film. Natural and conversational, smiling slightly, at an easy pace with no long pauses. Standard American English accent."
+			},
 			"heard": "In Relay, it becomes a task in one click",
-			"seconds": 3.001542
+			"seconds": 3.32
 		},
 		"owner": {
 			"text": "An owner.",
-			"prompt": "Warm, clear and conversational, at an easy natural pace with no long pauses, like a founder showing a friend their product. Read the following: 'An owner.'",
+			"input": {
+				"prompt": "An owner.",
+				"voice": "Sulafat",
+				"style_instructions": "A warm, confident American woman narrating a calm product film. Natural and conversational, smiling slightly, at an easy pace with no long pauses. Standard American English accent."
+			},
 			"heard": "An owner",
-			"seconds": 0.76
+			"seconds": 0.9
 		},
 		"deadline": {
 			"text": "A deadline.",
-			"prompt": "Warm, clear and conversational, at an easy natural pace with no long pauses, like a founder showing a friend their product. Read the following: 'A deadline.'",
+			"input": {
+				"prompt": "A deadline.",
+				"voice": "Sulafat",
+				"style_instructions": "A warm, confident American woman narrating a calm product film. Natural and conversational, smiling slightly, at an easy pace with no long pauses. Standard American English accent."
+			},
 			"heard": "A deadline",
-			"seconds": 1
+			"seconds": 1.04
 		},
 		"step": {
 			"text": "And a clear next step.",
-			"prompt": "Warm, clear and conversational, at an easy natural pace with no long pauses, like a founder showing a friend their product. Read the following: 'And a clear next step.'",
-			"heard": "And a clear next step",
-			"seconds": 1.495
+			"input": {
+				"prompt": "And a clear next step.",
+				"voice": "Sulafat",
+				"style_instructions": "A warm, confident American woman narrating a calm product film. Natural and conversational, smiling slightly, at an easy pace with no long pauses. Standard American English accent."
+			},
+			"heard": "and a clear next step",
+			"seconds": 1.96
 		},
 		"board": {
 			"text": "Maya sees it on the board, ready to start.",
-			"prompt": "Warm, clear and conversational, at an easy natural pace with no long pauses, like a founder showing a friend their product. Read the following: 'Maya sees it on the board, ready to start.'",
-			"heard": "Maya sees it on the board ready to start",
-			"seconds": 3.03275
+			"input": {
+				"prompt": "Maya sees it on the board, ready to start.",
+				"voice": "Sulafat",
+				"style_instructions": "A warm, confident American woman narrating a calm product film. Natural and conversational, smiling slightly, at an easy pace with no long pauses. Standard American English accent."
+			},
+			"heard": "Maya sees it on the board, ready to start",
+			"seconds": 2.6
 		},
 		"close": {
 			"text": "Relay. Keep client work moving.",
-			"prompt": "Warm, clear and conversational, at an easy natural pace with no long pauses, like a founder showing a friend their product. Read the following: 'Relay. Keep client work moving.'",
-			"heard": "Relay. Keep client work moving.",
-			"seconds": 3.14
+			"input": {
+				"prompt": "Relay. Keep client work moving.",
+				"voice": "Sulafat",
+				"style_instructions": "A warm, confident American woman narrating a calm product film. Natural and conversational, smiling slightly, at an easy pace with no long pauses. Standard American English accent."
+			},
+			"heard": "Relay. Keep client work moving",
+			"seconds": 2.52
 		}
 	},
 	"music": {
-		"seconds": 26.81
+		"prompt": "An instrumental underscore for a 30-second software product film. No vocals, no singing, no spoken words.\nCalm, optimistic and modern at 100 BPM in D major: warm felt piano, a soft plucked synth arpeggio, round sub bass, airy pads and light brushed percussion with a gentle shaker.\n[0:00-0:03] The piano motif alone, intimate.\n[0:03-0:08] A soft pulse enters with the plucked arpeggio.\n[0:08-0:14] Brushed percussion and shaker join; light, focused momentum.\n[0:14-0:20] It lifts: sub bass and a warm pad open up the chorus.\n[0:20-0:26] It resolves on one sustained, warm final chord that rings out.\n[0:26-0:30] Silence.",
+		"seconds": 26
 	},
 	"click": {
 		"seconds": 0.12,

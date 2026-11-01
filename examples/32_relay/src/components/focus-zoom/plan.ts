@@ -36,6 +36,11 @@ export interface CameraInput {
 	/** 0 = quick moves, 1 = slow, soft moves. */
 	smoothing: number;
 	clamp: boolean;
+	/**
+	 * Slow push while a shot holds: zoom gained per second (0.02 = 2 %), so
+	 * the picture keeps moving between moves. 0 holds perfectly still.
+	 */
+	drift?: number;
 	/** The region the view must stay inside when zoomed (default: the whole view). */
 	bounds?: { x: number; y: number; width: number; height: number };
 }
@@ -125,7 +130,8 @@ export function solveCamera(input: CameraInput): CameraPlan {
 		const s = input.shots[index];
 		if (!s) return full;
 		const c = typeof s.center === "function" ? s.center(frame) : s.center;
-		return clampState({ cx: c[0], cy: c[1], zoom: s.zoom });
+		const push = 1 + (input.drift ?? 0) * Math.max(0, (frame - s.start) / fps);
+		return clampState({ cx: c[0], cy: c[1], zoom: s.zoom * push });
 	};
 
 	// Move length: a base set by `smoothing`, longer for bigger zoom changes.

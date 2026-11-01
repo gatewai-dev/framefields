@@ -14,10 +14,15 @@ import { APP, H, INK, REGULAR, SANS, SEMIBOLD, SOFT, sec, W } from "./theme.js";
 import { MARK_RADIUS, relayMark } from "./ui/brand.js";
 import { shell } from "./ui/handoffs.js";
 import { messageRow, REQUEST_MESSAGE } from "./ui/inbox.js";
-import { type Rect, raise, shown, text } from "./ui/kit.js";
+import { type Rect, raise } from "./ui/kit.js";
 import { LIST_W, ROW_H } from "./ui/layout.js";
 
 const ARRIVE = "power3.inOut";
+/**
+ * The vertical leg of the flight: later and steeper than the horizontal one,
+ * so the card travels a curve, not a straight line, into its row.
+ */
+const DIVE = "expo.inOut";
 
 /**
  * A line whose words rise out of a soft blur one after another, starting at
@@ -82,6 +87,11 @@ export function opening(fly: number, landed: number, row: Rect): LayoutNode[] {
 				[0, 312],
 				[fly - 26, 312, "hold"],
 				[fly - 12, 296, "power2.in"],
+			])
+			// A slow push while it reads.
+			.keys("scale", [
+				[0, 0.98],
+				[fly - 12, 1.03, "sine.inOut"],
 			]),
 	);
 	const card = raise(
@@ -113,35 +123,46 @@ export function opening(fly: number, landed: number, row: Rect): LayoutNode[] {
 				[landed, row.x, ARRIVE],
 			])
 			.keys("y", [
-				[0, y + 24],
-				[cardIn, y + 24, "hold"],
-				[cardIn + sec(0.7), y, "expo.out"],
-				[fly, y, "hold"],
-				[landed, row.y, ARRIVE],
+				[0, y + 40],
+				[cardIn, y + 40, "hold"],
+				[cardIn + sec(0.8), y, "expo.out"],
+				// It floats up a little while it waits, then lifts before diving.
+				[fly - 4, y - 10, "sine.inOut"],
+				[landed, row.y, DIVE],
 			])
 			.keys("scale", [
-				[0, k],
-				[fly, k, "hold"],
+				[0, k * 0.92],
+				[cardIn, k * 0.92, "hold"],
+				[cardIn + sec(0.8), k, "expo.out"],
+				[fly, k * 1.02, "sine.inOut"],
 				[landed, 1, ARRIVE],
+			])
+			// Banks into the turn and levels out as it lands.
+			.keys("rotation", [
+				[0, 0],
+				[fly, 0, "hold"],
+				[fly + (landed - fly) * 0.45, -2.5, "power2.inOut"],
+				[landed, 0, "power2.out"],
 			]),
 	);
 	return [headline, card];
 }
 
 /**
- * One line, three promises, each lighting up as the modal delivers it:
- * dim until its frame in `lights`, then full white.
+ * One line, three promises, each arriving as the modal delivers it: the pill
+ * appears with the first, widens for each next one as its words rise in, and
+ * leaves at `close`.
  */
 export function captions(
 	phrases: string[],
 	lights: number[],
-	open: number,
 	close: number,
 ): LayoutNode {
 	const size = 30;
 	const gap = 14;
 	const padX = 32;
 	const height = 64;
+	const grow = 14;
 	const widths = phrases.map(
 		(p) =>
 			FontManager.measure(p, {
@@ -150,43 +171,90 @@ export function captions(
 				fontWeight: SEMIBOLD,
 			}).width,
 	);
-	const width =
-		widths.reduce((a, b) => a + b, 0) + gap * (phrases.length - 1) + 2 * padX;
+	// The pill's width once the first `n` phrases are in.
+	const widthWith = (n: number) =>
+		widths.slice(0, n).reduce((a, b) => a + b, 0) + gap * (n - 1) + 2 * padX;
 	const y = H - 56 - height;
+	const open = lights[0] ?? 0;
 	let cursor = padX;
 	const words = phrases.map((p, i) => {
-		const node = text(p, {
+		const at = (lights[i] ?? 0) - open;
+		const node = Layer.text(p, {
+			position: "absolute",
 			x: cursor,
 			y: 15,
-			size,
-			strong: true,
-			color: "#ffffff",
+			fontFamily: SANS,
+			fontSize: size,
+			fontWeight: SEMIBOLD,
+			fill: "#ffffff",
+			animators: [
+				TextAnimator.waveRise({
+					unit: "word",
+					y: size * 0.5,
+					rotationX: 0,
+					opacity: 0,
+					blur: 6,
+					easing: "expo.in",
+				}),
+			],
 		}).animate(
-			LayerAnimation.keys("opacity", [
-				[0, 0.38],
-				[lights[i] ?? 0, 0.38, "hold"],
-				[(lights[i] ?? 0) + 8, 1, "power2.out"],
-			]),
+			LayerAnimation.create().kineticSweep(
+				-1,
+				1,
+				at + 2,
+				at + 16,
+				"power2.out",
+			),
 		);
 		cursor += (widths[i] ?? 0) + gap;
 		return node;
 	});
+	const steps = lights
+		.slice(1)
+		.flatMap((light, i): Array<[number, number, string?]> => {
+			const before = widthWith(i + 1);
+			const after = widthWith(i + 2);
+			return [
+				[light - open, before, "hold"],
+				[light - open + grow, after, "expo.out"],
+			];
+		});
+	const xs = steps.map(([f, w, e]): [number, number, string?] => [
+		f,
+		(W - w) / 2,
+		e,
+	]);
+	const first = widthWith(1);
 	return Layer.box({
 		position: "absolute",
-		x: (W - width) / 2,
+		x: (W - first) / 2,
 		y,
-		width,
+		width: first,
 		height,
 		borderRadius: height / 2,
 		background: INK,
+		overflow: "hidden",
+		startFrame: open,
+		durationFrames: close - open + 8,
 		children: words,
 	}).animate(
-		shown(open, close, 8),
-		LayerAnimation.keys("y", [
-			[0, y + 14],
-			[open, y + 14, "hold"],
-			[open + sec(0.5), y, "expo.out"],
-		]),
+		LayerAnimation.create()
+			.keys("width", [[0, first], ...steps])
+			.keys("x", [[0, (W - first) / 2], ...xs])
+			.keys("opacity", [
+				[0, 0],
+				[8, 1, "power2.out"],
+				[close - open, 1, "hold"],
+				[close - open + 8, 0, "power2.in"],
+			])
+			.keys("y", [
+				[0, y + 18],
+				[sec(0.6), y, "expo.out"],
+			])
+			.keys("scale", [
+				[0, 0.9],
+				[sec(0.6), 1, "expo.out"],
+			]),
 	);
 }
 
@@ -238,7 +306,8 @@ export function handover(
 /**
  * "Relay. Keep client work moving." The mark is there from the first frame
  * (the card has just become it): its dot appears and its arrow draws as the
- * name slides out beside it and the line rises underneath.
+ * name slides out beside it and the line rises underneath, while the whole
+ * card pushes in slowly.
  */
 export function endCard(at: number, length: number): LayoutNode {
 	const mark = endMark();
@@ -286,5 +355,11 @@ export function endCard(at: number, length: number): LayoutNode {
 				at: sec(0.4),
 			}),
 		],
-	});
+	}).animate(
+		// A slow push for as long as it holds, so the last shot still moves.
+		LayerAnimation.keys("scale", [
+			[0, 1],
+			[length, 1.05, "power1.out"],
+		]),
+	);
 }

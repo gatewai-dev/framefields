@@ -98,6 +98,8 @@ export const focusZoom = /* @__PURE__ */ defineComponent({
 		smoothing: z.number().min(0).max(1).default(0.5),
 		/** Space kept around click points / targets. */
 		padding: z.number().min(0).default(160),
+		/** Slow push while a shot holds: zoom gained per second (0.02 = 2 %). */
+		drift: z.number().min(0).max(0.2).default(0),
 		/** Never show past the content's edges. */
 		clamp: z.boolean().default(true),
 		/** When zoomed, keep the view inside this region (e.g. the app window). */
@@ -202,6 +204,7 @@ export const focusZoom = /* @__PURE__ */ defineComponent({
 			fps,
 			shots,
 			smoothing: props.smoothing,
+			drift: props.drift,
 			clamp: props.clamp,
 			bounds,
 		});

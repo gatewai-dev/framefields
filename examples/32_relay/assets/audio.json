@@ -1,0 +1,53 @@
+{
+	"voice": {
+		"ask": {
+			"text": "A client asks a simple question.",
+			"prompt": "Warm, clear and conversational, at an easy natural pace with no long pauses, like a founder showing a friend their product. Read the following: 'A client asks a simple question.'",
+			"heard": "A client asks a simple question",
+			"seconds": 2.179
+		},
+		"inbox": {
+			"text": "In Relay, it becomes a task in one click.",
+			"prompt": "Warm, clear and conversational, at an easy natural pace with no long pauses, like a founder showing a friend their product. Read the following: 'In Relay, it becomes a task in one click.'",
+			"heard": "In Relay, it becomes a task in one click",
+			"seconds": 3.001542
+		},
+		"owner": {
+			"text": "An owner.",
+			"prompt": "Warm, clear and conversational, at an easy natural pace with no long pauses, like a founder showing a friend their product. Read the following: 'An owner.'",
+			"heard": "An owner",
+			"seconds": 0.76
+		},
+		"deadline": {
+			"text": "A deadline.",
+			"prompt": "Warm, clear and conversational, at an easy natural pace with no long pauses, like a founder showing a friend their product. Read the following: 'A deadline.'",
+			"heard": "A deadline",
+			"seconds": 1
+		},
+		"step": {
+			"text": "And a clear next step.",
+			"prompt": "Warm, clear and conversational, at an easy natural pace with no long pauses, like a founder showing a friend their product. Read the following: 'And a clear next step.'",
+			"heard": "And a clear next step",
+			"seconds": 1.495
+		},
+		"board": {
+			"text": "Maya sees it on the board, ready to start.",
+			"prompt": "Warm, clear and conversational, at an easy natural pace with no long pauses, like a founder showing a friend their product. Read the following: 'Maya sees it on the board, ready to start.'",
+			"heard": "Maya sees it on the board ready to start",
+			"seconds": 3.03275
+		},
+		"close": {
+			"text": "Relay. Keep client work moving.",
+			"prompt": "Warm, clear and conversational, at an easy natural pace with no long pauses, like a founder showing a friend their product. Read the following: 'Relay. Keep client work moving.'",
+			"heard": "Relay. Keep client work moving.",
+			"seconds": 3.14
+		}
+	},
+	"music": {
+		"seconds": 26.81
+	},
+	"click": {
+		"seconds": 0.12,
+		"brightness": 0.388
+	}
+}

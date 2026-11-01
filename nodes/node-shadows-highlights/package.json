@@ -1,6 +1,6 @@
 {
 	"name": "@framefields/node-shadows-highlights",
-	"version": "2.9.3",
+	"version": "2.11.0",
 	"private": false,
 	"framefields": {
 		"type": "ShadowsHighlights",

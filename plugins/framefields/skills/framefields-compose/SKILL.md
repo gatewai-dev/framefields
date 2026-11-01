@@ -273,6 +273,18 @@ object is carried on its track and registered with the program automatically (un
 Anything else (a number, `undefined`) throws. Signals are sampled at the **composition** frame
 (`ctx.frame`), not the layer's local frame.
 
+To pull signals out of audio, use `AudioSignal`, which runs on the GPU and accepts audio or video files.
+`AudioSignal.extract(src, { fps })` gives `primary`, `beat`, `bass` and `energy` envelopes.
+`AudioSignal.pitch(src, { fps, minHz, maxHz })` tracks the fundamental frequency, such as an engine note or a melody line.
+It returns `hz`, `confidence` and `voiced` signals plus raw `samples`. `hz` is interpolated across unvoiced gaps,
+so a gauge never drops to 0. Use `voiced` to find where the pitch was actually measured: short gaps mark gear
+shifts and note onsets. For a 4-stroke engine, the full-cycle pitch is RPM / 120.
+```typescript
+const engine = await AudioSignal.pitch("assets/onboard.mp4", { fps, minHz: 50, maxHz: 400 });
+const rpm = engine.samples.hz.map((hz) => hz * 120);
+const needle = LayerAnimation.create().signal("rotation", engine.hz, { multiplier: 1.2, offset: -120 });
+```
+
 ---
 
 ## Color, Gradients & Text Metrics

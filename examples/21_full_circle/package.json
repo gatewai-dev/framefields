@@ -1,6 +1,6 @@
 {
 	"name": "@framefields/example-21-full-circle",
-	"version": "2.9.3",
+	"version": "2.11.0",
 	"private": true,
 	"type": "module",
 	"scripts": {

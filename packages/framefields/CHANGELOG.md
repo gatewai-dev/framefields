@@ -1,5 +1,28 @@
 # framefields
 
+## 2.11.0
+
+### Minor Changes
+
+- `AudioSignal.pitch(source, { fps, minHz, maxHz })` tracks the fundamental frequency of audio or video on the GPU: YIN period candidates per frame, then a Viterbi decode that rejects octave and subharmonic errors. It returns `hz`, `confidence` and `voiced` signals; `hz` is interpolated across unvoiced gaps. Use it for engine RPM, melody lines or any pitched source.
+- Split a long render across GPUs. `renderVideo({ frames: { start, end }, audio: false })` renders one chunk of frames: it starts on a keyframe, its timestamps start at 0, and trails, datamosh and particles rebuild their state before `start`. `stitchChunks({ chunks, audio, outputPath })` from `framefields/renderer` joins the chunks and a separate audio-only render (`codec: "aac"`) into one file without re-encoding or a GPU. It refuses chunks encoded with a different codec, size or encoder parameters. `planChunks({ totalFrames, samples, workers: "auto" })` decides how many chunks a render should use (more only while each chunk stays at least 85% efficient against the per-worker start-up) and cuts them at equal render cost; `renderer.probeRender(comp)` measures the frame costs it needs.
+
+  `framefields render <entry> --cloud [--workers auto] [--plan]` renders the pushed commit of the project's git repo on api.framefields.dev and downloads the video; `--plan` prints the workers, time and estimated cost without rendering. The same from code: `renderCloud()` from the new `framefields/cloud` entry, which needs no GPU. `framefields init` adds a `render:cloud` script.
+
+- ab1cc06: FocusZoom takes `drift`: a slow push while each shot holds (zoom gained per second, e.g. `0.012`), so the picture never stops between camera moves. Defaults to 0, which holds still as before.
+
+- Depth and relief: footage as a 3D surface.
+
+  - `comp.vision(clip, { depth: true })` analyses each frame's relative depth with Depth Anything V2 Small (Apache-2.0, pinned by revision and SHA-256), ahead of render and cached one file per frame. Read it with `clip.depthMap(frame)`; `runner.depth(image)` runs it on one image.
+  - `withVision({ mode: "depth" })` draws a clip's depth as gray (white = near), always for the frame on screen; it makes its depth clip when there is none.
+  - `layer.withRelief(heightLayer, { amount })` lifts a 3D layer into a surface by another layer's brightness, along the default camera's rays: from that lens it is the flat layer, pixel for pixel; a moving camera sees it in 3D, lit by the scene and hiding what passes behind it. With a depth layer, footage joins the 3D scene.
+  - Layers inside a `matte` or `relief` now link to their `comp.vision` clips too.
+  - The render GPU device now requests the adapter's full buffer limits. Vision models share that device, and one whose intermediates exceed the 128 MiB default binding (Depth Anything's attention) computed on truncated data instead of failing.
+
+### Patch Changes
+
+- Text, shapes, images and SVGs stay sharp when an ancestor scales them up. A 2D leaf now rasterizes at its scale on the canvas (up to 4×) instead of magnifying a layout-size texture, so a camera push or a card at `scale: 2` keeps crisp glyphs, round dots and clean borders. Text shadows, masks, motion blur, `LayerStyle` and Gaussian/box `Blur` scale with the layer; a leaf whose effect doesn't declare how far it scales keeps its layout-size raster, as do 3D and deflickered leaves. Layers at scale 1 or below render exactly as before.
+
 ## 2.9.3
 
 ### Patch Changes

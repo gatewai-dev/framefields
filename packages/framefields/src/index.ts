@@ -12,6 +12,8 @@ export {
 	ValidationError,
 } from "@framefields/ai";
 export {
+	type AudioPitchOptions,
+	type AudioPitchSignals,
 	AudioSignal,
 	type AudioSignalOptions,
 	computed,

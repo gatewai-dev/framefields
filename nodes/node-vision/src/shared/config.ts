@@ -18,6 +18,8 @@ import { z } from "zod";
  *  - skeleton    — COCO-17 pose skeleton of the primary person
  *  - boxes       — the child with tracked-object boxes
  *  - tracking    — boxes plus track centers
+ *  - depth       — relative depth of the clip's frame as gray, white = near
+ *                  (read from a linked `comp.vision` clip, analysed ahead of render)
  */
 export const VISION_MODES = [
 	"passthrough",
@@ -27,6 +29,7 @@ export const VISION_MODES = [
 	"skeleton",
 	"boxes",
 	"tracking",
+	"depth",
 ] as const;
 
 export type VisionMode = (typeof VISION_MODES)[number];

@@ -377,6 +377,18 @@ Layer.video("assets/surf.mp4", { position: "absolute", x: 0, y: 0, width: W, hei
   .withMatte(Layer.text("OCEAN", { position: "absolute", x: 0, y: 340, width: W, fontSize: 380, align: "center", fill: "#fff" }));
 ```
 
+### Relief: footage as a 3D surface
+
+`node.withRelief(heightLayer, { amount })` turns a 3D layer into a surface: the brightness of `heightLayer` (laid out and timed like a matte, drawn flat over the node's box) pushes it up to `amount` px toward the camera. It moves along the **default camera's** rays, so from that lens the surface is pixel for pixel the flat layer; move the camera and the footage has real parallax, takes the scene's lights, and hides 3D objects that pass behind its raised parts. With a video's own depth it puts the footage in the 3D scene:
+
+```typescript
+const plate = { position: "absolute", x: 0, y: 0, width: W, height: H, fit: "cover", muted: true } as const;
+Layer.video("assets/table.mp4", { ...plate, is3D: true })
+  .withRelief(Layer.video("assets/table.mp4", plate).withVision({ mode: "depth" }), { amount: 300 });
+```
+
+Where depth jumps (an object's outline) the surface stretches across with the edge pixels: footage never saw those sides. Keep camera moves within about 15° of the original lens, or hide the outlines.
+
 ---
 
 ## Scenes & Transitions

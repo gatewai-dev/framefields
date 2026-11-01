@@ -29,8 +29,9 @@ Vision runs ONNX models locally. Nothing is sent anywhere. Models download on fi
 | Detect + segment (one shared pass), COCO-80 | RTMDet-Ins | 24 MB | 43 MB | 116 MB | 640² |
 | Pose, 17 COCO keypoints | RTMO | 27 MB (416²) | 40 MB | 89 MB | 640² |
 | Person matte | MediaPipe Selfie Segmenter | square 0.5 MB (256²), landscape 0.5 MB (256×144) for wide frames | | | |
+| Relative depth (`depth: true`) | Depth Anything V2 Small | 99 MB, one size | | | short side 518, frame aspect |
 
-About 380 MB for all of them. `variant: "t" | "s" | "m"` picks the size.
+About 480 MB for all of them. `variant: "t" | "s" | "m"` picks the size.
 
 ### SAM 2.1 Tiny and Small (`sam2`, Apache-2.0)
 Meta SAM 2.1 Hiera checkpoints in Diffusion Studio's fp16 video exports, with the same five graphs and memory bank (the prompted frame, the 6 latest frames, 16 object pointers). Point and box prompts only. Pick one with `sam2: { model }`:
@@ -93,7 +94,7 @@ const vision = comp.withVision({ enableSegmentation: true, enablePose: true });
 Layer.video("assets/dancer.mp4").withVision({ mode: "matte", enableSegmentation: true });
 ```
 
-Node modes: `passthrough`, `mask`, `matte`, `crop`, `skeleton`, `boxes`, `tracking`. `skeleton` draws only the pose on transparency: the first person detected, or, for a layer of a `comp.vision` clip, the pose that clip matched to its selection. For `mask` / `matte` / `crop`, `matteSource: "instance"` (default; any COCO class, overlapping parts such as a dress merged into the subject) or `"selfie"` (people only, fastest). `confidence` (default 0.3) and `classes: ["person", …]` filter detections.
+Node modes: `passthrough`, `mask`, `matte`, `crop`, `skeleton`, `boxes`, `tracking`, `depth`. `depth` draws the frame's relative depth as gray (white = near); it always reads a `comp.vision` clip with `depth: true`, made for it when there is none, so it is never a frame behind. `skeleton` draws only the pose on transparency: the first person detected, or, for a layer of a `comp.vision` clip, the pose that clip matched to its selection. For `mask` / `matte` / `crop`, `matteSource: "instance"` (default; any COCO class, overlapping parts such as a dress merged into the subject) or `"selfie"` (people only, fastest). `confidence` (default 0.3) and `classes: ["person", …]` filter detections.
 
 Measured per 1280–2048 px frame on CPU (`onnxruntime-node`); the GPU is faster:
 
@@ -130,6 +131,7 @@ await dancer.ready(0);             // analyse a frame (or ready(0, 120)) to read
 - The composition analyses each frame's clips just before drawing it, in every render path and the preview. Nothing runs up front.
 - Results persist in Node, keyed by the file and settings (`cacheDir: false` opts out). Later renders and renders after a preview are instant.
 - Options: `startFrame` / `trimStartSec` (where the clip plays; pass `trimStartSec` yourself when you give a path instead of the layer), `fps` (analysis rate), `pose`, `mask`, `maskCell` (silhouette grid, default 8 px), `smoothing` (frames, default 2), `variant`. A lost person's last pose is held for up to a second.
+- `depth: true` adds each frame's relative depth (Depth Anything V2 Small; 0 far … 1 near, per-frame range, not metric) at about 924×518 for 16:9. A depth clip tracks no pose or silhouette unless `pose` / `mask` ask. Read it with `clip.depthMap(frame)` (`{ data, width, height }`), or draw it with `withVision({ mode: "depth" })` and lift a 3D layer with it via `withRelief` (framefields-compose). Depth frames persist one file each, keyed by the file only, so other options never invalidate them. About 0.4 s per frame on an M1 Pro GPU.
 - A `withVision({ mode: "matte" })` cutout (or `mask` / `crop`) of the same clip reuses the clip's subject for the frame being drawn: segmented once, aligned with the plate. Layers with `classes`, `keyBackground`, `matteSource: "selfie"` or different model settings keep their own pass. With several `comp.vision` clips of one source, the matte links to the **first one created**.
 
 ## Prompted tracking with SAM

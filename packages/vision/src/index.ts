@@ -1,4 +1,5 @@
 export * from "./analysis/analyze-sequence.js";
+export * from "./decode/depth.js";
 export * from "./decode/preprocess.js";
 export * from "./decode/rtmdet-ins.js";
 export * from "./decode/rtmo.js";

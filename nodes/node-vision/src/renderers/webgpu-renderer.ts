@@ -562,6 +562,22 @@ export const VisionWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 	const childMedia = virtualMedia?.children?.[0];
 	if (!childMedia) return;
 
+	if (op.mode === "depth") {
+		drawClipDepth(
+			ctx,
+			encoder,
+			targetView,
+			targetWidth,
+			targetHeight,
+			(op as { effect?: object }).effect,
+			props.sourceTimeSec === undefined
+				? (props.frame ?? 0)
+				: props.sourceTimeSec * (props.fps ?? 24),
+			props.fps ?? 24,
+		);
+		return;
+	}
+
 	// 1. Persistent per-node child texture (see childTextures*). Reading the
 	//    texture we just drew would race the end-of-frame submit; reading last
 	//    frame's already-submitted pixels at the start of this call is correct.
@@ -1117,6 +1133,70 @@ function clipPoseFor(
 	return fitsTarget(source, pose.width / pose.height, width / height)
 		? pose.keypoints
 		: undefined;
+}
+
+/** Per-node upload target for depth frames (the depth model's resolution). */
+const depthTextures = new WeakMap<object, GPUTexture>();
+
+/**
+ * Depth mode: the linked `comp.vision` clip's depth for this source frame as
+ * gray (white = near), stretched over the layer. Depth is analysed ahead of
+ * the render, so it belongs to this frame's pixels, never the previous one's.
+ */
+function drawClipDepth(
+	ctx: Parameters<WebGPUNodeRenderer>[0]["ctx"],
+	encoder: GPUCommandEncoder,
+	targetView: GPUTextureView,
+	width: number,
+	height: number,
+	effect: object | undefined,
+	frame: number,
+	fps: number,
+): void {
+	const source = linkedClip(effect);
+	if (!source?.depth)
+		throw new Error(
+			"A depth layer reads its clip's depth: add the video to the composition (framefields links it to a `comp.vision(src, { depth: true })` clip).",
+		);
+	const depth = source.depth(frame, fps);
+	const pass = ctx.renderer.beginFrame(
+		encoder,
+		targetView,
+		{ r: 0, g: 0, b: 0, a: 0 },
+		width,
+		height,
+		"clear",
+	);
+	if (depth) {
+		if (Math.abs(depth.width / depth.height / (width / height) - 1) > 0.02)
+			throw new Error(
+				`A depth layer keeps its clip's aspect ratio (${depth.width}×${depth.height} source vs a ${width}×${height} layer); crop after the depth layer instead.`,
+			);
+		let tex = effect ? depthTextures.get(effect) : undefined;
+		if (!tex || tex.width !== depth.width || tex.height !== depth.height) {
+			tex?.destroy();
+			tex = ctx.device.createTexture({
+				size: [depth.width, depth.height],
+				format: "rgba8unorm",
+				usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
+				label: "vision_depth",
+			});
+			if (effect) depthTextures.set(effect, tex);
+		}
+		const gray = new Uint8Array(depth.width * depth.height * 4);
+		for (let i = 0; i < depth.data.length; i++) {
+			const v = Math.round((depth.data[i] as number) * 255);
+			gray.set([v, v, v, 255], i * 4);
+		}
+		ctx.device.queue.writeTexture(
+			{ texture: tex },
+			gray,
+			{ bytesPerRow: depth.width * 4 },
+			[depth.width, depth.height],
+		);
+		ctx.renderer.drawTexture(pass, tex, { x: 0, y: 0, width, height });
+	}
+	pass.end();
 }
 
 function linkedClip(effect: object | undefined): ClipSubjectSource | undefined {

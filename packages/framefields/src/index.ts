@@ -1243,6 +1243,7 @@ export class Composition {
 	private _prepareHooks: Array<(ctx: FrameContext) => Promise<void> | void> =
 		[];
 	private readonly _clipVision = new Map<string, ClipVision>();
+	private _linking = false;
 	private _mediaSignals?: MediaSignalTimeline;
 	private _visionConfig?: VisionProps;
 	private _visionBundle?: VisionBundle;
@@ -1342,14 +1343,13 @@ export class Composition {
 	}
 
 	/**
-	 * Points matte-family and skeleton `withVision` layers at the `comp.vision`
-	 * clip they show, so the cutout reuses that clip's per-frame subject and the
-	 * skeleton draws its matched pose, instead of analysing the frame again
-	 * during render. Only layers whose settings would give the same subject are
+	 * Points matte-family, skeleton and depth `withVision` layers at the
+	 * `comp.vision` clip they show, so the cutout reuses that clip's per-frame
+	 * subject, the skeleton draws its matched pose and the depth layer its
+	 * frame's depth, instead of analysing the frame again during render. Only layers whose settings would give the same subject are
 	 * linked; the rest keep their own pass.
 	 */
 	private linkClipLayers(): void {
-		if (this._clipVision.size === 0) return;
 		let layers:
 			| Map<
 					string | undefined,
@@ -1368,6 +1368,8 @@ export class Composition {
 				trimStartSec?: number;
 				vision?: unknown;
 				children?: unknown;
+				matte?: { node?: unknown };
+				relief?: { node?: unknown };
 			};
 			if (
 				n.kind === "media" &&
@@ -1393,7 +1395,8 @@ export class Composition {
 					timeRemap: layer?.timeRemap,
 				});
 				if (clip) {
-					if (n.vision.mode !== "skeleton") clip.keepSubjects();
+					if (n.vision.mode !== "skeleton" && n.vision.mode !== "depth")
+						clip.keepSubjects();
 					Object.defineProperty(n.vision, CLIP_SUBJECT, {
 						value: clip,
 						enumerable: false,
@@ -1402,6 +1405,9 @@ export class Composition {
 				}
 			}
 			if (Array.isArray(n.children)) for (const c of n.children) walk(c);
+			// Companion layers (a matte, a relief) can show a clip too.
+			walk(n.matte?.node);
+			walk(n.relief?.node);
 		};
 		for (const child of this.children) walk(child);
 	}
@@ -1417,6 +1423,7 @@ export class Composition {
 		},
 	): ClipVision | undefined {
 		const mode = v.mode ?? "passthrough";
+		if (mode === "depth") return this.depthClip(source, layer);
 		const skeleton = mode === "skeleton";
 		if (mode !== "matte" && mode !== "mask" && mode !== "crop" && !skeleton)
 			return;
@@ -1456,6 +1463,39 @@ export class Composition {
 			}
 		}
 		return undefined;
+	}
+
+	/**
+	 * The clip a depth layer reads: one of the same source and timing that
+	 * tracks depth, or a new depth clip, since depth is never analysed at render
+	 * time (it would trail the picture by a frame).
+	 */
+	private depthClip(
+		source: string,
+		layer: {
+			startFrame?: number;
+			trimStartSec?: number;
+			timeRemap?: ResolvedMediaTimeRemap;
+		},
+	): ClipVision {
+		for (const clip of this._clipVision.values()) {
+			if (
+				clip.tracksDepth &&
+				clip.source === source &&
+				clip.startFrame === (layer.startFrame ?? 0) &&
+				clip.trimStartSec === (layer.trimStartSec ?? 0) &&
+				remapKey(clip.options.timeRemap) === remapKey(layer.timeRemap)
+			)
+				return clip;
+		}
+		return this.vision(source, {
+			depth: true,
+			...(layer.startFrame !== undefined && { startFrame: layer.startFrame }),
+			...(layer.trimStartSec !== undefined && {
+				trimStartSec: layer.trimStartSec,
+			}),
+			...(layer.timeRemap !== undefined && { timeRemap: layer.timeRemap }),
+		});
 	}
 
 	/**
@@ -1577,6 +1617,8 @@ export class Composition {
 		}
 		const signals = this._mediaSignals;
 		signals?.advance(ctx.frame);
+		// Depth layers bring their own clip, so links come before the check.
+		this.linkClipLayers();
 		if (this._clipVision.size === 0 && this._prepareHooks.length === 0) {
 			signals?.reach(ctx.frame);
 			return undefined;
@@ -2182,6 +2224,16 @@ export class Composition {
 	public toVirtualMedia(
 		options: Partial<CompositorToProgramOptions> = {},
 	): VirtualMediaData {
+		// Every compile links vision layers to their clips (a depth layer makes
+		// its own), so the very first frame drawn reads them.
+		if (!this._linking) {
+			this._linking = true;
+			try {
+				this.linkClipLayers();
+			} finally {
+				this._linking = false;
+			}
+		}
 		const durationMs = options.durationMs ?? this.durationMs;
 		const signals = options.signals ?? this.signals;
 		return compositorToProgram(this.toSpec(), {
@@ -2360,6 +2412,7 @@ export type AnimatableNode<
 	vision?: Vision;
 	relighting?: NormalRelightingOptions;
 	matte?: { node: LayoutNode; mode?: MatteMode };
+	relief?: { node: LayoutNode; amount?: number };
 	deflicker?: DeflickerOptions;
 	effects?: CompatibleEffect<TCap>[];
 	blurRegions?: unknown[];
@@ -2424,6 +2477,21 @@ export type AnimatableNode<
 	withMatte(matte: LayoutNode, mode?: MatteMode): AnimatableNode<T, TCap>;
 	/** Alias of {@link withMatte}. */
 	withMask(mask: LayoutNode, mode?: MatteMode): AnimatableNode<T, TCap>;
+	/**
+	 * Relief (3D layers): `relief` (any layer, typically a video's
+	 * `withVision({ mode: "depth" })`) lifts this layer's plane into a surface,
+	 * white `amount` px toward the camera. The surface is pushed along the
+	 * default camera's rays, so from that lens it looks exactly like the flat
+	 * layer; a moving camera then sees it in 3D, lit by the scene's lights and
+	 * hiding what passes behind it. Where the relief jumps (an object's
+	 * outline) the surface stretches across with the edge pixels, so keep
+	 * camera moves modest; footage never saw those sides. Laid out and timed
+	 * like a matte; drawn flat over this node's box.
+	 */
+	withRelief(
+		relief: LayoutNode,
+		options?: { amount?: number },
+	): AnimatableNode<T, TCap>;
 	withPbrGlass(options?: Record<string, unknown>): AnimatableNode<T, TCap>;
 	deformWithAudio(
 		config?: MeshAudioDeformConfig | Record<string, unknown>,
@@ -2569,6 +2637,16 @@ function withAnimation<
 			configurable: true,
 		});
 	}
+
+	Object.defineProperty(target, "withRelief", {
+		value: (relief: LayoutNode, options: { amount?: number } = {}) => {
+			target.relief = { node: relief, ...options };
+			return target;
+		},
+		enumerable: false,
+		writable: true,
+		configurable: true,
+	});
 
 	Object.defineProperty(target, "withPbrGlass", {
 		value: (options?: Record<string, unknown>) => {

@@ -8,6 +8,7 @@
  * | RTMDet-Ins  | keep ratio, content top-left | 114  | BGR      | (v − mean) / std (ImageNet) |
  * | RTMO        | keep ratio, content centered | 114  | BGR      | raw 0..255                 |
  * | Selfie      | stretch to input             | —    | RGB      | v / 255                    |
+ * | Depth Any.  | stretch, aspect kept by size | —    | RGB      | (v − mean) / std (ImageNet) |
  *
  * Getting any of these wrong does not crash — it silently degrades accuracy — so the specs
  * live here and every runner path goes through `imageToTensor`. Input sizes differ per model
@@ -52,7 +53,7 @@ type Normalization = Omit<PreprocessSpec, "width" | "height">;
 
 /** Per-family normalization; the input size always comes from the model's registry entry. */
 export const PREPROCESS_BY_FAMILY: Readonly<
-	Record<"rtmdet-ins" | "rtmo" | "selfie", Normalization>
+	Record<"rtmdet-ins" | "rtmo" | "selfie" | "depth-anything", Normalization>
 > = {
 	"rtmdet-ins": {
 		fit: "topLeft",
@@ -73,6 +74,13 @@ export const PREPROCESS_BY_FAMILY: Readonly<
 		channels: "rgb",
 		mean: [0, 0, 0],
 		std: [255, 255, 255],
+		padValue: 0,
+	},
+	"depth-anything": {
+		fit: "stretch",
+		channels: "rgb",
+		mean: [123.675, 116.28, 103.53],
+		std: [58.395, 57.12, 57.375],
 		padValue: 0,
 	},
 };

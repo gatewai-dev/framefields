@@ -51,6 +51,16 @@ export interface SegmentationResult {
 	readonly masks: readonly InstanceMask[];
 }
 
+/**
+ * Relative depth of a whole frame (Depth Anything), 0 = farthest … 1 = nearest,
+ * row-major at `width × height` (the model's resolution, the frame's aspect).
+ */
+export interface DepthMap {
+	readonly data: Float32Array;
+	readonly width: number;
+	readonly height: number;
+}
+
 /** Person-vs-background alpha (Selfie Segmenter), aligned to the ORIGINAL source frame. */
 export interface PersonMatte {
 	readonly mask: Uint8Array; // frame-sized, continuous alpha 0..255

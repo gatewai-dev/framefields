@@ -12,3 +12,7 @@ framefields is licensed under Apache-2.0. It contains no model weights: every vi
 | SAM 3 (ONNX exports of Meta's SAM 3 checkpoints) | Meta SAM License | required at runtime |
 
 Before SAM 3 weights are downloaded or run, you must accept Meta's SAM License (https://github.com/facebookresearch/sam3/blob/main/LICENSE): pass `acceptSamLicense: true` in `comp.vision` options (or `acceptLicense: true` to `Sam3Tracker`), or set `FRAMEFIELDS_ACCEPT_SAM_LICENSE=1`. Your use of SAM 3 is then governed by that license.
+
+## Depth
+
+`comp.vision(clip, { depth: true })` and `withVision({ mode: "depth" })` estimate depth with Depth Anything V2 **Small** (onnx-community export of `depth-anything/Depth-Anything-V2-Small`), whose weights are Apache-2.0. The larger Depth Anything V2 checkpoints are licensed CC-BY-NC-4.0 and are not used.

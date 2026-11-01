@@ -1,4 +1,5 @@
 import type { DetectedObject } from "@framefields/core";
+import { decodeDepth, depthInputSize } from "../decode/depth.js";
 import {
 	type InputTransform,
 	imageToTensor,
@@ -39,6 +40,7 @@ import {
 	type VisionTensorOutputs,
 } from "../runtime/session-provider.js";
 import {
+	type DepthMap,
 	isGpuImage,
 	type PersonMatte,
 	type PoseResult,
@@ -276,6 +278,24 @@ export class VisionRunner {
 		});
 	}
 
+	/** Relative depth of the whole frame (Depth Anything V2 Small), near = 1, at the model's resolution. */
+	public async depth(image: VisionFrame): Promise<DepthMap> {
+		const key: VisionModelKey = "depth-anything-v2-s";
+		const input = depthInputSize(
+			image.width,
+			image.height,
+			VISION_MODELS[key].input[1],
+		);
+		const { outputs } = await this.infer(key, image, input);
+		const predicted = output(outputs, "predicted_depth", key);
+		const dims = predicted.dims;
+		return decodeDepth(
+			predicted.data as Float32Array,
+			dims[dims.length - 1] ?? input[0],
+			dims[dims.length - 2] ?? input[1],
+		);
+	}
+
 	public close(): void {
 		if (!this._ownsCore) return;
 		const core = this._core;
@@ -341,12 +361,14 @@ export class VisionRunner {
 	private infer(
 		key: VisionModelKey,
 		image: VisionFrame,
+		/** Input size for graphs that take any (default: the registry's). */
+		input?: readonly [number, number],
 	): Promise<{ outputs: VisionTensorOutputs; transform: InputTransform }> {
 		const queue = this._core.runQueue;
 		const previous = queue.get(key) ?? Promise.resolve();
 		const run = previous.then(
-			() => this.inferNow(key, image),
-			() => this.inferNow(key, image),
+			() => this.inferNow(key, image, input),
+			() => this.inferNow(key, image, input),
 		);
 		const tail = run.catch(() => undefined);
 		queue.set(key, tail);
@@ -359,6 +381,7 @@ export class VisionRunner {
 	private async inferNow(
 		key: VisionModelKey,
 		frame: VisionFrame,
+		input?: readonly [number, number],
 	): Promise<{ outputs: VisionTensorOutputs; transform: InputTransform }> {
 		const session = await this.session(key);
 		const desc = VISION_MODELS[key];
@@ -366,7 +389,7 @@ export class VisionRunner {
 			throw new Error(
 				`VisionRunner cannot run '${desc.family}' models; use the family's own tracker (e.g. Sam2Tracker or Sam3Tracker from @framefields/vision-sam).`,
 			);
-		const spec = preprocessSpec(desc.family, desc.input);
+		const spec = preprocessSpec(desc.family, input ?? desc.input);
 		const dims = [1, 3, spec.height, spec.width];
 		let image: VisionImageInput;
 		if (isGpuImage(frame)) {

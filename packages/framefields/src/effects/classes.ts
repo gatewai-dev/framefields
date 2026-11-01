@@ -775,7 +775,8 @@ export interface VisionProps {
 		| "crop"
 		| "skeleton"
 		| "boxes"
-		| "tracking";
+		| "tracking"
+		| "depth";
 	/**
 	 * Subject alpha for mask/matte/crop: instance masks (default; any COCO class) or the
 	 * selfie matte (fastest, but only reliable when a person fills much of the frame).

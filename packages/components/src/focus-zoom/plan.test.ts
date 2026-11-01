@@ -33,6 +33,28 @@ describe("solveCamera", () => {
 		expect((plan.x[110] ?? 0) + 2 * 1400).toBeCloseTo(960, 0);
 	});
 
+	it("keeps pushing in slowly while a shot holds, with drift", () => {
+		const shots = [
+			{ start: 0, end: 300, zoom: 1.5, center: [960, 540] as [number, number] },
+		];
+		const still = solveCamera({ ...base, length: 300, shots });
+		const drifting = solveCamera({ ...base, length: 300, shots, drift: 0.02 });
+		expect(still.states[150]?.zoom).toBeCloseTo(
+			still.states[290]?.zoom ?? 0,
+			5,
+		);
+		const zooms = drifting.scale.slice(60);
+		// Never stops, never reverses, and gains about 2 % a second.
+		for (let i = 1; i < zooms.length; i++)
+			expect(zooms[i]).toBeGreaterThan(zooms[i - 1] ?? 0);
+		expect(
+			(drifting.states[290]?.zoom ?? 0) / (drifting.states[200]?.zoom ?? 1),
+		).toBeCloseTo(
+			(1.5 * (1 + 0.02 * (290 / 30))) / (1.5 * (1 + 0.02 * (200 / 30))),
+			2,
+		);
+	});
+
 	it("never shows past the edges, or past bounds once zoomed", () => {
 		const plan = solveCamera({
 			...base,

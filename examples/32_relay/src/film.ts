@@ -23,6 +23,7 @@ import {
 	readManifest,
 	voicePath,
 } from "./audio.js";
+import { backdrop } from "./backdrop.js";
 import { AppFrame } from "./components/app-frame/index.js";
 import { FocusZoom } from "./components/focus-zoom/index.js";
 import {
@@ -42,7 +43,6 @@ import {
 	sec,
 	W,
 	WALL,
-	WALL_LIGHT,
 } from "./theme.js";
 import { captions, endCard, handover, opening } from "./titles.js";
 import { relayApp } from "./ui/app.js";
@@ -324,6 +324,11 @@ export async function buildRelay(): Promise<Relay> {
 		bounds: FRAME,
 		length: END_CARD,
 		fps: FPS,
+		// Long, soft moves, and a slow push while each shot holds: the picture
+		// never stops moving.
+		smoothing: 0.8,
+		drift: 0.012,
+		smear: "standard",
 		shots: [
 			{
 				at: settled(t.select),
@@ -365,8 +370,19 @@ export async function buildRelay(): Promise<Relay> {
 		y: 0,
 		width: W,
 		height: H,
+		perspective: 2200,
 		children: [camera],
 	}).animate(
+		LayerAnimation.keys("rotateX", [
+			[0, 22],
+			[WINDOW_IN, 22, "hold"],
+			[LANDED - 2, 0, "expo.out"],
+		]),
+		LayerAnimation.keys("rotateY", [
+			[0, -18],
+			[WINDOW_IN, -18, "hold"],
+			[LANDED - 2, 0, "expo.out"],
+		]),
 		LayerAnimation.keys("opacity", [
 			[0, 1],
 			[SCENE_OUT, 1, "hold"],
@@ -397,20 +413,12 @@ export async function buildRelay(): Promise<Relay> {
 		fonts: [`${FONTS}Inter.ttf`],
 	});
 	comp.add([
-		Layer.box({
-			position: "absolute",
-			x: 0,
-			y: 0,
-			width: W,
-			height: H,
-			background: `radial-gradient(ellipse at 50% 30%, ${WALL_LIGHT} 0%, ${WALL} 75%)`,
-		}),
+		backdrop(),
 		scene,
 		...opening(FLY, LANDED, targets.request),
 		captions(
 			["An owner.", "A deadline.", "A clear next step."],
 			[t.maya.at + 3, t.friday.at + 3, checklistItemAt(t, 0)],
-			modalIn(t) + sec(1),
 			t.save.down,
 		),
 		...handover(onScreen, CARD_RADIUS * zoomed, SCENE_OUT, END_CARD),

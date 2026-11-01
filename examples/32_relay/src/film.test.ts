@@ -15,21 +15,18 @@ describe("relay", () => {
 		expect(film.durationMs).toBe(25_000);
 	}, 60_000);
 
-	it("holds the camera still through every click", async () => {
+	it("never moves the camera through a click, past its slow drift", async () => {
 		const { camera, clicks } = await buildRelay();
 		expect(clicks).toHaveLength(8);
+		const moves = camera.cues.shots.map((s) => [s.frame, s.settled] as const);
 		for (const frame of clicks) {
 			// From just before the press until the button is back up.
-			const before = camera.cameraAt(frame - 7);
-			const after = camera.cameraAt(frame + 7);
-			expect(after.zoom, `zoom at click ${frame}`).toBeCloseTo(before.zoom, 3);
-			expect(
-				Math.hypot(
-					after.center[0] - before.center[0],
-					after.center[1] - before.center[1],
-				),
-				`pan at click ${frame}`,
-			).toBeLessThan(0.5);
+			const [from, to] = [frame - 7, frame + 7];
+			const moving = moves.filter(([start, end]) => start < to && end > from);
+			expect(moving, `camera move over click ${frame}`).toEqual([]);
+			// What is left is the drift: under 1 % of zoom across a press.
+			const ratio = camera.cameraAt(to).zoom / camera.cameraAt(from).zoom;
+			expect(ratio, `zoom at click ${frame}`).toBeLessThan(1.01);
 		}
 	}, 60_000);
 

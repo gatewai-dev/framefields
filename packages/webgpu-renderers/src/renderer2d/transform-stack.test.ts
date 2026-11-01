@@ -1,6 +1,6 @@
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { ensureDOMGlobals } from "./test-helpers.js";
-import { TransformStack } from "./transform-stack.js";
+import { TransformStack, transformScale } from "./transform-stack.js";
 
 describe("TransformStack", () => {
 	beforeAll(() => {
@@ -113,5 +113,23 @@ describe("TransformStack", () => {
 
 		const current = stack.getCurrent();
 		expect(current.e).toBe(0);
+	});
+});
+
+describe("transformScale", () => {
+	beforeAll(() => {
+		ensureDOMGlobals();
+	});
+
+	it("is 1 for the identity and for a translation", () => {
+		expect(transformScale(new DOMMatrix())).toBe(1);
+		expect(transformScale(new DOMMatrix().translate(40, -7))).toBe(1);
+	});
+
+	it("is the larger axis scale, whatever the rotation", () => {
+		expect(transformScale(new DOMMatrix().scale(3, 1.5))).toBe(3);
+		expect(
+			transformScale(new DOMMatrix().rotate(37).scale(1.5, 2.5)),
+		).toBeCloseTo(2.5, 12);
 	});
 });

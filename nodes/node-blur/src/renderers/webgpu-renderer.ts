@@ -12,6 +12,7 @@ import {
 	FULLSCREEN_QUAD_WGSL,
 	fragmentBindGroupLayout,
 	perDevice,
+	pixelScale,
 	signalTextureView,
 	signalTiming,
 	texturesLayout,
@@ -622,7 +623,7 @@ export const BlurWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 		props.containerWidth ??
 		ctx.surface.width /
 			(typeof window !== "undefined" ? window.devicePixelRatio : 1);
-	const dpiScale = width / logicalWidth;
+	const dpiScale = (width / logicalWidth) * pixelScale(args);
 	const nodeId = op.inputs ? Object.keys(op.inputs)[0] : "blur_node";
 
 	const resolveBindable = (
@@ -896,4 +897,22 @@ export const BlurWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 
 	// Final Pass: Draw result to targetView using standard drawTexture for blending/opacity
 	drawTextureToTarget(args, outTex2, op.opacity ?? 1);
+};
+
+/**
+ * A Gaussian or box blur of a set strength keeps its look at any pixel
+ * scale: the strength scales with it and neither kernel has a cap (the
+ * Gaussian strides past 20 px). The other kinds stop at fixed radii, and a
+ * strength bound to a signal is read on the GPU, unscaled.
+ */
+BlurWebGPURenderer.maxPixelScale = (operation) => {
+	const op = operation as Partial<BlurOp>;
+	const kind = op.blurType ?? "Gaussian";
+	const bound =
+		typeof op.strengthHandleId === "string" &&
+		op.inputs?.[op.strengthHandleId]?.connectionValid === true;
+	const fixed = op.strength === undefined || typeof op.strength === "number";
+	return (kind === "Gaussian" || kind === "Box") && fixed && !bound
+		? Number.POSITIVE_INFINITY
+		: 1;
 };

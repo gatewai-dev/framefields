@@ -17,6 +17,7 @@ import {
 	type VirtualMediaData,
 } from "@framefields/core";
 import {
+	effectMaxPixelScale,
 	effectReach,
 	type NodeRenderProps,
 	resolveFrameNumber,
@@ -73,6 +74,7 @@ import {
 	sampleMorphWeights,
 	spansText,
 	srtLoader,
+	transformScale,
 	Vector3Math,
 } from "@framefields/webgpu-renderers";
 import { compileTimeline, seekTimeline } from "../shared/compiler.js";
@@ -81,6 +83,7 @@ import { shouldPaintContainerBackground } from "./container-bg.js";
 import { compatibleMeshDraws } from "./mesh-instancing.js";
 import {
 	buildLayerMatrix,
+	layerRasterScale,
 	resolveLayer2DPosition,
 	toDOMMatrix,
 } from "./transform.js";
@@ -595,6 +598,36 @@ function effectsReach(effects: unknown[]): number | null {
 	return reach;
 }
 
+/**
+ * The most pixels per layout px a leaf's effects keep their look at: the
+ * least any of them declares (`maxPixelScale`), 1 for one that doesn't.
+ * Relighting runs in the leaf itself, at any scale.
+ */
+function effectsMaxPixelScale(effects: unknown[]): number {
+	let limit = Number.POSITIVE_INFINITY;
+	for (const e of effects) {
+		const op = (
+			e && typeof (e as { toOperation?: unknown }).toOperation === "function"
+				? (e as { toOperation: () => Record<string, unknown> }).toOperation()
+				: e
+		) as Record<string, unknown> | null;
+		if (!op || typeof op !== "object" || op.op === "Relight3D") continue;
+		limit = Math.min(limit, effectMaxPixelScale(op));
+	}
+	return limit;
+}
+
+/**
+ * Media content that draws in its layer's own units, so it can be drawn
+ * under a raster scale: a source or a nested composition. Effect, crop and
+ * vision passes wrapped around a source draw at their container's size in
+ * their own pixel space instead.
+ */
+function drawsInLayerUnits(content: VirtualMediaData | undefined): boolean {
+	const op = content?.operation?.op;
+	return op === "source" || op === "Compositor";
+}
+
 function quatFromEulerAngles(
 	rx: number,
 	ry: number,
@@ -752,6 +785,10 @@ async function applyLayerEffectsInRegion(
 	return { texture: out, view: out.createView() };
 }
 
+/**
+ * Runs `effects` over `sourceTex` (`width`×`height` pixels, `pixelScale` of
+ * them per layout px) into a new texture of its size.
+ */
 async function applyLayerEffects(
 	effects: unknown[],
 	sourceTex: GPUTexture,
@@ -767,6 +804,7 @@ async function applyLayerEffects(
 	fps: number,
 	isVideoMode: boolean,
 	layerId: string,
+	pixelScale = 1,
 ): Promise<{ texture: GPUTexture; view: GPUTextureView }> {
 	const remainingEffects = effects.filter((e: unknown) => {
 		if (!e || typeof e !== "object") return false;
@@ -844,6 +882,7 @@ async function applyLayerEffects(
 				...props,
 				containerWidth: width,
 				containerHeight: height,
+				pixelScale,
 				renderId: `${props.renderId}-${layerId}-fx`,
 				frame: shiftedFrame,
 				compositionFrame,
@@ -1790,6 +1829,26 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 			}
 			return true;
 		};
+
+		// Pixels per layout px for a 2D layer's own texture (a leaf, a border)
+		// placed on the canvas by `matrix`: its scale there, within the GPU's
+		// texture side, a budget of four canvases of pixels, and `effects` (the
+		// most its effects keep their look at).
+		const rasterScaleOf = (
+			matrix: DOMMatrix,
+			width: number,
+			height: number,
+			effects = Number.POSITIVE_INFINITY,
+		) =>
+			layerRasterScale(
+				transformScale(matrix),
+				{ width, height },
+				{
+					maxDimension: ctx.device.limits.maxTextureDimension2D,
+					maxPixels: 4 * nativeWidth * nativeHeight,
+					effects,
+				},
+			);
 
 		const renderNodeTree = async (
 			vms: VirtualMediaData[],
@@ -4128,6 +4187,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 									lop.borderColor,
 									lop.strokeAlign ?? "inside",
 									[activeTex, targetTexture, ...excludes],
+									rasterScaleOf(layerMatrix, layerW, layerH),
 								)
 							: null;
 					if (paint || border) {
@@ -4241,6 +4301,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 									lop.borderColor,
 									lop.strokeAlign ?? "inside",
 									[activeTex, targetTexture, ...excludes],
+									rasterScaleOf(layerMatrix, layerW, layerH),
 								)
 							: null;
 					if (border) {
@@ -4391,6 +4452,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 								lop.borderColor,
 								lop.strokeAlign ?? "inside",
 								[activeGroupTex, ...groupExcludes],
+								rasterScaleOf(layerMatrix, layerW, layerH),
 							)
 						: null;
 
@@ -4649,8 +4711,71 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				layerW / 2,
 				layerH / 2,
 			);
-			const texW = Math.ceil(layerW);
-			const texH = Math.ceil(layerH);
+
+			// Temporal De-flickering & Optical Flow Warping
+			const leafDeflickerEffect = Array.isArray(lop.effects)
+				? lop.effects.find(
+						(e: unknown) =>
+							(e as { op?: string })?.op === "TemporalDeflicker" ||
+							(e as { constructor?: { name?: string } })?.constructor?.name ===
+								"TemporalDeflicker",
+					)
+				: undefined;
+			const deflickerOpts =
+				target?.deflicker ?? lop.deflicker ?? leafDeflickerEffect;
+
+			// Screen-Space 3D Relighting
+			const leafRelightEffect = Array.isArray(lop.effects)
+				? lop.effects.find(
+						(e: unknown) =>
+							(e as { op?: string })?.op === "Relight3D" ||
+							(e as { constructor?: { name?: string } })?.constructor?.name ===
+								"Relight3D",
+					)
+				: undefined;
+			const rawLeafRelight =
+				target?.relighting ??
+				lop.relighting ??
+				(typeof lop.relight === "object" ? lop.relight : undefined) ??
+				leafRelightEffect;
+			const relightOpts =
+				typeof rawLeafRelight === "object" && rawLeafRelight !== null
+					? rawLeafRelight
+					: undefined;
+
+			// Directional velocity motion blur
+			const shutterAngle =
+				target?.motionBlurShutter ?? lop.motionBlurShutter ?? 0;
+
+			const hasEffects =
+				kind !== "media" &&
+				Array.isArray(lop.effects) &&
+				lop.effects.length > 0;
+
+			// A 2D leaf rasterizes at its scale on the canvas (`layerMatrix`), so
+			// text and edges an ancestor scales up (a camera push, a card at
+			// scale 2) are drawn at that size, not magnified from a layout-size
+			// raster. Content draws in layout units under `raster`; everything
+			// below that works in the texture's pixels scales with it. Layout
+			// scale stays for 3D leaves (their quad places them, not
+			// `layerMatrix`), deflickering (its history has one size), media
+			// wrapped in passes that draw in their own pixels, and effects that
+			// don't declare how far they scale.
+			const rasterScale =
+				isTrue3D ||
+				is3D ||
+				deflickerOpts ||
+				(kind === "media" && !drawsInLayerUnits(nodeVM.children?.[0]))
+					? 1
+					: rasterScaleOf(
+							layerMatrix,
+							layerW,
+							layerH,
+							hasEffects ? effectsMaxPixelScale(lop.effects) : undefined,
+						);
+			const raster = new DOMMatrix([rasterScale, 0, 0, rasterScale, 0, 0]);
+			const texW = Math.ceil(layerW * rasterScale);
+			const texH = Math.ceil(layerH * rasterScale);
 
 			// Suspend any parent container scissors while rendering isolated offscreen localTex
 			const savedScissors = ctx.renderer.suspendScissors?.() ?? [];
@@ -4916,6 +5041,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				const captureGlyphs = isTrue3D && kind === "text";
 				const rasterDrawsBefore = ctx.renderer.rasterDrawCount;
 				if (captureGlyphs) ctx.renderer.slugPipeline.beginCapture();
+				ctx.renderer.pushTransform(raster);
 				try {
 					await drawChild(
 						content,
@@ -4982,6 +5108,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 						texH,
 					);
 				} finally {
+					ctx.renderer.popTransform();
 					if (captureGlyphs) {
 						glyphBatches = ctx.renderer.slugPipeline.endCapture();
 					}
@@ -5076,6 +5203,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				const trimEnd = target?.trimEnd ?? lop.trimEnd ?? 1;
 				const trimOffset = target?.trimOffset ?? lop.trimOffset ?? 0;
 
+				ctx.renderer.pushTransform(raster);
 				ctx.renderer.drawShape(
 					shapePass,
 					shapeConfig,
@@ -5093,51 +5221,13 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 							}
 						: undefined,
 				);
+				ctx.renderer.popTransform();
 
 				shapePass.end();
 			}
 
-			// Temporal De-flickering & Optical Flow Warping
-			const leafDeflickerEffect = Array.isArray(lop.effects)
-				? lop.effects.find(
-						(e: unknown) =>
-							(e as { op?: string })?.op === "TemporalDeflicker" ||
-							(e as { constructor?: { name?: string } })?.constructor?.name ===
-								"TemporalDeflicker",
-					)
-				: undefined;
-			const deflickerOpts =
-				target?.deflicker ?? lop.deflicker ?? leafDeflickerEffect;
-
-			// Screen-Space 3D Relighting
-			const leafRelightEffect = Array.isArray(lop.effects)
-				? lop.effects.find(
-						(e: unknown) =>
-							(e as { op?: string })?.op === "Relight3D" ||
-							(e as { constructor?: { name?: string } })?.constructor?.name ===
-								"Relight3D",
-					)
-				: undefined;
-			const rawLeafRelight =
-				target?.relighting ??
-				lop.relighting ??
-				(typeof lop.relight === "object" ? lop.relight : undefined) ??
-				leafRelightEffect;
-			const relightOpts =
-				typeof rawLeafRelight === "object" && rawLeafRelight !== null
-					? rawLeafRelight
-					: undefined;
-
-			// Directional velocity motion blur
-			const shutterAngle =
-				target?.motionBlurShutter ?? lop.motionBlurShutter ?? 0;
-
 			// Effects work on the layer's pixels: glyphs held back for the 3D
 			// pass are drawn into its texture after all.
-			const hasEffects =
-				kind !== "media" &&
-				Array.isArray(lop.effects) &&
-				lop.effects.length > 0;
 			if (
 				glyphBatches &&
 				glyphBatches.length > 0 &&
@@ -5189,12 +5279,14 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					texH,
 					"load",
 				);
+				ctx.renderer.pushTransform(raster);
 				ctx.renderer.drawRect(
 					maskPass,
 					{ x: 0, y: 0, width: layerW, height: layerH },
 					{ r: 1, g: 1, b: 1, a: 1 },
 					br,
 				);
+				ctx.renderer.popTransform();
 				maskPass.end();
 
 				finalTex = ctx.renderer.composite(
@@ -5229,10 +5321,14 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					ctx.renderer.format ?? "rgba8unorm",
 					sampleCount3d,
 				);
+				// Lights and the surface are placed in layout px; the texture
+				// spans texW / rasterScale of them.
+				const extentW = texW / rasterScale;
+				const extentH = texH / rasterScale;
 				const activeLights = synthesizeRelightLights(
 					relightOpts as Record<string, unknown>,
 					sceneLights,
-					{ x: sampledX, y: sampledY, width: texW, height: texH },
+					{ x: sampledX, y: sampledY, width: extentW, height: extentH },
 					compositionFrame,
 					fps ?? 24,
 				);
@@ -5255,8 +5351,8 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					normalTex,
 					lightsBuffer,
 					{
-						viewportWidth: texW,
-						viewportHeight: texH,
+						viewportWidth: extentW,
+						viewportHeight: extentH,
 						layerX: sampledX,
 						layerY: sampledY,
 						roughness: resolveFrameNumber(
@@ -5309,6 +5405,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 			}
 
 			// Directional velocity motion blur (last: the shutter integrates the final look)
+			// The padding is in layout px; the texture holds rasterScale pixels each.
 			let blurPadX = 0;
 			let blurPadY = 0;
 			if (shutterAngle > 0 && fps && shiftedFrame !== undefined) {
@@ -5326,11 +5423,13 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					// to streak past their own bounds instead of smearing edge pixels.
 					if (!isTrue3D && !(is3D && quad3D)) {
 						const reach = shutterAngle / 360;
-						blurPadX = Math.ceil(Math.abs(vx) * reach);
-						blurPadY = Math.ceil(Math.abs(vy) * reach);
+						const padX = Math.ceil(Math.abs(vx) * rasterScale * reach);
+						const padY = Math.ceil(Math.abs(vy) * rasterScale * reach);
+						blurPadX = padX / rasterScale;
+						blurPadY = padY / rasterScale;
 						const paddedTex = ctx.renderer.getTemporaryTexture(
-							texW + blurPadX * 2,
-							texH + blurPadY * 2,
+							texW + padX * 2,
+							texH + padY * 2,
 							[finalTex, activeTex, targetTexture, ...excludes],
 						);
 						const padPass = ctx.renderer.beginFrame(
@@ -5344,20 +5443,21 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 						ctx.renderer.drawTexture(
 							padPass,
 							finalTex,
-							{ x: blurPadX, y: blurPadY, width: texW, height: texH },
+							{ x: padX, y: padY, width: texW, height: texH },
 							{ opacity: 1.0 },
 						);
 						padPass.end();
 						finalTex = paddedTex;
 					}
 					// ~1 tap per 2 px of streak so fast moves smear instead of ghosting.
-					const streakPx = Math.hypot(vx, vy) * (shutterAngle / 360) * 2;
+					const streakPx =
+						Math.hypot(vx, vy) * rasterScale * (shutterAngle / 360) * 2;
 					const samples = Math.min(128, Math.max(16, Math.ceil(streakPx / 2)));
 					finalTex = ctx.renderer.applyMotionBlur(
 						encoder,
 						finalTex,
-						vx,
-						vy,
+						vx * rasterScale,
+						vy * rasterScale,
 						shutterAngle,
 						samples,
 						[activeTex, targetTexture, ...excludes],
@@ -5385,6 +5485,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					fps ?? 24,
 					isVideoMode,
 					lop.id ?? `leaf_${i}`,
+					rasterScale,
 				);
 				finalTex = postEffects.texture;
 			}
@@ -5408,6 +5509,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 							lop.borderColor,
 							lop.strokeAlign ?? "inside",
 							borderExcludes,
+							rasterScale,
 						)
 					: null;
 
@@ -5492,7 +5594,10 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					],
 					width: layerW,
 					height: layerH,
-					textureExtent: [layerW / texW, layerH / texH],
+					textureExtent: [
+						(layerW * rasterScale) / texW,
+						(layerH * rasterScale) / texH,
+					],
 					rotation: [
 						target?.rotateX ?? lop.rotateX ?? 0,
 						target?.rotateY ?? lop.rotateY ?? 0,
@@ -5795,6 +5900,10 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 /** Pixels of room around a border texture for its anti-aliased edge. */
 const BORDER_AA_MARGIN = 2;
 
+/**
+ * A `w`×`h` box's border as a texture, `rasterScale` pixels per layout px,
+ * and the rect it covers in layout px (around the box, at its origin).
+ */
 function createBorderTexture(
 	ctx: RenderContextValue,
 	encoder: GPUCommandEncoder,
@@ -5805,6 +5914,7 @@ function createBorderTexture(
 	borderColor: string | Color,
 	strokeAlign: string,
 	excludeTextures: GPUTexture[],
+	rasterScale = 1,
 ): {
 	borderTex: GPUTexture;
 	ox: number;
@@ -5860,8 +5970,9 @@ function createBorderTexture(
 	// half a pixel outside it, and a rounded border touching the texture's
 	// edge would lose that fringe (flat spots, plain to see once scaled up).
 	const m = BORDER_AA_MARGIN;
-	const borderTexW = Math.ceil(ow + 2 * m);
-	const borderTexH = Math.ceil(oh + 2 * m);
+	const borderTexW = Math.ceil((ow + 2 * m) * rasterScale);
+	const borderTexH = Math.ceil((oh + 2 * m) * rasterScale);
+	const raster = new DOMMatrix([rasterScale, 0, 0, rasterScale, 0, 0]);
 
 	const outerTex = ctx.renderer.getTemporaryTexture(
 		borderTexW,
@@ -5888,12 +5999,14 @@ function createBorderTexture(
 		borderTexH,
 		"load",
 	);
+	ctx.renderer.pushTransform(raster);
 	ctx.renderer.drawRect(
 		outerDrawPass,
 		{ x: m, y: m, width: ow, height: oh },
 		borderColor,
 		outerRadius,
 	);
+	ctx.renderer.popTransform();
 	outerDrawPass.end();
 
 	const innerW = ow - 2 * borderWidth;
@@ -5924,12 +6037,14 @@ function createBorderTexture(
 			borderTexH,
 			"load",
 		);
+		ctx.renderer.pushTransform(raster);
 		ctx.renderer.drawRect(
 			innerDrawPass,
 			{ x: m + borderWidth, y: m + borderWidth, width: innerW, height: innerH },
 			{ r: 1, g: 1, b: 1, a: 1 },
 			innerRadius,
 		);
+		ctx.renderer.popTransform();
 		innerDrawPass.end();
 
 		const borderTex = ctx.renderer.composite(
@@ -5943,8 +6058,8 @@ function createBorderTexture(
 			borderTex,
 			ox: ox - m,
 			oy: oy - m,
-			ow: borderTexW,
-			oh: borderTexH,
+			ow: borderTexW / rasterScale,
+			oh: borderTexH / rasterScale,
 		};
 	}
 
@@ -5952,7 +6067,7 @@ function createBorderTexture(
 		borderTex: outerTex,
 		ox: ox - m,
 		oy: oy - m,
-		ow: borderTexW,
-		oh: borderTexH,
+		ow: borderTexW / rasterScale,
+		oh: borderTexH / rasterScale,
 	};
 }

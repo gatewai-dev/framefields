@@ -144,6 +144,7 @@ fn shadeText(in : VSOut, fw : vec2<f32>) -> TextFragment {
 		in.color,
 		model.params.x,
 		in.fx.x,
+		1.0,
 		in.fx.y,
 		in.fx.z,
 	);

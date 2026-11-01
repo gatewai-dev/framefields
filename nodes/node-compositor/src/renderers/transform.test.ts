@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
 	buildLayerMatrix,
+	layerRasterScale,
+	MAX_RASTER_SCALE,
 	type Matrix2D,
 	multiply,
 	resolveLayer2DPosition,
@@ -302,5 +304,41 @@ describe("resolveLayer2DPosition (2D parent translation inheritance)", () => {
 			parentMatrix,
 		});
 		expect(pos).toEqual({ x: 420, y: 330 });
+	});
+});
+
+describe("layerRasterScale", () => {
+	const roomy = {
+		maxDimension: 8192,
+		maxPixels: 4 * 1920 * 1080,
+		effects: Number.POSITIVE_INFINITY,
+	};
+	const size = { width: 200, height: 100 };
+
+	it("keeps layout scale unscaled and shrunk", () => {
+		expect(layerRasterScale(1, size, roomy)).toBe(1);
+		expect(layerRasterScale(1 + 1e-9, size, roomy)).toBe(1);
+		expect(layerRasterScale(0.3, size, roomy)).toBe(1);
+	});
+
+	it("rounds a zoom up to the next quarter", () => {
+		expect(layerRasterScale(1.7, size, roomy)).toBe(1.75);
+		expect(layerRasterScale(1.75, size, roomy)).toBe(1.75);
+		expect(layerRasterScale(1.76, size, roomy)).toBe(2);
+		expect(layerRasterScale(4, size, roomy)).toBe(4);
+	});
+
+	it("stops at MAX_RASTER_SCALE", () => {
+		expect(layerRasterScale(12, size, roomy)).toBe(MAX_RASTER_SCALE);
+	});
+
+	it("stays inside the texture side, the pixel budget and the effects' limit, rounding down", () => {
+		// 3000 px wide: 8192 / 3000 = 2.73 → 2.5.
+		expect(layerRasterScale(4, { width: 3000, height: 100 }, roomy)).toBe(2.5);
+		// A full 1080p layer under a 4-canvas budget doubles at most.
+		expect(layerRasterScale(4, { width: 1920, height: 1080 }, roomy)).toBe(2);
+		expect(layerRasterScale(4, size, { ...roomy, effects: 1.6 })).toBe(1.5);
+		// Never below layout scale, whatever the limits.
+		expect(layerRasterScale(4, size, { ...roomy, effects: 0.5 })).toBe(1);
 	});
 });

@@ -137,6 +137,8 @@ fn sampleSlugCoverage(sampleUV: vec2<f32>, g: SlugGlyph, pixelsPerEm: vec2<f32>)
 // pixel footprint in glyph uv, |d/dx| + |d/dy| (fwidth): the caller takes it in
 // uniform control flow. On a turned or foreshortened glyph it is wider than one
 // pixel along an axis, so that axis gets the soft ramp a box filter gives.
+// A blur of blurAmount px averages coverage over a grid reaching 0.3 of it
+// each way, blurTaps taps per side past the centre.
 fn shadeSlugGlyph(
 	uv: vec2<f32>,
 	fw: vec2<f32>,
@@ -145,6 +147,7 @@ fn shadeSlugGlyph(
 	color: vec4<f32>,
 	opacity: f32,
 	blurAmount: f32,
+	blurTaps: f32,
 	chromaticShift: f32,
 	dissolveProgress: f32,
 ) -> vec4<f32> {
@@ -177,14 +180,15 @@ fn shadeSlugGlyph(
 
 	var slugAlpha = 0.0;
 	if (blurAmount > 0.01) {
-		let step = fw * blurAmount * 0.3;
-		for (var y_offset = -1.0; y_offset <= 1.0; y_offset = y_offset + 1.0) {
-			for (var x_offset = -1.0; x_offset <= 1.0; x_offset = x_offset + 1.0) {
+		let step = fw * blurAmount * 0.3 / blurTaps;
+		for (var y_offset = -blurTaps; y_offset <= blurTaps; y_offset = y_offset + 1.0) {
+			for (var x_offset = -blurTaps; x_offset <= blurTaps; x_offset = x_offset + 1.0) {
 				let offset = vec2<f32>(x_offset, y_offset) * step;
 				slugAlpha = slugAlpha + sampleSlugCoverage(uv + offset, g, pixelsPerEm);
 			}
 		}
-		slugAlpha = slugAlpha / 9.0;
+		let side = 2.0 * blurTaps + 1.0;
+		slugAlpha = slugAlpha / (side * side);
 	} else {
 		slugAlpha = sampleSlugCoverage(uv, g, pixelsPerEm);
 	}
@@ -221,6 +225,7 @@ struct VSOut {
 	@location(7) @interpolate(flat) chromaticShift : f32,
 	@location(8) @interpolate(flat) dissolveProgress : f32,
 	@location(9) @interpolate(flat) vfxParam : f32,
+	@location(10) @interpolate(flat) blurTaps : f32,
 };
 
 var<private> pos : array<vec2<f32>, 6> = array<vec2<f32>, 6>(
@@ -254,7 +259,11 @@ var<private> pos : array<vec2<f32>, 6> = array<vec2<f32>, 6>(
 	let transform2 = mat2x2<f32>(u.transformCol0.xy, u.transformCol1.xy);
 	let pixelsPerUnit = sqrt(max(abs(determinant(transform2)), 1e-8));
 	let halfSize = max(abs(aScaleBias.xy * scale_mult), vec2<f32>(1e-4));
-	let grow = vec2<f32>(1.0) + (1.0 / pixelsPerUnit) / halfSize;
+	// A blurred glyph keeps a unit around it however many pixels a unit
+	// spans: its blur spills that far at one pixel per unit.
+	let blurred = aExtraParams.x > 0.01;
+	let dilation = select(1.0, max(1.0, pixelsPerUnit), blurred) / pixelsPerUnit;
+	let grow = vec2<f32>(1.0) + dilation / halfSize;
 	let uv = vec2<f32>(
 		quad_pos.x * grow.x * 0.5 + 0.5,
 		1.0 - (quad_pos.y * grow.y * 0.5 + 0.5),
@@ -288,7 +297,11 @@ var<private> pos : array<vec2<f32>, 6> = array<vec2<f32>, 6>(
 	out.bandMax = vec2<u32>(aBandMaxTexCoords.xy);
 	out.bandsTexCoords = vec2<u32>(aBandMaxTexCoords.zw);
 	out.color = aColor;
-	out.blurAmount = aExtraParams.x;
+	// Blur is in local units, like every other length here; the fragment
+	// stage spreads its taps in pixels, as far apart as at one pixel per
+	// unit (more of them as a unit spans more pixels, up to 4).
+	out.blurAmount = aExtraParams.x * pixelsPerUnit;
+	out.blurTaps = clamp(ceil(pixelsPerUnit - 1e-3), 1.0, 4.0);
 	out.chromaticShift = aExtraParams.y;
 	out.dissolveProgress = aExtraParams.z;
 	out.vfxParam = aExtraParams.w;
@@ -307,6 +320,7 @@ var<private> pos : array<vec2<f32>, 6> = array<vec2<f32>, 6>(
 		in.color,
 		u.params.x,
 		in.blurAmount,
+		in.blurTaps,
 		in.chromaticShift,
 		in.dissolveProgress,
 	);

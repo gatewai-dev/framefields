@@ -1,3 +1,4 @@
+import { renderAsync } from "@resvg/resvg-js";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	createMockDevice,
@@ -31,6 +32,7 @@ describe("SVG Node", () => {
 	let mockDevice: any;
 	let mockPass: any;
 	let mockCtx: any;
+	let transform: DOMMatrix;
 
 	beforeEach(() => {
 		vi.clearAllMocks();
@@ -38,11 +40,13 @@ describe("SVG Node", () => {
 		(svgLoader as any).cache.clear();
 		mockDevice = createMockDevice();
 		mockPass = createMockRenderPassEncoder();
+		transform = new DOMMatrix();
 
 		mockCtx = {
 			device: mockDevice,
 			renderer: {
 				drawTexture: vi.fn(),
+				getCurrentTransform: () => transform,
 			},
 		};
 
@@ -161,6 +165,25 @@ describe("SVG Node", () => {
 			expect(mockDevice.createTexture).toHaveBeenCalled();
 			expect(mockDevice.queue.copyExternalImageToTexture).toHaveBeenCalled();
 			expect(mockCtx.renderer.drawTexture).toHaveBeenCalled();
+		});
+
+		it("rasterizes at the size the transform draws it on the target", async () => {
+			transform = new DOMMatrix().scale(2.5);
+			await drawSvgNode(mockCtx, mockPass, {
+				src: "scaled.svg",
+				dstRect: { x: 0, y: 0, width: 100, height: 40 },
+				isHeadless: true,
+			});
+
+			expect(renderAsync).toHaveBeenCalledWith("<svg></svg>", {
+				fitTo: { mode: "width", value: 250 },
+			});
+			expect(mockCtx.renderer.drawTexture).toHaveBeenCalledWith(
+				mockPass,
+				expect.anything(),
+				{ x: 0, y: 0, width: 100, height: 40 },
+				expect.anything(),
+			);
 		});
 	});
 });

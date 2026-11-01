@@ -16,11 +16,12 @@ import {
 	ShapeFillPipeline,
 } from "./shape-fill-pipeline.js";
 import { SolidPipeline } from "./solid-pipeline.js";
-import { TransformStack } from "./transform-stack.js";
+import { TransformStack, transformScale } from "./transform-stack.js";
 
 export * from "./path-geometry.js";
 export type { PathDrawOpts } from "./path-pipeline.js";
 export * from "./shape-fill-pipeline.js";
+export { transformScale } from "./transform-stack.js";
 
 export interface Rect {
 	x: number;
@@ -343,7 +344,8 @@ export class Renderer2D {
 			if (tris.length > 0) {
 				this.drawShapeFill(pass, tris, fill, bounds, opts);
 				// AA the triangulated edge with a hairline in the fill colour — solid fills
-				// only, since a gradient has no single edge colour.
+				// only, since a gradient has no single edge colour. A hairline is one
+				// target pixel wide, whatever the transform scales local units by.
 				if (
 					(!stroke || !stroke.width || stroke.width <= 0) &&
 					(fill.type ?? "solid") === "solid" &&
@@ -351,7 +353,11 @@ export class Renderer2D {
 				) {
 					const svgPath = buildShapeSvgPath(config);
 					if (svgPath) {
-						this.drawPath(pass, svgPath, fill.color, 1.0, {
+						const m = this.transformStack.getCurrent();
+						const hairline =
+							1 /
+							transformScale(opts?.transform ? m.multiply(opts.transform) : m);
+						this.drawPath(pass, svgPath, fill.color, hairline, {
 							...opts,
 							strokeLineCap: "round",
 						});

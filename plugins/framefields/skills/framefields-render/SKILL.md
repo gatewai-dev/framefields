@@ -168,6 +168,40 @@ await result.cleanup?.();
 
 Pass `qa: true` to have the engine check the output while it renders (see **Built-in Video QA** below) and return the findings as `result.qa`.
 
+### Splitting a long render into chunks
+To render on several GPUs at once, have each process render a range of frames without audio, render the audio once, then join the files without re-encoding:
+
+```typescript
+import { stitchChunks } from "framefields/renderer";
+
+// On each worker (its own process and composition): frames start..end-1.
+await comp.renderVideo({ outputPath: "out/chunk-0.mp4", frames: { start: 0, end: 900 }, audio: false });
+// Once, anywhere: the whole timeline's audio.
+await comp.renderVideo({ outputPath: "out/audio.mp4", codec: "aac" });
+// On any machine (no GPU needed): chunks in timeline order.
+await stitchChunks({ chunks: ["out/chunk-0.mp4", "out/chunk-1.mp4"], audio: "out/audio.mp4", outputPath: "out/final.mp4" });
+```
+
+- Trails, datamosh and particles rebuild their state before `start` by replaying earlier frames, so a chunk starting late costs extra time but renders the same picture.
+- Render every chunk with the same framefields version, codec and quality on the same GPU type. `stitchChunks` refuses chunks with a different codec, size or encoder parameters.
+- SAM 2 / SAM 3 tracks run in order from their first prompted frame. Run the vision analysis once and point every worker at the shared cache (`FRAMEFIELDS_VISION_CACHE_DIR`), so no chunk re-tracks the frames before it.
+- `qa` checks each chunk on its own. Check the stitched file with ffmpeg (below).
+- `planChunks({ totalFrames, samples, workers: "auto" })` picks the chunk count and cuts: it adds workers only while each chunk spends at least 85% of its time rendering (about 5.7× the per-worker start-up), and splits at equal render cost. `renderer.probeRender(comp)` measures the `samples`.
+
+## Rendering in the Cloud (`framefields render --cloud`)
+
+api.framefields.dev renders the project on framefields' GPUs and splits a long film across several. It fetches the project from git, so it renders the **pushed commit**: commit and push first; uncommitted changes are not rendered (the CLI warns), and an unpushed commit is refused. It bills the account behind `FRAMEFIELDS_API_KEY`; if authentication is required, ask the user to set it in the process environment and never print or embed it.
+
+```bash
+npx framefields render src/film.ts --cloud --workers auto --plan   # workers, time and estimated cost; renders nothing
+npx framefields render src/film.ts --cloud --workers auto          # render, then download to output/film.mp4
+```
+
+- `--workers` defaults to 1 (one GPU, no planning step). `auto` measures frame costs on one worker, then uses as many workers as stay efficient: a 5-minute film stays on one, a 3-hour film spreads to `--max-workers` (API cap 10). A number splits into that many.
+- Show the user `--plan` before a long or expensive render: it prints the estimated cost.
+- Ctrl-C cancels the render; GPU time already used is charged. Failures print the worker's error code (e.g. `ASSET_NOT_FOUND` for an asset left out of LFS).
+- From code: `renderCloud({ entry, workers: "auto", outputPath, onProgress })` from `framefields/cloud` (no GPU needed locally). The HTTP API is `POST /v1/render` (`workers`, `max_workers`, `dry_run`), `GET` and `DELETE /v1/render/:id`.
+
 ---
 
 ## Rendering Without a GPU

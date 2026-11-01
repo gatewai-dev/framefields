@@ -23,7 +23,7 @@ A job tells the worker which **git repo + ref** holds a framefields project. The
 
 ### Non-goals (for this iteration)
 
-- Splitting one render across several workers by frame range. Section 13 covers this as future work.
+- Deciding how to split one render across several workers. The worker renders the pieces (`probe`, a `video` job with `range`, `audio`, `stitch`; see the README's "Split renders"), and the caller coordinates them: api.framefields.dev does it in its render jobs.
 - A queue or scheduler of our own. RunPod or the caller does the queueing.
 - Repo encryption filters such as `git-crypt`. These are detected and rejected with a clear error.
 - Running untrusted third-party repos on a shared multi-tenant worker. The trust model is in section 9.
@@ -512,6 +512,7 @@ Every failure maps to a stable `code`. `retryable` is what RunPod or the caller 
 | install | `LOCKFILE_MISSING` / `INSTALL_FAILED` / `INSTALL_TIMEOUT` | no / no / yes | The tail of the install log is attached. |
 | install | `ENGINE_NOT_FOUND` | no | The project doesn't depend on, or didn't install, framefields. |
 | install / render | `ENGINE_SWITCH` | yes (fresh worker) | The project needs a different framefields version than the worker bound, or its dependencies changed after the worker loaded them. The worker recycles. |
+| render | `ENGINE_UNSUPPORTED` | no | A `probe`, `stitch` or `range` job on a framefields version without split renders. |
 | load | `ENTRY_NOT_FOUND` / `ENTRY_COMPILE_FAILED` / `EXPORT_NOT_FOUND` / `EXPORT_INVALID` / `EXPORT_SIDE_EFFECT` / `COMPOSITION_BUILD_FAILED` | no | The user's stack trace is attached and trimmed to the project's files. |
 | render | `ASSET_NOT_FOUND` | no | A referenced file is missing. Often an LFS include that is too narrow, so the hint says so. |
 | render | `RENDER_FAILED` / `RENDER_STALLED` / `RENDER_TIMEOUT` | no / yes / no | |
@@ -640,7 +641,7 @@ Each phase is its own PR-sized step with tests.
    - Pinned SSH host keys, the RunPod templates and `create-template.sh`, `docker-compose.yml` with MinIO, `env.example`, the release workflow, and the README guide as listed above.
    - **Still to do:** an amd64 build (CI), the nightly host smoke tests (6.5), and a page on the docs website.
 9. **(Later)**
-   - Chunked distributed rendering: split a frame range across N jobs and concat with a stream copy.
+   - ✅ Chunked distributed rendering: the worker side is done (`probe`, `range` + `audio: false`, `stitch`). Splitting, retries and backups of slow chunks live in the caller (api.framefields.dev `/v1/render`).
    - Webhooks on completion (`output.webhook` with an HMAC signature).
 
 ## 14. Test plan

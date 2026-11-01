@@ -1,6 +1,9 @@
-import { createReadStream } from "node:fs";
+import { createReadStream, createWriteStream } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import type { ReadableStream as WebReadableStream } from "node:stream/web";
 import {
 	GetObjectCommand,
 	HeadObjectCommand,
@@ -87,6 +90,65 @@ export function s3Client(config: RendererConfig): S3Client {
 	return client;
 }
 
+/** Downloads an object to `file`: a stitch job's chunks, read with the worker's own credentials. */
+export async function downloadS3(
+	config: RendererConfig,
+	bucket: string,
+	key: string,
+	file: string,
+	signal: AbortSignal,
+): Promise<void> {
+	try {
+		await withRetries(signal, async () => {
+			const res = await s3Client(config).send(
+				new GetObjectCommand({ Bucket: bucket, Key: key }),
+				{ abortSignal: signal },
+			);
+			if (!res.Body) throw new Error(`s3://${bucket}/${key} has no body`);
+			await pipeline(res.Body as Readable, createWriteStream(file), {
+				signal,
+			});
+		});
+	} catch (err) {
+		const missing =
+			err instanceof S3ServiceException && err.name === "NoSuchKey";
+		if (
+			missing ||
+			(err instanceof RenderError && /NoSuchKey/.test(err.message))
+		)
+			throw new RenderError(
+				"ASSET_NOT_FOUND",
+				`Stitch input s3://${bucket}/${key} does not exist.`,
+				{ phase: "render" },
+			);
+		throw err;
+	}
+}
+
+/** Downloads a presigned URL to `file` (a stitch job's chunks). */
+export async function downloadUrl(
+	url: string,
+	file: string,
+	signal: AbortSignal,
+): Promise<void> {
+	await withRetries(signal, async () => {
+		const res = await fetch(url, { signal });
+		if (res.status === 404 || res.status === 403)
+			throw new RenderError(
+				"ASSET_NOT_FOUND",
+				`Stitch input ${redact(url.split("?")[0])} is missing or its URL expired (HTTP ${res.status}).`,
+				{ phase: "render" },
+			);
+		if (!res.ok || !res.body)
+			throw new Error(`Stitch input download failed: HTTP ${res.status}`);
+		await pipeline(
+			Readable.fromWeb(res.body as WebReadableStream),
+			createWriteStream(file),
+			{ signal },
+		);
+	});
+}
+
 export function publicUrl(
 	config: RendererConfig,
 	key: string,
@@ -158,12 +220,14 @@ export async function deliverPresigned(
 			(res.status === 403 || res.status === 400) &&
 			/expired|Request has expired|AccessDenied/i.test(text)
 		) {
+			// AccessDenied also means keys that may not write the bucket: keep the body.
 			throw new RenderError(
 				"UPLOAD_URL_EXPIRED",
 				`The presigned URL was rejected (${res.status}).`,
 				{
 					phase: "upload",
-					hint: "Sign upload URLs with an expiry at least as long as the job timeout.",
+					hint: "Sign upload URLs with an expiry at least as long as the job timeout, with keys that may write the bucket.",
+					details: { body: redact(text.slice(0, 500)) },
 				},
 			);
 		}

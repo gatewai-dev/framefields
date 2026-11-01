@@ -9,10 +9,18 @@ import type {
 } from "../jobs/pipeline.js";
 import type { JobInput, RenderSettings } from "../jobs/schema.js";
 import type { JobProgress } from "../jobs/store.js";
+import { isUrl } from "../jobs/validate.js";
 import { rendererLogger } from "../logger.js";
+import { downloadS3, downloadUrl } from "../output/sinks.js";
 import { gpuStatus } from "../worker/gpu.js";
 import { workerHealth } from "../worker/health.js";
-import { type BoundEngine, bindEngine, markDepsLoaded } from "./engine.js";
+import {
+	type BoundEngine,
+	bindEngine,
+	type EngineModule,
+	type EngineRenderer,
+	markDepsLoaded,
+} from "./engine.js";
 import { clearWorkspaceRequireCache } from "./engine-alias.js";
 import { buildPlan, importEntry, type PlanOutput } from "./load.js";
 import { openSandbox } from "./sandbox.js";
@@ -62,6 +70,11 @@ export const render: Pipeline["render"] = async (checkout, input, ctx) => {
 	let dispose: (() => Promise<void>) | undefined;
 	try {
 		const work = (async () => {
+			// A stitch joins files already rendered: no composition to load.
+			if (input.render.kind === "stitch")
+				return [
+					await stitchOutput(input.render, outDir, ctx, controller, engine),
+				];
 			const files: RenderedFile[] = [];
 			const plan = await withTimeout(
 				loadPlan(checkout, input, ctx.jobId, (d) => {
@@ -192,8 +205,11 @@ async function renderOutput(
 				let lastEmit = 0;
 				let lastPhase: string | undefined;
 				let expectedFrames: number | undefined;
+				const chunk =
+					settings.kind === "video" ? chunkOptions(settings, engine) : {};
 				const result = await output.target.renderVideo({
 					outputPath: `${base}.${ext}`,
+					...chunk,
 					codec,
 					audioCodec: settings.audioCodec,
 					quality: settings.quality,
@@ -232,6 +248,25 @@ async function renderOutput(
 					},
 				];
 			}
+			case "probe":
+				return [
+					await probeOutput(
+						output,
+						settings,
+						base,
+						ctx,
+						controller,
+						engine,
+						renderer,
+						stall.touch,
+						count > 1 ? index : undefined,
+					),
+				];
+			case "stitch":
+				throw new RenderError(
+					"INTERNAL",
+					"Stitch jobs are handled before the plan loads.",
+				);
 			case "frames": {
 				const files: RenderedFile[] = [];
 				const frames = settings.frames ?? [0];
@@ -314,6 +349,185 @@ async function renderOutput(
 	} finally {
 		stall.stop();
 	}
+}
+
+/** A function the project's framefields must export for this job, or ENGINE_UNSUPPORTED. */
+function requireEngine<K extends "planChunks" | "stitchChunks">(
+	engine: BoundEngine,
+	name: K,
+	what: string,
+): NonNullable<EngineModule[K]> {
+	const fn = engine.mod[name];
+	if (typeof fn !== "function") {
+		throw new RenderError(
+			"ENGINE_UNSUPPORTED",
+			`framefields ${engine.version} can't run ${what}: it has no \`${name}\`.`,
+			{
+				phase: "render",
+				hint: "Update framefields in the project to a version with split renders.",
+			},
+		);
+	}
+	return fn as NonNullable<EngineModule[K]>;
+}
+
+/**
+ * `renderVideo` options for one chunk of a split render. An engine without
+ * them would ignore `frames` and render the whole film, so it is refused.
+ */
+function chunkOptions(
+	settings: RenderSettings,
+	engine: BoundEngine,
+): { frames?: { start: number; end: number }; audio?: false } {
+	if (!settings.range && settings.audio !== false) return {};
+	requireEngine(engine, "stitchChunks", "chunked renders");
+	return {
+		...(settings.range && {
+			frames: { start: settings.range.from, end: settings.range.to },
+		}),
+		...(settings.audio === false && { audio: false }),
+	};
+}
+
+/**
+ * kind=probe: times frames across the timeline and plans the split render
+ * with the project's own `planChunks`, written as one JSON file.
+ */
+async function probeOutput(
+	output: PlanOutput,
+	settings: RenderSettings,
+	base: string,
+	ctx: StepContext,
+	controller: AbortController,
+	engine: BoundEngine,
+	renderer: Pick<EngineRenderer, "probeRender">,
+	touch: () => void,
+	outputIndex: number | undefined,
+): Promise<RenderedFile> {
+	const planChunks = requireEngine(engine, "planChunks", "probe jobs");
+	const vm = output.target.toVirtualMedia?.() ?? output.target.virtualMedia;
+	if (!renderer.probeRender || !vm) {
+		throw new RenderError(
+			"EXPORT_INVALID",
+			`Output ${output.name} can't be probed.`,
+			{ phase: "render" },
+		);
+	}
+	const options = settings.probe ?? {};
+	const measured = await renderer.probeRender(vm as never, {
+		samples: options.samples,
+		signal: controller.signal,
+		onSample: (done, total) => {
+			touch();
+			ctx.progress({
+				phase: "rendering",
+				output: outputIndex,
+				frame: done,
+				total,
+				message: "probing frame costs",
+			});
+		},
+	});
+	const plan = planChunks({
+		totalFrames: measured.totalFrames,
+		samples: measured.samples,
+		workers: options.workers,
+		maxWorkers: options.maxWorkers,
+		overheadSec: options.overheadSec,
+		efficiency: options.efficiency,
+		minChunkFrames: options.minChunkFrames,
+	});
+	const file = `${base}-probe.json`;
+	await fs.writeFile(file, JSON.stringify({ ...measured, plan }));
+	return {
+		name: output.name,
+		path: file,
+		ext: "json",
+		contentType: "application/json",
+	};
+}
+
+/**
+ * kind=stitch: downloads the chunks (and audio) from the output bucket and
+ * joins them with the project's `stitchChunks`, without re-encoding.
+ */
+async function stitchOutput(
+	settings: RenderSettings,
+	outDir: string,
+	ctx: StepContext,
+	controller: AbortController,
+	engine: BoundEngine,
+): Promise<RenderedFile> {
+	const stitch = settings.stitch;
+	if (!stitch)
+		throw new RenderError("JOB_INVALID", "render.stitch is missing.");
+	const bucket = stitch.bucket ?? ctx.config.storage.bucket;
+	const stitchChunks = requireEngine(engine, "stitchChunks", "stitch jobs");
+	const inDir = path.join(ctx.jobDir, "in");
+	await fs.mkdir(inDir, { recursive: true });
+	const inputs = [...stitch.chunks, ...(stitch.audio ? [stitch.audio] : [])];
+	let downloaded = 0;
+	const local = await mapLimit(inputs, 4, async (input, i) => {
+		const file = path.join(inDir, `${i}-${path.basename(inputPath(input))}`);
+		if (isUrl(input)) await downloadUrl(input, file, controller.signal);
+		else if (bucket)
+			await downloadS3(ctx.config, bucket, input, file, controller.signal);
+		else
+			throw new RenderError(
+				"JOB_INVALID",
+				"Stitch inputs given as keys need STORAGE_BUCKET or stitch.bucket.",
+			);
+		ctx.progress({
+			phase: "rendering",
+			frame: ++downloaded,
+			total: inputs.length,
+			message: "downloading chunks",
+		});
+		return file;
+	});
+	const ext = path.extname(inputPath(stitch.chunks[0])).slice(1) || "mp4";
+	const { contentType } = containerFor(ext === "webm" ? "vp9" : "h264");
+	const outputPath = path.join(outDir, `0-main.${ext}`);
+	ctx.progress({
+		phase: "encoding",
+		message: `stitching ${stitch.chunks.length} chunks`,
+	});
+	const result = await stitchChunks({
+		chunks: local.slice(0, stitch.chunks.length),
+		audio: stitch.audio ? local.at(-1) : undefined,
+		outputPath,
+		signal: controller.signal,
+	});
+	return {
+		name: "main",
+		path: outputPath,
+		ext,
+		contentType,
+		expectedFrames: result.frames,
+	};
+}
+
+/** A stitch input's path: the key, or a URL's path without its signature. */
+function inputPath(input: string): string {
+	return isUrl(input) ? new URL(input).pathname : input;
+}
+
+/** `Promise.all` over `items`, at most `limit` at a time, results in order. */
+async function mapLimit<T, R>(
+	items: readonly T[],
+	limit: number,
+	fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+	const results = new Array<R>(items.length);
+	let next = 0;
+	const run = async () => {
+		while (next < items.length) {
+			const i = next++;
+			results[i] = await fn(items[i], i);
+		}
+	};
+	await Promise.all(Array.from({ length: Math.min(limit, items.length) }, run));
+	return results;
 }
 
 /**

@@ -202,6 +202,21 @@ results.after = await job("after", {
 	entry: "src/film.ts",
 	export: "buildFilm",
 });
+// Split renders: plan with the project's engine, then render one chunk.
+results.probe = await job(
+	"probe",
+	{ entry: "src/film.ts", export: "buildFilm" },
+	{ kind: "probe", probe: { samples: 4, workers: 2, minChunkFrames: 6 } },
+);
+const probeFile = (results.probe as { files?: { path: string }[] }).files?.[0];
+results.probePlan = probeFile
+	? JSON.parse(await fs.readFile(probeFile.path, "utf8"))
+	: undefined;
+results.chunk = await job(
+	"chunk",
+	{ entry: "src/film.ts", export: "buildFilm" },
+	{ range: { from: 12, to: 24 }, audio: false },
+);
 // Last: a repo pinned to another framefields version can't share this process.
 results.switch = await job(
 	"switch",

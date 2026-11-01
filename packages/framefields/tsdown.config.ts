@@ -15,6 +15,7 @@ export default defineConfig({
 		"src/preview/index.ts",
 		"src/components/index.ts",
 		"src/sam/index.ts",
+		"src/cloud/index.ts",
 		"src/cli.ts",
 		"src/cli/check-worker.ts",
 	],

@@ -173,6 +173,21 @@ gpu("in-process render step (real Node loader)", () => {
 			expect(r.cancel).toMatchObject({ ok: false, code: "CANCELLED" });
 			expect(r.after.ok).toBe(true);
 			expect(r.switch).toMatchObject({ ok: false, code: "ENGINE_SWITCH" });
+			expect(r.probe).toMatchObject({
+				ok: true,
+				files: [{ name: "main", ext: "json" }],
+			});
+			expect(r.probePlan).toMatchObject({
+				totalFrames: 24,
+				fps: 24,
+				plan: { workers: 2 },
+			});
+			expect(r.probePlan.samples).toHaveLength(4);
+			expect(r.probePlan.plan.chunks.at(-1).end).toBe(24);
+			expect(r.chunk).toMatchObject({
+				ok: true,
+				files: [{ name: "main", ext: "mp4" }],
+			});
 			for (const k of [
 				"video1",
 				"video2",

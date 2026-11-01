@@ -34,6 +34,7 @@ export const SCRIPTS: Record<string, string> = {
 	grid: "tsx src/render.ts grid",
 	preview: "tsx src/render.ts preview",
 	render: "tsx src/render.ts",
+	"render:cloud": "framefields render src/film.ts --cloud --workers auto",
 };
 
 /**
@@ -250,6 +251,7 @@ ${run("frames")} -- 0 30 60   # PNGs in output/
 ${run("grid")}                # a contact sheet of the motion
 ${run("preview")}             # play it in the browser
 ${run("render")}              # output/output.mp4
+${run("render:cloud")}        # on cloud GPUs, from the pushed commit
 \`\`\`
 
 - \`src/film.ts\` builds the composition, \`src/theme.ts\` holds sizes, colors and fonts,
@@ -258,6 +260,9 @@ ${run("render")}              # output/output.mp4
   one into \`src/components/\`.
 - Optional: the AI gateway generates images, video, music, voice and 3D from code. Copy
   \`.env.example\` to \`.env\` and set \`FRAMEFIELDS_API_KEY\` (keys at ${AI_DASHBOARD}).
+- \`render:cloud\` renders on framefields' GPUs with the same key, and splits a long film
+  across several (\`-- --plan\` shows workers, time and cost first). It renders the
+  commit you pushed, not uncommitted changes.
 - Footage, audio and fonts live in \`assets/\` and are tracked with Git LFS
   (\`git lfs install\` once per machine, \`git lfs pull\` after cloning).
 `;

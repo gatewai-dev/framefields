@@ -79,6 +79,7 @@ export function validateJob(
 	}
 
 	validateOutput(input, config);
+	validateStitchInputs(input, config);
 
 	for (const name of Object.keys(input.env)) {
 		if (RESERVED_JOB_ENV.some((re) => re.test(name))) {
@@ -135,6 +136,31 @@ function validateOutput(input: JobInput, config: RendererConfig): void {
 		case "inline":
 			return;
 	}
+}
+
+/** Stitch inputs given as keys are read with the worker's own storage credentials. */
+function validateStitchInputs(input: JobInput, config: RendererConfig): void {
+	const stitch = input.render.stitch;
+	if (input.render.kind !== "stitch" || !stitch) return;
+	const inputs = [...stitch.chunks, ...(stitch.audio ? [stitch.audio] : [])];
+	if (inputs.every(isUrl)) return;
+	if (config.storage.driver !== "s3") {
+		throw new RenderError(
+			"JOB_INVALID",
+			'render.kind "stitch" needs STORAGE_DRIVER=s3 on the worker.',
+		);
+	}
+	const bucket = stitch.bucket ?? config.storage.bucket;
+	if (!bucket || !config.storage.outputBuckets.includes(bucket)) {
+		throw new RenderError(
+			"BUCKET_NOT_ALLOWED",
+			`Bucket "${bucket}" is not in FF_OUTPUT_BUCKETS.`,
+		);
+	}
+}
+
+export function isUrl(input: string): boolean {
+	return input.startsWith("https://");
 }
 
 function globMatch(pattern: string, value: string): boolean {

@@ -81,6 +81,12 @@
 			"import": "./dist/preview/index.mjs",
 			"default": "./dist/preview/index.mjs"
 		},
+		"./cloud": {
+			"types": "./dist/cloud/index.d.mts",
+			"development": "./src/cloud/index.ts",
+			"import": "./dist/cloud/index.mjs",
+			"default": "./dist/cloud/index.mjs"
+		},
 		"./sam": {
 			"types": "./dist/sam/index.d.mts",
 			"development": "./src/sam/index.ts",

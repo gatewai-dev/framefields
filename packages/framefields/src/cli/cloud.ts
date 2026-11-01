@@ -79,9 +79,7 @@ export async function runCloudRender(
 			return 0;
 		}
 		if (result.status === "planned") {
-			log(
-				`Render it: framefields render ${o.entry} --cloud --workers ${o.workers ?? "auto"}`,
-			);
+			log(`Render it: ${renderCommand(o)}`);
 			return 0;
 		}
 		const bytes = result.output?.bytes;
@@ -102,6 +100,23 @@ export async function runCloudRender(
 	} finally {
 		process.removeListener("SIGINT", onSigint);
 	}
+}
+
+/** The command that renders what `--plan` just planned: the same options, without `--plan`. */
+export function renderCommand(o: CloudCliOptions): string {
+	const flags: [string, string | undefined][] = [
+		["--export", o.export],
+		["--select", o.select],
+		["--workers", o.workers ?? "auto"],
+		["--max-workers", o.maxWorkers],
+		["--codec", o.codec],
+		["--quality", o.quality],
+		["--output", o.output],
+	];
+	return [
+		`framefields render ${o.entry} --cloud`,
+		...flags.filter(([, v]) => v !== undefined).map(([f, v]) => `${f} ${v}`),
+	].join(" ");
 }
 
 function parseWorkers(value: string | undefined): number | "auto" | undefined {

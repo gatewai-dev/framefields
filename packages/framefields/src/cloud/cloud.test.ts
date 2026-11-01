@@ -5,7 +5,13 @@ import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { duration, narrator, progressLine, usd } from "../cli/cloud.js";
+import {
+	duration,
+	narrator,
+	progressLine,
+	renderCommand,
+	usd,
+} from "../cli/cloud.js";
 import {
 	CloudRenderError,
 	type CloudRenderStatus,
@@ -349,6 +355,15 @@ describe("render --cloud output", () => {
 			"Rendering 50% (162000/324000 frames), about 9 min left, $2.10 so far.",
 			"Joining 10 chunks…",
 		]);
+	});
+
+	it("repeats the planned options in the command that renders the plan", () => {
+		expect(
+			renderCommand({ entry: "src/film.ts", export: "split", workers: "2" }),
+		).toBe("framefields render src/film.ts --cloud --export split --workers 2");
+		expect(renderCommand({ entry: "src/film.ts" })).toBe(
+			"framefields render src/film.ts --cloud --workers auto",
+		);
 	});
 
 	it("formats durations and money", () => {

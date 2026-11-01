@@ -220,12 +220,14 @@ export async function deliverPresigned(
 			(res.status === 403 || res.status === 400) &&
 			/expired|Request has expired|AccessDenied/i.test(text)
 		) {
+			// AccessDenied also means keys that may not write the bucket: keep the body.
 			throw new RenderError(
 				"UPLOAD_URL_EXPIRED",
 				`The presigned URL was rejected (${res.status}).`,
 				{
 					phase: "upload",
-					hint: "Sign upload URLs with an expiry at least as long as the job timeout.",
+					hint: "Sign upload URLs with an expiry at least as long as the job timeout, with keys that may write the bucket.",
+					details: { body: redact(text.slice(0, 500)) },
 				},
 			);
 		}

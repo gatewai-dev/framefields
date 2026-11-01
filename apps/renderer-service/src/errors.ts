@@ -56,6 +56,7 @@ const CODES = {
 	INSTALL_TIMEOUT: { phase: "install", retryable: true },
 	ENGINE_NOT_FOUND: { phase: "install", retryable: false },
 	ENGINE_SWITCH: { phase: "render", retryable: true },
+	ENGINE_UNSUPPORTED: { phase: "render", retryable: false },
 
 	ENTRY_NOT_FOUND: { phase: "load", retryable: false },
 	ENTRY_COMPILE_FAILED: { phase: "load", retryable: false },

@@ -276,7 +276,18 @@ Versions of `framefields` released before worker support (2.1.3 and older) still
 - `audio` (`aac`, `mp3`, `opus`);
 - `frames` (`frames: [0, 120]` → PNGs);
 - `frameGrid` (a contact sheet);
-- `lut`.
+- `lut`;
+- `probe` and `stitch`, for split renders (below).
+
+### Split renders
+
+The worker renders one piece of a split render per job. A coordinator decides the split and sends the jobs; for api.framefields.dev that is the API's render jobs (`POST /v1/render` with `workers: "auto"`).
+
+1. **Probe:** `{ "kind": "probe", "probe": { "workers": "auto", "maxWorkers": 10, "overheadSec": 90 } }` times frames across the timeline and plans the split with the project's own `planChunks`. Send it with an `inline` output: the result is one JSON file, `{ totalFrames, fps, samples, plan: { workers, chunks: [{ start, end, workSec }], workSec, etaSec } }`, and `source.sha` is the commit to pin the other jobs to.
+2. **Chunks and audio:** one `video` job per chunk with `"range": { "from": start, "to": end }, "audio": false`, plus one `audio` job (`aac`, or `opus` for VP9). Each writes to the output bucket.
+3. **Stitch:** `{ "kind": "stitch", "stitch": { "chunks": ["…/chunk-000.mp4", …], "audio": "…/audio.m4a" } }` downloads the files from the output bucket (`stitch.bucket` defaults to `STORAGE_BUCKET`; either must be in `FF_OUTPUT_BUCKETS`), joins them without re-encoding, and uploads the result to the job's output.
+
+These kinds need a framefields version with split renders; older ones fail with `ENGINE_UNSUPPORTED` rather than render the whole film.
 
 ### Output targets
 
@@ -350,6 +361,7 @@ A failed job returns:
 | `RENDER_TIMEOUT` / `RENDER_STALLED` | The render took too long, or stopped making progress. |
 | `ENGINE_NOT_FOUND` | The project doesn't depend on `framefields`, so there is nothing to render with. |
 | `ENGINE_SWITCH` | Retry. The project needs another framefields version, or new dependencies; the worker restarts to load them. |
+| `ENGINE_UNSUPPORTED` | A `probe`, `stitch` or `range` job on a framefields version without split renders. Update framefields in the project. |
 | `GPU_DEVICE_LOST` / `RENDER_OOM` | Retry. The worker replaces itself. |
 | `GPU_UNAVAILABLE` | The machine has no usable GPU (`FF_GPU=require`), or has one that WebGPU couldn't use. Retry on another worker; on RunPod this happens automatically. Check the GPU's Vulkan driver with `vulkaninfo --summary`. |
 | `QA_FAILED` | `render.qa.failOn` matched. The outputs are still uploaded and listed. |

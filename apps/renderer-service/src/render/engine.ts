@@ -26,10 +26,32 @@ export interface EngineModule {
 	resetRenderCaches?: () => void;
 	/** The adapter the engine renders on (newer framefields versions). */
 	describeGpu?: () => Promise<GpuAdapter>;
+	/** Split renders (framefields with `renderVideo({ frames })`). */
+	planChunks?: (options: Record<string, unknown>) => unknown;
+	stitchChunks?: (options: {
+		chunks: readonly string[];
+		audio?: string;
+		outputPath: string;
+		signal?: AbortSignal;
+	}) => Promise<{ filePath: string; frames: number; durationSec: number }>;
 }
 
 export interface EngineRenderer {
 	renderLut(vm: never, frame?: number): Promise<string | Buffer>;
+	/** Present with `planChunks`: frame costs across the timeline. */
+	probeRender?(
+		vm: never,
+		options: {
+			samples?: number;
+			signal?: AbortSignal;
+			onSample?: (done: number, total: number) => void;
+		},
+	): Promise<{
+		totalFrames: number;
+		fps: number;
+		durationMs: number;
+		samples: { frame: number; ms: number }[];
+	}>;
 }
 
 export interface BoundEngine {

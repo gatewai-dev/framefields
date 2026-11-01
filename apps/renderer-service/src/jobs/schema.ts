@@ -63,7 +63,14 @@ export const RENDER_KINDS = [
 	"frameGrid",
 	"lut",
 	"audio",
+	"probe",
+	"stitch",
 ] as const;
+
+/** An object key the worker reads from storage: relative, no "..". */
+const storageKey = z.string().min(1).max(1024).refine(isSafeRelativePath, {
+	message: 'keys must be relative and must not contain ".."',
+});
 
 export const renderSchema = z.object({
 	kind: z.enum(RENDER_KINDS).default("video"),
@@ -71,9 +78,31 @@ export const renderSchema = z.object({
 	audioCodec: z.string().max(32).optional(),
 	quality: z.string().max(32).optional(),
 	frames: z.array(z.number().int().min(0)).min(1).max(10_000).optional(),
+	/** kind=video: render only frames `from` (inclusive) to `to` (exclusive), as one chunk of a split render. */
 	range: z
 		.object({ from: z.number().int().min(0), to: z.number().int().min(1) })
 		.refine((r) => r.to > r.from, { message: "range.to must be > range.from" })
+		.optional(),
+	/** kind=video: `false` writes no audio track (chunks; the audio is its own kind=audio job). */
+	audio: z.boolean().optional(),
+	/** kind=probe: measure frame costs and plan a split render (`planChunks`). */
+	probe: z
+		.object({
+			samples: z.number().int().min(1).max(64).optional(),
+			workers: z.union([z.number().int().min(1), z.literal("auto")]).optional(),
+			maxWorkers: z.number().int().min(1).max(256).optional(),
+			overheadSec: z.number().min(0).max(3600).optional(),
+			efficiency: z.number().gt(0).lt(1).optional(),
+			minChunkFrames: z.number().int().min(1).optional(),
+		})
+		.optional(),
+	/** kind=stitch: chunk files (and the audio file) in the output bucket, joined in order. */
+	stitch: z
+		.object({
+			bucket: z.string().min(1).max(255).optional(),
+			chunks: z.array(storageKey).min(1).max(256),
+			audio: storageKey.optional(),
+		})
 		.optional(),
 	grid: z
 		.object({
@@ -144,6 +173,20 @@ export const jobSchema = z
 				code: "custom",
 				path: ["render", "frames"],
 				message: 'required when render.kind is "frames"',
+			});
+		}
+		if (job.render.kind === "stitch" && !job.render.stitch) {
+			ctx.addIssue({
+				code: "custom",
+				path: ["render", "stitch"],
+				message: 'required when render.kind is "stitch"',
+			});
+		}
+		if (job.render.range && job.render.kind !== "video") {
+			ctx.addIssue({
+				code: "custom",
+				path: ["render", "range"],
+				message: 'only applies to render.kind "video"',
 			});
 		}
 	});

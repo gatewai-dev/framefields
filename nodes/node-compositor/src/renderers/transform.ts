@@ -150,3 +150,33 @@ export function resolveLayer2DPosition(params: {
 
 	return transformPoint(pm as Matrix2D, localX, localY);
 }
+
+/** Past this many pixels per layout px a scaled-up layer gains nothing visible. */
+export const MAX_RASTER_SCALE = 4;
+
+/**
+ * Pixels per layout px to rasterize a 2D layer at, so it stays sharp when its
+ * transform onto the canvas scales it up by `axisScale` (the transform's
+ * larger axis scale). Rounded up to a quarter, so an animated zoom reuses a
+ * few texture sizes instead of allocating new ones every frame; never below 1
+ * (a shrunk layer keeps its layout raster). Capped, rounded down to a quarter,
+ * by MAX_RASTER_SCALE, by `limits.maxDimension` (the GPU's texture side), by
+ * `limits.maxPixels` (a pixel budget for one texture) and by
+ * `limits.effects`, the highest scale the layer's effects keep their look at.
+ */
+export function layerRasterScale(
+	axisScale: number,
+	size: { width: number; height: number },
+	limits: { maxDimension: number; maxPixels: number; effects: number },
+): number {
+	const w = Math.max(1, size.width);
+	const h = Math.max(1, size.height);
+	const cap = Math.min(
+		MAX_RASTER_SCALE,
+		limits.maxDimension / Math.max(w, h),
+		Math.sqrt(limits.maxPixels / (w * h)),
+		limits.effects,
+	);
+	const wanted = Math.ceil(axisScale * 4 - 1e-6) / 4;
+	return Math.max(1, Math.min(wanted, Math.floor(cap * 4 + 1e-6) / 4));
+}

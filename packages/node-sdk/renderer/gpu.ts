@@ -241,6 +241,15 @@ export function beginTargetPass(
 	return pass;
 }
 
+/**
+ * Target pixels per layout pixel (`props.pixelScale`, 1 when unset). A
+ * renderer multiplies its pixel-unit parameters by it and declares
+ * `maxPixelScale`.
+ */
+export function pixelScale(args: WebGPUNodeRendererArgs): number {
+	return args.props.pixelScale ?? 1;
+}
+
 /** Draws `texture` over the whole target at `opacity` (the node's output). */
 export function drawTextureToTarget(
 	args: WebGPUNodeRendererArgs,

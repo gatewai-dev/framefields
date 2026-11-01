@@ -1,3 +1,17 @@
+/**
+ * Target pixels per local unit along the axis `m` stretches most: what a
+ * raster drawn under `m` needs per unit to stay sharp, and what one target
+ * pixel is in local units (its inverse).
+ */
+export function transformScale(m: {
+	a: number;
+	b: number;
+	c: number;
+	d: number;
+}): number {
+	return Math.max(Math.hypot(m.a, m.b), Math.hypot(m.c, m.d));
+}
+
 export class TransformStack {
 	private stack: DOMMatrix[] = [new DOMMatrix()];
 

@@ -25,6 +25,12 @@ export interface NodeRenderProps<
 	trimEndOverride?: number;
 	containerWidth: number;
 	containerHeight: number;
+	/**
+	 * Target pixels per layout pixel, when a compositor runs an effect on a
+	 * layer rasterized above layout size so it stays sharp scaled up; unset
+	 * means 1. Only renderers that declare `maxPixelScale` get more than 1.
+	 */
+	pixelScale?: number;
 	opacity?: number;
 	frame?: number;
 	compositionFrame?: number;
@@ -58,13 +64,30 @@ export interface NodeRenderProps<
 export type EffectReach = (operation: Record<string, unknown>) => number | null;
 
 /**
+ * How many target pixels per layout pixel (`props.pixelScale`) an effect can
+ * run at and still look as it does at layout size, for one of its operations:
+ * it reads its pixel-unit parameters (a blur radius, a shadow's distance) in
+ * layout px and multiplies them by `pixelScale`, up to its own kernel limits.
+ * `Infinity` when nothing in it is measured in pixels.
+ */
+export type EffectMaxPixelScale = (
+	operation: Record<string, unknown>,
+) => number;
+
+/**
  * A node's GPU renderer. An effect renderer may carry `reach`: a compositor
  * then runs it over the layer's own region plus that margin instead of the
- * whole target. Without it the effect always gets the whole target.
+ * whole target. Without it the effect always gets the whole target. It may
+ * also carry `maxPixelScale`: a compositor may then rasterize a layer it
+ * styles above layout size (a layer scaled up stays sharp). Without it such a
+ * layer keeps its layout size.
  */
 export type WebGPUNodeRenderer<
 	TOperation extends MediaOperation = MediaOperation,
-> = WebGPUNodeRenderFn<TOperation> & { reach?: EffectReach };
+> = WebGPUNodeRenderFn<TOperation> & {
+	reach?: EffectReach;
+	maxPixelScale?: EffectMaxPixelScale;
+};
 
 type WebGPUNodeRenderFn<TOperation extends MediaOperation> = (args: {
 	ctx: RenderContextValue;
@@ -360,6 +383,18 @@ export function effectReach(operation: Record<string, unknown>): number | null {
 	const op = operation.op;
 	if (typeof op !== "string") return null;
 	return webgpuRegistry.get(op)?.reach?.(operation) ?? null;
+}
+
+/**
+ * How far above layout resolution an operation's effect may run, from its
+ * registered renderer; 1 when it doesn't say.
+ */
+export function effectMaxPixelScale(
+	operation: Record<string, unknown>,
+): number {
+	const op = operation.op;
+	if (typeof op !== "string") return 1;
+	return webgpuRegistry.get(op)?.maxPixelScale?.(operation) ?? 1;
 }
 
 export type { WebGPUNodeRendererArgs } from "./gpu.js";

@@ -1,5 +1,9 @@
 /// <reference types="webgpu" />
-import type { EffectReach, WebGPUNodeRenderer } from "@framefields/node-sdk";
+import type {
+	EffectMaxPixelScale,
+	EffectReach,
+	WebGPUNodeRenderer,
+} from "@framefields/node-sdk";
 import {
 	createFullscreenPipeline,
 	drawFullscreenPass,
@@ -7,6 +11,7 @@ import {
 	FULLSCREEN_QUAD_WGSL,
 	fragmentBindGroupLayout,
 	PREMULTIPLIED_BLEND,
+	pixelScale,
 } from "@framefields/node-sdk/gpu";
 import type { LayerStyleNodeConfig } from "../shared/config.js";
 
@@ -110,6 +115,8 @@ const STROKE_POS_MAP: Record<string, number> = {
 
 /** Blur, glow and stroke kernels in the shader stop at this radius, px. */
 const MAX_KERNEL = 24;
+/** The inner glow's and inner shadow's kernels stop sooner, px. */
+const MAX_INNER_KERNEL = 16;
 
 const WGSL_LAYER_STYLE_SHADER = `
 struct LayerStyleUniforms {
@@ -491,7 +498,7 @@ fn compositeLayer(dst: vec4<f32>, src: vec4<f32>, blendMode: u32) -> vec4<f32> {
 			var innerAccum = 0.0;
 			var innerWeight = 0.0;
 			let sigma = max(0.5, igSize * 0.4);
-			let sampleRadius = min(i32(ceil(igSize)), 16);
+			let sampleRadius = min(i32(ceil(igSize)), ${MAX_INNER_KERNEL});
 			let stepVal = max(1, sampleRadius / 6);
 
 			for (var y = -sampleRadius; y <= sampleRadius; y += stepVal) {
@@ -529,7 +536,7 @@ fn compositeLayer(dst: vec4<f32>, src: vec4<f32>, blendMode: u32) -> vec4<f32> {
 			var isAccum = 0.0;
 			var isWeight = 0.0;
 			let sigma = max(0.5, isSize * 0.4);
-			let sampleRadius = min(i32(ceil(isSize)), 16);
+			let sampleRadius = min(i32(ceil(isSize)), ${MAX_INNER_KERNEL});
 			let stepVal = max(1, sampleRadius / 6);
 
 			for (var y = -sampleRadius; y <= sampleRadius; y += stepVal) {
@@ -686,6 +693,9 @@ export const WebGPURenderer: WebGPUNodeRenderer = async (args) => {
 
 	const width = targetWidth;
 	const height = targetHeight;
+	// Sizes and distances are layout px; the target may hold more than one
+	// pixel per layout px.
+	const px = pixelScale(args);
 	const elapsedSeconds =
 		props.elapsedMs !== undefined
 			? props.elapsedMs / 1000
@@ -832,19 +842,16 @@ export const WebGPURenderer: WebGPUNodeRenderer = async (args) => {
 		(resolveField(op.dropShadowAngleHandleId, ds.angle ?? 120, 0, 360) *
 			Math.PI) /
 		180;
-	const dsDist = resolveField(
-		op.dropShadowDistanceHandleId,
-		ds.distance ?? 10,
-		0,
-		500,
-	);
+	const dsDist =
+		resolveField(op.dropShadowDistanceHandleId, ds.distance ?? 10, 0, 500) * px;
 	const dsSpread = resolveField(
 		op.dropShadowSpreadHandleId,
 		ds.spread ?? 0,
 		0,
 		100,
 	);
-	const dsSize = resolveField(op.dropShadowSizeHandleId, ds.size ?? 10, 0, 250);
+	const dsSize =
+		resolveField(op.dropShadowSizeHandleId, ds.size ?? 10, 0, 250) * px;
 	const dsBlend = BLEND_MODE_MAP[ds.blendMode ?? "multiply"] ?? 1;
 
 	const isCol = hexToRgba(is.color ?? "#000000");
@@ -858,19 +865,16 @@ export const WebGPURenderer: WebGPUNodeRenderer = async (args) => {
 		(resolveField(op.innerShadowAngleHandleId, is.angle ?? 120, 0, 360) *
 			Math.PI) /
 		180;
-	const isDist = resolveField(
-		op.innerShadowDistanceHandleId,
-		is.distance ?? 5,
-		0,
-		500,
-	);
+	const isDist =
+		resolveField(op.innerShadowDistanceHandleId, is.distance ?? 5, 0, 500) * px;
 	const isChoke = resolveField(
 		op.innerShadowChokeHandleId,
 		is.choke ?? 0,
 		0,
 		100,
 	);
-	const isSize = resolveField(op.innerShadowSizeHandleId, is.size ?? 5, 0, 250);
+	const isSize =
+		resolveField(op.innerShadowSizeHandleId, is.size ?? 5, 0, 250) * px;
 	const isBlend = BLEND_MODE_MAP[is.blendMode ?? "multiply"] ?? 1;
 
 	const ogCol = hexToRgba(og.color ?? "#ffffff");
@@ -880,7 +884,8 @@ export const WebGPURenderer: WebGPUNodeRenderer = async (args) => {
 		0,
 		1,
 	);
-	const ogSize = resolveField(op.outerGlowSizeHandleId, og.size ?? 15, 0, 250);
+	const ogSize =
+		resolveField(op.outerGlowSizeHandleId, og.size ?? 15, 0, 250) * px;
 	const ogSpread = resolveField(
 		op.outerGlowSpreadHandleId,
 		og.spread ?? 0,
@@ -896,7 +901,8 @@ export const WebGPURenderer: WebGPUNodeRenderer = async (args) => {
 		0,
 		1,
 	);
-	const igSize = resolveField(op.innerGlowSizeHandleId, ig.size ?? 15, 0, 250);
+	const igSize =
+		resolveField(op.innerGlowSizeHandleId, ig.size ?? 15, 0, 250) * px;
 	const igSpread = resolveField(
 		op.innerGlowSpreadHandleId,
 		ig.spread ?? 0,
@@ -906,7 +912,7 @@ export const WebGPURenderer: WebGPUNodeRenderer = async (args) => {
 	const igBlend = BLEND_MODE_MAP[ig.blendMode ?? "screen"] ?? 2;
 
 	const stCol = hexToRgba(st.color ?? "#ffffff");
-	const stSize = resolveField(op.strokeSizeHandleId, st.size ?? 2, 0, 100);
+	const stSize = resolveField(op.strokeSizeHandleId, st.size ?? 2, 0, 100) * px;
 	const stPos = STROKE_POS_MAP[st.position ?? "outside"] ?? 0;
 	const stOpacity = resolveField(
 		op.strokeOpacityHandleId,
@@ -927,13 +933,10 @@ export const WebGPURenderer: WebGPUNodeRenderer = async (args) => {
 		1000,
 	);
 	const beDir = be.direction === "Down" ? -1.0 : 1.0;
-	const beSize = resolveField(op.bevelEmbossSizeHandleId, be.size ?? 5, 0, 250);
-	const beSoften = resolveField(
-		op.bevelEmbossSoftenHandleId,
-		be.soften ?? 0,
-		0,
-		50,
-	);
+	const beSize =
+		resolveField(op.bevelEmbossSizeHandleId, be.size ?? 5, 0, 250) * px;
+	const beSoften =
+		resolveField(op.bevelEmbossSoftenHandleId, be.soften ?? 0, 0, 50) * px;
 	const beAngle =
 		(resolveField(op.bevelEmbossAngleHandleId, be.angle ?? 120, 0, 360) *
 			Math.PI) /
@@ -1100,6 +1103,27 @@ export const WebGPURenderer: WebGPUNodeRenderer = async (args) => {
 	drawTextureToTarget(args, outTex, op.opacity ?? 1.0);
 };
 
+type StyleOperation = Record<string, unknown> & {
+	inputs?: Record<string, { connectionValid?: boolean } | undefined>;
+};
+
+interface StyleSettings {
+	enabled?: boolean;
+	distance?: number;
+	size?: number;
+	position?: string;
+}
+
+/** Whether `handle` names an input with a live connection driving a field. */
+const drivenBy = (op: StyleOperation, handle: unknown) =>
+	typeof handle === "string" && op.inputs?.[handle]?.connectionValid === true;
+
+/** One style's settings; a style may be a signal holding its value. */
+const styleOf = (v: unknown) =>
+	(v && typeof v === "object" && "_value" in v
+		? (v as { _value: unknown })._value
+		: v) as StyleSettings | undefined;
+
 /**
  * How far a LayerStyle draws past its layer: the drop shadow's offset plus
  * its blur, the outer glow, an outside or centred stroke. Unknown (null)
@@ -1108,34 +1132,18 @@ export const WebGPURenderer: WebGPUNodeRenderer = async (args) => {
  * compositor running the style over the layer's region will clip it.
  */
 export const layerStyleReach: EffectReach = (operation) => {
-	const op = operation as Record<string, unknown> & {
-		inputs?: Record<string, { connectionValid?: boolean } | undefined>;
-	};
-	const driven = (handle: unknown) =>
-		typeof handle === "string" && op.inputs?.[handle]?.connectionValid === true;
+	const op = operation as StyleOperation;
 	if (
-		driven(op.dropShadowDistanceHandleId) ||
-		driven(op.dropShadowSizeHandleId) ||
-		driven(op.outerGlowSizeHandleId) ||
-		driven(op.strokeSizeHandleId)
+		drivenBy(op, op.dropShadowDistanceHandleId) ||
+		drivenBy(op, op.dropShadowSizeHandleId) ||
+		drivenBy(op, op.outerGlowSizeHandleId) ||
+		drivenBy(op, op.strokeSizeHandleId)
 	)
 		return null;
-	// A style may be a signal holding its value.
-	const style = (v: unknown) =>
-		(v && typeof v === "object" && "_value" in v
-			? (v as { _value: unknown })._value
-			: v) as
-			| {
-					enabled?: boolean;
-					distance?: number;
-					size?: number;
-					position?: string;
-			  }
-			| undefined;
 	const kernel = (size?: number) => Math.min(Math.ceil(size ?? 0), MAX_KERNEL);
-	const ds = style(op.dropShadow);
-	const og = style(op.outerGlow);
-	const st = style(op.stroke);
+	const ds = styleOf(op.dropShadow);
+	const og = styleOf(op.outerGlow);
+	const st = styleOf(op.stroke);
 	let r = 0;
 	if (ds?.enabled) r = Math.max(r, (ds.distance ?? 0) + kernel(ds.size));
 	if (og?.enabled) r = Math.max(r, kernel(og.size));
@@ -1143,4 +1151,41 @@ export const layerStyleReach: EffectReach = (operation) => {
 	return Math.ceil(r) + 2;
 };
 
+/**
+ * How many pixels per layout px a LayerStyle keeps its look at: its blur,
+ * glow and stroke kernels stop at MAX_KERNEL target pixels (the inner glow's
+ * and inner shadow's at MAX_INNER_KERNEL), so a size scaled past that would
+ * be cut short. 1 when a size is driven by a signal, known only at render
+ * time. Sizes left out are the renderer's defaults.
+ */
+export const layerStyleMaxPixelScale: EffectMaxPixelScale = (operation) => {
+	const op = operation as StyleOperation;
+	if (
+		drivenBy(op, op.dropShadowSizeHandleId) ||
+		drivenBy(op, op.innerShadowSizeHandleId) ||
+		drivenBy(op, op.outerGlowSizeHandleId) ||
+		drivenBy(op, op.innerGlowSizeHandleId) ||
+		drivenBy(op, op.strokeSizeHandleId)
+	)
+		return 1;
+	const st = styleOf(op.stroke);
+	// A centred stroke samples half its size each way.
+	const strokeReach = st?.position === "center" ? 2 * MAX_KERNEL : MAX_KERNEL;
+	const kernels: [StyleSettings | undefined, number, number][] = [
+		[styleOf(op.dropShadow), 10, MAX_KERNEL],
+		[styleOf(op.outerGlow), 15, MAX_KERNEL],
+		[styleOf(op.innerGlow), 15, MAX_INNER_KERNEL],
+		[styleOf(op.innerShadow), 5, MAX_INNER_KERNEL],
+		[st, 2, strokeReach],
+	];
+	let limit = Number.POSITIVE_INFINITY;
+	for (const [style, fallback, cap] of kernels) {
+		if (!style?.enabled) continue;
+		const size = style.size ?? fallback;
+		if (size > 0) limit = Math.min(limit, cap / size);
+	}
+	return limit;
+};
+
 WebGPURenderer.reach = layerStyleReach;
+WebGPURenderer.maxPixelScale = layerStyleMaxPixelScale;

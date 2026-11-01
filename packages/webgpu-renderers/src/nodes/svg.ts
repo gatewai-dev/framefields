@@ -1,4 +1,5 @@
 import type { RenderContextValue } from "../render-context.js";
+import { transformScale } from "../renderer2d/transform-stack.js";
 import { textureCache } from "../texture-cache.js";
 import { createImageTexture } from "./image-texture.js";
 import type { SVGNodeProps } from "./types.js";
@@ -103,8 +104,12 @@ export async function drawSvgNode(
 	pass: GPURenderPassEncoder,
 	props: SVGNodeProps,
 ): Promise<void> {
-	const resolvedWidth = Math.max(1, Math.ceil(props.dstRect.width));
-	const resolvedHeight = Math.max(1, Math.ceil(props.dstRect.height));
+	// Rasterize at the size the drawn rect covers on the target, so a scaled-up
+	// SVG resamples nothing.
+	const m = ctx.renderer.getCurrentTransform();
+	const k = transformScale(props.matrix ? m.multiply(props.matrix) : m);
+	const resolvedWidth = Math.max(1, Math.ceil(props.dstRect.width * k));
+	const resolvedHeight = Math.max(1, Math.ceil(props.dstRect.height * k));
 	const cacheKey = `${props.src}-${resolvedWidth}-${resolvedHeight}`;
 	let tex = textureCache.acquire(cacheKey);
 

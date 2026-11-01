@@ -72,6 +72,15 @@ const storageKey = z.string().min(1).max(1024).refine(isSafeRelativePath, {
 	message: 'keys must be relative and must not contain ".."',
 });
 
+/**
+ * A stitch input: an https URL (presigned GET, so the worker needs no
+ * storage keys) or an object key in the output bucket.
+ */
+const stitchInput = z.union([
+	z.url({ protocol: /^https$/ }).max(8192),
+	storageKey,
+]);
+
 export const renderSchema = z.object({
 	kind: z.enum(RENDER_KINDS).default("video"),
 	codec: z.string().max(32).optional(),
@@ -96,12 +105,12 @@ export const renderSchema = z.object({
 			minChunkFrames: z.number().int().min(1).optional(),
 		})
 		.optional(),
-	/** kind=stitch: chunk files (and the audio file) in the output bucket, joined in order. */
+	/** kind=stitch: chunk files (and the audio file), as presigned URLs or keys in the output bucket, joined in order. */
 	stitch: z
 		.object({
 			bucket: z.string().min(1).max(255).optional(),
-			chunks: z.array(storageKey).min(1).max(256),
-			audio: storageKey.optional(),
+			chunks: z.array(stitchInput).min(1).max(256),
+			audio: stitchInput.optional(),
 		})
 		.optional(),
 	grid: z

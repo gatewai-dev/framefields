@@ -138,10 +138,12 @@ function validateOutput(input: JobInput, config: RendererConfig): void {
 	}
 }
 
-/** A stitch job reads its chunks with the worker's own storage credentials. */
+/** Stitch inputs given as keys are read with the worker's own storage credentials. */
 function validateStitchInputs(input: JobInput, config: RendererConfig): void {
 	const stitch = input.render.stitch;
 	if (input.render.kind !== "stitch" || !stitch) return;
+	const inputs = [...stitch.chunks, ...(stitch.audio ? [stitch.audio] : [])];
+	if (inputs.every(isUrl)) return;
 	if (config.storage.driver !== "s3") {
 		throw new RenderError(
 			"JOB_INVALID",
@@ -155,6 +157,10 @@ function validateStitchInputs(input: JobInput, config: RendererConfig): void {
 			`Bucket "${bucket}" is not in FF_OUTPUT_BUCKETS.`,
 		);
 	}
+}
+
+export function isUrl(input: string): boolean {
+	return input.startsWith("https://");
 }
 
 function globMatch(pattern: string, value: string): boolean {

@@ -1,8 +1,9 @@
 import { createReadStream, createWriteStream } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { Readable } from "node:stream";
+import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
+import type { ReadableStream as WebReadableStream } from "node:stream/web";
 import {
 	GetObjectCommand,
 	HeadObjectCommand,
@@ -122,6 +123,30 @@ export async function downloadS3(
 			);
 		throw err;
 	}
+}
+
+/** Downloads a presigned URL to `file` (a stitch job's chunks). */
+export async function downloadUrl(
+	url: string,
+	file: string,
+	signal: AbortSignal,
+): Promise<void> {
+	await withRetries(signal, async () => {
+		const res = await fetch(url, { signal });
+		if (res.status === 404 || res.status === 403)
+			throw new RenderError(
+				"ASSET_NOT_FOUND",
+				`Stitch input ${redact(url.split("?")[0])} is missing or its URL expired (HTTP ${res.status}).`,
+				{ phase: "render" },
+			);
+		if (!res.ok || !res.body)
+			throw new Error(`Stitch input download failed: HTTP ${res.status}`);
+		await pipeline(
+			Readable.fromWeb(res.body as WebReadableStream),
+			createWriteStream(file),
+			{ signal },
+		);
+	});
 }
 
 export function publicUrl(

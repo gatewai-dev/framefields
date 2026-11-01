@@ -97,8 +97,57 @@ describe("validateJob", () => {
 			{ render: { kind: "frames" } },
 			"JOB_INVALID",
 		],
+		[
+			"stitch keys without s3 storage",
+			{ render: { kind: "stitch", stitch: { chunks: ["r/chunk-0.mp4"] } } },
+			"JOB_INVALID",
+		],
+		[
+			"plain-http stitch URLs",
+			{
+				render: {
+					kind: "stitch",
+					stitch: { chunks: ["http://r2.example.com/chunk-0.mp4?sig=x"] },
+				},
+			},
+			"JOB_INVALID",
+		],
+		[
+			"a range on a non-video kind",
+			{ render: { kind: "audio", range: { from: 0, to: 10 } } },
+			"JOB_INVALID",
+		],
 	])("rejects %s", (_, overrides, code) => {
 		expect(codeOf(() => validateJob(testJob(overrides), config))).toBe(code);
+	});
+
+	it("takes split-render jobs; presigned stitch inputs need no storage keys", () => {
+		const chunk = validateJob(
+			testJob({ render: { range: { from: 0, to: 60 }, audio: false } }),
+			config,
+		);
+		expect(chunk.input.render).toMatchObject({
+			kind: "video",
+			range: { from: 0, to: 60 },
+			audio: false,
+		});
+		const stitch = validateJob(
+			testJob({
+				render: {
+					kind: "stitch",
+					stitch: {
+						chunks: [
+							"https://acct.r2.cloudflarestorage.com/b/chunk-000.mp4?X-Amz-Signature=a",
+							"https://acct.r2.cloudflarestorage.com/b/chunk-001.mp4?X-Amz-Signature=b",
+						],
+						audio:
+							"https://acct.r2.cloudflarestorage.com/b/audio.m4a?X-Amz-Signature=c",
+					},
+				},
+			}),
+			config,
+		);
+		expect(stitch.input.render.stitch?.chunks).toHaveLength(2);
 	});
 
 	it("enforces the bucket allowlist", () => {

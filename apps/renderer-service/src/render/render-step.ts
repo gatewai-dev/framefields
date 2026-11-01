@@ -9,8 +9,9 @@ import type {
 } from "../jobs/pipeline.js";
 import type { JobInput, RenderSettings } from "../jobs/schema.js";
 import type { JobProgress } from "../jobs/store.js";
+import { isUrl } from "../jobs/validate.js";
 import { rendererLogger } from "../logger.js";
-import { downloadS3 } from "../output/sinks.js";
+import { downloadS3, downloadUrl } from "../output/sinks.js";
 import { gpuStatus } from "../worker/gpu.js";
 import { workerHealth } from "../worker/health.js";
 import {
@@ -458,29 +459,33 @@ async function stitchOutput(
 	engine: BoundEngine,
 ): Promise<RenderedFile> {
 	const stitch = settings.stitch;
-	const bucket = stitch?.bucket ?? ctx.config.storage.bucket;
-	if (!stitch || !bucket)
-		throw new RenderError(
-			"JOB_INVALID",
-			"render.stitch needs chunks and a bucket.",
-		);
+	if (!stitch)
+		throw new RenderError("JOB_INVALID", "render.stitch is missing.");
+	const bucket = stitch.bucket ?? ctx.config.storage.bucket;
 	const stitchChunks = requireEngine(engine, "stitchChunks", "stitch jobs");
 	const inDir = path.join(ctx.jobDir, "in");
 	await fs.mkdir(inDir, { recursive: true });
-	const keys = [...stitch.chunks, ...(stitch.audio ? [stitch.audio] : [])];
+	const inputs = [...stitch.chunks, ...(stitch.audio ? [stitch.audio] : [])];
 	let downloaded = 0;
-	const local = await mapLimit(keys, 4, async (key, i) => {
-		const file = path.join(inDir, `${i}-${path.basename(key)}`);
-		await downloadS3(ctx.config, bucket, key, file, controller.signal);
+	const local = await mapLimit(inputs, 4, async (input, i) => {
+		const file = path.join(inDir, `${i}-${path.basename(inputPath(input))}`);
+		if (isUrl(input)) await downloadUrl(input, file, controller.signal);
+		else if (bucket)
+			await downloadS3(ctx.config, bucket, input, file, controller.signal);
+		else
+			throw new RenderError(
+				"JOB_INVALID",
+				"Stitch inputs given as keys need STORAGE_BUCKET or stitch.bucket.",
+			);
 		ctx.progress({
 			phase: "rendering",
 			frame: ++downloaded,
-			total: keys.length,
+			total: inputs.length,
 			message: "downloading chunks",
 		});
 		return file;
 	});
-	const ext = path.extname(stitch.chunks[0]).slice(1) || "mp4";
+	const ext = path.extname(inputPath(stitch.chunks[0])).slice(1) || "mp4";
 	const { contentType } = containerFor(ext === "webm" ? "vp9" : "h264");
 	const outputPath = path.join(outDir, `0-main.${ext}`);
 	ctx.progress({
@@ -500,6 +505,11 @@ async function stitchOutput(
 		contentType,
 		expectedFrames: result.frames,
 	};
+}
+
+/** A stitch input's path: the key, or a URL's path without its signature. */
+function inputPath(input: string): string {
+	return isUrl(input) ? new URL(input).pathname : input;
 }
 
 /** `Promise.all` over `items`, at most `limit` at a time, results in order. */

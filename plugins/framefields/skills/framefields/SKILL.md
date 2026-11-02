@@ -31,7 +31,7 @@ This skill takes a project from nothing to a verified first render. For anything
 
 ## 2. Install
 
-**Fastest path: `npx framefields init`.** It writes everything in sections 2 and 3 for you: `package.json` (with the install-script approvals below, scripts, dependencies, `packageManager`), `tsconfig.json`, `src/theme.ts` / `film.ts` / `render.ts`, `assets/`, the LFS `.gitattributes` and `.gitignore`. It also downloads Inter, JetBrains Mono, and Noto Color Emoji (pinned, with their OFL licenses), registers them in the generated `src/components/fonts.ts` that `theme.ts` calls, and runs `git init`.
+**Fastest path: `npx framefields init`.** It writes everything in sections 2 and 3 for you: `package.json` (with the install-script approvals below, scripts, dependencies, `packageManager`), `tsconfig.json`, `src/theme.ts` / `film.ts` / `render.ts`, `assets/`, the LFS `.gitattributes` and `.gitignore`, and `framefields.json` (the components folder, installed fonts, and a `film` render naming `buildFilm` in `src/film.ts`). It also downloads Inter, JetBrains Mono, and Noto Color Emoji (pinned, with their OFL licenses), registers them in the generated `src/components/fonts.ts` that `theme.ts` calls, and runs `git init`.
 
 ```bash
 npx framefields init my-film --install      # a new project; or `init` inside an existing one
@@ -241,7 +241,7 @@ Add scripts to `package.json`:
 }
 ```
 
-`render:cloud` renders on framefields' GPUs (api.framefields.dev) from the pushed commit, with the same `FRAMEFIELDS_API_KEY` as the AI gateway; `framefields-render` covers it.
+`render:cloud` renders on framefields' GPUs (api.framefields.dev) from the pushed commit, with the same `FRAMEFIELDS_API_KEY` as the AI gateway, and splits long films across several GPUs; `framefields-render` covers it. When the user wants another version of the film (a teaser, a vertical cut, a language), add an export and a named render for it rather than a flag in `render.ts`.
 
 ### Video assets & Git LFS
 

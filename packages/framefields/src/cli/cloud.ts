@@ -13,7 +13,12 @@ import {
 	type CloudRenderStatus,
 	renderCloud,
 } from "../cloud/index.js";
-import { CONFIG_FILE, findRender, readConfig } from "./config.js";
+import {
+	CONFIG_FILE,
+	findRender,
+	type RenderSpec,
+	readConfig,
+} from "./config.js";
 
 export interface CloudCliOptions {
 	/** A render named in framefields.json, or a module path. Optional when framefields.json has one render. */
@@ -59,13 +64,7 @@ export async function runCloudRender(
 	}
 	const spec = target.name ? findRender(cwd, target.name) : undefined;
 	const codec = (o.codec ?? spec?.codec ?? "h264") as "h264" | "vp9";
-	const outputPath =
-		o.output ??
-		spec?.output ??
-		path.join(
-			"output",
-			`${target.name ?? path.basename(target.entry ?? "").replace(/\.[^.]+$/, "")}.${codec === "vp9" ? "webm" : "mp4"}`,
-		);
+	const outputPath = renderOutput(target, spec, codec, o.output);
 	// A plan of a one-worker render would only ever say "one worker".
 	const planWorkers =
 		o.plan && (workers ?? spec?.workers ?? 1) === 1 ? "auto" : workers;
@@ -93,6 +92,7 @@ export async function runCloudRender(
 			signal: controller.signal,
 			onProgress: narrate,
 			onWarning: (m) => log(`warning: ${m}`),
+			onLog: log,
 		});
 		if (o.json) {
 			log(JSON.stringify(result));
@@ -142,6 +142,22 @@ export function renderCommand(o: CloudCliOptions): string {
 	].join(" ");
 }
 
+/** What a render named `name` (or the module `entry`) produces, wherever it runs. */
+export function renderOutput(
+	target: { name?: string; entry?: string },
+	spec: RenderSpec | undefined,
+	codec: string,
+	output?: string,
+): string {
+	const base =
+		target.name ?? path.basename(target.entry ?? "").replace(/\.[^.]+$/, "");
+	return (
+		output ??
+		spec?.output ??
+		path.join("output", `${base}.${codec === "vp9" ? "webm" : "mp4"}`)
+	);
+}
+
 /**
  * What `framefields render [arg]` renders: a render named in framefields.json,
  * or a module path; with no argument, the project's only named render.
@@ -157,7 +173,7 @@ export function pickRender(
 		return {
 			error: names.length
 				? `Name the render: ${names.join(", ")}. \`framefields renders\` lists them.`
-				: `Name a module, e.g. \`framefields render src/film.ts --cloud\`, or add "renders" to ${CONFIG_FILE}.`,
+				: `Name a module, e.g. \`framefields render src/film.ts\`, or add "renders" to ${CONFIG_FILE}.`,
 		};
 	}
 	if (renders[arg]) return { name: arg };

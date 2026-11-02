@@ -31,6 +31,16 @@ const sourceSchema = z.object({
 		})
 		.default({ include: [], exclude: [] }),
 	submodules: z.boolean().default(false),
+	/**
+	 * Signed GET URLs for assets framefields.json pins on private remotes,
+	 * by sha256 (the CLI signs them with the user's keys).
+	 */
+	assets: z
+		.record(
+			z.string().regex(/^[0-9a-f]{64}$/, "keys are sha256 hashes"),
+			z.url({ protocol: /^https$/ }).max(8192),
+		)
+		.optional(),
 	sparse: z.array(relPath("sparse path")).max(256).optional(),
 	auth: z
 		.object({

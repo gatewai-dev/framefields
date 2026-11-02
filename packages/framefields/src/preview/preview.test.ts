@@ -50,8 +50,17 @@ describe("startPreview", () => {
 			fps: 10,
 			frameCount: 10,
 			width: 64,
-			audio: { state: "none" },
+			// The page mixes the soundtrack around its playhead.
+			audio: { state: "browser" },
 		});
+		// When it can't, the server mixes the whole of it on request.
+		await fetch(`${session.url}audio/mix`, { method: "POST" });
+		let audio: { state: string } = { state: "mixing" };
+		for (let i = 0; i < 100 && audio.state === "mixing"; i++) {
+			await new Promise((r) => setTimeout(r, 50));
+			audio = (await (await fetch(`${session.url}meta`)).json()).audio;
+		}
+		expect(audio).toEqual({ state: "none" });
 
 		const page = await (await fetch(session.url)).text();
 		expect(page).toContain('id="canvas"');
@@ -165,6 +174,75 @@ describe("startPreview", () => {
 		} finally {
 			await fs.promises.rm(project, { recursive: true, force: true });
 			await fs.promises.rm(shared, { recursive: true, force: true });
+		}
+	});
+
+	it("sends the page to the bucket for pinned assets that aren't on disk", async () => {
+		const project = await fs.promises.mkdtemp(
+			path.join(os.tmpdir(), "gf-project-"),
+		);
+		const sha = "ab".repeat(32);
+		const raw = "cd".repeat(32);
+		process.env.FRAMEFIELDS_STORAGE_RAW_ACCESS_KEY_ID = "id";
+		process.env.FRAMEFIELDS_STORAGE_RAW_SECRET_ACCESS_KEY = "secret";
+		try {
+			const src = path.join(project, "src");
+			await fs.promises.mkdir(src, { recursive: true });
+			await fs.promises.writeFile(path.join(project, "package.json"), "{}");
+			const endpoint = "https://acct.r2.cloudflarestorage.com";
+			await fs.promises.writeFile(
+				path.join(project, "framefields.json"),
+				JSON.stringify({
+					storage: {
+						default: "media",
+						remotes: {
+							media: {
+								endpoint,
+								bucket: "films",
+								publicUrl: "https://media.example.com",
+							},
+							raw: { endpoint, bucket: "raw" },
+						},
+					},
+					assets: {
+						"assets/intro.mp4": { sha256: sha, size: 1234 },
+						"assets/raw.mov": { sha256: raw, size: 99, remote: "raw" },
+					},
+				}),
+			);
+			const comp = path.join(src, "comp.ts");
+			await fs.promises.writeFile(
+				comp,
+				"export default function build() { return { fps: 10, durationMs: 1000, width: 64, height: 36 }; }",
+			);
+			const session = await start({ entry: comp }, { open: false, port: 0 });
+			const get = (rel: string) =>
+				fetch(`${session.url}@fs${path.join(project, rel)}`, {
+					redirect: "manual",
+				});
+			const intro = await get("assets/intro.mp4");
+			expect(intro.status).toBe(302);
+			expect(intro.headers.get("location")).toBe(
+				`https://media.example.com/sha256/ab/${sha}`,
+			);
+			const signed = new URL(
+				(await get("assets/raw.mov")).headers.get("location") ?? "",
+			);
+			expect(signed.origin + signed.pathname).toBe(
+				`${endpoint}/raw/sha256/cd/${raw}`,
+			);
+			expect(signed.searchParams.get("X-Amz-Signature")).toMatch(
+				/^[0-9a-f]{64}$/,
+			);
+			expect((await get("assets/other.mp4")).status).toBe(404);
+			const stat = await fetch(
+				`${session.url}@framefields/stat?path=${encodeURIComponent(path.join(project, "assets/intro.mp4"))}`,
+			).then((r) => r.json());
+			expect(stat).toEqual({ exists: true, size: 1234 });
+		} finally {
+			delete process.env.FRAMEFIELDS_STORAGE_RAW_ACCESS_KEY_ID;
+			delete process.env.FRAMEFIELDS_STORAGE_RAW_SECRET_ACCESS_KEY;
+			await fs.promises.rm(project, { recursive: true, force: true });
 		}
 	});
 

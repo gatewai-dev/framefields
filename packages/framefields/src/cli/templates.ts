@@ -32,8 +32,8 @@ export const SCRIPTS: Record<string, string> = {
 	"check:render": "tsc --noEmit -p . && framefields check film --render --json",
 	frames: "tsx src/render.ts frames",
 	grid: "tsx src/render.ts grid",
-	preview: "tsx src/render.ts preview",
-	render: "tsx src/render.ts",
+	preview: "framefields preview film",
+	render: "framefields render film",
 	"render:cloud": "framefields render film --cloud",
 };
 
@@ -196,8 +196,12 @@ export async function buildFilm(): Promise<Composition> {
 export const RENDER_TS = `import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { HeadlessMediaRenderer, frameCount, startPreview } from "framefields";
+import { HeadlessMediaRenderer, frameCount } from "framefields";
 import { buildFilm } from "./film.js";
+
+// Quick looks at the film: \`npm run frames -- 0 30 60\` and \`npm run grid\`.
+// \`npm run render\` and \`npm run preview\` use the "film" render in
+// framefields.json instead (\`framefields render film\`, \`framefields preview film\`).
 
 // Optional settings such as FRAMEFIELDS_API_KEY (see .env.example).
 const ENV = path.resolve(import.meta.dirname, "../.env");
@@ -205,35 +209,17 @@ if (existsSync(ENV)) process.loadEnvFile(ENV);
 
 const OUT = path.resolve(import.meta.dirname, "../output");
 // \`npm run frames -- 0 30\` needs the \`--\`; pnpm passes it through: drop it.
-const [mode = "video", ...args] = process.argv
+const [mode = "frames", ...args] = process.argv
 	.slice(2)
 	.filter((a) => a !== "--");
-
-if (mode === "preview") {
-	// The page runs film.ts itself and renders it with WebGPU in the browser.
-	const session = await startPreview({
-		entry: new URL("./film.ts", import.meta.url),
-		export: "buildFilm",
-	});
-	console.log(\`Preview at \${session.url}\`);
-	await session.closed; // until its tab closes or the next preview replaces it
-	process.exit(0);
-}
 
 const film = await buildFilm();
 await fs.mkdir(OUT, { recursive: true });
 
-if (mode === "frames") {
-	const renderer = new HeadlessMediaRenderer();
-	for (const frame of (args.length ? args : ["0"]).map(Number)) {
-		const png = await film.renderFrame({ frame, renderer });
-		const file = path.join(OUT, \`f\${String(frame).padStart(4, "0")}.png\`);
-		await fs.writeFile(file, png);
-		console.log(\`Wrote \${path.relative(process.cwd(), file)}\`);
-	}
-} else if (mode === "grid") {
+if (mode === "grid") {
+	const last = frameCount(film.durationMs ?? (await film.computeDuration()), film.fps) - 1;
 	const png = await film.renderFrameGrid({
-		frames: args.length ? args.map(Number) : [...new Set([0, Math.floor((frameCount(film.durationMs ?? await film.computeDuration(), film.fps) - 1) / 2), frameCount(film.durationMs ?? await film.computeDuration(), film.fps) - 1])],
+		frames: args.length ? args.map(Number) : [...new Set([0, Math.floor(last / 2), last])],
 		columns: 4,
 		cellWidth: 480,
 		showLabels: true,
@@ -241,12 +227,13 @@ if (mode === "frames") {
 	await fs.writeFile(path.join(OUT, "grid.png"), png);
 	console.log("Wrote output/grid.png");
 } else {
-	const result = await film.renderVideo({
-		outputPath: path.join(OUT, "output.mp4"),
-		quality: "high",
-	});
-	await result.cleanup?.();
-	console.log(\`Exported \${result.filePath}\`);
+	const renderer = new HeadlessMediaRenderer();
+	for (const frame of (args.length ? args : ["0"]).map(Number)) {
+		const png = await film.renderFrame({ frame, renderer });
+		const file = path.join(OUT, \`f\${String(frame).padStart(4, "0")}.png\`);
+		await fs.writeFile(file, png);
+		console.log(\`Wrote \${path.relative(process.cwd(), file)}\`);
+	}
 }
 
 // Native GPU and encoder threads keep Node alive; always exit explicitly.
@@ -263,7 +250,7 @@ ${run("typecheck")}
 ${run("frames")} -- 0 30 60   # PNGs in output/
 ${run("grid")}                # a contact sheet of the motion
 ${run("preview")}             # play it in the browser
-${run("render")}              # output/output.mp4
+${run("render")}              # output/film.mp4
 ${run("render:cloud")}        # on cloud GPUs, from the pushed commit
 \`\`\`
 

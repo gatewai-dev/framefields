@@ -6,6 +6,8 @@ import type { AddressInfo } from "node:net";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { VirtualMediaData } from "@framefields/core";
+import { type AssetLocator, openAssetLocator } from "@framefields/storage";
+import { inputStore } from "@framefields/webgpu-renderers";
 import { encodeStereoWav } from "../audio/index.js";
 import { HeadlessMediaRenderer } from "../renderer/index.js";
 import {
@@ -17,6 +19,7 @@ import {
 } from "./bundle.js";
 import { describeNote, type NewNote, NoteStore } from "./notes.js";
 import { previewPage } from "./page.js";
+import { computePeaks, PEAK_BINS, SILENT_PEAK } from "./peaks.js";
 
 /** Where the composition comes from: the module that builds it. */
 export interface PreviewSource {
@@ -120,12 +123,13 @@ interface PreviewMeta {
 }
 
 type AudioStatus =
+	/** The page mixes it (the default); the server only when the page asks. */
+	| { state: "browser" }
 	| { state: "mixing" }
 	| { state: "ready"; durationSec: number; peaks: number[] }
 	| { state: "none" }
 	| { state: "error"; error: string };
 
-const PEAK_BINS = 1200;
 /** Requests carrying this header come from another preview process, not a page. */
 const TAKEOVER_HEADER = "x-framefields-preview";
 const PLAYER_PATH = "/@framefields/player.js";
@@ -191,6 +195,18 @@ export async function startPreview(
 	// Changes run one at a time: each reads and rewrites notes.json.
 	let noteQueue: Promise<unknown> = Promise.resolve();
 
+	// Assets framefields.json pins but that aren't on disk (an agent's
+	// sandbox, a fresh clone) stream from their bucket: the page is
+	// redirected there, and the soundtrack mix reads them over HTTP.
+	const assets = await openAssetLocator(path.dirname(entry)).catch(
+		(err: unknown) => {
+			say(`pinned assets are off: ${(err as Error).message}`);
+			return undefined;
+		},
+	);
+	if (assets) inputStore.setMissingMediaResolver((file) => assets.url(file));
+	const unreadable = new Set<string>();
+
 	const target = await loadTarget(entry, exportName);
 	const meta = await resolveMeta(target, title, session, notes?.dir ?? null);
 	// The project's own code, bundled against the browser engine; the engine
@@ -218,9 +234,11 @@ export async function startPreview(
 	const engine = engineDir();
 	engine.catch(() => {});
 
-	// ── Audio: mixed once, by the export engine ──
+	// ── Audio: the page mixes it with the export's mixer, reading sources
+	// itself (straight from their bucket, for pinned assets). The server mixes
+	// only when the page can't, and sends the mix as a WAV. ──
 	let audio: AudioStatus = {
-		state: options.audio === false ? "none" : "mixing",
+		state: options.audio === false ? "none" : "browser",
 	};
 	let audioWav: Buffer | undefined;
 
@@ -254,7 +272,7 @@ export async function startPreview(
 				const left = channels[0] ?? new Float32Array(0);
 				const right = channels[1] ?? left;
 				const peaks = computePeaks(left, right, PEAK_BINS);
-				if (left.length === 0 || Math.max(...peaks) < 0.001) {
+				if (left.length === 0 || Math.max(...peaks) < SILENT_PEAK) {
 					setAudio({ state: "none" });
 					return;
 				}
@@ -286,6 +304,7 @@ export async function startPreview(
 			if (reason === "replaced") say("stopped: a newer preview took over");
 			for (const client of sseClients) client.end();
 			sseClients.clear();
+			if (assets) inputStore.setMissingMediaResolver();
 			server.close(() => {
 				resolve();
 				resolveClosed(reason);
@@ -353,7 +372,7 @@ export async function startPreview(
 				if (roots.some((r) => isInside(r, file))) {
 					size = await fs.promises.stat(file).then(
 						(st) => (st.isFile() ? st.size : -1),
-						() => -1,
+						() => assets?.entry(file)?.size ?? -1,
 					);
 				}
 				sendJson(res, 200, { exists: size >= 0, size: Math.max(0, size) });
@@ -453,6 +472,15 @@ export async function startPreview(
 					return;
 				}
 			}
+			// The page couldn't mix the soundtrack: mix it here instead.
+			if (req.method === "POST" && url.pathname === "/audio/mix") {
+				if (audio.state === "browser" || audio.state === "error") {
+					audio = { state: "mixing" };
+					startAudio();
+				}
+				sendJson(res, 202, audio);
+				return;
+			}
 			if (req.method === "GET" && url.pathname === "/audio") {
 				if (audio.state !== "ready" || !audioWav) {
 					sendJson(res, 404, { error: `audio is ${audio.state}` });
@@ -492,6 +520,11 @@ export async function startPreview(
 					await sendFile(req, res, file);
 					return;
 				}
+				if (
+					assets &&
+					(await redirectToBucket(res, assets, file, unreadable, say))
+				)
+					return;
 			}
 			sendJson(res, 404, { error: "not found" });
 		} catch (err) {
@@ -538,9 +571,8 @@ export async function startPreview(
 	const { port: actualPort } = server.address() as AddressInfo;
 	const url = `http://${host.includes(":") ? `[${host}]` : host}:${actualPort}/`;
 
-	// Build the page's bundle and mix the soundtrack while the browser opens.
+	// Build the page's bundle while the browser opens.
 	void playerBundle().catch(() => {});
-	startAudio();
 	if (options.open === true) {
 		// A tab from the last preview reconnects within ~1 s and reloads itself;
 		// only open a new one when nobody comes back.
@@ -691,6 +723,35 @@ const CONTENT_TYPES: Record<string, string> = {
 	".txt": "text/plain; charset=utf-8",
 };
 
+/**
+ * Sends the page to the bucket for a pinned asset that isn't on disk. The
+ * bucket must allow this page's origin (CORS): the engine reads media with
+ * `fetch`. True when it answered.
+ */
+async function redirectToBucket(
+	res: http.ServerResponse,
+	assets: AssetLocator,
+	file: string,
+	unreadable: Set<string>,
+	say: (line: string) => void,
+): Promise<boolean> {
+	if (!assets.entry(file)) return false;
+	const url = await assets.url(file);
+	if (url) {
+		res.writeHead(302, { location: url, "cache-control": "no-store" });
+		res.end();
+		return true;
+	}
+	const rel = path.relative(assets.root, file);
+	if (!unreadable.has(rel)) {
+		unreadable.add(rel);
+		say(
+			`${rel} is pinned on a private remote and there are no keys here: set its FRAMEFIELDS_STORAGE_* keys, give the remote a publicUrl, or \`npx framefields assets pull\``,
+		);
+	}
+	return false;
+}
+
 /** Serves a file, with byte ranges so video can seek without loading it whole. */
 async function sendFile(
 	req: http.IncomingMessage,
@@ -787,27 +848,6 @@ async function requestTakeover(host: string, port: number): Promise<boolean> {
 }
 
 /** Max absolute amplitude of both channels per bin, 0..1. */
-function computePeaks(
-	left: Float32Array,
-	right: Float32Array,
-	bins: number,
-): number[] {
-	const peaks = new Array<number>(bins).fill(0);
-	if (left.length === 0) return peaks;
-	const per = left.length / bins;
-	for (let b = 0; b < bins; b++) {
-		const start = Math.floor(b * per);
-		const end = Math.min(left.length, Math.floor((b + 1) * per));
-		let max = 0;
-		for (let i = start; i < end; i++) {
-			const v = Math.max(Math.abs(left[i] ?? 0), Math.abs(right[i] ?? 0));
-			if (v > max) max = v;
-		}
-		peaks[b] = Math.min(1, max);
-	}
-	return peaks;
-}
-
 function sendJson(res: http.ServerResponse, status: number, body: unknown) {
 	res.writeHead(status, {
 		"content-type": "application/json",

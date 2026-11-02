@@ -9,6 +9,7 @@ export type JobPhase =
 	| "resolve"
 	| "fetch"
 	| "lfs"
+	| "assets"
 	| "install"
 	| "load"
 	| "render"
@@ -48,6 +49,13 @@ const CODES = {
 	LFS_OBJECT_MISSING: { phase: "lfs", retryable: false },
 	LFS_POINTER_UNRESOLVED: { phase: "lfs", retryable: false },
 	UNSUPPORTED_GIT_FILTER: { phase: "lfs", retryable: false },
+
+	ASSET_MANIFEST_INVALID: { phase: "assets", retryable: false },
+	ASSET_PRIVATE: { phase: "assets", retryable: false },
+	ASSET_NOT_UPLOADED: { phase: "assets", retryable: false },
+	ASSET_FORBIDDEN: { phase: "assets", retryable: false },
+	ASSET_DOWNLOAD_FAILED: { phase: "assets", retryable: true },
+	ASSET_HASH_MISMATCH: { phase: "assets", retryable: false },
 
 	DISK_FULL: { phase: "any", retryable: true },
 

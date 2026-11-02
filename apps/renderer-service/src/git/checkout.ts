@@ -4,6 +4,7 @@ import { RenderError } from "../errors.js";
 import type { CheckoutResult, Pipeline } from "../jobs/pipeline.js";
 import { resolveInside } from "../paths.js";
 import { activeJanitor, markUsed } from "../worker/janitor.js";
+import { fetchAssets } from "./assets.js";
 import { openGitSession } from "./auth.js";
 import { hostProfile } from "./hosts.js";
 import { findPointers, pullLfs } from "./lfs.js";
@@ -92,6 +93,16 @@ export const checkout: Pipeline["checkout"] = async (job, ctx) => {
 			);
 		}
 
+		ctx.progress({ phase: "assets" });
+		const assets = await fetchAssets(workdir, {
+			cacheDir: ctx.config.paths.cacheDir,
+			signed: source.assets,
+			signal: ctx.signal,
+			makeRoom: async (bytes) => {
+				await activeJanitor()?.enforce([repoHash(repo)], bytes);
+			},
+		});
+
 		return {
 			root: ws.root,
 			workdir,
@@ -100,6 +111,7 @@ export const checkout: Pipeline["checkout"] = async (job, ctx) => {
 				mirror: mirror.cache,
 				workspace: ws.warm ? "warm" : "cold",
 				lfs: lfs.cache,
+				assets: assets.cache,
 			},
 			release: async () => {},
 		} satisfies CheckoutResult;

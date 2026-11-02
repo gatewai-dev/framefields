@@ -12,11 +12,6 @@ import {
 	drawCompositionTree,
 } from "@framefields/compositions";
 import { updateClockSignals, type VirtualMediaData } from "@framefields/core";
-import {
-	audioRegistry,
-	type NodeRendererPlugin,
-	registerWebGPURenderer,
-} from "@framefields/node-sdk";
 import { preloadCompositionFonts } from "@framefields/renderers";
 import {
 	type OrtWebModule,
@@ -31,12 +26,16 @@ import {
 	type RenderContextValue,
 	SlugFontCache,
 } from "@framefields/webgpu-renderers";
+import {
+	type AudioTarget,
+	createAudioMixer,
+	type PreviewMix,
+} from "./audio-mixer.js";
 import { Blitter } from "./blit.js";
+import { type BuiltinRenderer, registerRenderers } from "./register.js";
 
-export interface BuiltinRenderer {
-	ops: readonly string[];
-	load: () => Promise<{ default?: NodeRendererPlugin }>;
-}
+export { startAudioMixer } from "./audio-mixer.js";
+export type { BuiltinRenderer, PreviewMix };
 
 export interface PlayerMeta {
 	width: number;
@@ -65,6 +64,17 @@ export interface PreviewPlayer {
 	 * before it plays. Skipped (resolves false) while a frame is being drawn.
 	 */
 	warm(frame: number): Promise<boolean>;
+	/**
+	 * Mixes [startSec, endSec) of the soundtrack here, with the export's
+	 * mixer: the same decoders (reading only the stretch it plays, so pinned
+	 * assets stream from their bucket), audio effects on this page's GPU and
+	 * signals, on `chain`'s effect state (see `createAudioMixer`). The page
+	 * mixes the blocks around its playhead as it plays.
+	 */
+	mixAudio(
+		range: { startSec: number; endSec: number },
+		chain?: string,
+	): Promise<PreviewMix>;
 	/** A frame at full size as an image, e.g. to attach to a note. */
 	snapshot(frame: number): Promise<ImageBitmap>;
 	/**
@@ -76,11 +86,7 @@ export interface PreviewPlayer {
 	dispose(): Promise<void>;
 }
 
-type Renderable = {
-	toVirtualMediaAsync?: () => Promise<VirtualMediaData>;
-	toVirtualMedia?: () => VirtualMediaData;
-	fps?: number;
-};
+type Renderable = AudioTarget & { fps?: number };
 
 declare global {
 	interface Window {
@@ -390,6 +396,8 @@ async function createPlayer(
 		})();
 	}
 
+	const mixAudio = createAudioMixer(target, fps, device, `${renderId}-audio`);
+
 	const blitter = new Blitter(device, surface.colorFormat);
 
 	const player: PreviewPlayer = {
@@ -415,6 +423,7 @@ async function createPlayer(
 			pump();
 			return true;
 		},
+		mixAudio,
 		async snapshot(frame) {
 			if (disposed) throw new Error("the player was disposed");
 			while (drawing) await drawing;
@@ -491,27 +500,4 @@ async function readTexture(
 function containsOp(node: VirtualMediaData, op: string): boolean {
 	if ((node.operation as { op?: string } | undefined)?.op === op) return true;
 	return (node.children ?? []).some((child) => containsOp(child, op));
-}
-
-async function registerRenderers(renderers: readonly BuiltinRenderer[]) {
-	await Promise.all(
-		renderers.map(async ({ ops, load }) => {
-			try {
-				const plugin = (await load()).default;
-				for (const op of ops) {
-					if (plugin?.WebGPURenderer)
-						registerWebGPURenderer(op, plugin.WebGPURenderer);
-					if (plugin?.audioProcessor)
-						audioRegistry.register(op, plugin.audioProcessor);
-				}
-			} catch (err) {
-				console.warn(
-					"[framefields] renderer for",
-					ops[0],
-					"failed to load",
-					err,
-				);
-			}
-		}),
-	);
 }

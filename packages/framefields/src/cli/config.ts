@@ -20,9 +20,18 @@
  * A named render is what `framefields render film --cloud`, `framefields
  * check film`, `renderCloud({ render: "film" })` and the dashboard's New
  * render dialog pick, so nobody chooses files and exports by hand.
+ *
+ * `storage` and `assets` pin media by content on an S3-compatible bucket
+ * (`framefields assets`; the format lives in `@framefields/storage`).
  */
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import {
+	type AssetManifest,
+	parseAssets,
+	parseStorage,
+	type StorageConfig,
+} from "@framefields/storage";
 
 export const CONFIG_FILE = "framefields.json";
 
@@ -58,6 +67,10 @@ export interface ProjectConfig {
 	fonts?: Partial<Record<string, string>>;
 	/** Named renders, by name (letters, digits, `-`, `_`, `.`). */
 	renders?: Record<string, RenderSpec>;
+	/** Buckets holding the project's assets. */
+	storage?: StorageConfig;
+	/** Files the project needs, by path, pinned by sha256 and size. */
+	assets?: AssetManifest;
 }
 
 export const RENDER_NAME = /^[A-Za-z0-9][\w.-]{0,63}$/;
@@ -87,7 +100,7 @@ export function readConfig(cwd: string): {
 		);
 	}
 	if (!isRecord(raw)) throw new Error(`${CONFIG_FILE} must be a JSON object`);
-	const { components, fonts, renders } = raw;
+	const { components, fonts, renders, storage, assets } = raw;
 	if (components !== undefined && typeof components !== "string")
 		throw new Error(`${CONFIG_FILE}: "components" must be a directory path`);
 	if (
@@ -98,11 +111,17 @@ export function readConfig(cwd: string): {
 		throw new Error(
 			`${CONFIG_FILE}: "fonts" must map roles to font file paths, e.g. { "emoji": "assets/fonts/NotoColorEmoji.ttf" }`,
 		);
+	const parsedStorage =
+		storage === undefined ? undefined : parseStorage(storage);
 	// Other keys (a `$schema`, say) survive a rewrite.
 	const config = {
 		...raw,
 		components: components ?? fallback,
 		...(renders !== undefined && { renders: parseRenders(renders) }),
+		...(parsedStorage && { storage: parsedStorage }),
+		...(assets !== undefined && {
+			assets: parseAssets(assets, parsedStorage),
+		}),
 	} as ProjectConfig;
 	return { config, saved: components !== undefined };
 }

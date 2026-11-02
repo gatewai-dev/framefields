@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import {
+	type AudioMix,
 	compositionStateStore,
 	drawCompositionTree,
 	mixAudioTracks,
@@ -970,23 +971,40 @@ export class HeadlessWebGPURenderer {
 	 * Mixes the composition's full audio timeline (clips, effects, synthesized
 	 * tracks) to stereo PCM, exactly as `renderVideo` muxes it.
 	 */
+	/**
+	 * Mixes the timeline's audio. `window` mixes only that stretch (the same
+	 * samples as that part of a full mix); `master: false` skips the master
+	 * stage, for callers that master with the whole film's `peak` later.
+	 */
 	public async renderAudio(
 		virtualMedia: VirtualMediaData,
-		options: { fps?: number; sampleRate?: number } = {},
-	): Promise<{ channels: Float32Array[]; sampleRate: number }> {
+		options: {
+			fps?: number;
+			sampleRate?: number;
+			window?: { startSec: number; endSec: number };
+			master?: boolean;
+		} = {},
+	): Promise<AudioMix> {
 		await HeadlessWebGPURenderer.initialize();
 		const fps = options.fps ?? (virtualMedia.metadata?.fps || 30);
 		await preflightMediaTime(virtualMedia, fps);
 		await renderSemaphore.acquire();
 		try {
 			const device = await ensureDevice();
-			return await mixAudioTracks(
-				virtualMedia,
-				fps,
-				options.sampleRate ?? 48_000,
-				device,
-				`aud-${randomUUID()}`,
-			);
+			const renderId = `aud-${randomUUID()}`;
+			try {
+				return await mixAudioTracks(
+					virtualMedia,
+					fps,
+					options.sampleRate ?? 48_000,
+					device,
+					renderId,
+					{ window: options.window, master: options.master },
+				);
+			} finally {
+				// The mix's effect state (delay lines, reverb tails) on the GPU.
+				WebGPUAudioProcessor.clearCache(renderId, device);
+			}
 		} finally {
 			renderSemaphore.release();
 		}
@@ -1438,6 +1456,8 @@ export class HeadlessWebGPURenderer {
 		let outputFinalized = false;
 
 		// Resources for inline rendering (cleaned up in finally block)
+		// The device this render's audio effects keep their state on.
+		let gpu: GPUDevice | undefined;
 		let surface: NodeSurfaceProvider | undefined;
 		let renderer: Renderer2D | undefined;
 		let pipeline: ZeroCopyWebCodecsPipeline | undefined;
@@ -1445,6 +1465,7 @@ export class HeadlessWebGPURenderer {
 		try {
 			// Inside the try, so a device failure still releases the slot.
 			const device = await ensureDevice();
+			gpu = device;
 			await output.start();
 			outputStarted = true;
 			await preloadFonts(virtualMedia, device);
@@ -1688,7 +1709,7 @@ export class HeadlessWebGPURenderer {
 			} catch {}
 
 			try {
-				WebGPUAudioProcessor.clearCache(renderId);
+				WebGPUAudioProcessor.clearCache(renderId, gpu);
 			} catch {}
 			try {
 				shaderStore.clear(renderId);

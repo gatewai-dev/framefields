@@ -7,14 +7,18 @@
  *   npx framefields list                 the components you can add
  *   npx framefields fonts add <role...>  install fonts (emoji)
  *   npx framefields fonts list           the fonts you can install
+ *   npx framefields assets add|push|pull|status   media on your own bucket
  *   npx framefields renders              the renders named in framefields.json
+ *   npx framefields render <name>        render on this machine's GPU
  *   npx framefields render <name> --cloud    render on api.framefields.dev
+ *   npx framefields preview <name>       play it in the browser
  */
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { type AddReport, add } from "./cli/add.js";
+import { runAssets } from "./cli/assets.js";
 import { runCheck } from "./cli/check.js";
 import { runCloudRender } from "./cli/cloud.js";
 import { readConfig } from "./cli/config.js";
@@ -33,6 +37,7 @@ import {
 	type PackageManager,
 	shownPath,
 } from "./cli/init.js";
+import { runLocal } from "./cli/local.js";
 import { openRegistry } from "./cli/registry.js";
 import { AI_DASHBOARD } from "./cli/templates.js";
 
@@ -57,14 +62,27 @@ Commands:
                   Install fonts (pinned, hash-checked, with their license)
                   and register them in the generated <components>/fonts.ts.
   fonts list      List the fonts you can install.
+  assets add <path...>
+                  Keep media out of git: hash files (or every file in a
+                  folder), upload them to the project's bucket (R2, S3, any
+                  S3-compatible storage) and pin them in framefields.json.
+  assets push     Upload recorded assets the bucket lacks.
+  assets pull     Download missing assets, checked against their sha256.
+  assets status   Which assets are here, missing or changed.
   renders         List the renders named in framefields.json.
-  render [name|entry] --cloud
-                  Render on api.framefields.dev from the pushed commit of
-                  this git repo, and download the video. Needs
-                  FRAMEFIELDS_API_KEY. A render named in framefields.json
+  render [name|entry]
+                  Render on this machine: a render named in framefields.json
                   (its fields are the defaults; flags override them), or a
                   module (--export defaults to buildFilm). Without either,
-                  the project's only named render.
+                  the project's only named render. Pinned assets missing
+                  here are downloaded first.
+  render [name|entry] --cloud
+                  The same render on api.framefields.dev, from the pushed
+                  commit of this git repo, downloaded to the same file.
+                  Needs FRAMEFIELDS_API_KEY.
+  preview [name|entry]
+                  Play it in the browser (localhost, WebGPU). Pinned assets
+                  that aren't here stream from their bucket.
 
 Options for check:
   --export <name>   Composition or builder export (default buildFilm).
@@ -73,6 +91,10 @@ Options for check:
   --timeout <ms>    Worker timeout in milliseconds (default 60000).
   --warnings-as-errors  Fail on lint warnings.
   --json            Machine-readable check, component list, or font list result.
+
+Options for render and preview:
+  --export, --select, --codec, --quality and --output (render) override the
+  named render's fields, locally and with --cloud.
 
 Options for render --cloud:
   --workers <n|auto>  1 (default) renders on one GPU. auto measures the film
@@ -87,6 +109,14 @@ Options for render --cloud:
   --select <name>   When the export returns several compositions.
   --json            Print the final status as JSON.
   Ctrl-C cancels the render; GPU time already used is charged.
+
+Options for assets:
+  --remote <name>   The remote in framefields.json "storage" (default: its
+                    default, or its only one).
+  --overwrite       pull: replace files changed locally.
+  Keys: FRAMEFIELDS_STORAGE_<REMOTE>_ACCESS_KEY_ID and _SECRET_ACCESS_KEY,
+  or AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY. Reads need none when the
+  remote has a publicUrl (a custom domain or CDN in front of the bucket).
 
 Options for init:
   --name <name>     Package name (default: the folder's name).
@@ -115,6 +145,9 @@ Examples:
   npx framefields init my-film --install
   npx framefields add mouse-pointer focus-zoom
   npx framefields fonts add emoji
+  npx framefields assets add assets/footage
+  npx framefields preview film
+  npx framefields render film
   npx framefields render film --cloud --plan
 `;
 
@@ -148,6 +181,7 @@ async function main(argv: string[]): Promise<number> {
 			codec: { type: "string" },
 			quality: { type: "string" },
 			select: { type: "string" },
+			remote: { type: "string" },
 			help: { type: "boolean", short: "h" },
 		},
 	});
@@ -157,6 +191,9 @@ async function main(argv: string[]): Promise<number> {
 		return command || values.help ? 0 : 1;
 	}
 	const cwd = process.cwd();
+	// The project's settings (FRAMEFIELDS_API_KEY, storage keys), as its own
+	// scripts load them; variables already set win.
+	if (existsSync(join(cwd, ".env"))) process.loadEnvFile(join(cwd, ".env"));
 	const log = (line: string) => process.stdout.write(`${line}\n`);
 	if (command === "api") {
 		const catalog = JSON.parse(
@@ -175,10 +212,38 @@ async function main(argv: string[]): Promise<number> {
 	}
 	if (command === "check") return check(names, cwd, values, log);
 	if (command === "renders") return listRenders(cwd, values.json, log);
-	if (command === "render") {
-		if (names.length > 1 || !values.cloud) {
+	if (command === "assets")
+		return runAssets(names, {
+			cwd,
+			log,
+			remote: values.remote,
+			overwrite: values.overwrite,
+			json: values.json,
+		});
+	if (command === "preview" || (command === "render" && !values.cloud)) {
+		if (names.length > 1) {
 			process.stderr.write(
-				"Usage: framefields render [name|entry] --cloud [--workers auto] [--plan]\nLocal renders run your project's render script (`npm run render`).\n",
+				`Usage: framefields ${command} [name|entry] [--export <name>]\n`,
+			);
+			return 2;
+		}
+		return runLocal(
+			command === "preview" ? "preview" : "render",
+			{
+				entry: names[0],
+				export: values.export,
+				select: values.select,
+				codec: values.codec,
+				quality: values.quality,
+				output: values.output,
+			},
+			log,
+		);
+	}
+	if (command === "render") {
+		if (names.length > 1) {
+			process.stderr.write(
+				"Usage: framefields render [name|entry] --cloud [--workers auto] [--plan]\n",
 			);
 			return 2;
 		}

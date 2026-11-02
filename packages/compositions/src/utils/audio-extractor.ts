@@ -8,7 +8,12 @@ import {
 	type VirtualMediaData,
 } from "@framefields/core";
 import { type AudioProcessor, audioRegistry } from "@framefields/node-sdk";
-import { inputStore, shaderStore } from "@framefields/webgpu-renderers";
+import {
+	inputStore,
+	resolveInputUrl,
+	shaderStore,
+	WebGPUAudioProcessor,
+} from "@framefields/webgpu-renderers";
 import { AudioSampleSink } from "mediabunny";
 import { computeRenderParams } from "./apply-operations.js";
 import { normalizeTimeline } from "./normalization.js";
@@ -147,6 +152,66 @@ interface DecodedAudioRange {
 }
 
 /**
+ * A source this runtime can't decode at all (a codec WebCodecs lacks, in a
+ * worker without AudioContext). Thrown, not mixed as silence, so the caller
+ * can mix where it can be decoded.
+ */
+export class AudioDecodeUnavailable extends Error {
+	override name = "AudioDecodeUnavailable";
+}
+
+/**
+ * The browser's whole-file decoder, for codecs WebCodecs can't decode
+ * (mediabunny reads byte ranges and decodes with WebCodecs first).
+ */
+async function decodeWithAudioContext(url: string): Promise<DecodedAudioRange> {
+	const AudioContextClass =
+		window.AudioContext ||
+		(window as Window & { webkitAudioContext?: typeof AudioContext })
+			.webkitAudioContext;
+	if (!AudioContextClass) {
+		throw new AudioDecodeUnavailable(
+			`No decoder here for ${url}: WebCodecs can't decode it and there is no AudioContext (a worker).`,
+		);
+	}
+	const audioCtx = new AudioContextClass();
+	try {
+		// Local paths load through the preview server, as the input store does.
+		const response = await fetch(resolveInputUrl(url, false));
+		mediaLogger.debug(
+			`[AudioExtractor] Fetch response status for ${url}: ${response.status} (${response.statusText})`,
+		);
+		if (!response.ok) {
+			throw new Error(`Failed to fetch audio source: ${response.statusText}`);
+		}
+		const arrayBuffer = await response.arrayBuffer();
+		mediaLogger.debug(
+			`[AudioExtractor] Fetched ${arrayBuffer.byteLength} bytes. Decoding audio data...`,
+		);
+		const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+		mediaLogger.debug(
+			`[AudioExtractor] Decoded successfully: ${audioBuffer.numberOfChannels} channels, sampleRate: ${audioBuffer.sampleRate}, duration: ${audioBuffer.duration}s`,
+		);
+
+		const channels: Float32Array[] = [];
+		for (let c = 0; c < audioBuffer.numberOfChannels; c++) {
+			channels.push(new Float32Array(audioBuffer.getChannelData(c)));
+		}
+		// decodeAudioData only decodes whole files.
+		return {
+			channels,
+			sampleRate: audioBuffer.sampleRate,
+			startIndex: 0,
+			validFromSec: 0,
+			validToSec: Number.POSITIVE_INFINITY,
+		};
+	} finally {
+		void audioCtx.close();
+		mediaLogger.debug(`[AudioExtractor] AudioContext closed for ${url}`);
+	}
+}
+
+/**
  * Decodes [range.startSec, range.endSec) of a source (the whole file without
  * a range), so a short clip from a long file decodes only what it plays.
  */
@@ -158,65 +223,14 @@ async function decodeAudioRange(
 		`[AudioExtractor] decodeAudioSource started for url: ${url}`,
 	);
 	try {
-		const isBrowser =
-			typeof window !== "undefined" &&
-			typeof window.document !== "undefined" &&
-			!(
-				typeof process !== "undefined" &&
-				process.versions &&
-				process.versions.node
-			);
-		if (isBrowser) {
-			mediaLogger.debug(
-				`[AudioExtractor] Browser detected. Fetching arrayBuffer for ${url}...`,
-			);
-			const AudioContextClass =
-				window.AudioContext || (window as any).webkitAudioContext;
-			if (!AudioContextClass) {
-				throw new Error("AudioContext is not supported in this browser");
-			}
-			const audioCtx = new AudioContextClass();
-			try {
-				const response = await fetch(url);
-				mediaLogger.debug(
-					`[AudioExtractor] Fetch response status for ${url}: ${response.status} (${response.statusText})`,
-				);
-				if (!response.ok) {
-					throw new Error(
-						`Failed to fetch audio source: ${response.statusText}`,
-					);
-				}
-				const arrayBuffer = await response.arrayBuffer();
-				mediaLogger.debug(
-					`[AudioExtractor] Fetched ${arrayBuffer.byteLength} bytes. Decoding audio data...`,
-				);
-				const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-				mediaLogger.debug(
-					`[AudioExtractor] Decoded successfully: ${audioBuffer.numberOfChannels} channels, sampleRate: ${audioBuffer.sampleRate}, duration: ${audioBuffer.duration}s`,
-				);
-
-				const channels: Float32Array[] = [];
-				for (let c = 0; c < audioBuffer.numberOfChannels; c++) {
-					channels.push(new Float32Array(audioBuffer.getChannelData(c)));
-				}
-				// decodeAudioData only decodes whole files.
-				return {
-					channels,
-					sampleRate: audioBuffer.sampleRate,
-					startIndex: 0,
-					validFromSec: 0,
-					validToSec: Number.POSITIVE_INFINITY,
-				};
-			} finally {
-				void audioCtx.close();
-				mediaLogger.debug(`[AudioExtractor] AudioContext closed for ${url}`);
-			}
-		}
-
+		// A page or a worker: anything but Node.
+		const isBrowser = !(
+			typeof process !== "undefined" && process.versions?.node
+		);
 		let inputAcquired = false;
 		try {
 			mediaLogger.debug(
-				`[AudioExtractor] Server / Node.js detected. Acquiring from inputStore for ${url}...`,
+				`[AudioExtractor] Acquiring from inputStore for ${url}...`,
 			);
 			const input = await inputStore.acquire(url);
 			inputAcquired = true;
@@ -359,6 +373,8 @@ async function decodeAudioRange(
 			) {
 				throw err;
 			}
+			// Codecs the browser's WebCodecs can't decode: its own whole-file decoder.
+			if (isBrowser) return decodeWithAudioContext(url);
 			if (typeof process !== "undefined" && process.versions?.node) {
 				try {
 					const { execFileSync } = await import("node:child_process");
@@ -430,8 +446,9 @@ async function decodeAudioRange(
 		}
 	} catch (err) {
 		if (
-			err instanceof Error &&
-			err.message.includes("Cannot open local media file")
+			err instanceof AudioDecodeUnavailable ||
+			(err instanceof Error &&
+				err.message.includes("Cannot open local media file"))
 		) {
 			throw err;
 		}
@@ -481,6 +498,7 @@ async function resampleAndStretchPCM(
 	outputLength: number,
 	trimOffsetSamples: number,
 	inputStartIndex = 0,
+	firstOutputSample = 0,
 ): Promise<Float32Array> {
 	const output = new Float32Array(outputLength);
 	const resampleRatio = sourceSampleRate / targetSampleRate;
@@ -494,7 +512,8 @@ async function resampleAndStretchPCM(
 		}
 		// Subtracting the integer start after the sum keeps the position exact,
 		// so a range resamples bit-for-bit as the whole file would.
-		const srcIndex = trimOffsetSamples + i * factor - inputStartIndex;
+		const srcIndex =
+			trimOffsetSamples + (firstOutputSample + i) * factor - inputStartIndex;
 		const indexFloor = Math.floor(srcIndex);
 		const indexCeil = Math.ceil(srcIndex);
 
@@ -589,6 +608,53 @@ export interface AudioMixProgress {
 
 export interface MixAudioOptions {
 	onProgress?: (progress: AudioMixProgress) => void;
+	/**
+	 * Mixes only [startSec, endSec) of the timeline, reading and processing
+	 * only what plays there: the same samples as that stretch of a full mix
+	 * (effects that carry state need lead-in before `startSec`; the caller
+	 * mixes from earlier and drops it).
+	 */
+	window?: { startSec: number; endSec: number };
+	/**
+	 * Continue the effect state the last mix under this render id left,
+	 * instead of starting from silence. A caller mixing back-to-back windows
+	 * ([a, b) then [b, c)) gets exactly the samples of a full mix, effects
+	 * with memory included. Default false.
+	 */
+	continue?: boolean;
+	/**
+	 * Apply the master stage (whole-mix auto gain, soft limiting). Default
+	 * true. A windowed caller that masters once it knows the film's peak
+	 * passes false and reads `peak`.
+	 */
+	master?: boolean;
+}
+
+export interface AudioMix {
+	channels: Float32Array[];
+	sampleRate: number;
+	/** The loudest sample before the master stage. */
+	peak: number;
+}
+
+/**
+ * The master stage, in place: `gain` (the automatic ceiling: a mix whose
+ * summed tracks exceed -0.5 dB, 0.95, is scaled down smoothly), then soft
+ * limiting and non-finite sanitation (transparent saturation instead of
+ * harsh square-wave clipping).
+ */
+export function applyMaster(channels: Float32Array[], gain: number): void {
+	for (const channel of channels) {
+		for (let i = 0; i < channel.length; i++) {
+			const v = (channel[i] ?? 0) * gain;
+			channel[i] = Number.isFinite(v) ? Math.tanh(v) : 0;
+		}
+	}
+}
+
+/** The master stage's gain for a mix whose loudest sample is `peak`. */
+export function masterGain(peak: number): number {
+	return peak > 0.95 ? 0.92 / peak : 1.0;
 }
 
 /** A clip's file name for progress, without paths or signed-URL queries. */
@@ -617,11 +683,17 @@ export async function mixAudioTracks(
 	device?: GPUDevice,
 	renderId?: string,
 	options: MixAudioOptions = {},
-): Promise<{ channels: Float32Array[]; sampleRate: number }> {
+): Promise<AudioMix> {
 	mediaLogger.debug(
 		`[AudioExtractor] mixAudioTracks started. FPS: ${fps}, targetSampleRate: ${targetSampleRate}`,
 	);
 	await waitForDelayRender();
+
+	// Effects keep state on the GPU (delay lines, reverb tails) that carries
+	// across the chunks of one mix. A mix starts from silence, also when a
+	// caller mixes again under the same render id (the preview, block by block).
+	if (device && !options.continue)
+		WebGPUAudioProcessor.resetState(renderId ?? "global", device);
 
 	// Register all signals from the composition tree
 	shaderStore.registerSignalsFromComposition(renderId, virtualMedia);
@@ -629,6 +701,24 @@ export async function mixAudioTracks(
 	const durationMs = getActiveMediaMetadata(virtualMedia)?.durationMs || 1000;
 	const totalDurationSec = durationMs / 1000;
 	const totalTargetSamples = Math.ceil(totalDurationSec * targetSampleRate);
+	// The window, in timeline samples: each node mixes only its overlap.
+	const winStart = options.window
+		? Math.max(0, Math.round(options.window.startSec * targetSampleRate))
+		: 0;
+	const winEnd = options.window
+		? Math.min(
+				totalTargetSamples,
+				Math.round(options.window.endSec * targetSampleRate),
+			)
+		: Number.POSITIVE_INFINITY;
+	const outputSamples = options.window
+		? Math.max(0, winEnd - winStart)
+		: totalTargetSamples;
+	/** The part [lo, hi) of a node's local samples that the window covers. */
+	const visible = (absStart: number, length: number) => ({
+		lo: Math.max(0, winStart - absStart),
+		hi: Math.min(length, winEnd - absStart),
+	});
 	mediaLogger.debug(
 		`[AudioExtractor] Composition total duration: ${durationMs}ms (${totalDurationSec}s). Total mixed samples to allocate: ${totalTargetSamples}`,
 	);
@@ -672,12 +762,13 @@ export async function mixAudioTracks(
 		length: number,
 		map: ResolvedMediaTimeRemap,
 		startFrame: number,
+		skip = 0,
 	): Promise<Float32Array[] | null> {
 		const left = new Float32Array(length),
 			right = new Float32Array(length);
 		for (let offset = 0; offset < length; ) {
 			let count = Math.min(length - offset, targetSampleRate * 2);
-			const first = startFrame + (offset / targetSampleRate) * fps;
+			const first = startFrame + ((skip + offset) / targetSampleRate) * fps;
 			let range = mediaSourceRange(
 				map,
 				first,
@@ -764,6 +855,7 @@ export async function mixAudioTracks(
 		inheritedSpeed: number,
 		inheritedDurationFrames: number | null,
 		inheritedRemap?: { map: ResolvedMediaTimeRemap; offsetFrames: number },
+		absStart = 0,
 	): Promise<Float32Array[] | null> {
 		if (!node || !isAudible(node)) return null;
 		const op = node.operation;
@@ -783,10 +875,18 @@ export async function mixAudioTracks(
 				(actualDurationFrames / fps) * targetSampleRate,
 			);
 			if (localSamplesCount <= 0) return null;
+			const { lo, hi } = visible(absStart, localSamplesCount);
+			if (hi <= lo) return null;
 
-			const bus = new MixBus(localSamplesCount);
+			const bus = new MixBus(hi - lo);
 
 			for (const child of node.children) {
+				const childOp = child.operation;
+				const childStartFrame =
+					childOp?.startFrame ?? childOp?.timeline?.startFrame ?? 0;
+				const childStartSample = Math.round(
+					(childStartFrame / fps) * targetSampleRate,
+				);
 				const childChannels = await traverse(
 					child,
 					inheritedSeekSec,
@@ -795,16 +895,11 @@ export async function mixAudioTracks(
 					inheritedSpeed,
 					actualDurationFrames,
 					inheritedRemap,
+					absStart + childStartSample,
 				);
-				if (childChannels) {
-					const childOp = child.operation;
-					const childStartFrame =
-						childOp?.startFrame ?? childOp?.timeline?.startFrame ?? 0;
-					const childStartSample = Math.round(
-						(childStartFrame / fps) * targetSampleRate,
-					);
-					bus.add(childChannels, childStartSample);
-				}
+				// A child's buffer starts where the window enters it.
+				if (childChannels)
+					bus.add(childChannels, Math.max(childStartSample, lo) - lo);
 			}
 			return bus.channels;
 		}
@@ -864,8 +959,10 @@ export async function mixAudioTracks(
 			(nodeActualDurationFrames / fps) * targetSampleRate,
 		);
 		if (localSamplesCount <= 0) return null;
+		const { lo, hi } = visible(absStart, localSamplesCount);
+		if (hi <= lo) return null;
 
-		const bus = new MixBus(localSamplesCount);
+		const bus = new MixBus(hi - lo);
 
 		const processSegment = async (
 			seg: { startSec: number; endSec?: number } | null,
@@ -919,25 +1016,31 @@ export async function mixAudioTracks(
 						localSamplesCount - segmentStartSample,
 						Math.ceil(clipDurationSec * targetSampleRate),
 					);
+					// The part of the clip inside the window: `skip` samples in,
+					// `count` long, written at `writeAt` in the bus.
+					const clipFrom = Math.max(segmentStartSample, lo);
+					const clipTo = Math.min(segmentStartSample + clipSamplesCount, hi);
+					const count = clipTo - clipFrom;
+					const skip = clipFrom - segmentStartSample;
+					const writeAt = clipFrom - lo;
 
 					const mapped =
-						remap && clipSamplesCount > 0
+						remap && count > 0
 							? await mappedChannels(
 									params.sourceUrl,
-									clipSamplesCount,
+									count,
 									remap.map,
 									remap.offsetFrames + windowStartFrameOffset,
+									skip,
 								)
 							: null;
 					const decoded =
-						!remap &&
-						clipSamplesCount > 0 &&
-						segmentStartSample < localSamplesCount
+						!remap && count > 0 && segmentStartSample < localSamplesCount
 							? await getDecodedRange(
 									params.sourceUrl,
-									effectiveTrimSec,
+									effectiveTrimSec + (skip / targetSampleRate) * finalSpeed,
 									effectiveTrimSec +
-										(clipSamplesCount / targetSampleRate) * finalSpeed +
+										((skip + count) / targetSampleRate) * finalSpeed +
 										RANGE_MARGIN_SEC,
 								)
 							: null;
@@ -955,9 +1058,10 @@ export async function mixAudioTracks(
 								decoded.sampleRate,
 								targetSampleRate,
 								finalSpeed,
-								clipSamplesCount,
+								count,
 								trimOffsetSamples,
 								decoded.startIndex,
+								skip,
 							);
 							stretchedRight =
 								decoded.channels.length > 1
@@ -966,23 +1070,24 @@ export async function mixAudioTracks(
 											decoded.sampleRate,
 											targetSampleRate,
 											finalSpeed,
-											clipSamplesCount,
+											count,
 											trimOffsetSamples,
 											decoded.startIndex,
+											skip,
 										)
 									: stretchedLeft;
 						} else {
 							throw new Error("No decoded audio");
 						}
 						const stretched = [stretchedLeft, stretchedRight];
-						if (bus.canAdopt(stretched, segmentStartSample)) {
+						if (bus.canAdopt(stretched, writeAt)) {
 							// The clip fills the silent bus: scale it in place and keep it
 							if (volume !== 1) {
-								for (let i = 0; i < clipSamplesCount; i++) {
+								for (let i = 0; i < count; i++) {
 									stretchedLeft[i] *= volume;
 								}
 								if (stretchedRight !== stretchedLeft) {
-									for (let i = 0; i < clipSamplesCount; i++) {
+									for (let i = 0; i < count; i++) {
 										stretchedRight[i] *= volume;
 									}
 								}
@@ -996,8 +1101,8 @@ export async function mixAudioTracks(
 						} else {
 							// Add to local mix with volume scaling
 							const [localLeft, localRight] = bus.get();
-							for (let i = 0; i < clipSamplesCount; i++) {
-								const outIndex = segmentStartSample + i;
+							for (let i = 0; i < count; i++) {
+								const outIndex = writeAt + i;
 								localLeft[outIndex] += stretchedLeft[i] * volume;
 								localRight[outIndex] += stretchedRight[i] * volume;
 							}
@@ -1018,6 +1123,16 @@ export async function mixAudioTracks(
 			// Traverse children recursively
 			if (node.children) {
 				for (const child of node.children) {
+					const childOp = child.operation;
+					const childStartFrame =
+						childOp?.startFrame ?? childOp?.timeline?.startFrame ?? 0;
+					const relativeStartFrame =
+						op.op === "CompositorLayer" && childOp?.op === "CompositorLayer"
+							? childStartFrame - nodeStartFrame
+							: childStartFrame;
+					const childStart =
+						segmentStartSample +
+						Math.round((relativeStartFrame / fps) * targetSampleRate);
 					const childChannels = await traverse(
 						child,
 						totalSeekSec,
@@ -1026,20 +1141,10 @@ export async function mixAudioTracks(
 						speedMultiplier,
 						actualDurationFrames,
 						remap,
+						absStart + childStart,
 					);
-					if (childChannels) {
-						const childOp = child.operation;
-						const childStartFrame =
-							childOp?.startFrame ?? childOp?.timeline?.startFrame ?? 0;
-						const relativeStartFrame =
-							op.op === "CompositorLayer" && childOp?.op === "CompositorLayer"
-								? childStartFrame - nodeStartFrame
-								: childStartFrame;
-						const childStartSample = Math.round(
-							(relativeStartFrame / fps) * targetSampleRate,
-						);
-						bus.add(childChannels, segmentStartSample + childStartSample);
-					}
+					if (childChannels)
+						bus.add(childChannels, Math.max(childStart, lo) - lo);
 				}
 			}
 
@@ -1053,34 +1158,35 @@ export async function mixAudioTracks(
 						Math.ceil(clipDurationSec * targetSampleRate),
 					);
 
+					// The part of the segment inside the window, `skip` samples in.
+					const from = Math.max(segmentStartSample, lo);
+					const to = Math.min(segmentStartSample + clipSamplesCount, hi);
+					const skip = from - segmentStartSample;
 					if (
-						clipSamplesCount > 0 &&
+						to > from &&
 						segmentStartSample < localSamplesCount &&
 						segmentStartSample >= 0
 					) {
 						const slicedChannels = bus
 							.get()
-							.map((ch) =>
-								ch.subarray(
-									segmentStartSample,
-									segmentStartSample + clipSamplesCount,
-								),
-							);
+							.map((ch) => ch.subarray(from - lo, to - lo));
 						// The layer's own clock: its in-point moves the source, not its
 						// animation, and a CompositorLayer's keyframes count from its
 						// own first frame (as its picture's do), not the composition's.
 						const layerClockFrames =
 							op.op === "CompositorLayer" ? localClockFrames : 0;
+						const skipSec = skip / targetSampleRate;
 						const elapsedMs =
 							((totalClockFrames - layerClockFrames) / fps +
 								totalSeekSec -
-								layerTrimSec) *
+								layerTrimSec +
+								skipSec) *
 							1000;
 						const durationMs =
 							getActiveMediaMetadata(node)?.durationMs ?? undefined;
 						await pluginProcessor(slicedChannels, targetSampleRate, node, {
 							device,
-							frame: totalClockFrames,
+							frame: totalClockFrames + skipSec * fps,
 							fps,
 							renderId,
 							elapsedMs,
@@ -1136,13 +1242,10 @@ export async function mixAudioTracks(
 
 	// Output mixed buffer is stereo; a root mix of the same length is used as is
 	const mixedChannels =
-		rootChannels?.every((ch) => ch.length === totalTargetSamples) &&
+		rootChannels?.every((ch) => ch.length === outputSamples) &&
 		rootChannels[0] !== rootChannels[1]
 			? rootChannels
-			: [
-					new Float32Array(totalTargetSamples),
-					new Float32Array(totalTargetSamples),
-				];
+			: [new Float32Array(outputSamples), new Float32Array(outputSamples)];
 	const [outputLeft, outputRight] = mixedChannels;
 	if (rootChannels && mixedChannels !== rootChannels) {
 		for (let c = 0; c < 2; c++) {
@@ -1160,26 +1263,18 @@ export async function mixAudioTracks(
 
 	// Calculate master mix peak across all channels to prevent multi-track summation distortion
 	let mixPeak = 0;
-	for (let i = 0; i < totalTargetSamples; i++) {
+	for (let i = 0; i < outputSamples; i++) {
 		const l = Math.abs(outputLeft[i] ?? 0);
 		const r = Math.abs(outputRight[i] ?? 0);
 		if (l > mixPeak) mixPeak = l;
 		if (r > mixPeak) mixPeak = r;
 	}
 
-	// Automatic gain ceiling: if multi-track summation exceeds -0.5 dB (0.95), scale smoothly
-	const autoGain = mixPeak > 0.95 ? 0.92 / mixPeak : 1.0;
-
-	// Soft-knee limiting & non-finite float sanitation (transparent saturation instead of harsh square-wave clipping)
-	for (let i = 0; i < totalTargetSamples; i++) {
-		const l = (outputLeft[i] ?? 0) * autoGain;
-		const r = (outputRight[i] ?? 0) * autoGain;
-		outputLeft[i] = Number.isFinite(l) ? Math.tanh(l) : 0;
-		outputRight[i] = Number.isFinite(r) ? Math.tanh(r) : 0;
-	}
+	if (options.master !== false) applyMaster(mixedChannels, masterGain(mixPeak));
 
 	return {
 		channels: mixedChannels,
 		sampleRate: targetSampleRate,
+		peak: mixPeak,
 	};
 }

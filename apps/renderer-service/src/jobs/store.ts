@@ -13,6 +13,7 @@ export type JobPhaseName =
 	| "resolving"
 	| "fetching"
 	| "lfs"
+	| "assets"
 	| "installing"
 	| "loading"
 	| "rendering"

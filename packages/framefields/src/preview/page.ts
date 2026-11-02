@@ -484,7 +484,7 @@ export const previewPage = /* html */ `<!doctype html>
   }
 
   // ── Audio ──
-  var audio = { state: "mixing", error: "", buffer: null, peaks: null, ctx: null, gain: null, src: null, muted: false, volume: 0.9 };
+  var audio = { mode: "browser", state: "mixing", error: "", buffer: null, peaks: null, ctx: null, gain: null, src: null, muted: false, volume: 0.9 };
   var AUDIO_LABEL = { mixing: "Mixing audio", loading: "Loading audio", ready: "Audio ready", none: "No audio", error: "Audio failed" };
   var offline = false;
 
@@ -505,26 +505,252 @@ export const previewPage = /* html */ `<!doctype html>
     ws.replaceChildren();
     if (busy) ws.append(el("span", "spinner"));
     ws.append(document.createTextNode(state === "none" ? "No audio in this composition" : state === "error" ? "Audio could not be mixed" : AUDIO_LABEL[state]));
-    var usable = state === "ready" && !!audio.buffer;
+    var usable = state === "ready" && (!!audio.buffer || !!stream);
     $("mute").disabled = !usable;
     $("volume").disabled = !usable;
     renderChip();
     drawWave();
   }
+  function ensureAudioContext() {
+    if (audio.ctx) return;
+    var Ctx = window.AudioContext || window.webkitAudioContext;
+    audio.ctx = new Ctx();
+    audio.gain = audio.ctx.createGain();
+    audio.gain.connect(audio.ctx.destination);
+    applyVolume();
+  }
+  // ── Soundtrack, streamed. The page mixes it with the export's mixer in
+  // BLOCK_SEC blocks: the ones at the playhead first, as it plays, the rest
+  // in the background (which draws the waveform and finds the film's loudest
+  // sample for the master gain). Blocks play back to back on the
+  // AudioContext clock. Sources stream straight from where they live, pinned
+  // assets from their bucket. The mixing runs in a worker with its own GPU
+  // device, so it never holds up drawing; if the worker can't, the page mixes,
+  // and if that fails too, the server does. ──
+  var BLOCK_SEC = 2, AHEAD_SEC = 4, KEEP_BLOCKS = 64, PEAK_BINS = 1200, SILENT = 0.001;
+  var stream = null, playback = null;
+  function filmSec() { return meta.frameCount / meta.fps; }
+  // The project's bundle, loaded as a worker, runs the mixer instead of a player.
+  function mixerWorker() {
+    var worker;
+    try { worker = new Worker("/@framefields/player.js", { type: "module" }); } catch (e) { return null; }
+    var calls = new Map(), next = 0, failed = null;
+    var fail = function (err) {
+      failed = failed || err;
+      calls.forEach(function (c) { c.reject(failed); });
+      calls.clear();
+    };
+    var ready = new Promise(function (resolve, reject) {
+      worker.onmessage = function (e) {
+        var d = e.data;
+        if ("ready" in d) { if (d.ready) resolve(); else { reject(new Error(d.error)); fail(new Error(d.error)); } return; }
+        var call = calls.get(d.id);
+        if (!call) return;
+        calls.delete(d.id);
+        if (d.error) call.reject(new Error(d.error)); else call.resolve(d.mix);
+      };
+      worker.onerror = function (e) {
+        var err = new Error(e.message || "the mixing worker failed");
+        reject(err);
+        fail(err);
+      };
+    });
+    return {
+      mix: function (range, chain) {
+        return ready.then(function () {
+          if (failed) throw failed;
+          return new Promise(function (resolve, reject) {
+            var id = ++next;
+            calls.set(id, { resolve: resolve, reject: reject });
+            worker.postMessage({ id: id, range: range, chain: chain });
+          });
+        });
+      },
+      stop: function () { worker.terminate(); fail(new Error("stopped")); }
+    };
+  }
+  function beginStream(p) {
+    if (stream && stream.worker) stream.worker.stop();
+    stopClock();
+    audio.buffer = null;
+    audio.peaks = new Array(PEAK_BINS).fill(0);
+    stream = { player: p, worker: mixerWorker(), blocks: new Map(), order: [], pending: new Map(), queue: [], busy: false,
+      seen: new Set(), peak: 0, gain: 1, fill: 0, filling: false, total: Math.max(1, Math.ceil(filmSec() / BLOCK_SEC)) };
+    ensureAudioContext();
+    setAudioStatus("mixing");
+    var s = stream;
+    streamBlock(s, Math.floor(frame / meta.fps / BLOCK_SEC), true).then(function () {
+      if (stream === s && audio.state === "mixing") setAudioStatus("ready");
+    }, function () {});
+  }
+  // Blocks mix on two chains, each continuing its own effect state from the
+  // block before: "fill" runs through the film from its start, so its blocks
+  // are exactly the export's; "play" starts at a seek with a lead-in and
+  // carries on from there. An exact block is never replaced by a lead-in one.
+  function streamBlock(s, i, urgent) {
+    var have = s.blocks.get(i);
+    if (have) return Promise.resolve(have);
+    var waiting = s.pending.get(i);
+    if (waiting) {
+      if (urgent) promote(s, i);
+      return waiting;
+    }
+    waiting = enqueue(s, i, i === s.fill ? "fill" : "play", urgent, true);
+    pumpStream(s);
+    return waiting;
+  }
+  function enqueue(s, i, chain, urgent, own) {
+    if (chain === "fill") s.filling = true;
+    var waiting = new Promise(function (resolve, reject) {
+      var job = { i: i, chain: chain, own: own, resolve: resolve, reject: reject };
+      if (urgent) s.queue.unshift(job); else s.queue.push(job);
+    });
+    if (own) s.pending.set(i, waiting);
+    else waiting.catch(function () {});
+    return waiting;
+  }
+  function promote(s, i) {
+    var at = s.queue.findIndex(function (j) { return j.i === i; });
+    if (at > 0) s.queue.unshift(s.queue.splice(at, 1)[0]);
+  }
+  function pumpStream(s) {
+    if (s.busy || stream !== s) return;
+    if (!s.queue.length) { fillStream(s); if (!s.queue.length) return; }
+    s.busy = true;
+    var job = s.queue.shift();
+    var range = { startSec: job.i * BLOCK_SEC, endSec: Math.min(filmSec(), (job.i + 1) * BLOCK_SEC) };
+    mixBlock(s, range, job.chain).then(function (mix) {
+      if (stream === s) keepBlock(s, job.i, { left: mix.left, right: mix.right, sampleRate: mix.sampleRate, exact: mix.exact }, mix.peak);
+      if (job.chain === "fill") { s.fill = job.i + 1; s.filling = false; }
+      job.resolve(s.blocks.get(job.i));
+    }, function (err) {
+      if (job.chain === "fill") s.filling = false;
+      job.reject(err);
+      streamFailed(s, err);
+    }).then(function () {
+      if (job.own) s.pending.delete(job.i);
+      s.busy = false;
+      pumpStream(s);
+    });
+  }
+  // In the worker; on the page itself once the worker has failed.
+  function mixBlock(s, range, chain) {
+    if (!s.worker) return s.player.mixAudio(range, chain);
+    return s.worker.mix(range, chain).catch(function (err) {
+      if (s.worker) {
+        console.warn("The soundtrack's mixing worker failed, so the page mixes it:", err);
+        s.worker.stop();
+        s.worker = null;
+      }
+      return s.player.mixAudio(range, chain);
+    });
+  }
+  // Idle: the fill chain mixes its next block, every block in order, so
+  // its effect state runs on unbroken from the film's start.
+  function fillStream(s) {
+    if (s.filling || s.fill >= s.total) return;
+    enqueue(s, s.fill, "fill", false, !s.pending.has(s.fill));
+  }
+  function keepBlock(s, i, block, peak) {
+    var had = s.blocks.get(i);
+    if (!had || !had.exact || block.exact) {
+      s.blocks.set(i, block);
+      s.order.push(i);
+      while (s.order.length > KEEP_BLOCKS) s.blocks.delete(s.order.shift());
+    }
+    if (s.seen.has(i)) return;
+    s.seen.add(i);
+    s.peak = Math.max(s.peak, peak);
+    var dur = filmSec(), from = Math.floor((i * BLOCK_SEC / dur) * PEAK_BINS);
+    var to = Math.min(PEAK_BINS, Math.ceil((Math.min(dur, (i + 1) * BLOCK_SEC) / dur) * PEAK_BINS));
+    var perBin = (dur / PEAK_BINS) * block.sampleRate, origin = i * BLOCK_SEC * block.sampleRate;
+    for (var b = from; b < to; b++) {
+      var lo = Math.max(0, Math.floor(b * perBin - origin)), hi = Math.min(block.left.length, Math.floor((b + 1) * perBin - origin));
+      var m = audio.peaks[b];
+      for (var k = lo; k < hi; k++) m = Math.max(m, Math.abs(block.left[k]), Math.abs(block.right[k]));
+      audio.peaks[b] = Math.min(1, m);
+    }
+    drawWave();
+    if (s.seen.size < s.total) return;
+    // The whole film is mixed: master as the export does, or say it's silent.
+    s.gain = s.peak > 0.95 ? 0.92 / s.peak : 1;
+    if (s.peak < SILENT) setAudioStatus("none");
+  }
+  function streamFailed(s, err) {
+    if (stream !== s) return;
+    if (s.worker) s.worker.stop();
+    stream = null;
+    stopClock();
+    console.warn("Mixing the soundtrack in the browser failed, so the preview server mixes it:", err);
+    audio.mode = "server";
+    setAudioStatus("mixing");
+    fetch("/audio/mix", { method: "POST" }).catch(function () {});
+  }
+  // The master stage on a block: the film's gain, then the export's soft limiter.
+  function mastered(channel, gain) {
+    var out = new Float32Array(channel.length);
+    for (var k = 0; k < channel.length; k++) {
+      var v = Math.tanh(channel[k] * gain);
+      out[k] = v === v ? v : 0;
+    }
+    return out;
+  }
+  function startStream(f0) {
+    var s = stream, ctx = audio.ctx;
+    ctx.resume();
+    var pb = { t0: f0 / meta.fps, startAt: ctx.currentTime + 0.08, next: Math.floor(f0 / meta.fps / BLOCK_SEC), sources: [], timer: 0 };
+    playback = pb;
+    function tick() {
+      if (playback !== pb || stream !== s) return;
+      var now = ctx.currentTime - pb.startAt + pb.t0;
+      while (pb.next < s.total && pb.next * BLOCK_SEC < now + AHEAD_SEC) {
+        var have = s.blocks.get(pb.next);
+        if (!have) { streamBlock(s, pb.next, true).then(tick, function () {}); return; }
+        scheduleBlock(pb, pb.next, have, s.gain);
+        pb.next++;
+      }
+    }
+    pb.timer = setInterval(tick, 250);
+    tick();
+    return function () { return Math.max(0, ctx.currentTime - pb.startAt); };
+  }
+  // Block i starts at film second i * BLOCK_SEC: on the clock, that is
+  // startAt + (i * BLOCK_SEC - t0). A block that comes late starts part way
+  // in, so sound and picture stay on the same clock.
+  function scheduleBlock(pb, i, block, gain) {
+    var ctx = audio.ctx, buf = ctx.createBuffer(2, block.left.length, block.sampleRate);
+    buf.copyToChannel(mastered(block.left, gain), 0);
+    buf.copyToChannel(mastered(block.right, gain), 1);
+    var src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.connect(audio.gain);
+    var when = pb.startAt + (i * BLOCK_SEC - pb.t0), at = Math.max(when, ctx.currentTime + 0.02), offset = at - when;
+    if (offset >= buf.duration) return;
+    src.start(at, offset);
+    pb.sources.push(src);
+    src.onended = function () { pb.sources = pb.sources.filter(function (x) { return x !== src; }); };
+  }
+  function stopStream() {
+    var pb = playback;
+    playback = null;
+    if (!pb) return;
+    clearInterval(pb.timer);
+    pb.sources.forEach(function (src) { try { src.stop(); } catch (e) {} src.disconnect(); });
+  }
   function loadAudio(status) {
+    if (status && status.state === "browser") {
+      audio.mode = "browser";
+      setAudioStatus("mixing");
+      if (player) beginStream(player);
+      return;
+    }
     stopClock();
     audio.buffer = null;
     audio.peaks = null;
     if (!status || status.state !== "ready") { setAudioStatus(status ? status.state : "none", status && status.error); return; }
     audio.peaks = status.peaks;
     setAudioStatus("loading");
-    if (!audio.ctx) {
-      var Ctx = window.AudioContext || window.webkitAudioContext;
-      audio.ctx = new Ctx();
-      audio.gain = audio.ctx.createGain();
-      audio.gain.connect(audio.ctx.destination);
-      applyVolume();
-    }
+    ensureAudioContext();
     fetch("/audio")
       .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.arrayBuffer(); })
       .then(function (data) { return audio.ctx.decodeAudioData(data); })
@@ -541,6 +767,7 @@ export const previewPage = /* html */ `<!doctype html>
   // The clock for real-time playback: the soundtrack when there is one,
   // otherwise the wall clock. Audio as master keeps picture and sound in sync.
   function startClock(f0) {
+    if (stream && audio.ctx && audio.state === "ready") return startStream(f0);
     if (audio.buffer && audio.ctx) {
       audio.ctx.resume();
       var src = audio.ctx.createBufferSource();
@@ -555,6 +782,7 @@ export const previewPage = /* html */ `<!doctype html>
     return function () { return (performance.now() - t0) / 1000; };
   }
   function stopClock() {
+    stopStream();
     if (!audio.src) return;
     try { audio.src.stop(); } catch (e) {}
     audio.src.disconnect();
@@ -647,6 +875,14 @@ export const previewPage = /* html */ `<!doctype html>
   async function playFrames(alive) {
     meter.start();
     renderFps();
+    // Sound starts with picture: wait for the block at the playhead.
+    if (stream && audio.state !== "none") {
+      setStalled(true);
+      await streamBlock(stream, Math.floor(frame / meta.fps / BLOCK_SEC), true).catch(function () {});
+      if (!alive()) return;
+      setStalled(false);
+      if (stream && audio.state === "mixing") setAudioStatus("ready");
+    }
     // A soundtrack still downloading would start late: wait for it.
     if (audio.state === "loading") {
       setStalled(true);
@@ -1136,6 +1372,10 @@ export const previewPage = /* html */ `<!doctype html>
         playing: playing,
         buffering: stalled,
         audio: audio.state,
+        // Soundtrack blocks mixed in this page so far, of the film's.
+        audioMixed: stream ? { blocks: stream.seen.size, of: stream.total, exact: Array.from(stream.blocks.values()).filter(function (b) { return b.exact; }).length } : null,
+        // Where the soundtrack mixes: "worker" (off the page's thread), "page", or "server".
+        audioMixer: stream ? (stream.worker ? "worker" : "page") : audio.mode === "server" ? "server" : null,
         connected: !offline,
         // Frames shown per second over the last 2 s of playback (the last
         // playback's while paused), and how long the last frame took to draw.
@@ -1215,6 +1455,7 @@ export const previewPage = /* html */ `<!doctype html>
     if (!window.framefieldsPlayer) return;
     window.framefieldsPlayer.then(function (p) {
       player = p;
+      if (audio.mode === "browser") beginStream(p);
       $("play").disabled = false;
       show(frame).then(function () {
         pageState = "ready";

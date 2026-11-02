@@ -170,33 +170,19 @@ export async function buildFilm(): Promise<Composition> {
 ```
 
 ```typescript
-// src/render.ts
+// src/render.ts: quick looks (frames, a contact sheet). Full renders and the preview use the CLI.
 import fs from "node:fs/promises";
 import path from "node:path";
-import { HeadlessMediaRenderer, startPreview } from "framefields";
+import { HeadlessMediaRenderer } from "framefields";
 import { buildFilm } from "./film.js";
 
 const OUT = path.resolve(import.meta.dirname, "../output");
-const [mode = "video", ...args] = process.argv.slice(2);
-
-if (mode === "preview") {
-  // The page runs film.ts itself and renders it with WebGPU in the browser.
-  const session = await startPreview({ entry: new URL("./film.ts", import.meta.url), export: "buildFilm" });
-  console.log(`Preview at ${session.url}`);
-  await session.closed; // until its tab closes or the next preview replaces it
-  process.exit(0);
-}
+const [mode = "frames", ...args] = process.argv.slice(2);
 
 const film = await buildFilm();
 await fs.mkdir(OUT, { recursive: true });
 
-if (mode === "frames") {
-  const renderer = new HeadlessMediaRenderer();
-  for (const frame of args.map(Number)) {
-    const png = await film.renderFrame({ frame, renderer });
-    await fs.writeFile(path.join(OUT, `f${String(frame).padStart(4, "0")}.png`), png);
-  }
-} else if (mode === "grid") {
+if (mode === "grid") {
   const png = await film.renderFrameGrid({
     frames: args.length ? args.map(Number) : [0, 10, 20, 30, 45, 60, 75, 89],
     columns: 4,
@@ -205,12 +191,11 @@ if (mode === "frames") {
   });
   await fs.writeFile(path.join(OUT, "grid.png"), png);
 } else {
-  const result = await film.renderVideo({
-    outputPath: path.join(OUT, "output.mp4"),
-    quality: "high",
-  });
-  await result.cleanup?.();
-  console.log(`Exported ${result.filePath}`);
+  const renderer = new HeadlessMediaRenderer();
+  for (const frame of (args.length ? args : ["0"]).map(Number)) {
+    const png = await film.renderFrame({ frame, renderer });
+    await fs.writeFile(path.join(OUT, `f${String(frame).padStart(4, "0")}.png`), png);
+  }
 }
 
 // Native GPU and encoder threads keep Node alive; always exit explicitly.
@@ -224,11 +209,13 @@ Add scripts to `package.json`:
   "typecheck": "tsc --noEmit -p .",
   "frames": "tsx src/render.ts frames",
   "grid": "tsx src/render.ts grid",
-  "preview": "tsx src/render.ts preview",
-  "render": "tsx src/render.ts",
+  "preview": "framefields preview film",
+  "render": "framefields render film",
   "render:cloud": "framefields render film --cloud"
 }
 ```
+
+`framefields render film`, `framefields render film --cloud` and `framefields preview film` all read the `film` render below, so a render writes the same file wherever it runs: switching between this machine and the cloud is the `--cloud` flag, nothing else. Flags (`--export`, `--select`, `--codec`, `--quality`, `--output`) override the render's fields either way.
 
 `framefields.json` names what the project renders; `film` is the scaffold's. Add an entry per cut (teaser, vertical edit) so the CLI, `framefields check` and the dashboard pick it by name:
 
@@ -243,34 +230,37 @@ Add scripts to `package.json`:
 
 `render:cloud` renders on framefields' GPUs (api.framefields.dev) from the pushed commit, with the same `FRAMEFIELDS_API_KEY` as the AI gateway, and splits long films across several GPUs; `framefields-render` covers it. When the user wants another version of the film (a teaser, a vertical cut, a language), add an export and a named render for it rather than a flag in `render.ts`.
 
-### Video assets & Git LFS
+### Video assets: a bucket, or Git LFS
 
-Video inputs (`Layer.video("assets/footage/clip.mp4")`), Lottie animations (`Layer.lottie(...)`), audio tracks (`Layer.audio(...)`), LUTs, and custom fonts belong in **Git LFS**, while render outputs in `output/` belong in `.gitignore`.
+Footage, audio, Lottie files, LUTs and generated media are too big for plain git. Render outputs in `output/` stay in `.gitignore`. Small files (logos, short sound effects, a LUT) can simply be committed.
 
-1. **Initialize Git LFS:**
-   ```bash
-   git lfs install
+**Preferred: `framefields assets` on the project's own bucket.** Any S3-compatible bucket works; Cloudflare R2 is the one to suggest, since it charges no egress. The files stay out of git, `framefields.json` pins each one by sha256, and anyone (or any worker) gets exactly those bytes back.
+
+1. Add a remote to `framefields.json`. `publicUrl` is optional: a custom domain (or CDN, or the `r2.dev` URL) in front of the bucket, so reads need no keys. Content-addressed objects are uploaded `immutable`, so a CDN caches them forever.
+   ```json
+   "storage": {
+     "remotes": {
+       "media": {
+         "endpoint": "https://<account-id>.r2.cloudflarestorage.com",
+         "bucket": "films",
+         "prefix": "launch/",
+         "publicUrl": "https://media.example.com"
+       }
+     }
+   }
    ```
+   AWS needs `"region"`; R2 uses `auto`. Several remotes are fine (a public one for media you may share, a private one for raw footage): `"default"` names the one new assets go to, `--remote` picks another.
+2. Keys come from the environment, never the file: `FRAMEFIELDS_STORAGE_MEDIA_ACCESS_KEY_ID` and `FRAMEFIELDS_STORAGE_MEDIA_SECRET_ACCESS_KEY` (the remote's name upper-cased), or `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`. Ask the user to set them; never print or write them.
+3. `npx framefields assets add assets/footage` hashes the files (a folder means every file in it), uploads what the bucket lacks, records them under `assets` and adds them to `.gitignore`. Commit `framefields.json` and `.gitignore`. Adding a changed file again records the new version.
+4. In a fresh clone or container, `npx framefields assets pull` downloads what's missing and checks every byte; it leaves files changed locally alone unless `--overwrite`. `assets status` lists each asset as `ok`, `missing` or `changed`; `assets push` re-uploads what the bucket lacks.
 
-2. **Configure `.gitattributes` at the project root:**
-   ```gitattributes
-   assets/**/*.mp4 filter=lfs diff=lfs merge=lfs -text
-   assets/**/*.mov filter=lfs diff=lfs merge=lfs -text
-   assets/**/*.webm filter=lfs diff=lfs merge=lfs -text
-   assets/**/*.mp3 filter=lfs diff=lfs merge=lfs -text
-   assets/**/*.wav filter=lfs diff=lfs merge=lfs -text
-   assets/**/*.cube filter=lfs diff=lfs merge=lfs -text
-   assets/**/*.lottie filter=lfs diff=lfs merge=lfs -text
-   assets/fonts/**/*.ttf filter=lfs diff=lfs merge=lfs -text
-   assets/fonts/**/*.otf filter=lfs diff=lfs merge=lfs -text
-   ```
+Code references assets by path as usual (`Layer.video("assets/footage/intro.mp4")`); nothing in the film changes. Where the files aren't on disk (a fresh clone, a cloud agent's sandbox):
 
-3. **Hydrate pointers before rendering:** In freshly cloned or containerized agent environments, LFS media exist as ~130-byte text pointer files. Framefields' native WebGPU and WebCodecs demuxers cannot decode pointers and will fail or produce blank frames. Always ensure pointers are hydrated:
-   ```bash
-   git lfs pull
-   ```
+- `framefields preview` streams them from the bucket: the page is redirected to the remote's `publicUrl` (or a URL signed with the remote's keys), so nothing is downloaded into the sandbox. The bucket needs a CORS rule allowing the preview's origin; see the assets guide (https://framefields.dev/docs/guides/assets/#preview-from-the-bucket).
+- `framefields render` downloads the missing ones first (`assets pull`), then renders.
+- `framefields check` says to run `assets pull`.
 
-4. **Keep `.gitignore` targeted:** Never add `*.mp4` to `.gitignore` when tracking source footage with LFS. Ignore output directories (`output/`, `scratch/`) instead.
+**Or Git LFS**, when the project already uses it or there's no bucket. `npx framefields init` writes the LFS `.gitattributes`. In fresh clones LFS media are ~130-byte pointer files that decode as blank frames, so run `git lfs pull` first, and never add `*.mp4` to `.gitignore` for LFS-tracked footage. Every clone and every cloud render worker downloads LFS objects from the git host, which bills that bandwidth to the repo owner; a bucket with no egress fees avoids it.
 
 ## 4. Verify, cheapest step first
 
@@ -297,10 +287,10 @@ Show the user the frame PNGs or the grid before the full render. `framefields-re
 
 ## 5. Render on a server
 
-The framefields render worker (Docker, RunPod pod or serverless) renders a pushed commit: it pulls LFS assets, installs from the lockfile, imports `src/film.ts`, calls `buildFilm`, and uploads the result. A project built as above works unchanged if:
+The framefields render worker (Docker, RunPod pod or serverless) renders a pushed commit: it pulls LFS assets, downloads the assets `framefields.json` pins, installs from the lockfile, imports `src/film.ts`, calls `buildFilm`, and uploads the result. A project built as above works unchanged if:
 
 - `framefields` is 2.2+, the lockfile is committed and matches `package.json`, and `packageManager` is pinned;
-- every input is under `assets/`, tracked by Git LFS and pushed (`git lfs ls-files` lists it);
+- every input is under `assets/`, and either pinned with `framefields assets add` (and on the bucket) or tracked by Git LFS and pushed (`git lfs ls-files` lists it);
 - asset paths come from `import.meta.url`, never `process.cwd()`;
 - nothing writes into `node_modules` while rendering (files are shared read-only).
 

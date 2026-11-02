@@ -123,7 +123,7 @@ describe("Hero Scene Conformance", () => {
 ---
 
 ### Step 4.5: Show the User Before Exporting (`preview`)
-When a person is in the loop, let them watch the composition before you spend time on the final render. `startPreview` serves a localhost player with the soundtrack, a timeline with the waveform, and frame stepping. The page loads the composition's own code and renders it with WebGPU in the browser, in real time: a device that can't draw every frame in time skips some, and the sound keeps its speed; the server only serves that code, the project's files, and the soundtrack mixed by the export engine. Point it at the module that builds the composition:
+When a person is in the loop, let them watch the composition before you spend time on the final render. `startPreview` serves a localhost player with the soundtrack, a timeline with the waveform, and frame stepping. The page loads the composition's own code and renders it with WebGPU in the browser, in real time: a device that can't draw every frame in time skips some, and the sound keeps its speed; the server only serves that code and the project's files. The page mixes the soundtrack itself with the export's mixer, in 2-second blocks around the playhead, each continuing the effect state of the block before (exactly the export's from the film's start; after a seek the first block warms its effects up from 2 s earlier until the background pass replaces it), so sound starts at once; the rest mixes in the background for the waveform and the master gain. It mixes in a background worker with its own GPU device, so it doesn't stall drawing. `framefieldsPreview.state()` reports `audioMixed` (blocks mixed, and how many are exact) and `audioMixer` (`worker`, `page` or `server`, the fallbacks in order). Point it at the module that builds the composition:
 
 ```typescript
 import { startPreview } from "framefields";
@@ -226,7 +226,8 @@ api.framefields.dev renders the project on framefields' GPUs and splits a long f
 
 - Commit and push first. Uncommitted changes are not rendered (the CLI warns), a commit not on the remote is refused, and so is a folder outside a git repo or without a remote.
 - Run it from the project folder (where `framefields.json` and `package.json` are). In a monorepo, the CLI sends that folder as the workdir.
-- The worker installs the project from its lockfile and renders with **the project's own framefields version**, so commit the lockfile. Footage, audio and fonts must be in Git LFS (or committed); `.gitignore`d files don't exist on the worker.
+- The worker installs the project from its lockfile and renders with **the project's own framefields version**, so commit the lockfile. Footage, audio and fonts must be pinned in `framefields.json` with `framefields assets add`, in Git LFS, or committed; other `.gitignore`d files don't exist on the worker.
+- Pinned assets: before starting, the CLI (and `renderCloud`) uploads any the bucket lacks and signs reads of assets on remotes without a `publicUrl` (valid 24 h; the keys stay on the machine). Each worker downloads them (cached by hash for its next job); on R2 those downloads are free, unlike LFS bandwidth. Dashboard renders have nobody to sign, so they read only remotes with a `publicUrl`.
 - Private repos: the user connects GitHub once at https://framefields.dev/dashboard/settings#connections (the framefields GitHub App, ideally on all repositories, so new repos render without another step). Public repos need nothing.
 - It bills the account behind `FRAMEFIELDS_API_KEY` (keys at https://framefields.dev/dashboard/keys). If authentication is required, ask the user to set it in the process environment; never print, write or embed it.
 
@@ -278,6 +279,9 @@ The error carries the worker's code. Fix the project, commit, push and render ag
 | `ENTRY_NOT_FOUND`, `EXPORT_NOT_FOUND`, `EXPORT_INVALID` | `entry`/`export` in framefields.json or flags are wrong | `framefields check <name>` locally. |
 | `COMPOSITION_BUILD_FAILED`, `EXPORT_SIDE_EFFECT` | The builder throws, or renders/writes while building | Keep builders pure; `framefields check` reproduces it. |
 | `ASSET_NOT_FOUND`, `LFS_OBJECT_MISSING`, `LFS_POINTER_UNRESOLVED` | An asset isn't in the repo or its LFS object wasn't pushed | `git lfs ls-files`, `git lfs push --all origin`; un-ignore assets the film needs. |
+| `ASSET_NOT_UPLOADED`, `ASSET_HASH_MISMATCH` | A pinned asset isn't on the bucket, or the bucket holds other bytes | `npx framefields assets push` from the machine with the right file. |
+| `ASSET_PRIVATE`, `ASSET_FORBIDDEN` | The worker can't read the bucket: no `publicUrl` and no signature (a dashboard render), or the custom domain doesn't serve it | Render from the CLI, or give the remote a working `publicUrl`. |
+| `ASSET_MANIFEST_INVALID` | `storage` or `assets` in framefields.json is malformed | `npx framefields assets status` shows the error locally. |
 | `ENGINE_UNSUPPORTED` | The project's framefields is too old to render chunks | Upgrade framefields in the project (2.11+), or render with `--workers 1`. |
 | `RENDER_TIMEOUT`, `RENDER_OOM` | One worker can't finish its part | Use `--workers auto` (or more workers) to split it. |
 
@@ -350,11 +354,16 @@ CLI Usage:
 tsx src/render.ts frames 0 18 36 72
 
 # Live player for the user (run in the background; re-run after changes and the open tab reloads):
-tsx src/render.ts preview
+npx framefields preview film
 
-# Render full master video:
-tsx src/render.ts
+# Render the full video on this machine, to the render's output in framefields.json:
+npx framefields render film
+
+# The same render on framefields cloud GPUs, to the same file:
+npx framefields render film --cloud
 ```
+
+`framefields render <name>` and `framefields preview <name>` load the module with the project's own tsx and framefields, like the cloud worker, and call the export with the render's `args` (and `select`); the preview calls it without them. A local render downloads pinned assets that are missing first; the preview streams them from their bucket.
 
 ### Reading render progress
 

@@ -1,9 +1,8 @@
 import { spawn } from "node:child_process";
-import { createRequire } from "node:module";
 import { resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
 import { type CheckReport, failedCheck } from "./check-result.js";
 import { ownVersion } from "./init.js";
+import { projectNodeArgs } from "./project-node.js";
 
 export interface CheckOptions {
 	/** Module path, resolved from the project working directory. */
@@ -30,28 +29,8 @@ export async function runCheck(options: CheckOptions): Promise<CheckReport> {
 		throw new Error("--timeout must be a positive integer in milliseconds");
 	const fail = (code: string, message: string) =>
 		failedCheck(entry, exportName, sdkVersion, code, message);
-	const source = import.meta.url.endsWith(".ts");
-	const args = source ? ["--conditions=development"] : [];
-	// TypeScript belongs to the consumer project; it is already in init's scaffold.
-	if (source || /\.[cm]?tsx?$/.test(entry)) {
-		try {
-			const require = createRequire(resolve("package.json"));
-			args.push("--import", pathToFileURL(require.resolve("tsx")).href);
-		} catch {
-			return fail(
-				"missing_ts_loader",
-				"Install the project's tsx dev dependency to check a TypeScript entry.",
-			);
-		}
-	}
-	args.push(
-		fileURLToPath(
-			new URL(
-				source ? "./check-worker.ts" : "./cli/check-worker.mjs",
-				import.meta.url,
-			),
-		),
-	);
+	const args = projectNodeArgs(entry, "check-worker");
+	if ("error" in args) return fail("missing_ts_loader", args.error);
 	return new Promise((done) => {
 		const child = spawn(process.execPath, args, {
 			stdio: ["ignore", "pipe", "pipe", "ipc"],

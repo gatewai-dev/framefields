@@ -1,0 +1,1578 @@
+{
+	"voice": {
+		"fell": {
+			"text": "On Sunday afternoon, a business jet fell out of the sky over South Florida.",
+			"input": {
+				"prompt": "On Sunday afternoon, a business jet fell out of the sky over South Florida.",
+				"voice": "Charon",
+				"style_instructions": "A thoughtful American journalist narrating a calm news explainer video about a fatal plane crash. Clear, measured and quietly serious, curious rather than dramatic, never sensational. A steady conversational pace with no long pauses. Standard American English accent."
+			},
+			"heard": "On Sunday afternoon, a business jet fell out of the sky over South Florida.",
+			"seconds": 5.02,
+			"words": [
+				{
+					"text": "On",
+					"start": 0.04,
+					"end": 0.14
+				},
+				{
+					"text": "Sunday",
+					"start": 0.26,
+					"end": 0.56
+				},
+				{
+					"text": "afternoon,",
+					"start": 0.64,
+					"end": 1.28
+				},
+				{
+					"text": "a",
+					"start": 1.58,
+					"end": 1.64
+				},
+				{
+					"text": "business",
+					"start": 1.7,
+					"end": 2.1
+				},
+				{
+					"text": "jet",
+					"start": 2.16,
+					"end": 2.48
+				},
+				{
+					"text": "fell",
+					"start": 2.56,
+					"end": 2.8
+				},
+				{
+					"text": "out",
+					"start": 2.88,
+					"end": 2.96
+				},
+				{
+					"text": "of",
+					"start": 3,
+					"end": 3.08
+				},
+				{
+					"text": "the",
+					"start": 3.12,
+					"end": 3.2
+				},
+				{
+					"text": "sky",
+					"start": 3.3,
+					"end": 3.76
+				},
+				{
+					"text": "over",
+					"start": 3.82,
+					"end": 4.019
+				},
+				{
+					"text": "South",
+					"start": 4.08,
+					"end": 4.28
+				},
+				{
+					"text": "Florida.",
+					"start": 4.36,
+					"end": 4.74
+				}
+			]
+		},
+		"nine": {
+			"text": "All nine people on board were killed.",
+			"input": {
+				"prompt": "All nine people on board were killed.",
+				"voice": "Charon",
+				"style_instructions": "A thoughtful American journalist narrating a calm news explainer video about a fatal plane crash. Clear, measured and quietly serious, curious rather than dramatic, never sensational. A steady conversational pace with no long pauses. Standard American English accent."
+			},
+			"heard": "All nine people on board were killed.",
+			"seconds": 2.56,
+			"words": [
+				{
+					"text": "All",
+					"start": 0.08,
+					"end": 0.26
+				},
+				{
+					"text": "nine",
+					"start": 0.34,
+					"end": 0.6
+				},
+				{
+					"text": "people",
+					"start": 0.76,
+					"end": 1.06
+				},
+				{
+					"text": "on",
+					"start": 1.1,
+					"end": 1.22
+				},
+				{
+					"text": "board",
+					"start": 1.28,
+					"end": 1.66
+				},
+				{
+					"text": "were",
+					"start": 1.7,
+					"end": 1.84
+				},
+				{
+					"text": "killed.",
+					"start": 1.9,
+					"end": 2.26
+				}
+			]
+		},
+		"know": {
+			"text": "So what do we actually know about what happened?",
+			"input": {
+				"prompt": "So what do we actually know about what happened?",
+				"voice": "Charon",
+				"style_instructions": "A thoughtful American journalist narrating a calm news explainer video about a fatal plane crash. Clear, measured and quietly serious, curious rather than dramatic, never sensational. A steady conversational pace with no long pauses. Standard American English accent."
+			},
+			"heard": "So what do we actually know about what happened?",
+			"seconds": 2.9,
+			"words": [
+				{
+					"text": "So",
+					"start": 0.06,
+					"end": 0.22
+				},
+				{
+					"text": "what",
+					"start": 0.54,
+					"end": 0.66
+				},
+				{
+					"text": "do",
+					"start": 0.7,
+					"end": 0.78
+				},
+				{
+					"text": "we",
+					"start": 0.82,
+					"end": 0.94
+				},
+				{
+					"text": "actually",
+					"start": 1.04,
+					"end": 1.42
+				},
+				{
+					"text": "know",
+					"start": 1.48,
+					"end": 1.74
+				},
+				{
+					"text": "about",
+					"start": 1.84,
+					"end": 2.04
+				},
+				{
+					"text": "what",
+					"start": 2.06,
+					"end": 2.18
+				},
+				{
+					"text": "happened?",
+					"start": 2.24,
+					"end": 2.62
+				}
+			]
+		},
+		"route": {
+			"text": "The plane, a Learjet 60 built in 2004, had taken off from Austin, Texas, that morning, bound for the Bahamas.",
+			"input": {
+				"prompt": "The plane, a Learjet 60 built in 2004, had taken off from Austin, Texas, that morning, bound for the Bahamas.",
+				"voice": "Charon",
+				"style_instructions": "A thoughtful American journalist narrating a calm news explainer video about a fatal plane crash. Clear, measured and quietly serious, curious rather than dramatic, never sensational. A steady conversational pace with no long pauses. Standard American English accent."
+			},
+			"heard": "The plane, a Learjet 60 built in 2004, had taken off from Austin, Texas that morning, bound for the Bahamas.",
+			"seconds": 7.68,
+			"words": [
+				{
+					"text": "The",
+					"start": 0.06,
+					"end": 0.14
+				},
+				{
+					"text": "plane,",
+					"start": 0.2,
+					"end": 0.6
+				},
+				{
+					"text": "a",
+					"start": 0.92,
+					"end": 0.96
+				},
+				{
+					"text": "Learjet",
+					"start": 1.02,
+					"end": 1.42
+				},
+				{
+					"text": "60",
+					"start": 1.66,
+					"end": 1.88
+				},
+				{
+					"text": "built",
+					"start": 1.94,
+					"end": 2.14
+				},
+				{
+					"text": "in",
+					"start": 2.18,
+					"end": 2.28
+				},
+				{
+					"text": "2004,",
+					"start": 2.46,
+					"end": 3.12
+				},
+				{
+					"text": "had",
+					"start": 3.72,
+					"end": 3.86
+				},
+				{
+					"text": "taken",
+					"start": 3.92,
+					"end": 4.16
+				},
+				{
+					"text": "off",
+					"start": 4.22,
+					"end": 4.34
+				},
+				{
+					"text": "from",
+					"start": 4.4,
+					"end": 4.6
+				},
+				{
+					"text": "Austin,",
+					"start": 4.68,
+					"end": 5
+				},
+				{
+					"text": "Texas",
+					"start": 5.12,
+					"end": 5.48
+				},
+				{
+					"text": "that",
+					"start": 5.54,
+					"end": 5.66
+				},
+				{
+					"text": "morning,",
+					"start": 5.7,
+					"end": 6
+				},
+				{
+					"text": "bound",
+					"start": 6.46,
+					"end": 6.64
+				},
+				{
+					"text": "for",
+					"start": 6.66,
+					"end": 6.74
+				},
+				{
+					"text": "the",
+					"start": 6.78,
+					"end": 6.84
+				},
+				{
+					"text": "Bahamas.",
+					"start": 6.88,
+					"end": 7.38
+				}
+			]
+		},
+		"cruise": {
+			"text": "By early afternoon, it was cruising east over Florida at thirty-five thousand feet.",
+			"input": {
+				"prompt": "By early afternoon, it was cruising east over Florida at thirty-five thousand feet.",
+				"voice": "Charon",
+				"style_instructions": "A thoughtful American journalist narrating a calm news explainer video about a fatal plane crash. Clear, measured and quietly serious, curious rather than dramatic, never sensational. A steady conversational pace with no long pauses. Standard American English accent."
+			},
+			"heard": "By early afternoon, it was cruising east over Florida at 35,000 feet.",
+			"seconds": 5.12,
+			"words": [
+				{
+					"text": "By",
+					"start": 0.06,
+					"end": 0.2
+				},
+				{
+					"text": "early",
+					"start": 0.22,
+					"end": 0.48
+				},
+				{
+					"text": "afternoon,",
+					"start": 0.56,
+					"end": 1.1
+				},
+				{
+					"text": "it",
+					"start": 1.4,
+					"end": 1.48
+				},
+				{
+					"text": "was",
+					"start": 1.52,
+					"end": 1.66
+				},
+				{
+					"text": "cruising",
+					"start": 1.72,
+					"end": 2.14
+				},
+				{
+					"text": "east",
+					"start": 2.24,
+					"end": 2.5
+				},
+				{
+					"text": "over",
+					"start": 2.56,
+					"end": 2.76
+				},
+				{
+					"text": "Florida",
+					"start": 2.82,
+					"end": 3.18
+				},
+				{
+					"text": "at",
+					"start": 3.42,
+					"end": 3.58
+				},
+				{
+					"text": "35,000",
+					"start": 3.78,
+					"end": 4.52
+				},
+				{
+					"text": "feet.",
+					"start": 4.62,
+					"end": 4.82
+				}
+			]
+		},
+		"storm": {
+			"text": "But a thunderstorm was building over Palm Beach County, with tops near forty-four thousand feet.",
+			"input": {
+				"prompt": "But a thunderstorm was building over Palm Beach County, with tops near forty-four thousand feet.",
+				"voice": "Charon",
+				"style_instructions": "A thoughtful American journalist narrating a calm news explainer video about a fatal plane crash. Clear, measured and quietly serious, curious rather than dramatic, never sensational. A steady conversational pace with no long pauses. Standard American English accent."
+			},
+			"heard": "But a thunderstorm was building over Palm Beach County with tops near 44,000 feet.",
+			"seconds": 5.9,
+			"words": [
+				{
+					"text": "But",
+					"start": 0.06,
+					"end": 0.26
+				},
+				{
+					"text": "a",
+					"start": 0.32,
+					"end": 0.42
+				},
+				{
+					"text": "thunderstorm",
+					"start": 0.48,
+					"end": 1.24
+				},
+				{
+					"text": "was",
+					"start": 1.28,
+					"end": 1.42
+				},
+				{
+					"text": "building",
+					"start": 1.48,
+					"end": 1.8
+				},
+				{
+					"text": "over",
+					"start": 1.86,
+					"end": 2.06
+				},
+				{
+					"text": "Palm",
+					"start": 2.1,
+					"end": 2.3
+				},
+				{
+					"text": "Beach",
+					"start": 2.36,
+					"end": 2.52
+				},
+				{
+					"text": "County",
+					"start": 2.6,
+					"end": 2.96
+				},
+				{
+					"text": "with",
+					"start": 3.26,
+					"end": 3.58
+				},
+				{
+					"text": "tops",
+					"start": 3.66,
+					"end": 3.96
+				},
+				{
+					"text": "near",
+					"start": 4.02,
+					"end": 4.2
+				},
+				{
+					"text": "44,000",
+					"start": 4.4,
+					"end": 5.32
+				},
+				{
+					"text": "feet.",
+					"start": 5.38,
+					"end": 5.62
+				}
+			]
+		},
+		"warned": {
+			"text": "Forecasters had already warned of severe turbulence, icing, and hail.",
+			"input": {
+				"prompt": "Forecasters had already warned of severe turbulence, icing, and hail.",
+				"voice": "Charon",
+				"style_instructions": "A thoughtful American journalist narrating a calm news explainer video about a fatal plane crash. Clear, measured and quietly serious, curious rather than dramatic, never sensational. A steady conversational pace with no long pauses. Standard American English accent."
+			},
+			"heard": "Forecasters had already warned of severe turbulence, icing, and hail",
+			"seconds": 4.96,
+			"words": [
+				{
+					"text": "Forecasters",
+					"start": 0.06,
+					"end": 0.8
+				},
+				{
+					"text": "had",
+					"start": 0.84,
+					"end": 1.14
+				},
+				{
+					"text": "already",
+					"start": 1.22,
+					"end": 1.54
+				},
+				{
+					"text": "warned",
+					"start": 1.62,
+					"end": 1.92
+				},
+				{
+					"text": "of",
+					"start": 1.98,
+					"end": 2.08
+				},
+				{
+					"text": "severe",
+					"start": 2.14,
+					"end": 2.44
+				},
+				{
+					"text": "turbulence,",
+					"start": 2.5,
+					"end": 3.1
+				},
+				{
+					"text": "icing,",
+					"start": 3.54,
+					"end": 3.96
+				},
+				{
+					"text": "and",
+					"start": 4.12,
+					"end": 4.22
+				},
+				{
+					"text": "hail.",
+					"start": 4.36,
+					"end": 4.66
+				}
+			]
+		},
+		"climb": {
+			"text": "The crew reported ice and turbulence, and asked to climb two thousand feet.",
+			"input": {
+				"prompt": "The crew reported ice and turbulence, and asked to climb two thousand feet.",
+				"voice": "Charon",
+				"style_instructions": "A thoughtful American journalist narrating a calm news explainer video about a fatal plane crash. Clear, measured and quietly serious, curious rather than dramatic, never sensational. A steady conversational pace with no long pauses. Standard American English accent."
+			},
+			"heard": "The crew reported ice and turbulence and asked to climb two thousand feet.",
+			"seconds": 4.98,
+			"words": [
+				{
+					"text": "The",
+					"start": 0.06,
+					"end": 0.12
+				},
+				{
+					"text": "crew",
+					"start": 0.18,
+					"end": 0.36
+				},
+				{
+					"text": "reported",
+					"start": 0.4,
+					"end": 0.94
+				},
+				{
+					"text": "ice",
+					"start": 1.06,
+					"end": 1.46
+				},
+				{
+					"text": "and",
+					"start": 1.52,
+					"end": 1.66
+				},
+				{
+					"text": "turbulence",
+					"start": 1.74,
+					"end": 2.46
+				},
+				{
+					"text": "and",
+					"start": 2.84,
+					"end": 2.9
+				},
+				{
+					"text": "asked",
+					"start": 2.96,
+					"end": 3.12
+				},
+				{
+					"text": "to",
+					"start": 3.16,
+					"end": 3.26
+				},
+				{
+					"text": "climb",
+					"start": 3.34,
+					"end": 3.7
+				},
+				{
+					"text": "two",
+					"start": 3.78,
+					"end": 3.92
+				},
+				{
+					"text": "thousand",
+					"start": 3.98,
+					"end": 4.3
+				},
+				{
+					"text": "feet.",
+					"start": 4.42,
+					"end": 4.66
+				}
+			]
+		},
+		"fall": {
+			"text": "Then the jet started to fall.",
+			"input": {
+				"prompt": "Then the jet started to fall.",
+				"voice": "Charon",
+				"style_instructions": "A thoughtful American journalist narrating a calm news explainer video about a fatal plane crash. Clear, measured and quietly serious, curious rather than dramatic, never sensational. A steady conversational pace with no long pauses. Standard American English accent."
+			},
+			"heard": "Then the jet started to fall.",
+			"seconds": 2.24,
+			"words": [
+				{
+					"text": "Then",
+					"start": 0.06,
+					"end": 0.44
+				},
+				{
+					"text": "the",
+					"start": 0.5,
+					"end": 0.6
+				},
+				{
+					"text": "jet",
+					"start": 0.68,
+					"end": 0.92
+				},
+				{
+					"text": "started",
+					"start": 1.02,
+					"end": 1.34
+				},
+				{
+					"text": "to",
+					"start": 1.38,
+					"end": 1.52
+				},
+				{
+					"text": "fall.",
+					"start": 1.6,
+					"end": 2.02
+				}
+			]
+		},
+		"minute": {
+			"text": "According to the FAA, it dropped from about thirty-five thousand feet to under nine thousand in just over a minute.",
+			"input": {
+				"prompt": "According to the FAA, it dropped from about thirty-five thousand feet to under nine thousand in just over a minute.",
+				"voice": "Charon",
+				"style_instructions": "A thoughtful American journalist narrating a calm news explainer video about a fatal plane crash. Clear, measured and quietly serious, curious rather than dramatic, never sensational. A steady conversational pace with no long pauses. Standard American English accent."
+			},
+			"heard": "According to the FAA, it dropped from about 35,000 feet to under 9,000 in just over a minute.",
+			"seconds": 7.22,
+			"words": [
+				{
+					"text": "According",
+					"start": 0.08,
+					"end": 0.42
+				},
+				{
+					"text": "to",
+					"start": 0.46,
+					"end": 0.54
+				},
+				{
+					"text": "the",
+					"start": 0.58,
+					"end": 0.66
+				},
+				{
+					"text": "FAA,",
+					"start": 0.78,
+					"end": 1.16
+				},
+				{
+					"text": "it",
+					"start": 1.64,
+					"end": 1.74
+				},
+				{
+					"text": "dropped",
+					"start": 1.8,
+					"end": 2.16
+				},
+				{
+					"text": "from",
+					"start": 2.22,
+					"end": 2.32
+				},
+				{
+					"text": "about",
+					"start": 2.4,
+					"end": 2.7
+				},
+				{
+					"text": "35,000",
+					"start": 2.88,
+					"end": 3.8
+				},
+				{
+					"text": "feet",
+					"start": 3.86,
+					"end": 4.08
+				},
+				{
+					"text": "to",
+					"start": 4.4,
+					"end": 4.5
+				},
+				{
+					"text": "under",
+					"start": 4.56,
+					"end": 4.8
+				},
+				{
+					"text": "9,000",
+					"start": 5.12,
+					"end": 5.72
+				},
+				{
+					"text": "in",
+					"start": 5.96,
+					"end": 6.08
+				},
+				{
+					"text": "just",
+					"start": 6.14,
+					"end": 6.32
+				},
+				{
+					"text": "over",
+					"start": 6.38,
+					"end": 6.52
+				},
+				{
+					"text": "a",
+					"start": 6.56,
+					"end": 6.62
+				},
+				{
+					"text": "minute.",
+					"start": 6.7,
+					"end": 6.96
+				}
+			]
+		},
+		"rate": {
+			"text": "At its fastest, it was descending thirty thousand feet per minute.",
+			"input": {
+				"prompt": "At its fastest, it was descending thirty thousand feet per minute.",
+				"voice": "Charon",
+				"style_instructions": "A thoughtful American journalist narrating a calm news explainer video about a fatal plane crash. Clear, measured and quietly serious, curious rather than dramatic, never sensational. A steady conversational pace with no long pauses. Standard American English accent."
+			},
+			"heard": "At its fastest, it was descending thirty thousand feet per minute.",
+			"seconds": 4.62,
+			"words": [
+				{
+					"text": "At",
+					"start": 0.06,
+					"end": 0.12
+				},
+				{
+					"text": "its",
+					"start": 0.18,
+					"end": 0.36
+				},
+				{
+					"text": "fastest,",
+					"start": 0.44,
+					"end": 1.06
+				},
+				{
+					"text": "it",
+					"start": 1.42,
+					"end": 1.5
+				},
+				{
+					"text": "was",
+					"start": 1.54,
+					"end": 1.66
+				},
+				{
+					"text": "descending",
+					"start": 1.7,
+					"end": 2.2
+				},
+				{
+					"text": "thirty",
+					"start": 2.44,
+					"end": 2.72
+				},
+				{
+					"text": "thousand",
+					"start": 2.94,
+					"end": 3.38
+				},
+				{
+					"text": "feet",
+					"start": 3.52,
+					"end": 3.74
+				},
+				{
+					"text": "per",
+					"start": 3.8,
+					"end": 3.94
+				},
+				{
+					"text": "minute",
+					"start": 4,
+					"end": 4.28
+				}
+			]
+		},
+		"speed": {
+			"text": "That's a vertical speed of about three hundred and forty miles an hour.",
+			"input": {
+				"prompt": "That's a vertical speed of about three hundred and forty miles an hour.",
+				"voice": "Charon",
+				"style_instructions": "A thoughtful American journalist narrating a calm news explainer video about a fatal plane crash. Clear, measured and quietly serious, curious rather than dramatic, never sensational. A steady conversational pace with no long pauses. Standard American English accent."
+			},
+			"heard": "That's a vertical speed of about three hundred and forty miles an hour.",
+			"seconds": 4.079,
+			"words": [
+				{
+					"text": "That's",
+					"start": 0.06,
+					"end": 0.24
+				},
+				{
+					"text": "a",
+					"start": 0.32,
+					"end": 0.38
+				},
+				{
+					"text": "vertical",
+					"start": 0.44,
+					"end": 0.84
+				},
+				{
+					"text": "speed",
+					"start": 0.94,
+					"end": 1.4
+				},
+				{
+					"text": "of",
+					"start": 1.48,
+					"end": 1.54
+				},
+				{
+					"text": "about",
+					"start": 1.6,
+					"end": 1.84
+				},
+				{
+					"text": "three",
+					"start": 1.92,
+					"end": 2.14
+				},
+				{
+					"text": "hundred",
+					"start": 2.18,
+					"end": 2.42
+				},
+				{
+					"text": "and",
+					"start": 2.46,
+					"end": 2.54
+				},
+				{
+					"text": "forty",
+					"start": 2.72,
+					"end": 2.96
+				},
+				{
+					"text": "miles",
+					"start": 3.06,
+					"end": 3.36
+				},
+				{
+					"text": "an",
+					"start": 3.4,
+					"end": 3.48
+				},
+				{
+					"text": "hour.",
+					"start": 3.56,
+					"end": 3.779
+				}
+			]
+		},
+		"mayday": {
+			"text": "The crew declared an emergency. About thirty-five seconds later, the radio went quiet.",
+			"input": {
+				"prompt": "The crew declared an emergency. About thirty-five seconds later, the radio went quiet.",
+				"voice": "Charon",
+				"style_instructions": "A thoughtful American journalist narrating a calm news explainer video about a fatal plane crash. Clear, measured and quietly serious, curious rather than dramatic, never sensational. A steady conversational pace with no long pauses. Standard American English accent."
+			},
+			"heard": "The crew declared an emergency. About thirty-five seconds later, the radio went quiet.",
+			"seconds": 5.66,
+			"words": [
+				{
+					"text": "The",
+					"start": 0.06,
+					"end": 0.14
+				},
+				{
+					"text": "crew",
+					"start": 0.2,
+					"end": 0.44
+				},
+				{
+					"text": "declared",
+					"start": 0.48,
+					"end": 0.8
+				},
+				{
+					"text": "an",
+					"start": 0.84,
+					"end": 0.9
+				},
+				{
+					"text": "emergency.",
+					"start": 0.96,
+					"end": 1.5
+				},
+				{
+					"text": "About",
+					"start": 2.08,
+					"end": 2.46
+				},
+				{
+					"text": "thirty-five",
+					"start": 2.54,
+					"end": 3.08
+				},
+				{
+					"text": "seconds",
+					"start": 3.2,
+					"end": 3.54
+				},
+				{
+					"text": "later,",
+					"start": 3.58,
+					"end": 3.84
+				},
+				{
+					"text": "the",
+					"start": 4.1,
+					"end": 4.2
+				},
+				{
+					"text": "radio",
+					"start": 4.28,
+					"end": 4.7
+				},
+				{
+					"text": "went",
+					"start": 4.74,
+					"end": 4.9
+				},
+				{
+					"text": "quiet.",
+					"start": 5,
+					"end": 5.4
+				}
+			]
+		},
+		"road": {
+			"text": "It came down beside a busy road in Palm Beach County, near a mobile home park.",
+			"input": {
+				"prompt": "It came down beside a busy road in Palm Beach County, near a mobile home park.",
+				"voice": "Charon",
+				"style_instructions": "A thoughtful American journalist narrating a calm news explainer video about a fatal plane crash. Clear, measured and quietly serious, curious rather than dramatic, never sensational. A steady conversational pace with no long pauses. Standard American English accent."
+			},
+			"heard": "It came down beside a busy road in Palm Beach County, near a mobile home park.",
+			"seconds": 4.88,
+			"words": [
+				{
+					"text": "It",
+					"start": 0.06,
+					"end": 0.18
+				},
+				{
+					"text": "came",
+					"start": 0.24,
+					"end": 0.46
+				},
+				{
+					"text": "down",
+					"start": 0.52,
+					"end": 0.78
+				},
+				{
+					"text": "beside",
+					"start": 0.82,
+					"end": 1.12
+				},
+				{
+					"text": "a",
+					"start": 1.16,
+					"end": 1.26
+				},
+				{
+					"text": "busy",
+					"start": 1.3,
+					"end": 1.6
+				},
+				{
+					"text": "road",
+					"start": 1.66,
+					"end": 1.98
+				},
+				{
+					"text": "in",
+					"start": 2.02,
+					"end": 2.14
+				},
+				{
+					"text": "Palm",
+					"start": 2.2,
+					"end": 2.38
+				},
+				{
+					"text": "Beach",
+					"start": 2.44,
+					"end": 2.62
+				},
+				{
+					"text": "County,",
+					"start": 2.74,
+					"end": 3.06
+				},
+				{
+					"text": "near",
+					"start": 3.46,
+					"end": 3.62
+				},
+				{
+					"text": "a",
+					"start": 3.68,
+					"end": 3.72
+				},
+				{
+					"text": "mobile",
+					"start": 3.76,
+					"end": 4
+				},
+				{
+					"text": "home",
+					"start": 4.06,
+					"end": 4.26
+				},
+				{
+					"text": "park.",
+					"start": 4.3,
+					"end": 4.58
+				}
+			]
+		},
+		"crater": {
+			"text": "It left a crater by the road, and about six hundred nearby residents were evacuated.",
+			"input": {
+				"prompt": "It left a crater by the road, and about six hundred nearby residents were evacuated.",
+				"voice": "Charon",
+				"style_instructions": "A thoughtful American journalist narrating a calm news explainer video about a fatal plane crash. Clear, measured and quietly serious, curious rather than dramatic, never sensational. A steady conversational pace with no long pauses. Standard American English accent."
+			},
+			"heard": "It left a crater by the road and about six hundred nearby residents were evacuated.",
+			"seconds": 5.42,
+			"words": [
+				{
+					"text": "It",
+					"start": 0.06,
+					"end": 0.14
+				},
+				{
+					"text": "left",
+					"start": 0.18,
+					"end": 0.36
+				},
+				{
+					"text": "a",
+					"start": 0.4,
+					"end": 0.46
+				},
+				{
+					"text": "crater",
+					"start": 0.54,
+					"end": 1.02
+				},
+				{
+					"text": "by",
+					"start": 1.06,
+					"end": 1.18
+				},
+				{
+					"text": "the",
+					"start": 1.22,
+					"end": 1.3
+				},
+				{
+					"text": "road",
+					"start": 1.36,
+					"end": 1.66
+				},
+				{
+					"text": "and",
+					"start": 2.16,
+					"end": 2.22
+				},
+				{
+					"text": "about",
+					"start": 2.26,
+					"end": 2.52
+				},
+				{
+					"text": "six",
+					"start": 2.6,
+					"end": 2.82
+				},
+				{
+					"text": "hundred",
+					"start": 2.86,
+					"end": 3.2
+				},
+				{
+					"text": "nearby",
+					"start": 3.26,
+					"end": 3.64
+				},
+				{
+					"text": "residents",
+					"start": 3.7,
+					"end": 4.3
+				},
+				{
+					"text": "were",
+					"start": 4.34,
+					"end": 4.44
+				},
+				{
+					"text": "evacuated.",
+					"start": 4.48,
+					"end": 5.14
+				}
+			]
+		},
+		"ground": {
+			"text": "No one on the ground was killed.",
+			"input": {
+				"prompt": "No one on the ground was killed.",
+				"voice": "Charon",
+				"style_instructions": "A thoughtful American journalist narrating a calm news explainer video about a fatal plane crash. Clear, measured and quietly serious, curious rather than dramatic, never sensational. A steady conversational pace with no long pauses. Standard American English accent."
+			},
+			"heard": "No one on the ground was killed.",
+			"seconds": 1.92,
+			"words": [
+				{
+					"text": "No",
+					"start": 0.06,
+					"end": 0.2
+				},
+				{
+					"text": "one",
+					"start": 0.24,
+					"end": 0.34
+				},
+				{
+					"text": "on",
+					"start": 0.4,
+					"end": 0.46
+				},
+				{
+					"text": "the",
+					"start": 0.5,
+					"end": 0.58
+				},
+				{
+					"text": "ground",
+					"start": 0.64,
+					"end": 1
+				},
+				{
+					"text": "was",
+					"start": 1.04,
+					"end": 1.18
+				},
+				{
+					"text": "killed.",
+					"start": 1.26,
+					"end": 1.62
+				}
+			]
+		},
+		"ntsb": {
+			"text": "The National Transportation Safety Board is leading the investigation, and says the weather is a major focus.",
+			"input": {
+				"prompt": "The National Transportation Safety Board is leading the investigation, and says the weather is a major focus.",
+				"voice": "Charon",
+				"style_instructions": "A thoughtful American journalist narrating a calm news explainer video about a fatal plane crash. Clear, measured and quietly serious, curious rather than dramatic, never sensational. A steady conversational pace with no long pauses. Standard American English accent."
+			},
+			"heard": "The National Transportation Safety Board is leading the investigation and says the weather is a major focus.",
+			"seconds": 6.58,
+			"words": [
+				{
+					"text": "The",
+					"start": 0.06,
+					"end": 0.12
+				},
+				{
+					"text": "National",
+					"start": 0.18,
+					"end": 0.54
+				},
+				{
+					"text": "Transportation",
+					"start": 0.62,
+					"end": 1.32
+				},
+				{
+					"text": "Safety",
+					"start": 1.44,
+					"end": 1.72
+				},
+				{
+					"text": "Board",
+					"start": 1.82,
+					"end": 2.06
+				},
+				{
+					"text": "is",
+					"start": 2.12,
+					"end": 2.26
+				},
+				{
+					"text": "leading",
+					"start": 2.34,
+					"end": 2.58
+				},
+				{
+					"text": "the",
+					"start": 2.62,
+					"end": 2.7
+				},
+				{
+					"text": "investigation",
+					"start": 2.74,
+					"end": 3.48
+				},
+				{
+					"text": "and",
+					"start": 3.9,
+					"end": 4.06
+				},
+				{
+					"text": "says",
+					"start": 4.14,
+					"end": 4.34
+				},
+				{
+					"text": "the",
+					"start": 4.38,
+					"end": 4.52
+				},
+				{
+					"text": "weather",
+					"start": 4.58,
+					"end": 5.04
+				},
+				{
+					"text": "is",
+					"start": 5.12,
+					"end": 5.26
+				},
+				{
+					"text": "a",
+					"start": 5.32,
+					"end": 5.36
+				},
+				{
+					"text": "major",
+					"start": 5.52,
+					"end": 5.86
+				},
+				{
+					"text": "focus.",
+					"start": 5.92,
+					"end": 6.3
+				}
+			]
+		},
+		"breakup": {
+			"text": "Investigators have also found signs that the plane may have begun to break apart in the air.",
+			"input": {
+				"prompt": "Investigators have also found signs that the plane may have begun to break apart in the air.",
+				"voice": "Charon",
+				"style_instructions": "A thoughtful American journalist narrating a calm news explainer video about a fatal plane crash. Clear, measured and quietly serious, curious rather than dramatic, never sensational. A steady conversational pace with no long pauses. Standard American English accent."
+			},
+			"heard": "Investigators have also found signs that the plane may have begun to break apart in the air.",
+			"seconds": 5.18,
+			"words": [
+				{
+					"text": "Investigators",
+					"start": 0.06,
+					"end": 0.8
+				},
+				{
+					"text": "have",
+					"start": 0.84,
+					"end": 0.96
+				},
+				{
+					"text": "also",
+					"start": 1.04,
+					"end": 1.36
+				},
+				{
+					"text": "found",
+					"start": 1.44,
+					"end": 1.68
+				},
+				{
+					"text": "signs",
+					"start": 1.74,
+					"end": 2.2
+				},
+				{
+					"text": "that",
+					"start": 2.24,
+					"end": 2.34
+				},
+				{
+					"text": "the",
+					"start": 2.38,
+					"end": 2.46
+				},
+				{
+					"text": "plane",
+					"start": 2.52,
+					"end": 2.78
+				},
+				{
+					"text": "may",
+					"start": 2.84,
+					"end": 2.96
+				},
+				{
+					"text": "have",
+					"start": 3,
+					"end": 3.1
+				},
+				{
+					"text": "begun",
+					"start": 3.14,
+					"end": 3.42
+				},
+				{
+					"text": "to",
+					"start": 3.48,
+					"end": 3.58
+				},
+				{
+					"text": "break",
+					"start": 3.62,
+					"end": 3.78
+				},
+				{
+					"text": "apart",
+					"start": 3.84,
+					"end": 4.42
+				},
+				{
+					"text": "in",
+					"start": 4.48,
+					"end": 4.54
+				},
+				{
+					"text": "the",
+					"start": 4.58,
+					"end": 4.68
+				},
+				{
+					"text": "air.",
+					"start": 4.78,
+					"end": 4.96
+				}
+			]
+		},
+		"report": {
+			"text": "A preliminary report is expected within weeks. A final cause could take a year or more.",
+			"input": {
+				"prompt": "A preliminary report is expected within weeks. A final cause could take a year or more.",
+				"voice": "Charon",
+				"style_instructions": "A thoughtful American journalist narrating a calm news explainer video about a fatal plane crash. Clear, measured and quietly serious, curious rather than dramatic, never sensational. A steady conversational pace with no long pauses. Standard American English accent."
+			},
+			"heard": "A preliminary report is expected within weeks. A final cause could take a year or more.",
+			"seconds": 6.34,
+			"words": [
+				{
+					"text": "A",
+					"start": 0.06,
+					"end": 0.12
+				},
+				{
+					"text": "preliminary",
+					"start": 0.18,
+					"end": 0.76
+				},
+				{
+					"text": "report",
+					"start": 0.8,
+					"end": 1.32
+				},
+				{
+					"text": "is",
+					"start": 1.4,
+					"end": 1.46
+				},
+				{
+					"text": "expected",
+					"start": 1.52,
+					"end": 2.1
+				},
+				{
+					"text": "within",
+					"start": 2.16,
+					"end": 2.44
+				},
+				{
+					"text": "weeks.",
+					"start": 2.52,
+					"end": 2.84
+				},
+				{
+					"text": "A",
+					"start": 3.46,
+					"end": 3.52
+				},
+				{
+					"text": "final",
+					"start": 3.58,
+					"end": 3.88
+				},
+				{
+					"text": "cause",
+					"start": 3.96,
+					"end": 4.42
+				},
+				{
+					"text": "could",
+					"start": 4.48,
+					"end": 4.68
+				},
+				{
+					"text": "take",
+					"start": 4.76,
+					"end": 4.92
+				},
+				{
+					"text": "a",
+					"start": 5,
+					"end": 5.06
+				},
+				{
+					"text": "year",
+					"start": 5.16,
+					"end": 5.52
+				},
+				{
+					"text": "or",
+					"start": 5.58,
+					"end": 5.68
+				},
+				{
+					"text": "more.",
+					"start": 5.76,
+					"end": 6.04
+				}
+			]
+		},
+		"question": {
+			"text": "For now, the question is how a jet cruising at thirty-five thousand feet could fall so far, so fast.",
+			"input": {
+				"prompt": "For now, the question is how a jet cruising at thirty-five thousand feet could fall so far, so fast.",
+				"voice": "Charon",
+				"style_instructions": "A thoughtful American journalist narrating a calm news explainer video about a fatal plane crash. Clear, measured and quietly serious, curious rather than dramatic, never sensational. A steady conversational pace with no long pauses. Standard American English accent."
+			},
+			"heard": "For now, the question is how a jet cruising at 35,000 feet could fall so far so fast.",
+			"seconds": 7.06,
+			"words": [
+				{
+					"text": "For",
+					"start": 0.06,
+					"end": 0.18
+				},
+				{
+					"text": "now,",
+					"start": 0.24,
+					"end": 0.46
+				},
+				{
+					"text": "the",
+					"start": 0.54,
+					"end": 0.62
+				},
+				{
+					"text": "question",
+					"start": 0.7,
+					"end": 1.12
+				},
+				{
+					"text": "is",
+					"start": 1.2,
+					"end": 1.36
+				},
+				{
+					"text": "how",
+					"start": 1.74,
+					"end": 1.88
+				},
+				{
+					"text": "a",
+					"start": 1.94,
+					"end": 2.02
+				},
+				{
+					"text": "jet",
+					"start": 2.1,
+					"end": 2.32
+				},
+				{
+					"text": "cruising",
+					"start": 2.4,
+					"end": 2.74
+				},
+				{
+					"text": "at",
+					"start": 2.78,
+					"end": 2.92
+				},
+				{
+					"text": "35,000",
+					"start": 3.1,
+					"end": 3.94
+				},
+				{
+					"text": "feet",
+					"start": 4.02,
+					"end": 4.24
+				},
+				{
+					"text": "could",
+					"start": 4.7,
+					"end": 4.82
+				},
+				{
+					"text": "fall",
+					"start": 4.88,
+					"end": 5.02
+				},
+				{
+					"text": "so",
+					"start": 5.22,
+					"end": 5.42
+				},
+				{
+					"text": "far",
+					"start": 5.5,
+					"end": 6.04
+				},
+				{
+					"text": "so",
+					"start": 6.1,
+					"end": 6.26
+				},
+				{
+					"text": "fast.",
+					"start": 6.34,
+					"end": 6.76
+				}
+			]
+		}
+	},
+	"music": {
+		"prompt": "A soft instrumental underscore for a two-minute news explainer video about a tragic plane crash. No vocals, no singing, no spoken words, no drums.\nReflective, respectful and quietly curious at 72 BPM in D minor: felt piano playing a sparse repeating motif, warm string pad, a soft low cello drone and a faint, slow plucked pulse. Gentle and understated throughout, always staying in the background under a narrator.\n[0:00-0:20] Felt piano motif alone over a soft pad, intimate.\n[0:20-0:45] The plucked pulse enters, light and steady, like a clock.\n[0:45-1:10] The low cello drone joins and the harmony darkens slightly, tense but restrained.\n[1:10-1:40] It opens up a little: warm strings carry the motif, hopeful but sober.\n[1:40-2:05] It thins back to the piano motif and settles on one long, quiet final chord.\n[2:05-2:10] Silence.",
+		"seconds": 125
+	}
+}

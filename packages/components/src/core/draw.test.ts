@@ -55,6 +55,31 @@ describe("draw", () => {
 		expect(squigglePath([0, 0], [120, 0], { amplitude: 5 })).toMatch(/^M0 0/);
 	});
 
+	it("keeps a hand-drawn arrow's head pointing the same way in every boil pose", () => {
+		// Short arrows and the swoop are where the head used to spin.
+		for (const [to, curve] of [
+			[[60, 20], "arc"],
+			[[300, 120], "swoop"],
+		] as const) {
+			const angles = [0, 1, 2, 3, 4, 5].map((v) => {
+				const { shaft, head } = arrowPaths(
+					[0, 0],
+					[to[0], to[1]],
+					{ curve, wobble: 4, seed: 7 },
+					v,
+				);
+				// The shaft meets the tip, whatever the pose.
+				expect(shaft.endsWith(`L${to[0]} ${to[1]}`)).toBe(true);
+				const [x, y] = (head.match(/^M(-?[\d.]+) (-?[\d.]+)/) ?? [])
+					.slice(1)
+					.map(Number) as [number, number];
+				return Math.atan2(to[1] - y, to[0] - x);
+			});
+			const spread = Math.max(...angles) - Math.min(...angles);
+			expect(spread, curve).toBeLessThan(1e-6);
+		}
+	});
+
 	it("boils between poses with hold keys", () => {
 		const keys = boilKeys((v) => `pose-${v}`, {
 			start: 0,

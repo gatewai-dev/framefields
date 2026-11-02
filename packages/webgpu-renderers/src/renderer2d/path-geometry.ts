@@ -1,3 +1,5 @@
+import { fillContours, signedArea } from "./path-fill.js";
+
 export interface Point {
 	x: number;
 	y: number;
@@ -147,8 +149,27 @@ export function sampleSvgArc(
  * Parse an SVG path string (M, L, H, V, C, S, Q, T, A, Z) into line segments.
  */
 export function parseSvgPathToSegments(d: string): PathSegment[] {
+	return parseSvgPath(d).segments;
+}
+
+/**
+ * The path's segments, and for each the subpath it belongs to (every M
+ * starts one): fills need to know where each subpath begins.
+ */
+function parseSvgPath(d: string): {
+	segments: PathSegment[];
+	subpaths: number[];
+} {
 	const segments: PathSegment[] = [];
-	if (!d || typeof d !== "string") return segments;
+	const subpaths: number[] = [];
+	if (!d || typeof d !== "string") return { segments, subpaths };
+	let subpath = -1;
+	const emit = (...added: PathSegment[]) => {
+		for (const seg of added) {
+			segments.push(seg);
+			subpaths.push(subpath);
+		}
+	};
 
 	// Tokenize SVG path commands and numeric values
 	const tokens: Array<string | number> = [];
@@ -197,10 +218,11 @@ export function parseSvgPathToSegments(d: string): PathSegment[] {
 					if (first) {
 						current = { x, y };
 						subpathStart = { x, y };
+						subpath++;
 						first = false;
 					} else {
 						// Subsequent pairs in M/m are treated as L/l
-						segments.push({ p0: current, p1: { x, y } });
+						emit({ p0: current, p1: { x, y } });
 						current = { x, y };
 					}
 				}
@@ -216,7 +238,7 @@ export function parseSvgPathToSegments(d: string): PathSegment[] {
 						x += current.x;
 						y += current.y;
 					}
-					segments.push({ p0: current, p1: { x, y } });
+					emit({ p0: current, p1: { x, y } });
 					current = { x, y };
 				}
 				lastCubicControl = null;
@@ -228,7 +250,7 @@ export function parseSvgPathToSegments(d: string): PathSegment[] {
 					let x = getNum();
 					if (isRelative) x += current.x;
 					const next: Point = { x, y: current.y };
-					segments.push({ p0: current, p1: next });
+					emit({ p0: current, p1: next });
 					current = next;
 				}
 				lastCubicControl = null;
@@ -240,7 +262,7 @@ export function parseSvgPathToSegments(d: string): PathSegment[] {
 					let y = getNum();
 					if (isRelative) y += current.y;
 					const next: Point = { x: current.x, y };
-					segments.push({ p0: current, p1: next });
+					emit({ p0: current, p1: next });
 					current = next;
 				}
 				lastCubicControl = null;
@@ -266,7 +288,7 @@ export function parseSvgPathToSegments(d: string): PathSegment[] {
 					const p1: Point = { x: x1, y: y1 };
 					const p2: Point = { x: x2, y: y2 };
 					const end: Point = { x, y };
-					segments.push(...sampleCubicBezier(current, p1, p2, end));
+					emit(...sampleCubicBezier(current, p1, p2, end));
 					current = end;
 					lastCubicControl = p2;
 				}
@@ -296,7 +318,7 @@ export function parseSvgPathToSegments(d: string): PathSegment[] {
 					}
 					const p2: Point = { x: x2, y: y2 };
 					const end: Point = { x, y };
-					segments.push(...sampleCubicBezier(current, p1, p2, end));
+					emit(...sampleCubicBezier(current, p1, p2, end));
 					current = end;
 					lastCubicControl = p2;
 				}
@@ -317,7 +339,7 @@ export function parseSvgPathToSegments(d: string): PathSegment[] {
 					}
 					const p1: Point = { x: x1, y: y1 };
 					const end: Point = { x, y };
-					segments.push(...sampleQuadraticBezier(current, p1, end));
+					emit(...sampleQuadraticBezier(current, p1, end));
 					current = end;
 					lastQuadControl = p1;
 				}
@@ -342,7 +364,7 @@ export function parseSvgPathToSegments(d: string): PathSegment[] {
 						p1 = { x: current.x, y: current.y };
 					}
 					const end: Point = { x, y };
-					segments.push(...sampleQuadraticBezier(current, p1, end));
+					emit(...sampleQuadraticBezier(current, p1, end));
 					current = end;
 					lastQuadControl = p1;
 				}
@@ -363,7 +385,7 @@ export function parseSvgPathToSegments(d: string): PathSegment[] {
 						y += current.y;
 					}
 					const end: Point = { x, y };
-					segments.push(
+					emit(
 						...sampleSvgArc(current, rx, ry, rotation, largeArc, sweep, end),
 					);
 					current = end;
@@ -377,7 +399,7 @@ export function parseSvgPathToSegments(d: string): PathSegment[] {
 					Math.hypot(current.x - subpathStart.x, current.y - subpathStart.y) >
 					1e-5
 				) {
-					segments.push({ p0: current, p1: subpathStart });
+					emit({ p0: current, p1: subpathStart });
 				}
 				current = subpathStart;
 				lastCubicControl = null;
@@ -389,7 +411,7 @@ export function parseSvgPathToSegments(d: string): PathSegment[] {
 		}
 	}
 
-	return segments;
+	return { segments, subpaths };
 }
 
 /**
@@ -478,6 +500,30 @@ export function trimPathSegments(
 		const part2 = extractRange(0, e * totalLength);
 		return [...part1, ...part2];
 	}
+}
+
+/**
+ * A dash pattern as SVG's `stroke-dasharray` writes it ("16 12", "4,8") or as
+ * numbers, ready for {@link dashPathSegments}. Following SVG, an odd list is
+ * repeated to make it even, and a negative or unreadable entry, or a pattern
+ * of zero length, means a solid stroke (`undefined`).
+ */
+export function parseDashArray(
+	value: string | readonly number[] | undefined,
+): number[] | undefined {
+	if (value === undefined) return undefined;
+	const parts =
+		typeof value === "string"
+			? value
+					.trim()
+					.split(/[\s,]+/)
+					.filter(Boolean)
+					.map(Number)
+			: [...value];
+	if (parts.length === 0 || parts.some((n) => !Number.isFinite(n) || n < 0))
+		return undefined;
+	if (parts.reduce((sum, n) => sum + n, 0) <= 0) return undefined;
+	return parts.length % 2 === 1 ? [...parts, ...parts] : parts;
 }
 
 /**
@@ -833,6 +879,49 @@ export function triangulatePolygon(contour: Point[]): Point[] {
 	return triangles;
 }
 
+/** A path's subpaths as closed point lists, degenerate ones dropped. */
+export function pathContours(d: string): Point[][] {
+	const bySubpath = new Map<number, Point[]>();
+	const { segments, subpaths } = parseSvgPath(d);
+	segments.forEach((seg, i) => {
+		const id = subpaths[i] ?? 0;
+		let points = bySubpath.get(id);
+		if (!points) {
+			points = [seg.p0];
+			bySubpath.set(id, points);
+		}
+		points.push(seg.p1);
+	});
+	const contours: Point[][] = [];
+	for (const points of bySubpath.values()) {
+		const first = points[0] as Point;
+		const last = points[points.length - 1] as Point;
+		if (Math.hypot(last.x - first.x, last.y - first.y) < 1e-5) points.pop();
+		if (points.length >= 3 && Math.abs(signedArea(points)) > 1e-6)
+			contours.push(points);
+	}
+	return contours;
+}
+
+/** Path fills are redrawn every frame from the same data: keep the last few. */
+const PATH_FILL_CACHE = 64;
+const pathFills = new Map<string, Float32Array>();
+
+/** Triangles filling path `d` by the nonzero rule (see {@link fillContours}). */
+export function cachedPathFill(d: string): Float32Array {
+	const hit = pathFills.get(d);
+	if (hit) {
+		pathFills.delete(d);
+		pathFills.set(d, hit);
+		return hit;
+	}
+	const tris = fillContours(pathContours(d));
+	pathFills.set(d, tris);
+	if (pathFills.size > PATH_FILL_CACHE)
+		pathFills.delete(pathFills.keys().next().value as string);
+	return tris;
+}
+
 /**
  * Triangulate a shape geometry into a flat Float32Array of 2D vertex pairs [x, y, x, y, ...].
  */
@@ -970,18 +1059,7 @@ export function triangulateShape(config: ShapeGeometryConfig): Float32Array {
 		]);
 	}
 
-	if (shapeType === "path" && config.path) {
-		const segments = parseSvgPathToSegments(config.path);
-		if (segments.length === 0) return new Float32Array(0);
-		const contour = segments.map((s) => s.p0);
-		const tris = triangulatePolygon(contour);
-		const out = new Float32Array(tris.length * 2);
-		for (let i = 0; i < tris.length; i++) {
-			out[i * 2] = tris[i].x;
-			out[i * 2 + 1] = tris[i].y;
-		}
-		return out;
-	}
+	if (shapeType === "path" && config.path) return cachedPathFill(config.path);
 
 	return new Float32Array(0);
 }

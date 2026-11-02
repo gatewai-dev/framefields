@@ -4,6 +4,7 @@ import {
 	CompositorProgramSchema,
 	EaseRefSchema,
 	type FlexNode,
+	LayerAnimationSchema,
 	type LayoutNode,
 	LayoutNodeSchema,
 } from "./schema.js";
@@ -81,6 +82,39 @@ const heroConfig = {
 		},
 	],
 } as const;
+
+describe("keyframe values", () => {
+	const track = (prop: string, values: unknown[]) => ({
+		tracks: [
+			{
+				id: `${prop}-track`,
+				prop,
+				keyframes: values.map((value, i) => ({
+					id: `k${i}`,
+					frame: i * 4,
+					value,
+				})),
+			},
+		],
+	});
+
+	it("keys path morphs with SVG path data", () => {
+		expect(
+			LayerAnimationSchema.safeParse(
+				track("d", ["M0 0 L10 0 L10 10 Z", "M0 0 L12 0 L10 12 Z"]),
+			).success,
+		).toBe(true);
+		expect(LayerAnimationSchema.safeParse(track("d", [0, 1])).success).toBe(
+			false,
+		);
+	});
+
+	it("keeps numeric props numeric", () => {
+		expect(LayerAnimationSchema.safeParse(track("x", [0, "10"])).success).toBe(
+			false,
+		);
+	});
+});
 
 describe("CompositorProgramSchema (document v2)", () => {
 	it("parses the spec hero example with defaults applied", () => {

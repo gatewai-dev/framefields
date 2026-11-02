@@ -58,6 +58,7 @@ import {
 	measureMaxCaptionHeight,
 	type PrimitiveGeometryOptions,
 	parseColor,
+	parseDashArray,
 	poseNodes,
 	type RenderContextValue,
 	Renderer3D,
@@ -5239,7 +5240,8 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				const strokeColor =
 					target?.strokeColor ?? lop.strokeColor ?? lop.stroke ?? "#ffffff";
 				const strokeLineCap = lop.strokeLineCap ?? "round";
-				const strokeDashArray = lop.strokeDashArray;
+				// The program writes dashes as SVG does ("16 12"); the path pipeline takes numbers.
+				const strokeDashArray = parseDashArray(lop.strokeDashArray);
 				const strokeDashOffset =
 					target?.strokeDashOffset ?? lop.strokeDashOffset ?? 0;
 				const trimStart = target?.trimStart ?? lop.trimStart ?? 0;

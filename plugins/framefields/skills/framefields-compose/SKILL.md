@@ -94,7 +94,7 @@ All `Layer.*` builders return `AnimatableNode<T>` instances with chainable `.ani
 | `Layer.svg(src, options)` | `"media"` | Vector SVG asset. Options: `fit: "contain"`. |
 | `Layer.lottie(src, options)` | `"media"` | Lottie vector animation file (`.json`, `.lottie`). Decoded and rendered via ThorVG. Options: `fit: "contain" \| "cover" \| "fill"`, `width`, `height`. |
 | `Layer.audio(src, options)` | `"media"` | Audio track layer. Options: `volume`, `startFrame`, `durationFrames`. |
-| `Layer.shape(type, options)` | `"shape"` | Parametric vector graphics (`"rect"`, `"circle"`, `"ellipse"`, `"polygon"`, `"star"`, `"arrow"`, `"path"`). Options: `fill` (a color or CSS gradient), `d` (SVG path data with arcs; keyframe it to morph shapes), `strokeWidth`, `strokeColor`, `trimStart`, `trimEnd`. |
+| `Layer.shape(type, options)` | `"shape"` | Parametric vector graphics (`"rect"`, `"circle"`, `"ellipse"`, `"polygon"`, `"star"`, `"arrow"`, `"path"`). Options: `fill` (a color or CSS gradient), `d` (SVG path data with arcs; several subpaths fill by the nonzero rule, so holes and islands work; keyframe it to morph shapes), `strokeWidth`, `strokeColor`, `strokeDashArray` (SVG syntax, `"12 8"`), `trimStart`, `trimEnd`. |
 | `Layer.particles(options)` | `"media"` | GPU particle system (see *GPU Particles*). |
 | `Layer.vfx(options)` | `"media"` | Procedural full-frame VFX: smoke, fire, rain, snow, aurora… (see *Procedural VFX*). |
 | `Layer.caption(src, options)` | `"media"` | SRT-driven synchronized subtitle engine. Bottom-anchored auto-wrapping cues. |
@@ -173,7 +173,7 @@ const pop = LayerAnimation.create()
 // Static form: LayerAnimation.keys("rotation", [[0, -8], [20, 0, "expo.out"]])
 ```
 
-Keyframes past the layer's `durationFrames` never play; the render warns (`animation_truncated`) and `renderVideo({ qa: true })` reports it.
+Until its first key a track holds that key's value, and after its last key the last: `keys("opacity", [[40, 0], [48, 1]])` keeps a layer hidden until frame 40, with no hold key at 0 needed. Keyframes past the layer's `durationFrames` never play; the render warns (`animation_truncated`) and `renderVideo({ qa: true })` reports it.
 
 ### 2. Kinetic Typography (`TextAnimator`)
 Text animators operate at the GPU glyph instancing level, cascading offsets across characters, words, or lines:

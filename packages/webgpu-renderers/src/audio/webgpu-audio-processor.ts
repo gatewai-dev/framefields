@@ -96,6 +96,25 @@ export class WebGPUAudioProcessor {
 		return deviceCache?.get(cacheKey);
 	}
 
+	/**
+	 * Zeroes the state every effect keeps for `renderId` (delay lines,
+	 * envelopes, reverb tails), as on its first use. Pipelines and buffers
+	 * stay, so a mix that starts again doesn't compile them again.
+	 */
+	public static resetState(renderId: string, device: GPUDevice): void {
+		const cache = WebGPUAudioProcessor.devicePipelineCache.get(device);
+		if (!cache) return;
+		const prefix = `${renderId}_`;
+		for (const [key, cached] of cache.entries()) {
+			if (!key.startsWith(prefix)) continue;
+			device.queue.writeBuffer(
+				cached.stateBuffer,
+				0,
+				new Float32Array(cached.stateBuffer.size / 4),
+			);
+		}
+	}
+
 	public static clearCache(renderId: string, device?: GPUDevice): void {
 		if (!device) return;
 		const cache = WebGPUAudioProcessor.devicePipelineCache.get(device);

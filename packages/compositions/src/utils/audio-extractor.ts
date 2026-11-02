@@ -12,6 +12,7 @@ import {
 	inputStore,
 	resolveInputUrl,
 	shaderStore,
+	WebGPUAudioProcessor,
 } from "@framefields/webgpu-renderers";
 import { AudioSampleSink } from "mediabunny";
 import { computeRenderParams } from "./apply-operations.js";
@@ -680,6 +681,11 @@ export async function mixAudioTracks(
 		`[AudioExtractor] mixAudioTracks started. FPS: ${fps}, targetSampleRate: ${targetSampleRate}`,
 	);
 	await waitForDelayRender();
+
+	// Effects keep state on the GPU (delay lines, reverb tails) that carries
+	// across the chunks of one mix. A mix starts from silence, also when a
+	// caller mixes again under the same render id (the preview, block by block).
+	if (device) WebGPUAudioProcessor.resetState(renderId ?? "global", device);
 
 	// Register all signals from the composition tree
 	shaderStore.registerSignalsFromComposition(renderId, virtualMedia);

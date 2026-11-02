@@ -991,14 +991,20 @@ export class HeadlessWebGPURenderer {
 		await renderSemaphore.acquire();
 		try {
 			const device = await ensureDevice();
-			return await mixAudioTracks(
-				virtualMedia,
-				fps,
-				options.sampleRate ?? 48_000,
-				device,
-				`aud-${randomUUID()}`,
-				{ window: options.window, master: options.master },
-			);
+			const renderId = `aud-${randomUUID()}`;
+			try {
+				return await mixAudioTracks(
+					virtualMedia,
+					fps,
+					options.sampleRate ?? 48_000,
+					device,
+					renderId,
+					{ window: options.window, master: options.master },
+				);
+			} finally {
+				// The mix's effect state (delay lines, reverb tails) on the GPU.
+				WebGPUAudioProcessor.clearCache(renderId, device);
+			}
 		} finally {
 			renderSemaphore.release();
 		}
@@ -1450,6 +1456,8 @@ export class HeadlessWebGPURenderer {
 		let outputFinalized = false;
 
 		// Resources for inline rendering (cleaned up in finally block)
+		// The device this render's audio effects keep their state on.
+		let gpu: GPUDevice | undefined;
 		let surface: NodeSurfaceProvider | undefined;
 		let renderer: Renderer2D | undefined;
 		let pipeline: ZeroCopyWebCodecsPipeline | undefined;
@@ -1457,6 +1465,7 @@ export class HeadlessWebGPURenderer {
 		try {
 			// Inside the try, so a device failure still releases the slot.
 			const device = await ensureDevice();
+			gpu = device;
 			await output.start();
 			outputStarted = true;
 			await preloadFonts(virtualMedia, device);
@@ -1700,7 +1709,7 @@ export class HeadlessWebGPURenderer {
 			} catch {}
 
 			try {
-				WebGPUAudioProcessor.clearCache(renderId);
+				WebGPUAudioProcessor.clearCache(renderId, gpu);
 			} catch {}
 			try {
 				shaderStore.clear(renderId);

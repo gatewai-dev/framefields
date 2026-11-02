@@ -6,8 +6,10 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { mixAudioTracks } from "@framefields/compositions";
+import { ensureDevice } from "@framefields/webgpu-renderers";
 import { beforeAll, describe, expect, it } from "vitest";
-import { AudioFade, AudioReverb } from "./effects/index.js";
+import { AudioDelay, AudioFade, AudioReverb } from "./effects/index.js";
 import { Composition, encodeStereoWav, Layer } from "./index.js";
 import { HeadlessMediaRenderer } from "./renderer/index.js";
 
@@ -131,5 +133,33 @@ describe("windowed audio mix", () => {
 		expect(maxDiff(full.channels, cold.channels, startSec)).toBeGreaterThan(
 			1e-3,
 		);
+	}, 60_000);
+
+	it("starts every mix with fresh effect state, whatever its render id", async () => {
+		// A ping-pong delay keeps its echoes on the GPU between calls. The
+		// preview mixes block after block under one render id: each mix must
+		// still start from silence, as an export does.
+		const comp = new Composition({
+			width: 64,
+			height: 64,
+			fps: FPS,
+			durationMs: 2000,
+		});
+		comp.addAudio(
+			Layer.audio(source, { durationFrames: 60 }).apply(
+				new AudioDelay({ delayTime: 0.25, feedback: 0.6, pingPong: true }),
+			),
+		);
+		const vm = comp.toVirtualMedia();
+		await mix(comp); // registers the audio processors
+		const device = await ensureDevice();
+		const once = () =>
+			mixAudioTracks(vm, FPS, SR, device, "preview-audio", { master: false });
+		const first = await once();
+		const second = await once();
+		expect(maxDiff(first.channels, second.channels, 0)).toBe(0);
+		// And the same as an export, which gets a fresh render id.
+		const exported = await mix(comp);
+		expect(maxDiff(exported.channels, first.channels, 0)).toBe(0);
 	}, 60_000);
 });

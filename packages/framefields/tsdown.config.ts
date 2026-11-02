@@ -16,6 +16,7 @@ export default defineConfig({
 		"src/components/index.ts",
 		"src/sam/index.ts",
 		"src/cloud/index.ts",
+		"src/storage/index.ts",
 		"src/cli.ts",
 		"src/cli/check-worker.ts",
 	],
@@ -61,6 +62,7 @@ export default defineConfig({
 		"pino",
 		"file-type",
 		"dotenv",
+		"aws4fetch",
 		"@huggingface/tokenizers",
 	],
 });

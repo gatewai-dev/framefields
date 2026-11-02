@@ -28,6 +28,7 @@ import path from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { ReadableStream as WebReadableStream } from "node:stream/web";
+import { AssetsError, prepareCloudAssets } from "../cli/assets.js";
 import { CONFIG_FILE, findRender, readConfig } from "../cli/config.js";
 import { type CloudSource, resolveGitSource } from "./git-source.js";
 
@@ -68,6 +69,8 @@ export interface CloudRenderOptions {
 	onProgress?: (status: CloudRenderStatus) => void;
 	/** Called for each warning (uncommitted changes). Default: stderr. */
 	onWarning?: (message: string) => void;
+	/** Called as assets upload before the render. Default: stderr. */
+	onLog?: (message: string) => void;
 	/** Aborting cancels the cloud render. */
 	signal?: AbortSignal;
 	/** Status poll interval, ms. Default 3000. */
@@ -152,9 +155,12 @@ export async function renderCloud(
 		options.onWarning ??
 		((m: string) => process.stderr.write(`framefields: ${m}\n`));
 	for (const w of resolved.warnings) warn(w);
+	const assets = await cloudAssets(cwd, options);
 
 	let status = await api.start({
-		source: resolved.source,
+		source: Object.keys(assets).length
+			? { ...resolved.source, assets }
+			: resolved.source,
 		target: {
 			entry: resolved.entry,
 			export: o.export ?? "buildFilm",
@@ -204,6 +210,29 @@ export async function renderCloud(
 		return { ...status, filePath: options.outputPath };
 	}
 	return status;
+}
+
+/**
+ * Uploads assets the bucket lacks and signs reads of private ones: the
+ * workers download each asset framefields.json pins at the commit.
+ */
+async function cloudAssets(
+	cwd: string,
+	options: CloudRenderOptions,
+): Promise<Record<string, string>> {
+	try {
+		return await prepareCloudAssets({
+			cwd,
+			signal: options.signal,
+			log:
+				options.onLog ??
+				((m: string) => process.stderr.write(`framefields: ${m}\n`)),
+		});
+	} catch (err) {
+		if (err instanceof AssetsError)
+			throw new CloudRenderError(err.message, `assets_${err.code}`);
+		throw err;
+	}
 }
 
 /**

@@ -7,6 +7,7 @@
  *   npx framefields list                 the components you can add
  *   npx framefields fonts add <role...>  install fonts (emoji)
  *   npx framefields fonts list           the fonts you can install
+ *   npx framefields assets add|push|pull|status   media on your own bucket
  *   npx framefields renders              the renders named in framefields.json
  *   npx framefields render <name> --cloud    render on api.framefields.dev
  */
@@ -15,6 +16,7 @@ import { join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { type AddReport, add } from "./cli/add.js";
+import { runAssets } from "./cli/assets.js";
 import { runCheck } from "./cli/check.js";
 import { runCloudRender } from "./cli/cloud.js";
 import { readConfig } from "./cli/config.js";
@@ -57,6 +59,13 @@ Commands:
                   Install fonts (pinned, hash-checked, with their license)
                   and register them in the generated <components>/fonts.ts.
   fonts list      List the fonts you can install.
+  assets add <path...>
+                  Keep media out of git: hash files (or every file in a
+                  folder), upload them to the project's bucket (R2, S3, any
+                  S3-compatible storage) and pin them in framefields.json.
+  assets push     Upload recorded assets the bucket lacks.
+  assets pull     Download missing assets, checked against their sha256.
+  assets status   Which assets are here, missing or changed.
   renders         List the renders named in framefields.json.
   render [name|entry] --cloud
                   Render on api.framefields.dev from the pushed commit of
@@ -88,6 +97,14 @@ Options for render --cloud:
   --json            Print the final status as JSON.
   Ctrl-C cancels the render; GPU time already used is charged.
 
+Options for assets:
+  --remote <name>   The remote in framefields.json "storage" (default: its
+                    default, or its only one).
+  --overwrite       pull: replace files changed locally.
+  Keys: FRAMEFIELDS_STORAGE_<REMOTE>_ACCESS_KEY_ID and _SECRET_ACCESS_KEY,
+  or AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY. Reads need none when the
+  remote has a publicUrl (a custom domain or CDN in front of the bucket).
+
 Options for init:
   --name <name>     Package name (default: the folder's name).
   --pm <manager>    npm, pnpm, yarn or bun (default: the one running this).
@@ -115,6 +132,7 @@ Examples:
   npx framefields init my-film --install
   npx framefields add mouse-pointer focus-zoom
   npx framefields fonts add emoji
+  npx framefields assets add assets/footage
   npx framefields render film --cloud --plan
 `;
 
@@ -148,6 +166,7 @@ async function main(argv: string[]): Promise<number> {
 			codec: { type: "string" },
 			quality: { type: "string" },
 			select: { type: "string" },
+			remote: { type: "string" },
 			help: { type: "boolean", short: "h" },
 		},
 	});
@@ -175,6 +194,14 @@ async function main(argv: string[]): Promise<number> {
 	}
 	if (command === "check") return check(names, cwd, values, log);
 	if (command === "renders") return listRenders(cwd, values.json, log);
+	if (command === "assets")
+		return runAssets(names, {
+			cwd,
+			log,
+			remote: values.remote,
+			overwrite: values.overwrite,
+			json: values.json,
+		});
 	if (command === "render") {
 		if (names.length > 1 || !values.cloud) {
 			process.stderr.write(

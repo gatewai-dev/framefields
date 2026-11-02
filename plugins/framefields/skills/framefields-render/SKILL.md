@@ -226,7 +226,8 @@ api.framefields.dev renders the project on framefields' GPUs and splits a long f
 
 - Commit and push first. Uncommitted changes are not rendered (the CLI warns), a commit not on the remote is refused, and so is a folder outside a git repo or without a remote.
 - Run it from the project folder (where `framefields.json` and `package.json` are). In a monorepo, the CLI sends that folder as the workdir.
-- The worker installs the project from its lockfile and renders with **the project's own framefields version**, so commit the lockfile. Footage, audio and fonts must be in Git LFS (or committed); `.gitignore`d files don't exist on the worker.
+- The worker installs the project from its lockfile and renders with **the project's own framefields version**, so commit the lockfile. Footage, audio and fonts must be pinned in `framefields.json` with `framefields assets add`, in Git LFS, or committed; other `.gitignore`d files don't exist on the worker.
+- Pinned assets: before starting, the CLI (and `renderCloud`) uploads any the bucket lacks and signs reads of assets on remotes without a `publicUrl` (valid 24 h; the keys stay on the machine). Each worker downloads them (cached by hash for its next job); on R2 those downloads are free, unlike LFS bandwidth. Dashboard renders have nobody to sign, so they read only remotes with a `publicUrl`.
 - Private repos: the user connects GitHub once at https://framefields.dev/dashboard/settings#connections (the framefields GitHub App, ideally on all repositories, so new repos render without another step). Public repos need nothing.
 - It bills the account behind `FRAMEFIELDS_API_KEY` (keys at https://framefields.dev/dashboard/keys). If authentication is required, ask the user to set it in the process environment; never print, write or embed it.
 
@@ -278,6 +279,9 @@ The error carries the worker's code. Fix the project, commit, push and render ag
 | `ENTRY_NOT_FOUND`, `EXPORT_NOT_FOUND`, `EXPORT_INVALID` | `entry`/`export` in framefields.json or flags are wrong | `framefields check <name>` locally. |
 | `COMPOSITION_BUILD_FAILED`, `EXPORT_SIDE_EFFECT` | The builder throws, or renders/writes while building | Keep builders pure; `framefields check` reproduces it. |
 | `ASSET_NOT_FOUND`, `LFS_OBJECT_MISSING`, `LFS_POINTER_UNRESOLVED` | An asset isn't in the repo or its LFS object wasn't pushed | `git lfs ls-files`, `git lfs push --all origin`; un-ignore assets the film needs. |
+| `ASSET_NOT_UPLOADED`, `ASSET_HASH_MISMATCH` | A pinned asset isn't on the bucket, or the bucket holds other bytes | `npx framefields assets push` from the machine with the right file. |
+| `ASSET_PRIVATE`, `ASSET_FORBIDDEN` | The worker can't read the bucket: no `publicUrl` and no signature (a dashboard render), or the custom domain doesn't serve it | Render from the CLI, or give the remote a working `publicUrl`. |
+| `ASSET_MANIFEST_INVALID` | `storage` or `assets` in framefields.json is malformed | `npx framefields assets status` shows the error locally. |
 | `ENGINE_UNSUPPORTED` | The project's framefields is too old to render chunks | Upgrade framefields in the project (2.11+), or render with `--workers 1`. |
 | `RENDER_TIMEOUT`, `RENDER_OOM` | One worker can't finish its part | Use `--workers auto` (or more workers) to split it. |
 

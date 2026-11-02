@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { RendererConfig } from "../config/index.js";
+import { ASSET_CACHE } from "../git/assets.js";
 import {
 	moduleStoreDir,
 	readManifests,
@@ -269,6 +270,8 @@ export class CacheJanitor {
 		const cacheStages: Stage[] = [
 			(enough, out) =>
 				evictEach(lfsObjects(path.join(cacheDir, "lfs")), enough, out),
+			(enough, out) =>
+				evictEach(assetObjects(path.join(cacheDir, ASSET_CACHE)), enough, out),
 			async (enough, out) => evictEach(this.mirrors(protect), enough, out),
 			(enough, out) => evictEach(this.stores(), enough, out, false),
 		];
@@ -437,25 +440,34 @@ async function mtime(p: string, fallback?: string): Promise<number> {
 /** git-lfs stores objects at lfs/objects/aa/bb/<oid>; LRU by access time. */
 async function lfsObjects(root: string): Promise<Candidate[]> {
 	const out: Candidate[] = [];
-	const objects = path.join(root, "objects");
-	if (!existsSync(objects)) return out;
-	for (const a of await children(objects)) {
-		for (const b of await children(a)) {
-			for (const name of await fs.readdir(b).catch(() => [])) {
-				const p = path.join(b, name);
-				const stat = await fs.stat(p).catch(() => undefined);
-				if (stat?.isFile()) {
-					out.push({
-						path: p,
-						bytes: stat.size,
-						lastUsed: Math.max(stat.atimeMs, stat.mtimeMs),
-						kind: "lfs",
-					});
-				}
-			}
-		}
-	}
+	for (const a of await children(path.join(root, "objects")))
+		for (const b of await children(a)) await cachedFiles(b, "lfs", out);
 	return out;
+}
+
+/** framefields.json assets are cached at assets/aa/<sha256>. */
+async function assetObjects(root: string): Promise<Candidate[]> {
+	const out: Candidate[] = [];
+	for (const a of await children(root)) await cachedFiles(a, "asset", out);
+	return out;
+}
+
+async function cachedFiles(
+	dir: string,
+	kind: string,
+	out: Candidate[],
+): Promise<void> {
+	for (const name of await fs.readdir(dir).catch(() => [])) {
+		const p = path.join(dir, name);
+		const stat = await fs.stat(p).catch(() => undefined);
+		if (stat?.isFile())
+			out.push({
+				path: p,
+				bytes: stat.size,
+				lastUsed: Math.max(stat.atimeMs, stat.mtimeMs),
+				kind,
+			});
+	}
 }
 
 /**

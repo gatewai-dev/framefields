@@ -36,7 +36,7 @@ COPY --from=pruner /repo/out/pnpm-lock.yaml ./pnpm-lock.yaml
 # test-only devDependencies (framefields) are installed but never built.
 RUN pnpm install --frozen-lockfile --ignore-scripts
 COPY --from=pruner /repo/out/full/ .
-RUN pnpm --filter @framefields/renderer-service build \
+RUN pnpm --filter @framefields/storage --filter @framefields/renderer-service build \
     && pnpm --filter @framefields/renderer-service deploy --prod --legacy /out \
     # Pinned SSH host keys for github.com / gitlab.com / bitbucket.org (§6.5).
     && /out/deploy/known-hosts.sh

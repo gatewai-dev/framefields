@@ -22,7 +22,7 @@ export function checkLocalAssets(
 				stage: "assets",
 				path,
 				...(layerId && { layerId }),
-				message: `Local asset '${source}' does not exist. Restore it or correct the source path relative to the project working directory.`,
+				message: `Local asset '${source}' does not exist. Restore it (\`npx framefields assets pull\` when framefields.json pins it) or correct the source path relative to the project working directory.`,
 			});
 	};
 	for (const [i, font] of (spec.fonts ?? []).entries())

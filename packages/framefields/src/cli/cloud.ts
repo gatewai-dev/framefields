@@ -93,6 +93,7 @@ export async function runCloudRender(
 			signal: controller.signal,
 			onProgress: narrate,
 			onWarning: (m) => log(`warning: ${m}`),
+			onLog: log,
 		});
 		if (o.json) {
 			log(JSON.stringify(result));

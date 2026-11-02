@@ -13,7 +13,7 @@
  *   npx framefields render <name> --cloud    render on api.framefields.dev
  *   npx framefields preview <name>       play it in the browser
  */
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
@@ -191,6 +191,9 @@ async function main(argv: string[]): Promise<number> {
 		return command || values.help ? 0 : 1;
 	}
 	const cwd = process.cwd();
+	// The project's settings (FRAMEFIELDS_API_KEY, storage keys), as its own
+	// scripts load them; variables already set win.
+	if (existsSync(join(cwd, ".env"))) process.loadEnvFile(join(cwd, ".env"));
 	const log = (line: string) => process.stdout.write(`${line}\n`);
 	if (command === "api") {
 		const catalog = JSON.parse(

@@ -75,7 +75,8 @@ export async function runLocal(
 	}
 	if (result.filePath)
 		log(`Rendered ${path.relative(cwd, result.filePath) || result.filePath}`);
-	return 0;
+	// The video is written either way; failed QA fails the command.
+	return result.qaPassed === false ? 1 : 0;
 }
 
 /** The framefields the film imports, resolved from its module. */

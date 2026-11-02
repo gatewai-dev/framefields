@@ -9,6 +9,7 @@
  * decoders.
  */
 import { pathToFileURL } from "node:url";
+import type { formatQaReport } from "../index.js";
 import type { startPreview } from "../preview/index.js";
 import { pickComposition } from "./pick-composition.js";
 
@@ -30,7 +31,7 @@ export interface LocalJob {
 }
 
 export type LocalResult =
-	| { ok: true; filePath?: string }
+	| { ok: true; filePath?: string; qaPassed?: boolean }
 	| { ok: false; message: string };
 
 async function run(job: LocalJob): Promise<LocalResult> {
@@ -55,9 +56,21 @@ async function run(job: LocalJob): Promise<LocalResult> {
 		outputPath: job.outputPath,
 		...(job.codec && { codec: job.codec }),
 		...(job.quality && { quality: job.quality }),
+		// Dropped, black or frozen frames, loudness, clipping, truncated animations.
+		qa: true,
 	});
 	await result.cleanup?.();
-	return { ok: true, filePath: result.filePath };
+	if (result.qa) {
+		const engine = (await import(job.engine)) as {
+			formatQaReport: typeof formatQaReport;
+		};
+		process.stdout.write(`${engine.formatQaReport(result.qa)}\n`);
+	}
+	return {
+		ok: true,
+		filePath: result.filePath,
+		...(result.qa && { qaPassed: result.qa.passed }),
+	};
 }
 
 process.once("message", (job: LocalJob) => {

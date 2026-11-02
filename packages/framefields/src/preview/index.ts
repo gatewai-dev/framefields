@@ -19,6 +19,7 @@ import {
 } from "./bundle.js";
 import { describeNote, type NewNote, NoteStore } from "./notes.js";
 import { previewPage } from "./page.js";
+import { computePeaks, PEAK_BINS, SILENT_PEAK } from "./peaks.js";
 
 /** Where the composition comes from: the module that builds it. */
 export interface PreviewSource {
@@ -122,12 +123,13 @@ interface PreviewMeta {
 }
 
 type AudioStatus =
+	/** The page mixes it (the default); the server only when the page asks. */
+	| { state: "browser" }
 	| { state: "mixing" }
 	| { state: "ready"; durationSec: number; peaks: number[] }
 	| { state: "none" }
 	| { state: "error"; error: string };
 
-const PEAK_BINS = 1200;
 /** Requests carrying this header come from another preview process, not a page. */
 const TAKEOVER_HEADER = "x-framefields-preview";
 const PLAYER_PATH = "/@framefields/player.js";
@@ -232,9 +234,11 @@ export async function startPreview(
 	const engine = engineDir();
 	engine.catch(() => {});
 
-	// ── Audio: mixed once, by the export engine ──
+	// ── Audio: the page mixes it with the export's mixer, reading sources
+	// itself (straight from their bucket, for pinned assets). The server mixes
+	// only when the page can't, and sends the mix as a WAV. ──
 	let audio: AudioStatus = {
-		state: options.audio === false ? "none" : "mixing",
+		state: options.audio === false ? "none" : "browser",
 	};
 	let audioWav: Buffer | undefined;
 
@@ -268,7 +272,7 @@ export async function startPreview(
 				const left = channels[0] ?? new Float32Array(0);
 				const right = channels[1] ?? left;
 				const peaks = computePeaks(left, right, PEAK_BINS);
-				if (left.length === 0 || Math.max(...peaks) < 0.001) {
+				if (left.length === 0 || Math.max(...peaks) < SILENT_PEAK) {
 					setAudio({ state: "none" });
 					return;
 				}
@@ -468,6 +472,15 @@ export async function startPreview(
 					return;
 				}
 			}
+			// The page couldn't mix the soundtrack: mix it here instead.
+			if (req.method === "POST" && url.pathname === "/audio/mix") {
+				if (audio.state === "browser" || audio.state === "error") {
+					audio = { state: "mixing" };
+					startAudio();
+				}
+				sendJson(res, 202, audio);
+				return;
+			}
 			if (req.method === "GET" && url.pathname === "/audio") {
 				if (audio.state !== "ready" || !audioWav) {
 					sendJson(res, 404, { error: `audio is ${audio.state}` });
@@ -558,9 +571,8 @@ export async function startPreview(
 	const { port: actualPort } = server.address() as AddressInfo;
 	const url = `http://${host.includes(":") ? `[${host}]` : host}:${actualPort}/`;
 
-	// Build the page's bundle and mix the soundtrack while the browser opens.
+	// Build the page's bundle while the browser opens.
 	void playerBundle().catch(() => {});
-	startAudio();
 	if (options.open === true) {
 		// A tab from the last preview reconnects within ~1 s and reloads itself;
 		// only open a new one when nobody comes back.
@@ -836,27 +848,6 @@ async function requestTakeover(host: string, port: number): Promise<boolean> {
 }
 
 /** Max absolute amplitude of both channels per bin, 0..1. */
-function computePeaks(
-	left: Float32Array,
-	right: Float32Array,
-	bins: number,
-): number[] {
-	const peaks = new Array<number>(bins).fill(0);
-	if (left.length === 0) return peaks;
-	const per = left.length / bins;
-	for (let b = 0; b < bins; b++) {
-		const start = Math.floor(b * per);
-		const end = Math.min(left.length, Math.floor((b + 1) * per));
-		let max = 0;
-		for (let i = start; i < end; i++) {
-			const v = Math.max(Math.abs(left[i] ?? 0), Math.abs(right[i] ?? 0));
-			if (v > max) max = v;
-		}
-		peaks[b] = Math.min(1, max);
-	}
-	return peaks;
-}
-
 function sendJson(res: http.ServerResponse, status: number, body: unknown) {
 	res.writeHead(status, {
 		"content-type": "application/json",

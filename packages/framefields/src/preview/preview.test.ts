@@ -50,8 +50,17 @@ describe("startPreview", () => {
 			fps: 10,
 			frameCount: 10,
 			width: 64,
-			audio: { state: "none" },
+			// The page mixes the soundtrack around its playhead.
+			audio: { state: "browser" },
 		});
+		// When it can't, the server mixes the whole of it on request.
+		await fetch(`${session.url}audio/mix`, { method: "POST" });
+		let audio: { state: string } = { state: "mixing" };
+		for (let i = 0; i < 100 && audio.state === "mixing"; i++) {
+			await new Promise((r) => setTimeout(r, 50));
+			audio = (await (await fetch(`${session.url}meta`)).json()).audio;
+		}
+		expect(audio).toEqual({ state: "none" });
 
 		const page = await (await fetch(session.url)).text();
 		expect(page).toContain('id="canvas"');

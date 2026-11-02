@@ -10,6 +10,8 @@ import { BUILTIN_NODE_RENDERERS } from "framefields-preview:renderers";
 import {
 	compositionStateStore,
 	drawCompositionTree,
+	mixAudioTracks,
+	preflightMediaTime,
 } from "@framefields/compositions";
 import { updateClockSignals, type VirtualMediaData } from "@framefields/core";
 import {
@@ -46,6 +48,21 @@ export interface PlayerMeta {
 	durationMs: number;
 }
 
+/** A stretch of the soundtrack, before the master stage. */
+export interface PreviewMix {
+	left: Float32Array;
+	right: Float32Array;
+	sampleRate: number;
+	/** Its loudest sample: the page masters with the film's loudest. */
+	peak: number;
+}
+
+/**
+ * Seconds mixed before a window and dropped, so effects that carry state
+ * (reverb tails, delays, compressors) enter it warmed up, as in a full mix.
+ */
+const AUDIO_LEAD_IN_SEC = 2;
+
 export interface PreviewPlayer {
 	meta: PlayerMeta;
 	canvas: HTMLCanvasElement;
@@ -65,6 +82,13 @@ export interface PreviewPlayer {
 	 * before it plays. Skipped (resolves false) while a frame is being drawn.
 	 */
 	warm(frame: number): Promise<boolean>;
+	/**
+	 * Mixes [startSec, endSec) of the soundtrack here, with the export's
+	 * mixer: the same decoders (reading only the stretch it plays, so pinned
+	 * assets stream from their bucket), audio effects on this page's GPU and
+	 * signals. The page mixes the blocks around its playhead as it plays.
+	 */
+	mixAudio(range: { startSec: number; endSec: number }): Promise<PreviewMix>;
 	/** A frame at full size as an image, e.g. to attach to a note. */
 	snapshot(frame: number): Promise<ImageBitmap>;
 	/**
@@ -79,6 +103,8 @@ export interface PreviewPlayer {
 type Renderable = {
 	toVirtualMediaAsync?: () => Promise<VirtualMediaData>;
 	toVirtualMedia?: () => VirtualMediaData;
+	/** Finishes live signal time, recorded frame by frame, before a mix. */
+	prepareMediaTime?: () => Promise<void>;
 	fps?: number;
 };
 
@@ -390,6 +416,18 @@ async function createPlayer(
 		})();
 	}
 
+	// The tree the soundtrack mixes from, prepared once as the export prepares
+	// it: a fresh tree, live signal time finished, media timing preflighted.
+	let audioTree: Promise<VirtualMediaData> | undefined;
+	async function prepareAudioTree(): Promise<VirtualMediaData> {
+		const tree = target.toVirtualMediaAsync
+			? await target.toVirtualMediaAsync()
+			: (target.toVirtualMedia?.() ?? (vm as VirtualMediaData));
+		await target.prepareMediaTime?.();
+		await preflightMediaTime(tree, fps);
+		return tree;
+	}
+
 	const blitter = new Blitter(device, surface.colorFormat);
 
 	const player: PreviewPlayer = {
@@ -414,6 +452,26 @@ async function createPlayer(
 			drawing = null;
 			pump();
 			return true;
+		},
+		async mixAudio(range) {
+			audioTree ??= prepareAudioTree();
+			const tree = await audioTree;
+			const from = Math.max(0, range.startSec - AUDIO_LEAD_IN_SEC);
+			const { channels, sampleRate } = await mixAudioTracks(
+				tree,
+				fps,
+				48_000,
+				device,
+				`${renderId}-audio`,
+				{ window: { startSec: from, endSec: range.endSec }, master: false },
+			);
+			const drop = Math.round((range.startSec - from) * sampleRate);
+			const left = (channels[0] ?? new Float32Array(0)).subarray(drop);
+			const right = (channels[1] ?? channels[0] ?? left).subarray(drop);
+			let peak = 0;
+			for (let i = 0; i < left.length; i++)
+				peak = Math.max(peak, Math.abs(left[i]), Math.abs(right[i]));
+			return { left, right, sampleRate, peak };
 		},
 		async snapshot(frame) {
 			if (disposed) throw new Error("the player was disposed");

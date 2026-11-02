@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import {
+	type AudioMix,
 	compositionStateStore,
 	drawCompositionTree,
 	mixAudioTracks,
@@ -970,10 +971,20 @@ export class HeadlessWebGPURenderer {
 	 * Mixes the composition's full audio timeline (clips, effects, synthesized
 	 * tracks) to stereo PCM, exactly as `renderVideo` muxes it.
 	 */
+	/**
+	 * Mixes the timeline's audio. `window` mixes only that stretch (the same
+	 * samples as that part of a full mix); `master: false` skips the master
+	 * stage, for callers that master with the whole film's `peak` later.
+	 */
 	public async renderAudio(
 		virtualMedia: VirtualMediaData,
-		options: { fps?: number; sampleRate?: number } = {},
-	): Promise<{ channels: Float32Array[]; sampleRate: number }> {
+		options: {
+			fps?: number;
+			sampleRate?: number;
+			window?: { startSec: number; endSec: number };
+			master?: boolean;
+		} = {},
+	): Promise<AudioMix> {
 		await HeadlessWebGPURenderer.initialize();
 		const fps = options.fps ?? (virtualMedia.metadata?.fps || 30);
 		await preflightMediaTime(virtualMedia, fps);
@@ -986,6 +997,7 @@ export class HeadlessWebGPURenderer {
 				options.sampleRate ?? 48_000,
 				device,
 				`aud-${randomUUID()}`,
+				{ window: options.window, master: options.master },
 			);
 		} finally {
 			renderSemaphore.release();

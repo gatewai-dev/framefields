@@ -1,8 +1,11 @@
 /**
- * `framefields render <entry> --cloud`: renders the project on
- * api.framefields.dev and downloads the video. Prints one plain line per
- * phase, and a progress line at most every 10 seconds while frames render.
+ * `framefields render <name|entry> --cloud`: renders the project on
+ * api.framefields.dev and downloads the video. `name` is a render in
+ * framefields.json; a module path renders without one. Prints one plain
+ * line per phase, and a progress line at most every 10 seconds while
+ * frames render.
  */
+import { existsSync } from "node:fs";
 import path from "node:path";
 import {
 	CloudRenderError,
@@ -10,9 +13,11 @@ import {
 	type CloudRenderStatus,
 	renderCloud,
 } from "../cloud/index.js";
+import { CONFIG_FILE, findRender, readConfig } from "./config.js";
 
 export interface CloudCliOptions {
-	entry: string;
+	/** A render named in framefields.json, or a module path. Optional when framefields.json has one render. */
+	entry?: string;
 	export?: string;
 	select?: string;
 	workers?: string;
@@ -22,6 +27,8 @@ export interface CloudCliOptions {
 	output?: string;
 	plan?: boolean;
 	json?: boolean;
+	/** Project folder. Default `process.cwd()`. */
+	cwd?: string;
 }
 
 const PROGRESS_EVERY_MS = 10_000;
@@ -33,8 +40,9 @@ export async function runCloudRender(
 		options: CloudRenderOptions,
 	) => Promise<CloudRenderStatus> = renderCloud,
 ): Promise<number> {
+	const cwd = o.cwd ?? process.cwd();
 	const workers = parseWorkers(o.workers);
-	if (workers === undefined) {
+	if (workers === null) {
 		log(
 			`--workers must be "auto" or a positive whole number, not "${o.workers}".`,
 		);
@@ -44,13 +52,23 @@ export async function runCloudRender(
 		log(`--codec must be h264 or vp9, not "${o.codec}".`);
 		return 2;
 	}
-	const codec = (o.codec ?? "h264") as "h264" | "vp9";
+	const target = pickRender(o.entry, cwd);
+	if ("error" in target) {
+		log(target.error);
+		return 2;
+	}
+	const spec = target.name ? findRender(cwd, target.name) : undefined;
+	const codec = (o.codec ?? spec?.codec ?? "h264") as "h264" | "vp9";
 	const outputPath =
 		o.output ??
+		spec?.output ??
 		path.join(
 			"output",
-			`${path.basename(o.entry).replace(/\.[^.]+$/, "")}.${codec === "vp9" ? "webm" : "mp4"}`,
+			`${target.name ?? path.basename(target.entry ?? "").replace(/\.[^.]+$/, "")}.${codec === "vp9" ? "webm" : "mp4"}`,
 		);
+	// A plan of a one-worker render would only ever say "one worker".
+	const planWorkers =
+		o.plan && (workers ?? spec?.workers ?? 1) === 1 ? "auto" : workers;
 	const controller = new AbortController();
 	const onSigint = () => {
 		log("Cancelling the cloud render…");
@@ -61,12 +79,14 @@ export async function runCloudRender(
 	const narrate = narrator(o.json ? () => {} : log, Date.now);
 	try {
 		const result = await render({
-			entry: o.entry,
+			cwd,
+			render: target.name,
+			entry: target.entry,
 			export: o.export,
 			select: o.select,
-			workers: o.plan && workers === 1 ? "auto" : workers,
+			workers: planWorkers,
 			maxWorkers: o.maxWorkers ? Number(o.maxWorkers) : undefined,
-			codec,
+			codec: o.codec as "h264" | "vp9" | undefined,
 			quality: o.quality,
 			dryRun: o.plan,
 			outputPath: o.plan ? undefined : outputPath,
@@ -79,7 +99,10 @@ export async function runCloudRender(
 			return 0;
 		}
 		if (result.status === "planned") {
-			log(`Render it: ${renderCommand(o)}`);
+			const planned = planWorkers === "auto" && spec?.workers !== "auto";
+			log(
+				`Render it: ${renderCommand({ ...o, entry: target.name ?? target.entry, workers: o.workers ?? (planned ? "auto" : undefined) })}`,
+			);
 			return 0;
 		}
 		const bytes = result.output?.bytes;
@@ -107,23 +130,53 @@ export function renderCommand(o: CloudCliOptions): string {
 	const flags: [string, string | undefined][] = [
 		["--export", o.export],
 		["--select", o.select],
-		["--workers", o.workers ?? "auto"],
+		["--workers", o.workers],
 		["--max-workers", o.maxWorkers],
 		["--codec", o.codec],
 		["--quality", o.quality],
 		["--output", o.output],
 	];
 	return [
-		`framefields render ${o.entry} --cloud`,
+		`framefields render ${o.entry ?? ""} --cloud`.replace("  ", " "),
 		...flags.filter(([, v]) => v !== undefined).map(([f, v]) => `${f} ${v}`),
 	].join(" ");
 }
 
-function parseWorkers(value: string | undefined): number | "auto" | undefined {
-	if (value === undefined) return 1;
+/**
+ * What `framefields render [arg]` renders: a render named in framefields.json,
+ * or a module path; with no argument, the project's only named render.
+ */
+export function pickRender(
+	arg: string | undefined,
+	cwd: string,
+): { name?: string; entry?: string } | { error: string } {
+	const renders = readConfig(cwd).config.renders ?? {};
+	const names = Object.keys(renders);
+	if (arg === undefined) {
+		if (names.length === 1) return { name: names[0] };
+		return {
+			error: names.length
+				? `Name the render: ${names.join(", ")}. \`framefields renders\` lists them.`
+				: `Name a module, e.g. \`framefields render src/film.ts --cloud\`, or add "renders" to ${CONFIG_FILE}.`,
+		};
+	}
+	if (renders[arg]) return { name: arg };
+	if (existsSync(path.resolve(cwd, arg))) return { entry: arg };
+	return {
+		error: names.length
+			? `"${arg}" is neither a render in ${CONFIG_FILE} (${names.join(", ")}) nor a file.`
+			: `"${arg}" is not a file, and ${CONFIG_FILE} names no renders.`,
+	};
+}
+
+/** --workers: undefined when not given, null when invalid. */
+function parseWorkers(
+	value: string | undefined,
+): number | "auto" | undefined | null {
+	if (value === undefined) return undefined;
 	if (value === "auto") return "auto";
 	const n = Number(value);
-	return Number.isInteger(n) && n >= 1 ? n : undefined;
+	return Number.isInteger(n) && n >= 1 ? n : null;
 }
 
 /** Turns status polls into log lines: one per phase, throttled frame progress. */

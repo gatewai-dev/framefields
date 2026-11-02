@@ -14,7 +14,7 @@ import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { readConfig, writeConfig } from "./config.js";
+import { CONFIG_FILE, readConfig, writeConfig } from "./config.js";
 import {
 	type Fetch,
 	type FontInstall,
@@ -24,6 +24,7 @@ import {
 	writeFontsModule,
 } from "./fonts.js";
 import {
+	defaultRenders,
 	ENV_EXAMPLE,
 	FILM_TS,
 	GITATTRIBUTES,
@@ -191,11 +192,15 @@ export async function init(options: InitOptions): Promise<InitReport> {
 	] as const)
 		record(report, path, appendLines(join(root, path), lines));
 
-	// framefields.json, then fonts (recorded there) and their module.
+	// framefields.json (components folder, named renders), then fonts (recorded there) and their module.
+	const configExisted = existsSync(join(root, CONFIG_FILE));
 	const { config, saved } = readConfig(root);
-	if (!saved) {
-		writeConfig(root, config);
-		report.written.push("framefields.json");
+	if (!saved || !config.renders) {
+		writeConfig(root, {
+			...config,
+			renders: config.renders ?? defaultRenders(basename(root)),
+		});
+		record(report, CONFIG_FILE, configExisted || "written");
 	}
 	const installFonts = options.fonts !== false;
 	const installEmoji = options.emoji ?? installFonts;

@@ -6,12 +6,15 @@
  * import { renderCloud } from "framefields/cloud";
  *
  * const result = await renderCloud({
- *   entry: "src/film.ts",
- *   workers: "auto", // split a long film across GPUs; 1 (default) renders on one
+ *   render: "film", // a render named in framefields.json
  *   outputPath: "output/film.mp4",
  *   onProgress: (s) => console.log(s.status, s.progress.frames),
  * });
  * ```
+ *
+ * Without a framefields.json, name the module instead: `entry: "src/film.ts"`
+ * (and `export`, `workers`, …). Options passed here override the named
+ * render's.
  *
  * `workers: "auto"` probes the film on one worker first, then splits it into
  * as many chunks as stay efficient: short films stay on one worker, long ones
@@ -25,6 +28,7 @@ import path from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { ReadableStream as WebReadableStream } from "node:stream/web";
+import { CONFIG_FILE, findRender, readConfig } from "../cli/config.js";
 import { type CloudSource, resolveGitSource } from "./git-source.js";
 
 export { type CloudSource, resolveGitSource, toHttps } from "./git-source.js";
@@ -32,8 +36,10 @@ export { type CloudSource, resolveGitSource, toHttps } from "./git-source.js";
 export const FRAMEFIELDS_API_URL = "https://api.framefields.dev";
 
 export interface CloudRenderOptions {
-	/** The module that builds the composition, relative to `cwd`. */
-	entry: string;
+	/** A render named in `cwd`'s framefields.json; its fields are the defaults here. */
+	render?: string;
+	/** The module that builds the composition, relative to `cwd`. Required without `render`. */
+	entry?: string;
 	/** Its export: a Composition, or a function returning one. Default `buildFilm`. */
 	export?: string;
 	/** Passed to the export when it is a function. */
@@ -138,9 +144,10 @@ export async function renderCloud(
 ): Promise<CloudRenderResult> {
 	const api = cloudClient(options);
 	const cwd = options.cwd ?? process.cwd();
+	const o = withNamedRender(cwd, options);
 	const resolved = options.source
-		? { source: options.source, entry: options.entry, warnings: [] }
-		: resolveGitSource(cwd, options.entry);
+		? { source: options.source, entry: o.entry, warnings: [] }
+		: resolveGitSource(cwd, o.entry);
 	const warn =
 		options.onWarning ??
 		((m: string) => process.stderr.write(`framefields: ${m}\n`));
@@ -150,17 +157,19 @@ export async function renderCloud(
 		source: resolved.source,
 		target: {
 			entry: resolved.entry,
-			export: options.export ?? "buildFilm",
-			...(options.args !== undefined && { args: options.args }),
-			...(options.select && { select: [options.select] }),
+			export: o.export ?? "buildFilm",
+			...(o.args !== undefined && { args: o.args }),
+			...(o.select && { select: [o.select] }),
 		},
 		render: {
-			codec: options.codec ?? "h264",
-			...(options.quality && { quality: options.quality }),
+			codec: o.codec ?? "h264",
+			...(o.quality && { quality: o.quality }),
 		},
-		workers: options.workers ?? 1,
-		...(options.maxWorkers && { max_workers: options.maxWorkers }),
+		workers: o.workers ?? 1,
+		...(o.maxWorkers && { max_workers: o.maxWorkers }),
 		dry_run: options.dryRun ?? false,
+		...(o.name && { name: o.name }),
+		...(o.title && { title: o.title }),
 	});
 	options.onProgress?.(status);
 
@@ -195,6 +204,50 @@ export async function renderCloud(
 		return { ...status, filePath: options.outputPath };
 	}
 	return status;
+}
+
+/**
+ * The options with a named render's fields filled in where the caller left
+ * them out, plus the name and title the dashboard shows.
+ */
+export function withNamedRender(
+	cwd: string,
+	options: CloudRenderOptions,
+): CloudRenderOptions & { entry: string; name?: string; title?: string } {
+	if (!options.render) {
+		if (!options.entry)
+			throw new CloudRenderError(
+				"Name a render from framefields.json (render) or a module (entry).",
+				"invalid_request",
+			);
+		return { ...options, entry: options.entry };
+	}
+	const spec = findRender(cwd, options.render);
+	if (!spec) {
+		const names = Object.keys(readConfig(cwd).config.renders ?? {});
+		throw new CloudRenderError(
+			names.length
+				? `No render named "${options.render}" in ${CONFIG_FILE}. Renders: ${names.join(", ")}.`
+				: `No render named "${options.render}": ${CONFIG_FILE} has no "renders".`,
+			"render_not_found",
+		);
+	}
+	const defined = Object.fromEntries(
+		Object.entries(options).filter(([, v]) => v !== undefined),
+	) as CloudRenderOptions;
+	return {
+		entry: spec.entry,
+		export: spec.export,
+		args: spec.args,
+		select: spec.select,
+		workers: spec.workers,
+		maxWorkers: spec.maxWorkers,
+		codec: spec.codec,
+		quality: spec.quality,
+		...defined,
+		name: spec.name,
+		title: spec.title ?? spec.name,
+	} as CloudRenderOptions & { entry: string; name: string; title: string };
 }
 
 /** The API calls behind `renderCloud`, for callers who track renders themselves. */

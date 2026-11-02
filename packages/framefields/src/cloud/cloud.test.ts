@@ -361,8 +361,8 @@ describe("render --cloud output", () => {
 		expect(
 			renderCommand({ entry: "src/film.ts", export: "split", workers: "2" }),
 		).toBe("framefields render src/film.ts --cloud --export split --workers 2");
-		expect(renderCommand({ entry: "src/film.ts" })).toBe(
-			"framefields render src/film.ts --cloud --workers auto",
+		expect(renderCommand({ entry: "film" })).toBe(
+			"framefields render film --cloud",
 		);
 	});
 

@@ -1,6 +1,6 @@
 ---
 name: framefields-render
-description: Render, inspect, test, and export high-performance WebGPU video and frame grids with the framefields headless engine. Use when verifying compositions, diagnosing blank frames, profiling GPU pipelines, running visual frame grids, or exporting final MP4 video in framefields.
+description: Render, inspect, test, and export high-performance WebGPU video and frame grids with the framefields headless engine, locally or on framefields cloud GPUs. Use when verifying compositions, diagnosing blank frames, profiling GPU pipelines, running visual frame grids, exporting final MP4 video, naming renders in framefields.json, rendering in the cloud (`framefields render --cloud`, `renderCloud`, the dashboard), or splitting a long film across several GPUs in framefields.
 ---
 
 # framefields-render
@@ -44,7 +44,7 @@ Typecheck the project:
 npx tsc --noEmit -p .
 ```
 
-In projects initialized with the current CLI, `pnpm check` runs typechecking and document preflight. For another entry, run `pnpm exec framefields check src/film.ts --export buildFilm --json`. The export is a `Composition` or a builder returning one; importing it executes project code, so keep rendering, generation and writes out of the builder. The CLI runs it in an isolated process, routes builder logs to stderr and writes one versioned JSON result to stdout. Errors fail the command; warnings fail with `--warnings-as-errors`. `--timeout 60000` bounds the worker lifetime.
+In projects initialized with the current CLI, `pnpm check` runs typechecking and document preflight. For a named render, run `pnpm exec framefields check teaser --json`; with no argument it checks every render in `framefields.json`. For another module, `pnpm exec framefields check src/film.ts --export buildFilm --json`. The export is a `Composition` or a builder returning one; importing it executes project code, so keep rendering, generation and writes out of the builder. The CLI runs it in an isolated process, routes builder logs to stderr and writes one versioned JSON result to stdout. Errors fail the command; warnings fail with `--warnings-as-errors`. `--timeout 60000` bounds the worker lifetime.
 
 `pnpm check:render` adds GPU verification, a frame and a three-point grid under `output/check`; `--output <dir>` changes the location. This smoke check does not replace targeted pixel assertions or video QA. A failed or unavailable GPU check is reported as a failure. Use `pnpm exec framefields api` for timing, grid and preflight type declarations generated from this SDK version.
 
@@ -188,19 +188,100 @@ await stitchChunks({ chunks: ["out/chunk-0.mp4", "out/chunk-1.mp4"], audio: "out
 - `qa` checks each chunk on its own. Check the stitched file with ffmpeg (below).
 - `planChunks({ totalFrames, samples, workers: "auto" })` picks the chunk count and cuts: it adds workers only while each chunk spends at least 85% of its time rendering (about 5.7× the per-worker start-up), and splits at equal render cost. `renderer.probeRender(comp)` measures the `samples`.
 
-## Rendering in the Cloud (`framefields render --cloud`)
+## Named Renders (`framefields.json`)
 
-api.framefields.dev renders the project on framefields' GPUs and splits a long film across several. It fetches the project from git, so it renders the **pushed commit**: commit and push first; uncommitted changes are not rendered (the CLI warns), and an unpushed commit is refused. It bills the account behind `FRAMEFIELDS_API_KEY`; if authentication is required, ask the user to set it in the process environment and never print or embed it.
+`framefields.json` at the project root names what the project renders. `init` writes a `film` render; add one per cut (teaser, vertical edit, language) instead of parameterizing `render.ts`. The cloud CLI, `renderCloud`, `framefields check` and the dashboard's New render dialog all pick renders by name, so nobody chooses files and exports.
 
-```bash
-npx framefields render src/film.ts --cloud --workers auto --plan   # workers, time and estimated cost; renders nothing
-npx framefields render src/film.ts --cloud --workers auto          # render, then download to output/film.mp4
+```json
+{
+  "components": "src/components",
+  "renders": {
+    "film":   { "title": "Launch film", "entry": "src/film.ts", "export": "buildFilm", "workers": "auto", "output": "output/film.mp4" },
+    "teaser": { "title": "15 s teaser", "description": "Vertical cut for socials", "entry": "src/film.ts", "export": "buildTeaser", "codec": "vp9" }
+  }
+}
 ```
 
-- `--workers` defaults to 1 (one GPU, no planning step). `auto` measures frame costs on one worker, then uses as many workers as stay efficient: a 5-minute film stays on one, a 3-hour film spreads to `--max-workers` (API cap 10). A number splits into that many.
-- Show the user `--plan` before a long or expensive render: it prints the estimated cost.
-- Ctrl-C cancels the render; GPU time already used is charged. Failures print the worker's error code (e.g. `ASSET_NOT_FOUND` for an asset left out of LFS).
-- From code: `renderCloud({ entry, workers: "auto", outputPath, onProgress })` from `framefields/cloud` (no GPU needed locally). The HTTP API is `POST /v1/render` (`workers`, `max_workers`, `dry_run`), `GET` and `DELETE /v1/render/:id`.
+| Field | Meaning |
+|---|---|
+| `entry` | Module that builds the composition, relative to the project root. Required. |
+| `export` | A `Composition`, or a function returning one. Default `buildFilm`. |
+| `title`, `description` | Shown in the dashboard and `framefields renders`. Write them for the user, not for code. |
+| `args` | Passed to the export when it is a function. |
+| `select` | When the export returns several compositions (a `Record`), the one to render. |
+| `workers` | Cloud GPUs: `1` (default), a number, or `"auto"`. |
+| `maxWorkers` | Upper bound for `"auto"`. |
+| `codec` | `h264` (default, MP4) or `vp9` (WebM). |
+| `quality` | `very_low`, `low`, `high` or `very_high` (default). |
+| `output` | Where `framefields render <name> --cloud` downloads the video. |
+
+- Names use letters, digits, `-`, `_` and `.` (at most 64). Errors name the render and field: `framefields.json: renders.teaser needs "entry"`.
+- `npx framefields renders` lists them (`--json` for tools). `npx framefields check` with no argument checks every render; `npx framefields check teaser` checks one (artifacts under `output/check/<name>` when checking several).
+- After adding a render, run `framefields check <name>`, then commit and push: the cloud and the dashboard read `framefields.json` from the pushed branch, and the dashboard greys out a render whose `entry` isn't on that branch.
+- Named renders need a framefields release that has them (the one after 2.11.0). With older versions, render a module path (below).
+
+## Rendering in the Cloud (`framefields render --cloud`)
+
+api.framefields.dev renders the project on framefields' GPUs and splits a long film across several. It fetches the project from git, so it renders the **pushed commit**:
+
+- Commit and push first. Uncommitted changes are not rendered (the CLI warns), a commit not on the remote is refused, and so is a folder outside a git repo or without a remote.
+- Run it from the project folder (where `framefields.json` and `package.json` are). In a monorepo, the CLI sends that folder as the workdir.
+- The worker installs the project from its lockfile and renders with **the project's own framefields version**, so commit the lockfile. Footage, audio and fonts must be in Git LFS (or committed); `.gitignore`d files don't exist on the worker.
+- Private repos: the user connects GitHub once at https://framefields.dev/dashboard/settings#connections (the framefields GitHub App, ideally on all repositories, so new repos render without another step). Public repos need nothing.
+- It bills the account behind `FRAMEFIELDS_API_KEY` (keys at https://framefields.dev/dashboard/keys). If authentication is required, ask the user to set it in the process environment; never print, write or embed it.
+
+```bash
+npx framefields render film --cloud --plan   # workers, time and estimated cost; renders nothing
+npx framefields render film --cloud          # render, then download to the render's output
+npx framefields render --cloud               # the only named render
+npx framefields render src/film.ts --cloud --export buildFilm --workers auto   # a module, without a manifest
+```
+
+- Flags override the named render's fields: `--workers <n|auto>`, `--max-workers <n>`, `--codec h264|vp9`, `--quality`, `--select <name>`, `--output <file>`, `--export`. `--json` prints the final status as JSON.
+- `--workers` defaults to the render's `workers`, else 1 (one GPU, no planning step). `auto` measures frame costs on one worker, then uses as many workers as stay efficient: a 5-minute film stays on one, a 3-hour film spreads to `--max-workers` (API cap 10). A number splits into that many.
+- Show the user `--plan` before a long or expensive render: it prints `Plan: 4 workers, 1 h 50 min of render work, ready in about 35 min, estimated $1.20.` and the command that renders it.
+- The CLI prints one line per phase: measuring (`probing`), rendering N chunks and the audio in parallel, joining chunks (`stitching`), then `Done in …: <file>, <GPU seconds>, <cost>.` While rendering it prints progress at most every 10 s with the cost so far. Let it run; a split render of a long film takes minutes.
+- Billing: a credit hold is placed when the render starts (raised to the estimate once planned); the final charge is the GPU seconds actually used, and the rest is released. Failed and cancelled renders charge the GPU time they used. `insufficient_credits` means the user must add funds at https://framefields.dev/dashboard/billing.
+- Ctrl-C cancels the render; GPU time already used is charged.
+- The dashboard (https://framefields.dev/dashboard/renders) shows every render, API or dashboard started, with live progress, cost so far, Cancel and the finished video. Its **New render** dialog lists the named renders of a connected repo's branch, with Plan and Render.
+
+From code (no GPU needed locally):
+
+```ts
+import { CloudRenderError, renderCloud } from "framefields/cloud";
+
+try {
+  const result = await renderCloud({
+    render: "film",                 // or { entry: "src/film.ts", export: "buildFilm", workers: "auto" }
+    outputPath: "output/film.mp4",  // downloads the finished video
+    onProgress: (s) => console.log(s.status, s.progress.frames, s.progress.totalFrames, s.costUsd),
+    // dryRun: true                 // plan only: result.plan and result.estimateUsd
+  });
+  console.log(result.filePath, result.gpuSeconds, result.costUsd, result.output?.url);
+} catch (err) {
+  if (err instanceof CloudRenderError) console.error(err.code, err.message); // the worker's code, e.g. ASSET_NOT_FOUND
+  else throw err;
+}
+```
+
+Options passed to `renderCloud` override the named render's; `signal` cancels. `cloudClient()` exposes `start`, `status` and `cancel` for callers that track renders themselves. The HTTP API is `POST /v1/render` (`source`, `target`, `render`, `workers`, `max_workers`, `dry_run`, optional `name` and `title`), `GET` and `DELETE /v1/render/:id`, with `Authorization: Bearer <key>`.
+
+### Cloud render failures
+
+The error carries the worker's code. Fix the project, commit, push and render again.
+
+| Code | Cause | Fix |
+|---|---|---|
+| `REPO_NOT_FOUND`, `GIT_AUTH_FAILED` | Private repo the framefields GitHub App can't reach | Connect GitHub (Settings → Connections) with access to this repo. |
+| `REF_NOT_FOUND`, `COMMIT_MISMATCH` | Branch or commit not on the remote | `git push`. |
+| `LOCKFILE_MISSING`, `INSTALL_FAILED` | No committed lockfile, or it doesn't install | Commit `pnpm-lock.yaml` / `package-lock.json`; check it installs cleanly. |
+| `ENTRY_NOT_FOUND`, `EXPORT_NOT_FOUND`, `EXPORT_INVALID` | `entry`/`export` in framefields.json or flags are wrong | `framefields check <name>` locally. |
+| `COMPOSITION_BUILD_FAILED`, `EXPORT_SIDE_EFFECT` | The builder throws, or renders/writes while building | Keep builders pure; `framefields check` reproduces it. |
+| `ASSET_NOT_FOUND`, `LFS_OBJECT_MISSING`, `LFS_POINTER_UNRESOLVED` | An asset isn't in the repo or its LFS object wasn't pushed | `git lfs ls-files`, `git lfs push --all origin`; un-ignore assets the film needs. |
+| `ENGINE_UNSUPPORTED` | The project's framefields is too old to render chunks | Upgrade framefields in the project (2.11+), or render with `--workers 1`. |
+| `RENDER_TIMEOUT`, `RENDER_OOM` | One worker can't finish its part | Use `--workers auto` (or more workers) to split it. |
+
+Retryable infrastructure errors (`GIT_NETWORK`, `RENDER_STALLED`, a lost worker) are retried by the API, and a straggling chunk gets a backup worker; they rarely reach the user.
 
 ---
 
@@ -213,7 +294,7 @@ Agents often run in sandboxes or CI runners with no GPU. framefields then render
 - **macOS:** always has a Metal GPU, VMs included; framefields' WebGPU build has no Vulkan, so lavapipe isn't used there.
 - **Confirm it:** `await describeGpu()` returns `software: true`.
 - **Budget for speed:** about 12× slower than an Apple M1 Pro's GPU in our Linux test (the smoke project's three videos: 9.7 min against 49 s); it scales with CPU cores. Frames, grids and short exports are fine. Vision layers are the slowest part.
-- **Long films:** render on a GPU machine, or push the project and submit it to the framefields render worker (Docker or RunPod, renders a git commit on a GPU; if authentication is required, ask the user to set `FRAMEFIELDS_API_KEY` in the process environment and use it without printing or embedding it). Its project checklist and job format: https://framefields.dev/docs/guides/render-service/
+- **Long films:** push the project and render it in the cloud (`npx framefields render film --cloud`, above), or on a GPU machine of your own. To run the render worker yourself (Docker or RunPod, renders a git commit on a GPU), see its project checklist and job format: https://framefields.dev/docs/guides/render-service/
 
 ## Production Render Script Pattern
 
@@ -371,6 +452,7 @@ ffmpeg -i output/final-video.mp4 -af "volumedetect" -f null -
 | Script hangs after `Done in …` | Background worker thread pool held open | Always include `process.exit(0)` at the end of render scripts. |
 | Render very slow on a Linux server | Frames drawn on a CPU adapter (lavapipe) | `await describeGpu()` shows `software: true`; fix the GPU's Vulkan driver (`vulkaninfo --summary`). |
 | Encoder fails to open (`h264_rkmpp`, NVENC) | framefields < 2.2 uses the hardware encoder untested | Use framefields 2.2+, which falls back to libx264 etc., or set `FRAMEFIELDS_HW_CODECS=off`. |
-| Render worker job fails | Project not render-ready (lockfile, export, LFS) | Read the job's `code` and `hint`; checklist at https://framefields.dev/docs/guides/render-service/ |
+| Render worker or cloud render fails | Project not render-ready (lockfile, export, LFS) | Read the `code` and `hint`; see **Cloud render failures** above and https://framefields.dev/docs/guides/render-service/ |
+| Stitched video has a jump at a chunk seam | Chunks rendered with different framefields versions, settings or GPU types, or a stateful effect that reads wall-clock time | Render all chunks from one commit and one job; keep effects deterministic in the frame number. |
 | Text looks misaligned or truncated | Layout node box smaller than text string | Set explicit wrapping `width` (e.g. `width: 1400`) or use `width: "fill"`. |
 | Colors appear washed out / dark edges | Unpremultiplied alpha blending | The engine operates with premultiplied alpha. Ensure custom shaders use `srcFactor: "one"`. |

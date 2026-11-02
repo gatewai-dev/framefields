@@ -31,7 +31,7 @@ This skill takes a project from nothing to a verified first render. For anything
 
 ## 2. Install
 
-**Fastest path: `npx framefields init`.** It writes everything in sections 2 and 3 for you: `package.json` (with the install-script approvals below, scripts, dependencies, `packageManager`), `tsconfig.json`, `src/theme.ts` / `film.ts` / `render.ts`, `assets/`, the LFS `.gitattributes` and `.gitignore`. It also downloads Inter, JetBrains Mono, and Noto Color Emoji (pinned, with their OFL licenses), registers them in the generated `src/components/fonts.ts` that `theme.ts` calls, and runs `git init`.
+**Fastest path: `npx framefields init`.** It writes everything in sections 2 and 3 for you: `package.json` (with the install-script approvals below, scripts, dependencies, `packageManager`), `tsconfig.json`, `src/theme.ts` / `film.ts` / `render.ts`, `assets/`, the LFS `.gitattributes` and `.gitignore`, and `framefields.json` (the components folder, installed fonts, and a `film` render naming `buildFilm` in `src/film.ts`). It also downloads Inter, JetBrains Mono, and Noto Color Emoji (pinned, with their OFL licenses), registers them in the generated `src/components/fonts.ts` that `theme.ts` calls, and runs `git init`.
 
 ```bash
 npx framefields init my-film --install      # a new project; or `init` inside an existing one
@@ -226,11 +226,22 @@ Add scripts to `package.json`:
   "grid": "tsx src/render.ts grid",
   "preview": "tsx src/render.ts preview",
   "render": "tsx src/render.ts",
-  "render:cloud": "framefields render src/film.ts --cloud --workers auto"
+  "render:cloud": "framefields render film --cloud"
 }
 ```
 
-`render:cloud` renders on framefields' GPUs (api.framefields.dev) from the pushed commit, with the same `FRAMEFIELDS_API_KEY` as the AI gateway; `framefields-render` covers it.
+`framefields.json` names what the project renders; `film` is the scaffold's. Add an entry per cut (teaser, vertical edit) so the CLI, `framefields check` and the dashboard pick it by name:
+
+```json
+{
+  "components": "src/components",
+  "renders": {
+    "film": { "title": "Launch film", "entry": "src/film.ts", "export": "buildFilm", "workers": "auto", "output": "output/film.mp4" }
+  }
+}
+```
+
+`render:cloud` renders on framefields' GPUs (api.framefields.dev) from the pushed commit, with the same `FRAMEFIELDS_API_KEY` as the AI gateway, and splits long films across several GPUs; `framefields-render` covers it. When the user wants another version of the film (a teaser, a vertical cut, a language), add an export and a named render for it rather than a flag in `render.ts`.
 
 ### Video assets & Git LFS
 
@@ -403,7 +414,7 @@ npx framefields add mouse-pointer focus-zoom    # writes src/components/<name>/
 npx framefields fonts add emoji                 # color emoji (chat-thread and captions add it themselves)
 ```
 
-The generated project also has `check` (TypeScript plus schema/lint/timeline preflight) and `check:render` (adds a GPU frame/grid smoke check) scripts. They produce versioned JSON for agents and terminate with a failure code on errors. For a custom entry, use `framefields check src/film.ts --export buildFilm --json`; add `--render` to write inspection artifacts under `output/check`. Keep the builder free of generation, rendering and writes, because preflight imports and executes it.
+The generated project also has `check` (TypeScript plus schema/lint/timeline preflight) and `check:render` (adds a GPU frame/grid smoke check) scripts. They produce versioned JSON for agents and terminate with a failure code on errors. For another named render, use `framefields check teaser --json` (no name checks them all); for a module without one, `framefields check src/film.ts --export buildFilm --json`; add `--render` to write inspection artifacts under `output/check`. Keep the builder free of generation, rendering and writes, because preflight imports and executes it.
 
 ```typescript
 import { MousePointer } from "./components/mouse-pointer/index.js";

@@ -9,7 +9,9 @@
  *   npx framefields fonts list           the fonts you can install
  *   npx framefields assets add|push|pull|status   media on your own bucket
  *   npx framefields renders              the renders named in framefields.json
+ *   npx framefields render <name>        render on this machine's GPU
  *   npx framefields render <name> --cloud    render on api.framefields.dev
+ *   npx framefields preview <name>       play it in the browser
  */
 import { readFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
@@ -35,6 +37,7 @@ import {
 	type PackageManager,
 	shownPath,
 } from "./cli/init.js";
+import { runLocal } from "./cli/local.js";
 import { openRegistry } from "./cli/registry.js";
 import { AI_DASHBOARD } from "./cli/templates.js";
 
@@ -67,13 +70,19 @@ Commands:
   assets pull     Download missing assets, checked against their sha256.
   assets status   Which assets are here, missing or changed.
   renders         List the renders named in framefields.json.
-  render [name|entry] --cloud
-                  Render on api.framefields.dev from the pushed commit of
-                  this git repo, and download the video. Needs
-                  FRAMEFIELDS_API_KEY. A render named in framefields.json
+  render [name|entry]
+                  Render on this machine: a render named in framefields.json
                   (its fields are the defaults; flags override them), or a
                   module (--export defaults to buildFilm). Without either,
-                  the project's only named render.
+                  the project's only named render. Pinned assets missing
+                  here are downloaded first.
+  render [name|entry] --cloud
+                  The same render on api.framefields.dev, from the pushed
+                  commit of this git repo, downloaded to the same file.
+                  Needs FRAMEFIELDS_API_KEY.
+  preview [name|entry]
+                  Play it in the browser (localhost, WebGPU). Pinned assets
+                  that aren't here stream from their bucket.
 
 Options for check:
   --export <name>   Composition or builder export (default buildFilm).
@@ -82,6 +91,10 @@ Options for check:
   --timeout <ms>    Worker timeout in milliseconds (default 60000).
   --warnings-as-errors  Fail on lint warnings.
   --json            Machine-readable check, component list, or font list result.
+
+Options for render and preview:
+  --export, --select, --codec, --quality and --output (render) override the
+  named render's fields, locally and with --cloud.
 
 Options for render --cloud:
   --workers <n|auto>  1 (default) renders on one GPU. auto measures the film
@@ -133,6 +146,8 @@ Examples:
   npx framefields add mouse-pointer focus-zoom
   npx framefields fonts add emoji
   npx framefields assets add assets/footage
+  npx framefields preview film
+  npx framefields render film
   npx framefields render film --cloud --plan
 `;
 
@@ -202,10 +217,30 @@ async function main(argv: string[]): Promise<number> {
 			overwrite: values.overwrite,
 			json: values.json,
 		});
-	if (command === "render") {
-		if (names.length > 1 || !values.cloud) {
+	if (command === "preview" || (command === "render" && !values.cloud)) {
+		if (names.length > 1) {
 			process.stderr.write(
-				"Usage: framefields render [name|entry] --cloud [--workers auto] [--plan]\nLocal renders run your project's render script (`npm run render`).\n",
+				`Usage: framefields ${command} [name|entry] [--export <name>]\n`,
+			);
+			return 2;
+		}
+		return runLocal(
+			command === "preview" ? "preview" : "render",
+			{
+				entry: names[0],
+				export: values.export,
+				select: values.select,
+				codec: values.codec,
+				quality: values.quality,
+				output: values.output,
+			},
+			log,
+		);
+	}
+	if (command === "render") {
+		if (names.length > 1) {
+			process.stderr.write(
+				"Usage: framefields render [name|entry] --cloud [--workers auto] [--plan]\n",
 			);
 			return 2;
 		}

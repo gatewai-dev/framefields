@@ -4,12 +4,10 @@ import path from "node:path";
 import {
 	type AssetEntry,
 	AssetError,
-	type AssetManifest,
 	downloadVerified,
 	hashFile,
 	ManifestError,
-	parseAssets,
-	parseStorage,
+	readProjectManifest,
 	readUrl,
 	type StorageConfig,
 } from "@framefields/storage";
@@ -96,22 +94,11 @@ export async function fetchAssets(
 	};
 }
 
-async function readManifest(
-	workdir: string,
-): Promise<{ storage?: StorageConfig; assets?: AssetManifest } | undefined> {
-	const file = path.join(workdir, "framefields.json");
-	if (!existsSync(file)) return undefined;
+async function readManifest(workdir: string) {
 	try {
-		const raw = JSON.parse(await fs.readFile(file, "utf8")) as {
-			storage?: unknown;
-			assets?: unknown;
-		};
-		if (raw.assets === undefined) return undefined;
-		const storage =
-			raw.storage === undefined ? undefined : parseStorage(raw.storage);
-		return { storage, assets: parseAssets(raw.assets, storage) };
+		return await readProjectManifest(workdir);
 	} catch (err) {
-		if (err instanceof ManifestError || err instanceof SyntaxError)
+		if (err instanceof ManifestError)
 			throw new RenderError("ASSET_MANIFEST_INVALID", err.message, {
 				hint: "`npx framefields assets status` reads the same file locally.",
 			});

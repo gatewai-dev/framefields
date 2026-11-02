@@ -354,11 +354,16 @@ CLI Usage:
 tsx src/render.ts frames 0 18 36 72
 
 # Live player for the user (run in the background; re-run after changes and the open tab reloads):
-tsx src/render.ts preview
+npx framefields preview film
 
-# Render full master video:
-tsx src/render.ts
+# Render the full video on this machine, to the render's output in framefields.json:
+npx framefields render film
+
+# The same render on framefields cloud GPUs, to the same file:
+npx framefields render film --cloud
 ```
+
+`framefields render <name>` and `framefields preview <name>` load the module with the project's own tsx and framefields, like the cloud worker, and call the export with the render's `args` (and `select`); the preview calls it without them. A local render downloads pinned assets that are missing first; the preview streams them from their bucket.
 
 ### Reading render progress
 

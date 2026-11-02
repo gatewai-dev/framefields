@@ -18,6 +18,13 @@ export {
 	redactQuery,
 } from "./files.js";
 export {
+	type AssetLocator,
+	findProjectDir,
+	openAssetLocator,
+	type ProjectManifest,
+	readProjectManifest,
+} from "./locate.js";
+export {
 	type AssetEntry,
 	type AssetManifest,
 	isAssetPath,

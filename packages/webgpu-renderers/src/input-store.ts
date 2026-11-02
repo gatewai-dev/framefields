@@ -50,11 +50,29 @@ async function assertReadableFile(
 	}
 }
 
+/**
+ * Where to read a local media file that isn't on disk: a URL for it (a
+ * project's asset pinned on a bucket), or undefined.
+ */
+export type MissingMediaResolver = (
+	filePath: string,
+) => Promise<string | undefined>;
+
 class InputStore {
 	private store = new Map<
 		string,
 		{ promise: Promise<Input>; refCount: number }
 	>();
+	private resolveMissing?: MissingMediaResolver;
+
+	/**
+	 * Reads local files that are missing from disk from the URL `resolver`
+	 * gives, with HTTP range requests, so a clip pinned on a bucket plays
+	 * without being downloaded. Unset with no argument.
+	 */
+	setMissingMediaResolver(resolver?: MissingMediaResolver): void {
+		this.resolveMissing = resolver;
+	}
 
 	async acquire(url: string): Promise<Input> {
 		if (!url) throw new Error("Cannot acquire Input for empty URL");
@@ -73,10 +91,7 @@ class InputStore {
 					| InstanceType<typeof FilePathSource>
 					| InstanceType<typeof UrlSource>;
 				if (filePath !== null) {
-					// FilePathSource opens lazily; check now so a bad path fails
-					// with its name instead of deep inside the first decode.
-					await assertReadableFile(filePath, url);
-					source = new FilePathSource(filePath);
+					source = await this.localSource(filePath, url);
 				} else {
 					source = new UrlSource(resolvedUrl);
 				}
@@ -111,6 +126,24 @@ class InputStore {
 				},
 				() => {},
 			);
+		}
+	}
+
+	private async localSource(
+		filePath: string,
+		url: string,
+	): Promise<
+		InstanceType<typeof FilePathSource> | InstanceType<typeof UrlSource>
+	> {
+		try {
+			// FilePathSource opens lazily; check now so a bad path fails
+			// with its name instead of deep inside the first decode.
+			await assertReadableFile(filePath, url);
+			return new FilePathSource(filePath);
+		} catch (err) {
+			const remote = await this.resolveMissing?.(filePath);
+			if (remote) return new UrlSource(remote);
+			throw err;
 		}
 	}
 

@@ -64,7 +64,7 @@ function fakeR2() {
 			return new Response(null, {
 				headers: { "content-length": String(body.length) },
 			});
-		return new Response(body);
+		return new Response(new Uint8Array(body));
 	};
 	return { fetch: handler as typeof fetch, objects, log };
 }

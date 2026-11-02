@@ -19,6 +19,7 @@ export default defineConfig({
 		"src/storage/index.ts",
 		"src/cli.ts",
 		"src/cli/check-worker.ts",
+		"src/cli/local-worker.ts",
 	],
 	format: ["esm"],
 	clean: true,

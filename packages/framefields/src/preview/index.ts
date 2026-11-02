@@ -6,6 +6,8 @@ import type { AddressInfo } from "node:net";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { VirtualMediaData } from "@framefields/core";
+import { type AssetLocator, openAssetLocator } from "@framefields/storage";
+import { inputStore } from "@framefields/webgpu-renderers";
 import { encodeStereoWav } from "../audio/index.js";
 import { HeadlessMediaRenderer } from "../renderer/index.js";
 import {
@@ -191,6 +193,18 @@ export async function startPreview(
 	// Changes run one at a time: each reads and rewrites notes.json.
 	let noteQueue: Promise<unknown> = Promise.resolve();
 
+	// Assets framefields.json pins but that aren't on disk (an agent's
+	// sandbox, a fresh clone) stream from their bucket: the page is
+	// redirected there, and the soundtrack mix reads them over HTTP.
+	const assets = await openAssetLocator(path.dirname(entry)).catch(
+		(err: unknown) => {
+			say(`pinned assets are off: ${(err as Error).message}`);
+			return undefined;
+		},
+	);
+	if (assets) inputStore.setMissingMediaResolver((file) => assets.url(file));
+	const unreadable = new Set<string>();
+
 	const target = await loadTarget(entry, exportName);
 	const meta = await resolveMeta(target, title, session, notes?.dir ?? null);
 	// The project's own code, bundled against the browser engine; the engine
@@ -286,6 +300,7 @@ export async function startPreview(
 			if (reason === "replaced") say("stopped: a newer preview took over");
 			for (const client of sseClients) client.end();
 			sseClients.clear();
+			if (assets) inputStore.setMissingMediaResolver();
 			server.close(() => {
 				resolve();
 				resolveClosed(reason);
@@ -353,7 +368,7 @@ export async function startPreview(
 				if (roots.some((r) => isInside(r, file))) {
 					size = await fs.promises.stat(file).then(
 						(st) => (st.isFile() ? st.size : -1),
-						() => -1,
+						() => assets?.entry(file)?.size ?? -1,
 					);
 				}
 				sendJson(res, 200, { exists: size >= 0, size: Math.max(0, size) });
@@ -492,6 +507,11 @@ export async function startPreview(
 					await sendFile(req, res, file);
 					return;
 				}
+				if (
+					assets &&
+					(await redirectToBucket(res, assets, file, unreadable, say))
+				)
+					return;
 			}
 			sendJson(res, 404, { error: "not found" });
 		} catch (err) {
@@ -690,6 +710,35 @@ const CONTENT_TYPES: Record<string, string> = {
 	".srt": "text/plain; charset=utf-8",
 	".txt": "text/plain; charset=utf-8",
 };
+
+/**
+ * Sends the page to the bucket for a pinned asset that isn't on disk. The
+ * bucket must allow this page's origin (CORS): the engine reads media with
+ * `fetch`. True when it answered.
+ */
+async function redirectToBucket(
+	res: http.ServerResponse,
+	assets: AssetLocator,
+	file: string,
+	unreadable: Set<string>,
+	say: (line: string) => void,
+): Promise<boolean> {
+	if (!assets.entry(file)) return false;
+	const url = await assets.url(file);
+	if (url) {
+		res.writeHead(302, { location: url, "cache-control": "no-store" });
+		res.end();
+		return true;
+	}
+	const rel = path.relative(assets.root, file);
+	if (!unreadable.has(rel)) {
+		unreadable.add(rel);
+		say(
+			`${rel} is pinned on a private remote and there are no keys here: set its FRAMEFIELDS_STORAGE_* keys, give the remote a publicUrl, or \`npx framefields assets pull\``,
+		);
+	}
+	return false;
+}
 
 /** Serves a file, with byte ranges so video can seek without loading it whole. */
 async function sendFile(

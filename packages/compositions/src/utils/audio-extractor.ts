@@ -546,6 +546,28 @@ const RANGE_MARGIN_SEC = 0.05;
 const GAIN_ONLY_PROCESSORS = new Set(["Compositor", "CompositorLayer"]);
 
 /** Adds `src` into `dest` starting at `destStart` (which may be negative). */
+/**
+ * Which of a layer's gain props (`volume`, `muted`) it keys. Those the mix
+ * leaves to the layer's audio processor, which reads them per sample; the
+ * rest are applied as constants. Shared so both sides agree on the split.
+ */
+export function keyedGain(operation: unknown): {
+	volume: boolean;
+	muted: boolean;
+} {
+	const tracks =
+		(
+			operation as {
+				animation?: {
+					tracks?: ReadonlyArray<{ prop?: string; keyframes?: unknown[] }>;
+				};
+			} | null
+		)?.animation?.tracks ?? [];
+	const keys = (prop: string) =>
+		tracks.some((t) => t.prop === prop && (t.keyframes?.length ?? 0) > 0);
+	return { volume: keys("volume"), muted: keys("muted") };
+}
+
 function addInto(dest: Float32Array, src: Float32Array, destStart: number) {
 	const from = Math.max(0, -destStart);
 	const to = Math.min(src.length, dest.length - destStart);
@@ -904,11 +926,15 @@ export async function mixAudioTracks(
 			return bus.channels;
 		}
 
+		// A layer that keys its volume or mute applies them itself, over time
+		// (the CompositorLayer audio processor); only resting values it does
+		// not key are baked into its sources here.
+		const keyed = keyedGain(op);
 		const volume =
 			inheritedVolume *
-			(op.volume ?? 1) *
+			(keyed.volume ? 1 : (op.volume ?? 1)) *
 			(op.opacity === 0 ? 0 : 1) *
-			((op as Record<string, unknown>).muted ? 0 : 1);
+			(!keyed.muted && (op as Record<string, unknown>).muted ? 0 : 1);
 		const speedMultiplier = inheritedSpeed;
 
 		const nodeStartFrame = op.startFrame ?? op.timeline?.startFrame ?? 0;

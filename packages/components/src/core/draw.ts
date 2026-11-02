@@ -188,6 +188,27 @@ export interface ArrowGeometry {
 	head: string;
 }
 
+const smoothstep = (t: number) => {
+	const k = Math.min(1, Math.max(0, t));
+	return k * k * (3 - 2 * k);
+};
+
+/** The point `distance` back along a polyline from its end (its start, if shorter). */
+function pointBack(points: readonly Vec2[], distance: number): Vec2 {
+	let left = distance;
+	for (let i = points.length - 1; i > 0; i--) {
+		const b = points[i] as Vec2;
+		const a = points[i - 1] as Vec2;
+		const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+		if (len >= left && len > 0) {
+			const k = left / len;
+			return [b[0] + (a[0] - b[0]) * k, b[1] + (a[1] - b[1]) * k];
+		}
+		left -= len;
+	}
+	return points[0] as Vec2;
+}
+
 /** An arrow from `from` to `to` with a separate head path. */
 export function arrowPaths(
 	from: Vec2,
@@ -229,9 +250,24 @@ export function arrowPaths(
 					to,
 				];
 	const points = bend === 0 ? [from, to] : catmullRom(controls, 12);
-	const wobbled = wobblePoints(points, { wobble, seed }, variant);
-	const tail = wobbled[wobbled.length - 2] ?? from;
-	const angle = Math.atan2(to[1] - tail[1], to[0] - tail[0]);
+	// The hand wobbles the shaft but lets go of it toward the tip, so it
+	// always meets the head there.
+	const wobbled = wobblePoints(points, { wobble, seed }, variant).map(
+		(p, i): Vec2 => {
+			const t = points.length === 1 ? 0 : i / (points.length - 1);
+			const hold = t <= 0.75 ? 1 : 1 - smoothstep((t - 0.75) / 0.25);
+			const clean = points[i] as Vec2;
+			return [
+				clean[0] + (p[0] - clean[0]) * hold,
+				clean[1] + (p[1] - clean[1]) * hold,
+			];
+		},
+	);
+	// The head follows the clean curve's direction about a head's length back
+	// from the tip, the same for every pose: from the last (short, wobbled)
+	// segment it swung round each time the boil re-posed the stroke.
+	const back = pointBack(points, headSize);
+	const angle = Math.atan2(to[1] - back[1], to[0] - back[0]);
 	const wing = (side: 1 | -1): Vec2 => [
 		to[0] - Math.cos(angle + side * 0.5) * headSize,
 		to[1] - Math.sin(angle + side * 0.5) * headSize,

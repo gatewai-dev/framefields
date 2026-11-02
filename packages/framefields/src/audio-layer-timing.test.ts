@@ -76,6 +76,52 @@ describe("audio layer timing", () => {
 		expect(rms(ch, 0.24, 0.26)).toBeLessThan(full * 0.65);
 	});
 
+	it("plays a layer keyed up from a resting volume of 0, or unmuted by its keys", async () => {
+		// The resting value is what shows before any animation; the keys take
+		// over from there. A layer at volume 0 or muted is the natural way to
+		// write a fade in, and used to stay silent for good.
+		const faded = await mix(
+			Layer.audio(source, {
+				trimStartSec: 1,
+				durationFrames: 30,
+				volume: 0,
+			}).animate(
+				LayerAnimation.keys("volume", [
+					[0, 0],
+					[15, 0.5],
+				]),
+			),
+		);
+		const unmuted = await mix(
+			Layer.audio(source, {
+				trimStartSec: 1,
+				durationFrames: 30,
+				muted: true,
+			}).animate(
+				LayerAnimation.keys("muted", [
+					[0, true],
+					[15, false],
+				]),
+			),
+		);
+		// Each mix is auto-gained by its own peak, so compare like with like:
+		// the fade's plateau with a layer resting at the same volume, the
+		// unmuted layer with one never muted.
+		const level = async (volume: number) =>
+			rms(
+				await mix(
+					Layer.audio(source, { trimStartSec: 1, durationFrames: 30, volume }),
+				),
+				0.6,
+				0.9,
+			);
+		const [half, full] = [await level(0.5), await level(1)];
+		expect(rms(faded, 0, 0.03)).toBeLessThan(half * 0.1);
+		expect(rms(faded, 0.6, 0.9)).toBeCloseTo(half, 2);
+		expect(rms(unmuted, 0.1, 0.4)).toBeLessThan(full * 0.01);
+		expect(rms(unmuted, 0.6, 0.9)).toBeCloseTo(full, 2);
+	});
+
 	it("counts volume keyframes from the layer's own start", async () => {
 		// The layer enters at frame 30 (1.0 s); its fade-in runs over its own
 		// first 15 frames, i.e. 1.0–1.5 s of the composition.

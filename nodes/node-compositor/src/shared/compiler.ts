@@ -400,6 +400,9 @@ export function mappedEase(
 	return `${easeName}.${dir}${suffix}`;
 }
 
+/** Props that switch rather than tween: each key is a set from its frame on. */
+const DISCRETE_PROPS: ReadonlySet<string> = new Set(["hidden", "muted"]);
+
 function compileTrackToTimeline(
 	tl: gsap.core.Timeline,
 	stub: Record<string, any>,
@@ -503,7 +506,7 @@ function compileTrackToTimeline(
 		return { dropped, maxAuthoredFrame };
 	}
 
-	const isDiscrete = prop === "hidden" || prop === "muted";
+	const isDiscrete = DISCRETE_PROPS.has(prop);
 
 	if (isDiscrete) {
 		for (const kf of validKeyframes) {
@@ -925,15 +928,19 @@ export function compileTimeline(
 					{ startFrame: lop.startFrame ?? 0, baseValues: stub, signals },
 				);
 			} else if (track.keyframes && track.keyframes.length > 0) {
-				const kf0 = track.keyframes[0];
+				const keyframes: AnimationTrack["keyframes"] = track.keyframes;
+				const first = keyframes.reduce((a, b) => (b.frame < a.frame ? b : a));
 				const seeded = stub as Record<string, unknown>;
-				if (kf0.frame === 0) {
-					seeded[track.prop] = kf0.value;
+				if (!DISCRETE_PROPS.has(track.prop) || first.frame === 0) {
+					// Until its first key a track holds that key's value, as the
+					// program evaluator does for draw-time tracks: an entrance keyed
+					// at frame 40 waits in its first pose, it doesn't show the
+					// layer's resting value and then jump.
+					seeded[track.prop] = first.value;
 				} else if (seeded[track.prop] === undefined) {
-					// GSAP only tweens props that exist on its target; props the stub
-					// doesn't model (trimEnd, borderWidth, …) start from the node's own
-					// value, else hold the first key until it's reached.
-					seeded[track.prop] = lop[track.prop] ?? kf0.value;
+					// Discrete props step like sets: the node's own value until the
+					// first key. GSAP only tweens props its target has.
+					seeded[track.prop] = lop[track.prop] ?? first.value;
 				}
 			}
 		}

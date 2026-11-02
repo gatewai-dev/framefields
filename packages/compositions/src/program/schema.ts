@@ -567,6 +567,8 @@ const animationInvariants = (
 			track.prop === "strokeColor" ||
 			track.prop === "fill" ||
 			track.prop === "color";
+		// Path morphs key SVG path data.
+		const isPath = track.prop === "d";
 		for (let kIdx = 0; kIdx < keyframes.length; kIdx++) {
 			const kf = keyframes[kIdx];
 			if (kIdx > 0) {
@@ -599,6 +601,14 @@ const animationInvariants = (
 					ctx.addIssue({
 						code: z.ZodIssueCode.custom,
 						message: `Keyframe value for color property '${track.prop}' must be a string.`,
+						path: ["tracks", tIdx, "keyframes", kIdx, "value"],
+					});
+				}
+			} else if (isPath) {
+				if (valType !== "string") {
+					ctx.addIssue({
+						code: z.ZodIssueCode.custom,
+						message: "Keyframe value for 'd' must be SVG path data (a string).",
 						path: ["tracks", tIdx, "keyframes", kIdx, "value"],
 					});
 				}

@@ -414,7 +414,7 @@ describe("Compositor GSAP Compiler", () => {
 		expect(stub.x).toBe(200);
 	});
 
-	it("should hold the correct base/pre-seeded values at limits", () => {
+	it("should hold the first key before it, and after the last", () => {
 		const virtualMedia = {
 			operation: {
 				op: "Compositor",
@@ -458,9 +458,10 @@ describe("Compositor GSAP Compiler", () => {
 		const stub = targetsById["layer-1"];
 		expect(stub).toBeDefined();
 
-		// Before first keyframe (at frame 6), should hold the layer base value 100
+		// Before the first keyframe (frame 6) the track holds that key's value,
+		// not the layer's resting x of 100
 		tl.seek(6 / 24);
-		expect(stub.x).toBe(100);
+		expect(stub.x).toBe(200);
 
 		// At first keyframe frame 12
 		tl.seek(12 / 24);
@@ -477,6 +478,55 @@ describe("Compositor GSAP Compiler", () => {
 		// After last keyframe (at frame 48), should hold the last keyframe value
 		tl.seek(48 / 24);
 		expect(stub.x).toBe(300);
+	});
+
+	it("keeps a later entrance in its first pose; discrete props step from the layer's value", () => {
+		const layer = (
+			id: string,
+			props: Record<string, unknown>,
+			prop: string,
+			keyframes: Array<{ frame: number; value: number | boolean }>,
+		) => ({
+			operation: {
+				op: "CompositorLayer",
+				id,
+				startFrame: 0,
+				durationFrames: 100,
+				...props,
+				animation: {
+					tracks: [
+						{
+							id: `${id}-track`,
+							prop,
+							keyframes: keyframes.map((k, i) => ({ id: `${id}-${i}`, ...k })),
+						},
+					],
+				},
+			},
+		});
+		const { tl, targetsById } = compileTimeline(
+			"render-entrance",
+			{
+				operation: { op: "Compositor", width: 1920, height: 1080 },
+				children: [
+					// Keys listed out of order: the earliest one is the pose held.
+					layer("fade", {}, "opacity", [
+						{ frame: 33, value: 1 },
+						{ frame: 30, value: 0 },
+					]),
+					layer("reveal", { hidden: true }, "hidden", [
+						{ frame: 30, value: false },
+					]),
+				],
+			} as never,
+			{ fps: 30, durationSec: 4 },
+		);
+		tl.seek(10 / 30);
+		expect(targetsById.fade?.opacity).toBe(0);
+		expect(targetsById.reveal?.hidden).toBe(true);
+		tl.seek(40 / 30);
+		expect(targetsById.fade?.opacity).toBe(1);
+		expect(targetsById.reveal?.hidden).toBe(false);
 	});
 
 	it("should support spring easing function solver", () => {

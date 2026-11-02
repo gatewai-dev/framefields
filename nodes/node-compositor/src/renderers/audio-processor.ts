@@ -1,3 +1,4 @@
+import { keyedGain } from "@framefields/compositions";
 import type { LayerAnimation } from "@framefields/compositions/program";
 import type { VirtualMediaData } from "@framefields/core";
 import {
@@ -51,18 +52,9 @@ export const compositorLayerAudioProcessor: AudioProcessor = async (
 	const animation = op.animation;
 	const fps = ctx?.fps ?? 24;
 
-	// Check if there are active volume or muted animation tracks with keyframes
-	const tracks = animation?.tracks || [];
-	const hasVolumeKeys = tracks.some(
-		(t) => t.prop === "volume" && t.keyframes && t.keyframes.length > 0,
-	);
-	const hasMutedKeys = tracks.some(
-		(t) => t.prop === "muted" && t.keyframes && t.keyframes.length > 0,
-	);
-
-	if (!hasVolumeKeys && !hasMutedKeys) {
-		// If no animated volume/muted tracks exist, the static volume and mute state
-		// have already been applied by the child clip or audio extractor.
+	const keyed = keyedGain(op);
+	if (!keyed.volume && !keyed.muted) {
+		// Nothing keyed: the mix already applied the resting volume and mute.
 		return;
 	}
 
@@ -86,7 +78,9 @@ export const compositorLayerAudioProcessor: AudioProcessor = async (
 	let lastVol = stub.volume;
 	let lastMuted = stub.muted;
 
-	const baseGain = muted ? 0 : volume;
+	// What the mix already applied: the resting values of the props this
+	// layer does not key (see `keyedGain`). The keyed ones are applied here.
+	const applied = (keyed.volume ? 1 : volume) * (!keyed.muted && muted ? 0 : 1);
 
 	for (let i = 0; i < numSamples; i += subChunkSize) {
 		const nextI = Math.min(numSamples, i + subChunkSize);
@@ -109,7 +103,7 @@ export const compositorLayerAudioProcessor: AudioProcessor = async (
 			const currentMuted = j - i < (nextI - i) / 2 ? lastMuted : nextMuted;
 
 			const finalGain = currentMuted ? 0 : currentVol;
-			const relativeGain = baseGain === 0 ? 0 : finalGain / baseGain;
+			const relativeGain = applied === 0 ? 0 : finalGain / applied;
 
 			if (relativeGain !== 1) {
 				for (let c = 0; c < numChannels; c++) {

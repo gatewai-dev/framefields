@@ -8,6 +8,7 @@ import {
 	buildShapeSvgPath,
 	buildStarPath,
 	dashPathSegments,
+	parseDashArray,
 	parseSvgPathToSegments,
 	sampleCubicBezier,
 	sampleQuadraticBezier,
@@ -152,6 +153,27 @@ describe("path-geometry", () => {
 			expect(trimmed.length).toBe(1);
 			expect(trimmed[0].p0).toEqual({ x: 100, y: 0 });
 			expect(trimmed[0].p1).toEqual({ x: 100, y: 100 });
+		});
+	});
+
+	describe("parseDashArray", () => {
+		it("reads SVG dash lists, with spaces or commas", () => {
+			expect(parseDashArray("16 12")).toEqual([16, 12]);
+			expect(parseDashArray(" 4, 8 ,2 6 ")).toEqual([4, 8, 2, 6]);
+			expect(parseDashArray([10, 5])).toEqual([10, 5]);
+		});
+
+		it("repeats an odd list, as SVG does", () => {
+			expect(parseDashArray("5")).toEqual([5, 5]);
+			expect(parseDashArray("4 2 1")).toEqual([4, 2, 1, 4, 2, 1]);
+		});
+
+		it("means a solid stroke for nothing, negatives, junk or zero length", () => {
+			expect(parseDashArray(undefined)).toBeUndefined();
+			expect(parseDashArray("")).toBeUndefined();
+			expect(parseDashArray("4 -2")).toBeUndefined();
+			expect(parseDashArray("4 px")).toBeUndefined();
+			expect(parseDashArray("0 0")).toBeUndefined();
 		});
 	});
 

@@ -1,5 +1,17 @@
 # framefields
 
+## 2.13.0
+
+### Minor Changes
+
+- a1bc911: Keep media out of git on your own bucket. `framefields assets add|push|pull|status` stores files by sha256 on any S3-compatible bucket (Cloudflare R2, S3, B2, MinIO) and pins them in `framefields.json`; a remote's `publicUrl` (a custom domain or CDN) serves reads without keys, and uploads are marked immutable so CDNs cache them. Cloud renders upload what the bucket lacks, sign reads of private remotes, and workers download and cache them by hash. `framefields/storage` exposes the client.
+- 7edabea: `framefields render <name>` renders a named render on this machine and `framefields preview <name>` plays it in the browser, reading the same `framefields.json` render as `--cloud`, so a render writes the same file wherever it runs. Both load the module with the project's own tsx and framefields. A local render first downloads pinned assets that are missing; the preview streams them from their bucket instead (redirecting the page to the remote's `publicUrl` or a signed URL, and mixing the soundtrack over HTTP), so an agent in a cloud sandbox previews footage without downloading it. `init`'s `render` and `preview` scripts now call the CLI. A local render runs QA (`qa: true`), prints the report and exits non-zero when QA fails. Every `framefields` command loads the project's `.env` (variables already set win), so `render --cloud` and the storage commands find `FRAMEFIELDS_API_KEY` and remote keys kept there.
+- 786503b: The preview mixes its soundtrack in the browser, around the playhead. The page runs the export's mixer (same decoders, audio effects on its GPU, signals) on 2-second blocks as it plays, each continuing the effect state of the block before, so from the film's start it is the export's mix sample for sample (after a seek the first block warms its effects up from 2 s earlier until the background pass replaces it), and plays them back to back on the AudioContext clock; the rest of the film mixes in the background for the waveform and the master gain. Sources are read in byte ranges, so pinned assets stream from their bucket and the server sends no WAV. The mixing runs in a module worker (the project's bundle, loaded as one) with its own GPU device, so it never stalls the picture; the page mixes if the worker can't, and the server only if neither can. `mixAudioTracks` and `renderAudio` take a `window` (the same samples as that stretch of a full mix), `continue` (carry the last mix's effect state, so back-to-back windows are exact) and `master: false`.
+
+### Patch Changes
+
+- 1064591: Audio effects start every mix from silence. Effect state on the GPU (delay lines, reverb tails, envelopes) was keyed by render id and carried into the next mix that reused one, so mixing again under the same id (the preview, block by block) heard the previous mix's echoes: a ping-pong delay was off by up to 0.43. `mixAudioTracks` now resets it first (`WebGPUAudioProcessor.resetState`, which keeps compiled pipelines), `renderAudio` frees each mix's state, and the video export's cleanup, which passed no device and so freed nothing, now releases it.
+
 ## 2.12.0
 
 ### Minor Changes

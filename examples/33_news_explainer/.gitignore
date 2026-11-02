@@ -1,0 +1,4 @@
+# Fonts fetched by `pnpm assets` (src/fonts.ts pins them); voice and music made by `pnpm audio`.
+assets/fonts/
+assets/takes/
+output/

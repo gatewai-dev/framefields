@@ -18,6 +18,12 @@ export interface PreviewMix {
 	sampleRate: number;
 	/** Its loudest sample: the page masters with the film's loudest. */
 	peak: number;
+	/**
+	 * The same samples as that stretch of a full mix: mixed from the film's
+	 * start, or continuing a chain of back-to-back stretches that began
+	 * there. Otherwise effects with memory start from a lead-in.
+	 */
+	exact: boolean;
 }
 
 export interface MixRange {
@@ -39,17 +45,30 @@ export interface AudioTarget {
  */
 const AUDIO_LEAD_IN_SEC = 2;
 
+/** The mixing function `createAudioMixer` returns. */
+export type AudioMixer = (
+	range: MixRange,
+	chain?: string,
+) => Promise<PreviewMix>;
+
 /**
  * Mixes [startSec, endSec) of the target's soundtrack with the export's
  * mixer: the same decoders (reading only the stretch it plays, so pinned
  * assets stream from their bucket), audio effects on `device` and signals.
+ *
+ * Each `chain` keeps its own effect state. A stretch that starts where the
+ * chain's last one ended continues that state, so a chain of back-to-back
+ * stretches is the full mix, sample for sample; any other starts fresh from
+ * a lead-in. The page plays on one chain and fills the film in on another,
+ * so neither breaks the other.
  */
 export function createAudioMixer(
 	target: AudioTarget,
 	fps: number,
 	device: GPUDevice,
 	renderId: string,
-): (range: MixRange) => Promise<PreviewMix> {
+): AudioMixer {
+	const chains = new Map<string, { endSec: number; exact: boolean }>();
 	// Prepared once, as the export prepares it: a fresh tree, live signal
 	// time finished, media timing preflighted.
 	let prepared: Promise<VirtualMediaData> | undefined;
@@ -62,31 +81,45 @@ export function createAudioMixer(
 		await preflightMediaTime(tree, fps);
 		return tree;
 	};
-	return async (range) => {
+	return async (range, chain = "main") => {
 		prepared ??= prepare();
 		const tree = await prepared;
-		const from = Math.max(0, range.startSec - AUDIO_LEAD_IN_SEC);
+		const last = chains.get(chain);
+		chains.delete(chain); // until this stretch is mixed
+		const contiguous =
+			last !== undefined && Math.abs(range.startSec - last.endSec) < 1e-6;
+		const from = contiguous
+			? range.startSec
+			: Math.max(0, range.startSec - AUDIO_LEAD_IN_SEC);
+		const exact = contiguous ? last.exact : from === 0;
 		const { channels, sampleRate } = await mixAudioTracks(
 			tree,
 			fps,
 			48_000,
 			device,
-			renderId,
-			{ window: { startSec: from, endSec: range.endSec }, master: false },
+			`${renderId}-${chain}`,
+			{
+				window: { startSec: from, endSec: range.endSec },
+				master: false,
+				continue: contiguous,
+			},
 		);
+		chains.set(chain, { endSec: range.endSec, exact });
 		const drop = Math.round((range.startSec - from) * sampleRate);
 		const left = (channels[0] ?? new Float32Array(0)).slice(drop);
 		const right = (channels[1] ?? channels[0] ?? left).slice(drop);
 		let peak = 0;
 		for (let i = 0; i < left.length; i++)
 			peak = Math.max(peak, Math.abs(left[i]), Math.abs(right[i]));
-		return { left, right, sampleRate, peak };
+		return { left, right, sampleRate, peak, exact };
 	};
 }
 
 export interface MixRequest {
 	id: number;
 	range: MixRange;
+	/** The effect-state chain to mix on (see `createAudioMixer`). */
+	chain: string;
 }
 
 export type MixReply =
@@ -131,10 +164,10 @@ export function startAudioMixer(
 	// One stretch at a time, in the order asked: the page queues them.
 	let queue: Promise<void> = Promise.resolve();
 	scope.onmessage = (event: MessageEvent<MixRequest>) => {
-		const { id, range } = event.data;
+		const { id, range, chain } = event.data;
 		queue = queue.then(async () => {
 			try {
-				const mix = await (await ready)(range);
+				const mix = await (await ready)(range, chain);
 				scope.postMessage({ id, mix } satisfies MixReply, [
 					mix.left.buffer,
 					mix.right.buffer,

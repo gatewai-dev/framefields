@@ -68,9 +68,13 @@ export interface PreviewPlayer {
 	 * Mixes [startSec, endSec) of the soundtrack here, with the export's
 	 * mixer: the same decoders (reading only the stretch it plays, so pinned
 	 * assets stream from their bucket), audio effects on this page's GPU and
-	 * signals. The page mixes the blocks around its playhead as it plays.
+	 * signals, on `chain`'s effect state (see `createAudioMixer`). The page
+	 * mixes the blocks around its playhead as it plays.
 	 */
-	mixAudio(range: { startSec: number; endSec: number }): Promise<PreviewMix>;
+	mixAudio(
+		range: { startSec: number; endSec: number },
+		chain?: string,
+	): Promise<PreviewMix>;
 	/** A frame at full size as an image, e.g. to attach to a note. */
 	snapshot(frame: number): Promise<ImageBitmap>;
 	/**

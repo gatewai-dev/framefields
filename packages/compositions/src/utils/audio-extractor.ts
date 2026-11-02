@@ -616,6 +616,13 @@ export interface MixAudioOptions {
 	 */
 	window?: { startSec: number; endSec: number };
 	/**
+	 * Continue the effect state the last mix under this render id left,
+	 * instead of starting from silence. A caller mixing back-to-back windows
+	 * ([a, b) then [b, c)) gets exactly the samples of a full mix, effects
+	 * with memory included. Default false.
+	 */
+	continue?: boolean;
+	/**
 	 * Apply the master stage (whole-mix auto gain, soft limiting). Default
 	 * true. A windowed caller that masters once it knows the film's peak
 	 * passes false and reads `peak`.
@@ -685,7 +692,8 @@ export async function mixAudioTracks(
 	// Effects keep state on the GPU (delay lines, reverb tails) that carries
 	// across the chunks of one mix. A mix starts from silence, also when a
 	// caller mixes again under the same render id (the preview, block by block).
-	if (device) WebGPUAudioProcessor.resetState(renderId ?? "global", device);
+	if (device && !options.continue)
+		WebGPUAudioProcessor.resetState(renderId ?? "global", device);
 
 	// Register all signals from the composition tree
 	shaderStore.registerSignalsFromComposition(renderId, virtualMedia);

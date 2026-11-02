@@ -162,4 +162,46 @@ describe("windowed audio mix", () => {
 		const exported = await mix(comp);
 		expect(maxDiff(exported.channels, first.channels, 0)).toBe(0);
 	}, 60_000);
+
+	it("continues effect state across back-to-back windows, exactly", async () => {
+		// A long, strong delay: its echoes outlast any lead-in. Windows that
+		// continue the last one's state reproduce the full mix sample for sample.
+		const comp = new Composition({
+			width: 64,
+			height: 64,
+			fps: FPS,
+			durationMs: 4000,
+		});
+		comp.addAudio(
+			Layer.audio(source, { trimStartSec: 1, durationFrames: 120 }).apply(
+				new AudioDelay({ delayTime: 0.3, feedback: 0.9, pingPong: true }),
+			),
+		);
+		const vm = comp.toVirtualMedia();
+		await mix(comp);
+		const device = await ensureDevice();
+		const full = await mixAudioTracks(vm, FPS, SR, device, "chain", {
+			master: false,
+		});
+		const edges = [0, 0.7, 2, 2.05, 3.3, 4];
+		const parts: Float32Array[][] = [];
+		for (let k = 0; k + 1 < edges.length; k++) {
+			const part = await mixAudioTracks(vm, FPS, SR, device, "chain", {
+				window: { startSec: edges[k], endSec: edges[k + 1] },
+				master: false,
+				continue: k > 0,
+			});
+			parts.push(part.channels);
+		}
+		const joined = [0, 1].map((c) => {
+			const out = new Float32Array(full.channels[c].length);
+			let at = 0;
+			for (const p of parts) {
+				out.set(p[c], at);
+				at += p[c].length;
+			}
+			return out;
+		});
+		expect(maxDiff(full.channels, joined, 0)).toBe(0);
+	}, 60_000);
 });

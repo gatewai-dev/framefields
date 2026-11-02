@@ -556,13 +556,13 @@ export const previewPage = /* html */ `<!doctype html>
       };
     });
     return {
-      mix: function (range) {
+      mix: function (range, chain) {
         return ready.then(function () {
           if (failed) throw failed;
           return new Promise(function (resolve, reject) {
             var id = ++next;
             calls.set(id, { resolve: resolve, reject: reject });
-            worker.postMessage({ id: id, range: range });
+            worker.postMessage({ id: id, range: range, chain: chain });
           });
         });
       },
@@ -575,7 +575,7 @@ export const previewPage = /* html */ `<!doctype html>
     audio.buffer = null;
     audio.peaks = new Array(PEAK_BINS).fill(0);
     stream = { player: p, worker: mixerWorker(), blocks: new Map(), order: [], pending: new Map(), queue: [], busy: false,
-      seen: new Set(), peak: 0, gain: 1, fill: 0, total: Math.max(1, Math.ceil(filmSec() / BLOCK_SEC)) };
+      seen: new Set(), peak: 0, gain: 1, fill: 0, filling: false, total: Math.max(1, Math.ceil(filmSec() / BLOCK_SEC)) };
     ensureAudioContext();
     setAudioStatus("mixing");
     var s = stream;
@@ -583,24 +583,35 @@ export const previewPage = /* html */ `<!doctype html>
       if (stream === s && audio.state === "mixing") setAudioStatus("ready");
     }, function () {});
   }
+  // Blocks mix on two chains, each continuing its own effect state from the
+  // block before: "fill" runs through the film from its start, so its blocks
+  // are exactly the export's; "play" starts at a seek with a lead-in and
+  // carries on from there. An exact block is never replaced by a lead-in one.
   function streamBlock(s, i, urgent) {
     var have = s.blocks.get(i);
     if (have) return Promise.resolve(have);
     var waiting = s.pending.get(i);
     if (waiting) {
-      if (urgent) {
-        var at = s.queue.findIndex(function (j) { return j.i === i; });
-        if (at > 0) s.queue.unshift(s.queue.splice(at, 1)[0]);
-      }
+      if (urgent) promote(s, i);
       return waiting;
     }
-    waiting = new Promise(function (resolve, reject) {
-      var job = { i: i, resolve: resolve, reject: reject };
-      if (urgent) s.queue.unshift(job); else s.queue.push(job);
-    });
-    s.pending.set(i, waiting);
+    waiting = enqueue(s, i, i === s.fill ? "fill" : "play", urgent, true);
     pumpStream(s);
     return waiting;
+  }
+  function enqueue(s, i, chain, urgent, own) {
+    if (chain === "fill") s.filling = true;
+    var waiting = new Promise(function (resolve, reject) {
+      var job = { i: i, chain: chain, own: own, resolve: resolve, reject: reject };
+      if (urgent) s.queue.unshift(job); else s.queue.push(job);
+    });
+    if (own) s.pending.set(i, waiting);
+    else waiting.catch(function () {});
+    return waiting;
+  }
+  function promote(s, i) {
+    var at = s.queue.findIndex(function (j) { return j.i === i; });
+    if (at > 0) s.queue.unshift(s.queue.splice(at, 1)[0]);
   }
   function pumpStream(s) {
     if (s.busy || stream !== s) return;
@@ -608,40 +619,45 @@ export const previewPage = /* html */ `<!doctype html>
     s.busy = true;
     var job = s.queue.shift();
     var range = { startSec: job.i * BLOCK_SEC, endSec: Math.min(filmSec(), (job.i + 1) * BLOCK_SEC) };
-    mixBlock(s, range).then(function (mix) {
-      var block = { left: mix.left, right: mix.right, sampleRate: mix.sampleRate };
-      if (stream === s) keepBlock(s, job.i, block, mix.peak);
-      job.resolve(block);
+    mixBlock(s, range, job.chain).then(function (mix) {
+      if (stream === s) keepBlock(s, job.i, { left: mix.left, right: mix.right, sampleRate: mix.sampleRate, exact: mix.exact }, mix.peak);
+      if (job.chain === "fill") { s.fill = job.i + 1; s.filling = false; }
+      job.resolve(s.blocks.get(job.i));
     }, function (err) {
+      if (job.chain === "fill") s.filling = false;
       job.reject(err);
       streamFailed(s, err);
     }).then(function () {
-      s.pending.delete(job.i);
+      if (job.own) s.pending.delete(job.i);
       s.busy = false;
       pumpStream(s);
     });
   }
   // In the worker; on the page itself once the worker has failed.
-  function mixBlock(s, range) {
-    if (!s.worker) return s.player.mixAudio(range);
-    return s.worker.mix(range).catch(function (err) {
+  function mixBlock(s, range, chain) {
+    if (!s.worker) return s.player.mixAudio(range, chain);
+    return s.worker.mix(range, chain).catch(function (err) {
       if (s.worker) {
         console.warn("The soundtrack's mixing worker failed, so the page mixes it:", err);
         s.worker.stop();
         s.worker = null;
       }
-      return s.player.mixAudio(range);
+      return s.player.mixAudio(range, chain);
     });
   }
-  // Idle: mix the next block not mixed yet, for the waveform and the gain.
+  // Idle: the fill chain mixes its next block, every block in order, so
+  // its effect state runs on unbroken from the film's start.
   function fillStream(s) {
-    while (s.fill < s.total && s.seen.has(s.fill)) s.fill++;
-    if (s.fill < s.total && !s.pending.has(s.fill)) streamBlock(s, s.fill, false);
+    if (s.filling || s.fill >= s.total) return;
+    enqueue(s, s.fill, "fill", false, !s.pending.has(s.fill));
   }
   function keepBlock(s, i, block, peak) {
-    s.blocks.set(i, block);
-    s.order.push(i);
-    while (s.order.length > KEEP_BLOCKS) s.blocks.delete(s.order.shift());
+    var had = s.blocks.get(i);
+    if (!had || !had.exact || block.exact) {
+      s.blocks.set(i, block);
+      s.order.push(i);
+      while (s.order.length > KEEP_BLOCKS) s.blocks.delete(s.order.shift());
+    }
     if (s.seen.has(i)) return;
     s.seen.add(i);
     s.peak = Math.max(s.peak, peak);
@@ -1357,7 +1373,7 @@ export const previewPage = /* html */ `<!doctype html>
         buffering: stalled,
         audio: audio.state,
         // Soundtrack blocks mixed in this page so far, of the film's.
-        audioMixed: stream ? { blocks: stream.seen.size, of: stream.total } : null,
+        audioMixed: stream ? { blocks: stream.seen.size, of: stream.total, exact: Array.from(stream.blocks.values()).filter(function (b) { return b.exact; }).length } : null,
         // Where the soundtrack mixes: "worker" (off the page's thread), "page", or "server".
         audioMixer: stream ? (stream.worker ? "worker" : "page") : audio.mode === "server" ? "server" : null,
         connected: !offline,

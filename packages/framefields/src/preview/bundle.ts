@@ -167,9 +167,11 @@ export async function bundleProject(options: {
 					}));
 					b.onLoad({ filter: /.*/, namespace: "framefields-preview" }, () => ({
 						contents: [
-							`import { startPlayer } from ${JSON.stringify(`${ENGINE_URL}/player.mjs`)};`,
+							`import { startAudioMixer, startPlayer } from ${JSON.stringify(`${ENGINE_URL}/player.mjs`)};`,
 							`import * as mod from ${JSON.stringify(entry)};`,
-							`startPlayer(mod, ${JSON.stringify(options.exportName)}, ${JSON.stringify(settings)});`,
+							// The page loads it as the player; a worker it starts, as the soundtrack's mixer.
+							`if (typeof document === "undefined") startAudioMixer(mod, ${JSON.stringify(options.exportName)});`,
+							`else startPlayer(mod, ${JSON.stringify(options.exportName)}, ${JSON.stringify(settings)});`,
 						].join("\n"),
 						resolveDir: path.dirname(entry),
 						loader: "js",

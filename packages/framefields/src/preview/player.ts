@@ -10,15 +10,8 @@ import { BUILTIN_NODE_RENDERERS } from "framefields-preview:renderers";
 import {
 	compositionStateStore,
 	drawCompositionTree,
-	mixAudioTracks,
-	preflightMediaTime,
 } from "@framefields/compositions";
 import { updateClockSignals, type VirtualMediaData } from "@framefields/core";
-import {
-	audioRegistry,
-	type NodeRendererPlugin,
-	registerWebGPURenderer,
-} from "@framefields/node-sdk";
 import { preloadCompositionFonts } from "@framefields/renderers";
 import {
 	type OrtWebModule,
@@ -33,12 +26,16 @@ import {
 	type RenderContextValue,
 	SlugFontCache,
 } from "@framefields/webgpu-renderers";
+import {
+	type AudioTarget,
+	createAudioMixer,
+	type PreviewMix,
+} from "./audio-mixer.js";
 import { Blitter } from "./blit.js";
+import { type BuiltinRenderer, registerRenderers } from "./register.js";
 
-export interface BuiltinRenderer {
-	ops: readonly string[];
-	load: () => Promise<{ default?: NodeRendererPlugin }>;
-}
+export { startAudioMixer } from "./audio-mixer.js";
+export type { BuiltinRenderer, PreviewMix };
 
 export interface PlayerMeta {
 	width: number;
@@ -47,21 +44,6 @@ export interface PlayerMeta {
 	frameCount: number;
 	durationMs: number;
 }
-
-/** A stretch of the soundtrack, before the master stage. */
-export interface PreviewMix {
-	left: Float32Array;
-	right: Float32Array;
-	sampleRate: number;
-	/** Its loudest sample: the page masters with the film's loudest. */
-	peak: number;
-}
-
-/**
- * Seconds mixed before a window and dropped, so effects that carry state
- * (reverb tails, delays, compressors) enter it warmed up, as in a full mix.
- */
-const AUDIO_LEAD_IN_SEC = 2;
 
 export interface PreviewPlayer {
 	meta: PlayerMeta;
@@ -100,13 +82,7 @@ export interface PreviewPlayer {
 	dispose(): Promise<void>;
 }
 
-type Renderable = {
-	toVirtualMediaAsync?: () => Promise<VirtualMediaData>;
-	toVirtualMedia?: () => VirtualMediaData;
-	/** Finishes live signal time, recorded frame by frame, before a mix. */
-	prepareMediaTime?: () => Promise<void>;
-	fps?: number;
-};
+type Renderable = AudioTarget & { fps?: number };
 
 declare global {
 	interface Window {
@@ -416,17 +392,7 @@ async function createPlayer(
 		})();
 	}
 
-	// The tree the soundtrack mixes from, prepared once as the export prepares
-	// it: a fresh tree, live signal time finished, media timing preflighted.
-	let audioTree: Promise<VirtualMediaData> | undefined;
-	async function prepareAudioTree(): Promise<VirtualMediaData> {
-		const tree = target.toVirtualMediaAsync
-			? await target.toVirtualMediaAsync()
-			: (target.toVirtualMedia?.() ?? (vm as VirtualMediaData));
-		await target.prepareMediaTime?.();
-		await preflightMediaTime(tree, fps);
-		return tree;
-	}
+	const mixAudio = createAudioMixer(target, fps, device, `${renderId}-audio`);
 
 	const blitter = new Blitter(device, surface.colorFormat);
 
@@ -453,26 +419,7 @@ async function createPlayer(
 			pump();
 			return true;
 		},
-		async mixAudio(range) {
-			audioTree ??= prepareAudioTree();
-			const tree = await audioTree;
-			const from = Math.max(0, range.startSec - AUDIO_LEAD_IN_SEC);
-			const { channels, sampleRate } = await mixAudioTracks(
-				tree,
-				fps,
-				48_000,
-				device,
-				`${renderId}-audio`,
-				{ window: { startSec: from, endSec: range.endSec }, master: false },
-			);
-			const drop = Math.round((range.startSec - from) * sampleRate);
-			const left = (channels[0] ?? new Float32Array(0)).subarray(drop);
-			const right = (channels[1] ?? channels[0] ?? left).subarray(drop);
-			let peak = 0;
-			for (let i = 0; i < left.length; i++)
-				peak = Math.max(peak, Math.abs(left[i]), Math.abs(right[i]));
-			return { left, right, sampleRate, peak };
-		},
+		mixAudio,
 		async snapshot(frame) {
 			if (disposed) throw new Error("the player was disposed");
 			while (drawing) await drawing;
@@ -549,27 +496,4 @@ async function readTexture(
 function containsOp(node: VirtualMediaData, op: string): boolean {
 	if ((node.operation as { op?: string } | undefined)?.op === op) return true;
 	return (node.children ?? []).some((child) => containsOp(child, op));
-}
-
-async function registerRenderers(renderers: readonly BuiltinRenderer[]) {
-	await Promise.all(
-		renderers.map(async ({ ops, load }) => {
-			try {
-				const plugin = (await load()).default;
-				for (const op of ops) {
-					if (plugin?.WebGPURenderer)
-						registerWebGPURenderer(op, plugin.WebGPURenderer);
-					if (plugin?.audioProcessor)
-						audioRegistry.register(op, plugin.audioProcessor);
-				}
-			} catch (err) {
-				console.warn(
-					"[framefields] renderer for",
-					ops[0],
-					"failed to load",
-					err,
-				);
-			}
-		}),
-	);
 }

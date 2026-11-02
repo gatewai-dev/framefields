@@ -151,6 +151,15 @@ interface DecodedAudioRange {
 }
 
 /**
+ * A source this runtime can't decode at all (a codec WebCodecs lacks, in a
+ * worker without AudioContext). Thrown, not mixed as silence, so the caller
+ * can mix where it can be decoded.
+ */
+export class AudioDecodeUnavailable extends Error {
+	override name = "AudioDecodeUnavailable";
+}
+
+/**
  * The browser's whole-file decoder, for codecs WebCodecs can't decode
  * (mediabunny reads byte ranges and decodes with WebCodecs first).
  */
@@ -160,7 +169,9 @@ async function decodeWithAudioContext(url: string): Promise<DecodedAudioRange> {
 		(window as Window & { webkitAudioContext?: typeof AudioContext })
 			.webkitAudioContext;
 	if (!AudioContextClass) {
-		throw new Error("AudioContext is not supported in this browser");
+		throw new AudioDecodeUnavailable(
+			`No decoder here for ${url}: WebCodecs can't decode it and there is no AudioContext (a worker).`,
+		);
 	}
 	const audioCtx = new AudioContextClass();
 	try {
@@ -211,14 +222,10 @@ async function decodeAudioRange(
 		`[AudioExtractor] decodeAudioSource started for url: ${url}`,
 	);
 	try {
-		const isBrowser =
-			typeof window !== "undefined" &&
-			typeof window.document !== "undefined" &&
-			!(
-				typeof process !== "undefined" &&
-				process.versions &&
-				process.versions.node
-			);
+		// A page or a worker: anything but Node.
+		const isBrowser = !(
+			typeof process !== "undefined" && process.versions?.node
+		);
 		let inputAcquired = false;
 		try {
 			mediaLogger.debug(
@@ -438,8 +445,9 @@ async function decodeAudioRange(
 		}
 	} catch (err) {
 		if (
-			err instanceof Error &&
-			err.message.includes("Cannot open local media file")
+			err instanceof AudioDecodeUnavailable ||
+			(err instanceof Error &&
+				err.message.includes("Cannot open local media file"))
 		) {
 			throw err;
 		}

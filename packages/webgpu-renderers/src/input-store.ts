@@ -1,10 +1,13 @@
 import { ALL_FORMATS, FilePathSource, Input, UrlSource } from "mediabunny";
 import { isNodeRuntime, toLocalPath } from "./local-path.js";
 
-/** In the browser, local paths are served through the dev server's `/@fs`. */
+/**
+ * In the browser (a page or a worker), local paths are served through the
+ * dev server's `/@fs`.
+ */
 export function resolveInputUrl(url: string, isNode: boolean): string {
 	let resolvedUrl = url;
-	if (!isNode && typeof window !== "undefined") {
+	if (!isNode && typeof location !== "undefined") {
 		if (resolvedUrl.startsWith("file://")) {
 			resolvedUrl = resolvedUrl.slice(7);
 		}

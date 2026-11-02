@@ -524,15 +524,57 @@ export const previewPage = /* html */ `<!doctype html>
   // in the background (which draws the waveform and finds the film's loudest
   // sample for the master gain). Blocks play back to back on the
   // AudioContext clock. Sources stream straight from where they live, pinned
-  // assets from their bucket. If mixing fails here, the server mixes it. ──
+  // assets from their bucket. The mixing runs in a worker with its own GPU
+  // device, so it never holds up drawing; if the worker can't, the page mixes,
+  // and if that fails too, the server does. ──
   var BLOCK_SEC = 2, AHEAD_SEC = 4, KEEP_BLOCKS = 64, PEAK_BINS = 1200, SILENT = 0.001;
   var stream = null, playback = null;
   function filmSec() { return meta.frameCount / meta.fps; }
+  // The project's bundle, loaded as a worker, runs the mixer instead of a player.
+  function mixerWorker() {
+    var worker;
+    try { worker = new Worker("/@framefields/player.js", { type: "module" }); } catch (e) { return null; }
+    var calls = new Map(), next = 0, failed = null;
+    var fail = function (err) {
+      failed = failed || err;
+      calls.forEach(function (c) { c.reject(failed); });
+      calls.clear();
+    };
+    var ready = new Promise(function (resolve, reject) {
+      worker.onmessage = function (e) {
+        var d = e.data;
+        if ("ready" in d) { if (d.ready) resolve(); else { reject(new Error(d.error)); fail(new Error(d.error)); } return; }
+        var call = calls.get(d.id);
+        if (!call) return;
+        calls.delete(d.id);
+        if (d.error) call.reject(new Error(d.error)); else call.resolve(d.mix);
+      };
+      worker.onerror = function (e) {
+        var err = new Error(e.message || "the mixing worker failed");
+        reject(err);
+        fail(err);
+      };
+    });
+    return {
+      mix: function (range) {
+        return ready.then(function () {
+          if (failed) throw failed;
+          return new Promise(function (resolve, reject) {
+            var id = ++next;
+            calls.set(id, { resolve: resolve, reject: reject });
+            worker.postMessage({ id: id, range: range });
+          });
+        });
+      },
+      stop: function () { worker.terminate(); fail(new Error("stopped")); }
+    };
+  }
   function beginStream(p) {
+    if (stream && stream.worker) stream.worker.stop();
     stopClock();
     audio.buffer = null;
     audio.peaks = new Array(PEAK_BINS).fill(0);
-    stream = { player: p, blocks: new Map(), order: [], pending: new Map(), queue: [], busy: false,
+    stream = { player: p, worker: mixerWorker(), blocks: new Map(), order: [], pending: new Map(), queue: [], busy: false,
       seen: new Set(), peak: 0, gain: 1, fill: 0, total: Math.max(1, Math.ceil(filmSec() / BLOCK_SEC)) };
     ensureAudioContext();
     setAudioStatus("mixing");
@@ -566,7 +608,7 @@ export const previewPage = /* html */ `<!doctype html>
     s.busy = true;
     var job = s.queue.shift();
     var range = { startSec: job.i * BLOCK_SEC, endSec: Math.min(filmSec(), (job.i + 1) * BLOCK_SEC) };
-    s.player.mixAudio(range).then(function (mix) {
+    mixBlock(s, range).then(function (mix) {
       var block = { left: mix.left, right: mix.right, sampleRate: mix.sampleRate };
       if (stream === s) keepBlock(s, job.i, block, mix.peak);
       job.resolve(block);
@@ -577,6 +619,18 @@ export const previewPage = /* html */ `<!doctype html>
       s.pending.delete(job.i);
       s.busy = false;
       pumpStream(s);
+    });
+  }
+  // In the worker; on the page itself once the worker has failed.
+  function mixBlock(s, range) {
+    if (!s.worker) return s.player.mixAudio(range);
+    return s.worker.mix(range).catch(function (err) {
+      if (s.worker) {
+        console.warn("The soundtrack's mixing worker failed, so the page mixes it:", err);
+        s.worker.stop();
+        s.worker = null;
+      }
+      return s.player.mixAudio(range);
     });
   }
   // Idle: mix the next block not mixed yet, for the waveform and the gain.
@@ -608,6 +662,7 @@ export const previewPage = /* html */ `<!doctype html>
   }
   function streamFailed(s, err) {
     if (stream !== s) return;
+    if (s.worker) s.worker.stop();
     stream = null;
     stopClock();
     console.warn("Mixing the soundtrack in the browser failed, so the preview server mixes it:", err);
@@ -1303,6 +1358,8 @@ export const previewPage = /* html */ `<!doctype html>
         audio: audio.state,
         // Soundtrack blocks mixed in this page so far, of the film's.
         audioMixed: stream ? { blocks: stream.seen.size, of: stream.total } : null,
+        // Where the soundtrack mixes: "worker" (off the page's thread), "page", or "server".
+        audioMixer: stream ? (stream.worker ? "worker" : "page") : audio.mode === "server" ? "server" : null,
         connected: !offline,
         // Frames shown per second over the last 2 s of playback (the last
         // playback's while paused), and how long the last frame took to draw.

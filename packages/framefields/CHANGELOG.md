@@ -1,5 +1,16 @@
 # framefields
 
+## 2.13.1
+
+### Patch Changes
+
+- 1835ddf: A hand-drawn arrow's head no longer spins. `Annotate`'s arrow aimed its head from the tip to the last point of the wobbled shaft, a segment a few pixels long that the boil moved on every re-pose, so the head swung round (fully, on short arrows), and the wobbled shaft stopped short of it. The head now follows the clean curve's direction a head's length back from the tip, the same in every pose, and the hand lets go of the shaft toward the tip so the two always meet.
+- 1835ddf: Paths with several subpaths fill as drawn. A `path` shape's fill joined every subpath into one polygon, so a map's states and islands, a ring or a letter with a counter came out as wedges bridging them. Each subpath is now a contour; contours nest, holes follow SVG's nonzero rule, and each filled contour is triangulated with its holes (earcut). Fills are cached by path data, so a large path is triangulated once rather than every frame. Animating `d` (path morphs) also passes schema validation now: its keyframes are path data, not numbers, which `Annotate`'s hand-drawn boil relies on.
+- 1835ddf: `strokeDashArray` renders. It is written as SVG writes it (`"12 8"`, `"4,8"`), but the string reached the path pipeline as if it were a list of numbers, the dash arithmetic came out NaN, and the whole stroke was dropped: dashed lines, circles and outlines drew nothing. It is now read by SVG's rules (an odd list repeats; a negative, unreadable or zero-length pattern draws solid).
+- 1835ddf: Strokes draw in one call per path. The path pipeline drew every straight piece of a stroke (and of the hairline that antialiases a solid fill) as its own draw, with two buffer uploads each, so a curve, a dashed line or a map's coastline cost thousands of native calls a frame. Each segment is now an instance of one draw: the path's transform, color, width and cap are uploaded once, its segments in one buffer, and the vertex shader builds each segment's quad. Output is unchanged; a scene of map coastlines and a hundred filled circles renders about twice as fast.
+- 1835ddf: A layer keyed up from `volume: 0`, or keyed out of `muted: true`, plays. The mix baked a layer's resting volume and mute into its sources (skipping a source at 0 altogether) and the layer's keys only rescaled what was left, so a fade in from a resting volume of 0 stayed silent for good. Props a layer keys are now applied by its keys alone; resting values it does not key are applied as before. A ducked music bed written `Layer.audio(music, { volume: 0 }).animate(LayerAnimation.keys("volume", …))` is heard.
+- 1835ddf: A keyframe track holds its first value until it is reached. Baked tracks showed the layer's own value before their first key, so `keys("opacity", [[40, 0], [48, 1]])` drew the layer fully opaque for 40 frames and then snapped it out to fade in, and `keys("y", [[30, 440], [40, 400]])` sat at 400 before jumping to 440. Draw-time tracks (signals, stepped layers, path morphs) already held the first key, so the same track now plays the same either way. Discrete props (`hidden`, `muted`) still step from the layer's own value, as sets do.
+
 ## 2.13.0
 
 ### Minor Changes

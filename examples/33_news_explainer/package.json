@@ -1,6 +1,6 @@
 {
 	"name": "@framefields/example-33-news-explainer",
-	"version": "2.13.0",
+	"version": "2.13.1",
 	"private": true,
 	"type": "module",
 	"scripts": {

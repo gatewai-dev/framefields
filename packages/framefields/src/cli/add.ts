@@ -118,7 +118,7 @@ export async function add(
 		}
 	}
 	if (!saved) {
-		writeConfig(cwd, { components: relative(cwd, dir) || "." });
+		writeConfig(cwd, { ...config, components: relative(cwd, dir) || "." });
 		report.configWritten = true;
 	}
 

@@ -44,7 +44,7 @@ Typecheck the project:
 npx tsc --noEmit -p .
 ```
 
-In projects initialized with the current CLI, `pnpm check` runs typechecking and document preflight. For another entry, run `pnpm exec framefields check src/film.ts --export buildFilm --json`. The export is a `Composition` or a builder returning one; importing it executes project code, so keep rendering, generation and writes out of the builder. The CLI runs it in an isolated process, routes builder logs to stderr and writes one versioned JSON result to stdout. Errors fail the command; warnings fail with `--warnings-as-errors`. `--timeout 60000` bounds the worker lifetime.
+In projects initialized with the current CLI, `pnpm check` runs typechecking and document preflight. For a named render, run `pnpm exec framefields check teaser --json`; with no argument it checks every render in `framefields.json`. For another module, `pnpm exec framefields check src/film.ts --export buildFilm --json`. The export is a `Composition` or a builder returning one; importing it executes project code, so keep rendering, generation and writes out of the builder. The CLI runs it in an isolated process, routes builder logs to stderr and writes one versioned JSON result to stdout. Errors fail the command; warnings fail with `--warnings-as-errors`. `--timeout 60000` bounds the worker lifetime.
 
 `pnpm check:render` adds GPU verification, a frame and a three-point grid under `output/check`; `--output <dir>` changes the location. This smoke check does not replace targeted pixel assertions or video QA. A failed or unavailable GPU check is reported as a failure. Use `pnpm exec framefields api` for timing, grid and preflight type declarations generated from this SDK version.
 
@@ -192,15 +192,30 @@ await stitchChunks({ chunks: ["out/chunk-0.mp4", "out/chunk-1.mp4"], audio: "out
 
 api.framefields.dev renders the project on framefields' GPUs and splits a long film across several. It fetches the project from git, so it renders the **pushed commit**: commit and push first; uncommitted changes are not rendered (the CLI warns), and an unpushed commit is refused. It bills the account behind `FRAMEFIELDS_API_KEY`; if authentication is required, ask the user to set it in the process environment and never print or embed it.
 
-```bash
-npx framefields render src/film.ts --cloud --workers auto --plan   # workers, time and estimated cost; renders nothing
-npx framefields render src/film.ts --cloud --workers auto          # render, then download to output/film.mp4
+Renders are named in `framefields.json` (`init` writes `film`), so nobody picks files: the CLI, `renderCloud` and the dashboard's New render dialog all list them.
+
+```json
+{
+  "renders": {
+    "film":   { "title": "Launch film", "entry": "src/film.ts", "export": "buildFilm", "workers": "auto", "output": "output/film.mp4" },
+    "teaser": { "title": "15 s teaser", "description": "Vertical cut for socials", "entry": "src/film.ts", "export": "buildTeaser" }
+  }
+}
 ```
 
-- `--workers` defaults to 1 (one GPU, no planning step). `auto` measures frame costs on one worker, then uses as many workers as stay efficient: a 5-minute film stays on one, a 3-hour film spreads to `--max-workers` (API cap 10). A number splits into that many.
+Each render takes `entry` (required, relative to the project root), `export` (default `buildFilm`), `title`, `description`, `args`, `select`, `workers`, `maxWorkers`, `codec`, `quality` and `output`. Add one per cut instead of parameterizing the render script; `npx framefields renders` lists them, `npx framefields check` checks all of them.
+
+```bash
+npx framefields render film --cloud --plan   # workers, time and estimated cost; renders nothing
+npx framefields render film --cloud          # render, then download to the render's output
+npx framefields render src/film.ts --cloud --export buildFilm --workers auto   # a module, without a manifest
+```
+
+- Flags override the named render's fields. With one named render, `framefields render --cloud` needs no name.
+- `--workers` defaults to the render's `workers`, else 1 (one GPU, no planning step). `auto` measures frame costs on one worker, then uses as many workers as stay efficient: a 5-minute film stays on one, a 3-hour film spreads to `--max-workers` (API cap 10). A number splits into that many.
 - Show the user `--plan` before a long or expensive render: it prints the estimated cost.
 - Ctrl-C cancels the render; GPU time already used is charged. Failures print the worker's error code (e.g. `ASSET_NOT_FOUND` for an asset left out of LFS).
-- From code: `renderCloud({ entry, workers: "auto", outputPath, onProgress })` from `framefields/cloud` (no GPU needed locally). The HTTP API is `POST /v1/render` (`workers`, `max_workers`, `dry_run`), `GET` and `DELETE /v1/render/:id`.
+- From code: `renderCloud({ render: "film", outputPath, onProgress })` (or `{ entry, export, workers }`) from `framefields/cloud` (no GPU needed locally). The HTTP API is `POST /v1/render` (`workers`, `max_workers`, `dry_run`), `GET` and `DELETE /v1/render/:id`.
 
 ---
 

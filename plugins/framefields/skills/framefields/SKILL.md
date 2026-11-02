@@ -226,7 +226,18 @@ Add scripts to `package.json`:
   "grid": "tsx src/render.ts grid",
   "preview": "tsx src/render.ts preview",
   "render": "tsx src/render.ts",
-  "render:cloud": "framefields render src/film.ts --cloud --workers auto"
+  "render:cloud": "framefields render film --cloud"
+}
+```
+
+`framefields.json` names what the project renders; `film` is the scaffold's. Add an entry per cut (teaser, vertical edit) so the CLI, `framefields check` and the dashboard pick it by name:
+
+```json
+{
+  "components": "src/components",
+  "renders": {
+    "film": { "title": "Launch film", "entry": "src/film.ts", "export": "buildFilm", "workers": "auto", "output": "output/film.mp4" }
+  }
 }
 ```
 
@@ -403,7 +414,7 @@ npx framefields add mouse-pointer focus-zoom    # writes src/components/<name>/
 npx framefields fonts add emoji                 # color emoji (chat-thread and captions add it themselves)
 ```
 
-The generated project also has `check` (TypeScript plus schema/lint/timeline preflight) and `check:render` (adds a GPU frame/grid smoke check) scripts. They produce versioned JSON for agents and terminate with a failure code on errors. For a custom entry, use `framefields check src/film.ts --export buildFilm --json`; add `--render` to write inspection artifacts under `output/check`. Keep the builder free of generation, rendering and writes, because preflight imports and executes it.
+The generated project also has `check` (TypeScript plus schema/lint/timeline preflight) and `check:render` (adds a GPU frame/grid smoke check) scripts. They produce versioned JSON for agents and terminate with a failure code on errors. For another named render, use `framefields check teaser --json` (no name checks them all); for a module without one, `framefields check src/film.ts --export buildFilm --json`; add `--render` to write inspection artifacts under `output/check`. Keep the builder free of generation, rendering and writes, because preflight imports and executes it.
 
 ```typescript
 import { MousePointer } from "./components/mouse-pointer/index.js";

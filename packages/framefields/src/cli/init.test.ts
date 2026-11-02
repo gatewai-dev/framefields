@@ -156,6 +156,15 @@ describe("framefields init", () => {
 				mono: "assets/fonts/mono.ttf",
 				emoji: "assets/fonts/emoji.ttf",
 			},
+			renders: {
+				film: {
+					title: "My Film",
+					entry: "src/film.ts",
+					export: "buildFilm",
+					workers: "auto",
+					output: "output/film.mp4",
+				},
+			},
 		});
 		const fontsTs = read(root("src/components/fonts.ts"));
 		expect(fontsTs).toContain(

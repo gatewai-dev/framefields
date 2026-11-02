@@ -7,10 +7,11 @@
  *   npx framefields list                 the components you can add
  *   npx framefields fonts add <role...>  install fonts (emoji)
  *   npx framefields fonts list           the fonts you can install
- *   npx framefields render <entry> --cloud   render on api.framefields.dev
+ *   npx framefields renders              the renders named in framefields.json
+ *   npx framefields render <name> --cloud    render on api.framefields.dev
  */
 import { readFileSync } from "node:fs";
-import { relative, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { type AddReport, add } from "./cli/add.js";
@@ -39,8 +40,11 @@ const HELP = `Usage: framefields <command> [options]
 
 Commands:
   api             JSON reference generated from timing, grid and check types.
-  check <entry>   Build, validate and lint a composition; --render also writes a
-                  representative frame and grid. --export defaults to buildFilm.
+  check [name|entry]
+                  Build, validate and lint a composition; --render also writes a
+                  representative frame and grid. A render named in
+                  framefields.json, or a module (--export defaults to
+                  buildFilm); with neither, every named render.
   init [dir]      Start a framefields project in dir (default: here), or add
                   framefields to the project there: package.json, tsconfig,
                   src/theme.ts, film.ts, render.ts, assets/, .gitignore,
@@ -53,10 +57,14 @@ Commands:
                   Install fonts (pinned, hash-checked, with their license)
                   and register them in the generated <components>/fonts.ts.
   fonts list      List the fonts you can install.
-  render <entry> --cloud
+  renders         List the renders named in framefields.json.
+  render [name|entry] --cloud
                   Render on api.framefields.dev from the pushed commit of
                   this git repo, and download the video. Needs
-                  FRAMEFIELDS_API_KEY. --export defaults to buildFilm.
+                  FRAMEFIELDS_API_KEY. A render named in framefields.json
+                  (its fields are the defaults; flags override them), or a
+                  module (--export defaults to buildFilm). Without either,
+                  the project's only named render.
 
 Options for check:
   --export <name>   Composition or builder export (default buildFilm).
@@ -73,7 +81,7 @@ Options for render --cloud:
   --max-workers <n> Upper bound for auto.
   --plan            Measure and plan only: prints workers, time and the
                     estimated cost, renders nothing.
-  --output <file>   Where the video goes (default output/<entry>.mp4).
+  --output <file>   Where the video goes (default output/<name>.mp4).
   --codec <codec>   h264 (default) or vp9.
   --quality <q>     very_low, low, high or very_high (default).
   --select <name>   When the export returns several compositions.
@@ -107,7 +115,7 @@ Examples:
   npx framefields init my-film --install
   npx framefields add mouse-pointer focus-zoom
   npx framefields fonts add emoji
-  npx framefields render src/film.ts --cloud --workers auto --plan
+  npx framefields render film --cloud --plan
 `;
 
 async function main(argv: string[]): Promise<number> {
@@ -165,37 +173,12 @@ async function main(argv: string[]): Promise<number> {
 		log(JSON.stringify({ ...catalog, sdkVersion: ownVersion() }));
 		return 0;
 	}
-	if (command === "check") {
-		if (names.length !== 1) {
-			process.stderr.write(
-				"Usage: framefields check <entry> [--export buildFilm] [--render] [--json]\n",
-			);
-			return 2;
-		}
-		const report = await runCheck({
-			entry: names[0],
-			exportName: values.export,
-			render: values.render,
-			outputDir: values.output,
-			timeoutMs:
-				values.timeout === undefined ? undefined : Number(values.timeout),
-			warningsAsErrors: values["warnings-as-errors"],
-		});
-		if (values.json) log(JSON.stringify(report));
-		else {
-			log(`Check ${report.status}: ${report.entry} (${report.exportName})`);
-			for (const d of report.diagnostics)
-				log(
-					`${d.severity} ${d.code}${d.path ? ` at ${d.path}` : ""}: ${d.message}`,
-				);
-			for (const file of report.artifacts) log(`Wrote ${file}`);
-		}
-		return report.status === "passed" ? 0 : 1;
-	}
+	if (command === "check") return check(names, cwd, values, log);
+	if (command === "renders") return listRenders(cwd, values.json, log);
 	if (command === "render") {
-		if (names.length !== 1 || !values.cloud) {
+		if (names.length > 1 || !values.cloud) {
 			process.stderr.write(
-				"Usage: framefields render <entry> --cloud [--workers auto] [--plan]\nLocal renders run your project's render script (`npm run render`).\n",
+				"Usage: framefields render [name|entry] --cloud [--workers auto] [--plan]\nLocal renders run your project's render script (`npm run render`).\n",
 			);
 			return 2;
 		}
@@ -317,6 +300,114 @@ const onDownload = (spec: FontSpec) =>
 	);
 
 /** What `add` did about fonts, and how to use them. */
+/** `check [name|entry]`: a named render, a module, or every named render. */
+async function check(
+	names: string[],
+	cwd: string,
+	values: {
+		export?: string;
+		render?: boolean;
+		output?: string;
+		timeout?: string;
+		"warnings-as-errors"?: boolean;
+		json?: boolean;
+	},
+	log: (s: string) => void,
+): Promise<number> {
+	const renders = readConfig(cwd).config.renders ?? {};
+	const usage = () => {
+		process.stderr.write(
+			"Usage: framefields check [name|entry] [--export buildFilm] [--render] [--json]\n",
+		);
+		return 2;
+	};
+	if (names.length > 1) return usage();
+	const targets: { name?: string; entry: string; exportName?: string }[] =
+		names.length === 0
+			? Object.entries(renders).map(([name, spec]) => ({
+					name,
+					entry: spec.entry,
+					exportName: spec.export,
+				}))
+			: renders[names[0]]
+				? [
+						{
+							name: names[0],
+							entry: renders[names[0]].entry,
+							exportName: values.export ?? renders[names[0]].export,
+						},
+					]
+				: [{ entry: names[0], exportName: values.export }];
+	if (targets.length === 0) return usage();
+	const reports = [];
+	for (const t of targets) {
+		const report = await runCheck({
+			entry: t.entry,
+			exportName: t.exportName,
+			render: values.render,
+			outputDir:
+				values.output ??
+				(targets.length > 1
+					? join("output", "check", t.name ?? "")
+					: undefined),
+			timeoutMs:
+				values.timeout === undefined ? undefined : Number(values.timeout),
+			warningsAsErrors: values["warnings-as-errors"],
+		});
+		reports.push({ ...(t.name && { name: t.name }), ...report });
+		if (values.json) continue;
+		log(
+			`Check ${report.status}: ${t.name ? `${t.name} (${t.entry}, ${report.exportName})` : `${report.entry} (${report.exportName})`}`,
+		);
+		for (const d of report.diagnostics)
+			log(
+				`${d.severity} ${d.code}${d.path ? ` at ${d.path}` : ""}: ${d.message}`,
+			);
+		for (const file of report.artifacts) log(`Wrote ${file}`);
+	}
+	const passed = reports.every((r) => r.status === "passed");
+	if (values.json)
+		log(
+			JSON.stringify(
+				names.length === 0
+					? { status: passed ? "passed" : "failed", checks: reports }
+					: reports[0],
+			),
+		);
+	return passed ? 0 : 1;
+}
+
+/** `renders`: what framefields.json names, as the dashboard shows it. */
+function listRenders(
+	cwd: string,
+	json: boolean | undefined,
+	log: (s: string) => void,
+): number {
+	const renders = readConfig(cwd).config.renders ?? {};
+	if (json) {
+		log(JSON.stringify({ schemaVersion: 1, renders }));
+		return 0;
+	}
+	const entries = Object.entries(renders);
+	if (entries.length === 0) {
+		log(
+			'framefields.json names no renders. Add one: "renders": { "film": { "entry": "src/film.ts", "export": "buildFilm" } }',
+		);
+		return 0;
+	}
+	for (const [name, spec] of entries) {
+		const title = spec.title && spec.title !== name ? `  ${spec.title}` : "";
+		const opts = [
+			spec.workers !== undefined && `workers ${spec.workers}`,
+			spec.codec,
+		].filter(Boolean);
+		log(
+			`${name}${title}\n  ${spec.entry} · ${spec.export ?? "buildFilm"}${spec.select ? ` · ${spec.select}` : ""}${opts.length ? ` · ${opts.join(", ")}` : ""}${spec.description ? `\n  ${spec.description}` : ""}`,
+		);
+	}
+	return 0;
+}
+
 function logFonts(report: AddReport, cwd: string, log: (s: string) => void) {
 	for (const f of report.fonts)
 		log(

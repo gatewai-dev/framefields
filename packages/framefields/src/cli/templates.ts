@@ -3,6 +3,7 @@
  * setup skill describes. `film.ts` only builds; `render.ts` renders frames,
  * a grid, the live preview or the video; `theme.ts` holds the numbers.
  */
+import type { RenderSpec } from "./config.js";
 
 /**
  * Packages with install scripts. framefields needs exactly one (skia-canvas
@@ -27,15 +28,27 @@ export const DEV_DEPENDENCIES: Record<string, string> = {
 
 export const SCRIPTS: Record<string, string> = {
 	typecheck: "tsc --noEmit -p .",
-	check: "tsc --noEmit -p . && framefields check src/film.ts --json",
-	"check:render":
-		"tsc --noEmit -p . && framefields check src/film.ts --render --json",
+	check: "tsc --noEmit -p . && framefields check film --json",
+	"check:render": "tsc --noEmit -p . && framefields check film --render --json",
 	frames: "tsx src/render.ts frames",
 	grid: "tsx src/render.ts grid",
 	preview: "tsx src/render.ts preview",
 	render: "tsx src/render.ts",
-	"render:cloud": "framefields render src/film.ts --cloud --workers auto",
+	"render:cloud": "framefields render film --cloud",
 };
+
+/** The named render `init` records in framefields.json. */
+export function defaultRenders(name: string): Record<string, RenderSpec> {
+	return {
+		film: {
+			title: name,
+			entry: "src/film.ts",
+			export: "buildFilm",
+			workers: "auto",
+			output: "output/film.mp4",
+		},
+	};
+}
 
 /**
  * The `package.json` fields a framefields project needs. npm reads
@@ -254,6 +267,9 @@ ${run("render")}              # output/output.mp4
 ${run("render:cloud")}        # on cloud GPUs, from the pushed commit
 \`\`\`
 
+- \`framefields.json\` names the renders: \`film\` is \`buildFilm\` in \`src/film.ts\`. Add an
+  entry under \`renders\` for each cut (a teaser, a vertical edit) and render or check it by
+  name: \`npx framefields render teaser --cloud\`, \`npx framefields check teaser\`.
 - \`src/film.ts\` builds the composition, \`src/theme.ts\` holds sizes, colors and fonts,
   \`src/render.ts\` renders it.
 - \`npx framefields list\` shows ready-made components; \`npx framefields add <name>\` copies

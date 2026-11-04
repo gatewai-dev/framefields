@@ -11,7 +11,8 @@
  *    procedural studio environment (image-based light), emissive, exposure,
  *    AgX / ACES tone mapping and display-space fog.
  */
-export const lighting3dWgsl = `
+/** The 3D camera uniform block, as `Renderer3D` packs it. */
+export const cameraUniformsWgsl = `
 struct CameraUniforms {
     viewMatrix        : mat4x4<f32>,
     projMatrix        : mat4x4<f32>,
@@ -22,6 +23,10 @@ struct CameraUniforms {
     dofParams         : vec4<f32>, // x = focusDistance, y = fStop, z = maxBlurRadius, w = dofEnabled
     screenParams      : vec4<f32>, // x = surfaceWidth, y = surfaceHeight, z = time, w = unused
 };
+`;
+
+export const lighting3dWgsl = `
+${cameraUniformsWgsl}
 
 struct GPULight {
     posType        : vec4<f32>, // xyz = position, w = type (0=ambient, 1=directional, 2=point, 3=spot)
@@ -58,6 +63,7 @@ struct LightsUniforms {
     shadowMatrix  : mat4x4<f32>,
     floorParams   : vec4<f32>, // x = floorY, y = fadeDistance, z = isReflectionPass, w = environment intensity
     envSh         : array<vec4<f32>, 9>, // HDRI irradiance / PI as L2 SH (rgb), environment space
+    indirect      : vec4<f32>, // x = screen indirect (0 off, 1 radiance pass, 2 apply), y = SSR strength, z = GI strength (-1 off), w = SSR max roughness
 };
 
 const PI = 3.14159265359;
@@ -230,6 +236,124 @@ fn envIrradiance(nIn: vec3<f32>) -> vec3<f32> {
     e += lights.envSh[7].rgb * (1.092548 * n.x * n.z);
     e += lights.envSh[8].rgb * (0.546274 * (n.x * n.x - n.y * n.y));
     return max(e, vec3<f32>(0.0)) * max(0.0, lights.floorParams.w);
+}
+
+// ── Screen-space indirect light ─────────────────────────────────────────
+// A radiance pass renders the scene once; SsrGiPipeline traces reflections
+// and gathers one diffuse bounce from it; the shading pass reads both here,
+// so tone mapping, fog and every material lobe treat them like any other light.
+
+struct ScreenIndirect {
+    valid : bool,
+    /** This fragment's pixel position, and the texel it falls in. */
+    pixel : vec2<f32>,
+    texel : vec2<i32>,
+    /** Linear depth: tells the traced surface's pixels from others. */
+    depth : f32,
+    /** rgb = bounce irradiance / PI, a = ambient visibility. */
+    gi    : vec4<f32>,
+};
+
+// Traced results belong to a fragment when the trace started on its surface.
+fn sameSurface(tracedDepth: f32, depth: f32) -> bool {
+    return abs(tracedDepth - depth) <= max(2.0, depth * 0.02);
+}
+
+fn screenIndirectAt(worldPos: vec3<f32>) -> ScreenIndirect {
+    var si: ScreenIndirect;
+    si.valid = false;
+    si.gi = vec4<f32>(0.0, 0.0, 0.0, 1.0);
+    if (lights.indirect.x < 1.5) {
+        return si;
+    }
+    let clip = cam.viewProjMatrix * vec4<f32>(worldPos, 1.0);
+    if (clip.w <= 0.0) {
+        return si;
+    }
+    let size = vec2<f32>(textureDimensions(screenHit));
+    let px = (vec2<f32>(clip.x, -clip.y) / clip.w * 0.5 + 0.5) * size;
+    let ip = vec2<i32>(clamp(px, vec2<f32>(0.0), size - 1.0));
+    // Only the surface the trace started from owns the pixel's result: a
+    // transparent layer in front of it keeps its own environment light.
+    let depth = dot(worldPos - cam.cameraPos.xyz, cam.cameraDir.xyz);
+    if (!sameSurface(textureLoad(screenHit, ip, 0).z, depth)) {
+        return si;
+    }
+    si.valid = true;
+    si.pixel = px;
+    si.texel = ip;
+    si.depth = depth;
+    if (lights.indirect.z >= 0.0) {
+        si.gi = textureLoad(screenGi, ip, 0);
+    }
+    return si;
+}
+
+/// The environment's radiance \`env\` along the reflection, replaced by what
+/// the screen shows there where traced rays found it. Each pixel reuses the
+/// rays of its 3x3 neighbors on the same surface, weighted by their
+/// confidence: one ray per pixel leaves holes and seams where hits are
+/// ambiguous (rays grazing hidden surfaces); pooled, they resolve smoothly.
+fn screenReflection(si: ScreenIndirect, rough: f32, env: vec3<f32>) -> vec3<f32> {
+    if (!si.valid || lights.indirect.y < 0.0) {
+        return env;
+    }
+    let maxRough = max(lights.indirect.w, 1e-3);
+    let fade = 1.0 - smoothstep(maxRough * 0.6, maxRough, rough);
+    if (fade <= 0.0) {
+        return env;
+    }
+    let size = vec2<f32>(textureDimensions(screenRadiance, 0));
+    let maxTexel = vec2<i32>(size) - 1;
+    let maxMip = f32(textureNumLevels(screenRadiance) - 1u);
+    var radiance = vec3<f32>(0.0);
+    var found = 0.0;
+    var rays = 0.0;
+    for (var dy = -1; dy <= 1; dy++) {
+        for (var dx = -1; dx <= 1; dx++) {
+            let hit = textureLoad(screenHit, clamp(si.texel + vec2<i32>(dx, dy), vec2<i32>(0), maxTexel), 0);
+            if (!sameSurface(hit.z, si.depth)) {
+                continue;
+            }
+            rays += 1.0;
+            if (hit.w <= 0.0) {
+                continue;
+            }
+            // A glossy lobe reaches the hit as a cone (half-angle ~ alpha):
+            // read the radiance pyramid at the level matching its footprint.
+            let footprint = 2.4 * rough * rough * distance(hit.xy, si.pixel);
+            let mip = clamp(log2(max(footprint, 1.0)), 0.0, maxMip);
+            let c = textureSampleLevel(screenRadiance, screenSampler, hit.xy / size, mip);
+            if (c.a <= 1e-3) {
+                continue;
+            }
+            let w = hit.w * min(c.a, 1.0);
+            radiance += c.rgb / c.a * w;
+            found += w;
+        }
+    }
+    if (found <= 0.0) {
+        return env;
+    }
+    let confidence = found / rays * fade * lights.indirect.y;
+    return mix(env, radiance / found, confidence);
+}
+
+/// Ambient irradiance / PI, occluded by nearby geometry, plus its bounce light.
+fn screenAmbient(si: ScreenIndirect, irradiance: vec3<f32>) -> vec3<f32> {
+    if (!si.valid || lights.indirect.z < 0.0) {
+        return irradiance;
+    }
+    return irradiance * si.gi.a + si.gi.rgb * lights.indirect.z;
+}
+
+/// Lagarde's specular occlusion from ambient visibility.
+fn screenSpecularOcclusion(si: ScreenIndirect, nDotV: f32, rough: f32) -> f32 {
+    if (!si.valid || lights.indirect.z < 0.0) {
+        return 1.0;
+    }
+    let ao = si.gi.a;
+    return clamp(pow(nDotV + ao, exp2(-16.0 * rough - 1.0)) - 1.0 + ao, 0.0, 1.0);
 }
 
 // Karis' analytic approximation of the split-sum environment BRDF.
@@ -567,6 +691,25 @@ fn evalIridescence(cosTheta1: f32, thicknessNm: f32, filmIor: f32, baseF0: vec3<
     return clamp(interf, vec3<f32>(0.0), vec3<f32>(1.0));
 }
 
+/// The squared GGX alpha a pixel's spread of normals adds to every lobe,
+/// measured by \`measureSpecularFilter\` at the start of the fragment.
+var<private> specularFilterAlpha2 : f32 = 0.0;
+
+/// Screen-space normal variance under a Gaussian pixel filter (sigma^2 =
+/// 0.25), capped so silhouettes do not turn matte. Derivatives need uniform
+/// control flow, so fragment shaders call this before they branch.
+fn measureSpecularFilter(worldNormal: vec3<f32>) {
+    let du = dpdx(worldNormal);
+    let dv = dpdy(worldNormal);
+    specularFilterAlpha2 = min(2.0 * 0.25 * (dot(du, du) + dot(dv, dv)), 0.18);
+}
+
+/// Perceptual roughness whose alpha^2 is widened by \`extraAlpha2\`.
+fn filteredRoughness(rough: f32, extraAlpha2: f32) -> f32 {
+    let a2 = rough * rough * rough * rough;
+    return sqrt(sqrt(clamp(a2 + extraAlpha2, 0.0, 1.0)));
+}
+
 // Multi-lobe Substrate PBR: GGX (isotropic or anisotropic) + Thin-Film Iridescence +
 // Subsurface wrap/transmission + Charlie Cloth Sheen + Clearcoat secondary lobe + IBL.
 fn shadePhysicalSubstrate(
@@ -586,14 +729,19 @@ fn shadePhysicalSubstrate(
     }
     let R = reflect(-V, N);
     let nDotV = max(dot(N, V), 1e-4);
-    let r = clamp(rough, 0.03, 1.0);
+    // Geometric specular anti-aliasing (Kaplanyan et al. 2016, Tokuyoshi &
+    // Kaplanyan 2019): a pixel sees every normal its footprint covers, so the
+    // lobe can be no narrower than their spread. Without it a near-mirror's
+    // highlight from a small light is a sub-pixel spike that a pixel center
+    // hits or misses as the camera moves: it flickers, and bloom flashes it.
+    let r = filteredRoughness(clamp(rough, 0.03, 1.0), specularFilterAlpha2);
     let a = r * r;
     let a2 = a * a;
     let f0 = mix(vec3<f32>(0.04), albedo, metal);
     let diffuseColor = albedo * (1.0 - metal);
 
     let cc = clamp(substrate.clearcoat.x, 0.0, 1.0);
-    let ccRough = clamp(substrate.clearcoat.y, 0.03, 1.0);
+    let ccRough = filteredRoughness(clamp(substrate.clearcoat.y, 0.03, 1.0), specularFilterAlpha2);
     let ccA = ccRough * ccRough;
     let ccA2 = ccA * ccA;
     let aniso = clamp(substrate.clearcoat.z, -0.95, 0.95);
@@ -740,13 +888,15 @@ fn shadePhysicalSubstrate(
         f0_ibl = mix(f0, fIridView, iridWeight);
     }
 
-    let irradiance = envIrradiance(N) + lights.ambientLinear.rgb;
+    let si = screenIndirectAt(worldPos);
+    let specOcclusion = screenSpecularOcclusion(si, nDotV, r);
+    let irradiance = screenAmbient(si, envIrradiance(N) + lights.ambientLinear.rgb);
     var diffAmbient = diffuseColor * irradiance;
     if (sssWeight > 0.001) {
         let backIrradiance = envIrradiance(-N) * 0.35 + irradiance * 0.25;
         diffAmbient += sssColor * (diffuseColor * 0.5 + vec3<f32>(0.5)) * backIrradiance * sssWeight * 0.45;
     }
-    let specEnv = envRadiance(R_ibl, r) * envBrdfApprox(f0_ibl, r, nDotV);
+    let specEnv = screenReflection(si, r, envRadiance(R_ibl, r) * specOcclusion) * envBrdfApprox(f0_ibl, r, nDotV);
     var iblTotal = diffAmbient + specEnv;
 
     if (sheenWeight > 0.001) {
@@ -759,7 +909,7 @@ fn shadePhysicalSubstrate(
 
     if (cc > 0.001) {
         let Fc_ibl = 0.04 + 0.96 * pow(1.0 - nDotV, 5.0);
-        let ccEnv = envRadiance(R, ccRough) * Fc_ibl * cc;
+        let ccEnv = screenReflection(si, ccRough, envRadiance(R, ccRough) * specOcclusion) * Fc_ibl * cc;
         iblTotal = iblTotal * (1.0 - cc * Fc_ibl) + ccEnv;
     }
 
@@ -887,7 +1037,9 @@ fn shadeSurfaceSubstrate(
         }
     }
     out.display = linearToSrgb(display);
-    out.hdr = hdr;
+    // The radiance pass feeds screen-space traces: scene light, before
+    // exposure and before the camera's fog.
+    out.hdr = select(hdr, radiance, lights.indirect.x > 0.5 && lights.indirect.x < 1.5);
     return out;
 }
 
@@ -906,4 +1058,8 @@ export const lightsBindingsWgsl = `
 @group(3) @binding(3) var<storage, read> directLights : array<DirectLight>;
 @group(3) @binding(4) var envMap : texture_cube<f32>;
 @group(3) @binding(5) var envSampler : sampler;
+@group(3) @binding(6) var screenHit : texture_2d<f32>;
+@group(3) @binding(7) var screenRadiance : texture_2d<f32>;
+@group(3) @binding(8) var screenGi : texture_2d<f32>;
+@group(3) @binding(9) var screenSampler : sampler;
 `;

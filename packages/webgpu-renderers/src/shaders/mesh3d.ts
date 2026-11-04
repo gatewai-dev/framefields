@@ -267,6 +267,7 @@ fn sampleTriplanar4(tex: texture_2d<f32>, p: vec3<f32>, dp1: vec3<f32>, dp2: vec
 
 fn shadeMesh(in: VertexOutput, isFront: bool) -> MeshFragment {
     // Every sample and derivative up front, in uniform control flow.
+    measureSpecularFilter(in.worldNormal);
     var texColor = textureSample(mainTex, texSampler, in.uv);
     var normalSample = textureSample(normalTex, texSampler, in.normalUv).xyz;
     var mrSample = textureSample(metalRoughTex, texSampler, in.mrUv);

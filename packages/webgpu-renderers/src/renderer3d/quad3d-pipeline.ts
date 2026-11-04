@@ -56,6 +56,28 @@ export function createLightsLayout(
 				visibility: GPUShaderStage.FRAGMENT,
 				sampler: { type: "filtering" },
 			},
+			// Screen-space indirect light (SsrGiPipeline): reflection hits,
+			// the radiance pyramid they read and the diffuse bounce.
+			{
+				binding: 6,
+				visibility: GPUShaderStage.FRAGMENT,
+				texture: { sampleType: "unfilterable-float" },
+			},
+			{
+				binding: 7,
+				visibility: GPUShaderStage.FRAGMENT,
+				texture: { sampleType: "float" },
+			},
+			{
+				binding: 8,
+				visibility: GPUShaderStage.FRAGMENT,
+				texture: { sampleType: "float" },
+			},
+			{
+				binding: 9,
+				visibility: GPUShaderStage.FRAGMENT,
+				sampler: { type: "filtering" },
+			},
 		],
 	});
 }

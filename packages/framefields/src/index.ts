@@ -539,8 +539,12 @@ export {
 	EnvironmentFloorSchema,
 	type EnvironmentFog,
 	EnvironmentFogSchema,
+	type EnvironmentGi,
+	EnvironmentGiSchema,
 	type EnvironmentPreset,
 	EnvironmentPresetSchema,
+	type EnvironmentSsr,
+	EnvironmentSsrSchema,
 	type EnvironmentVolumetricFog,
 	type EnvironmentVolumetricFogNoise,
 	EnvironmentVolumetricFogNoiseSchema,
@@ -3673,6 +3677,8 @@ export interface EnvironmentOptions
 			| "fog"
 			| "floor"
 			| "outlines"
+			| "ssr"
+			| "gi"
 			| "bloom"
 			| "startFrame"
 			| "durationFrames"

@@ -173,6 +173,7 @@ struct QuadFragment {
 };
 
 fn shadeQuad(in: VertexOutput, isFront: bool) -> QuadFragment {
+    measureSpecularFilter(in.worldNormal);
     // One-sided quads cull against their declared normal, not the hardware
     // winding: the Y-down view basis mirrors winding, so front_facing reads
     // camera-facing quads as back faces.

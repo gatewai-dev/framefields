@@ -42,6 +42,7 @@ import {
 	type Light3DOptions,
 	type Mat4,
 	Matrix4Math,
+	type ScreenIndirectPass,
 	type Vec3,
 	Vector3Math,
 } from "../math3d/index.js";
@@ -72,6 +73,16 @@ import {
 	transformAabb,
 } from "./shadow-frustum.js";
 import { Slug3DPipeline } from "./slug3d-pipeline.js";
+import {
+	HIZ_FORMAT,
+	HIZ_LEVELS,
+	mipLevels,
+	RADIANCE_LEVELS,
+	SCREEN_GI_FORMAT,
+	SCREEN_RADIANCE_FORMAT,
+	SSR_HIT_FORMAT,
+	SsrGiPipeline,
+} from "./ssr-gi-pipeline.js";
 import type { SurfaceParams } from "./surface-params.js";
 import { Swarm3DPipeline } from "./swarm3d-pipeline.js";
 import { VolumetricFogPipeline } from "./volumetric-fog-pipeline.js";
@@ -235,6 +246,18 @@ export interface Scene3DWorld {
 	environment?: Environment3DOptions | null;
 	/** From `renderShadowMap`, when a light casts shadows. */
 	shadow?: ShadowUniformInfo | ShadowUniformInfo[] | null;
+	/**
+	 * Screen-space reflections / GI (`environment.ssr`, `environment.gi`) take
+	 * two passes: `radiance`, then `traceScreenIndirect`, then `apply`.
+	 */
+	screenIndirect?: ScreenIndirectPass;
+}
+
+/** Textures one `traceScreenIndirect` writes and the `apply` pass reads. */
+interface ScreenIndirectTextures {
+	hits: GPUTexture;
+	radiance: GPUTexture;
+	gi: GPUTexture;
 }
 
 /** Something that can fall into a shadow map. */
@@ -315,6 +338,10 @@ export class Renderer3D {
 	private outlinePipeline: GeometryOutlinePipeline | null = null;
 	private geometryResolvePipeline: GeometryResolvePipeline | null = null;
 	private volumetricFogPipeline: VolumetricFogPipeline | null = null;
+	private ssrGiPipeline: SsrGiPipeline | null = null;
+	private screenIndirect: ScreenIndirectTextures | null = null;
+	private placeholderScreenIndirect: ScreenIndirectTextures | null = null;
+	private screenSampler: GPUSampler | null = null;
 	private lastCameraBuffer: GPUBuffer | null = null;
 
 	/**
@@ -446,9 +473,14 @@ export class Renderer3D {
 		label: string,
 		width: number,
 		height: number,
-		desc: { format: GPUTextureFormat; usage: number; sampleCount?: number },
+		desc: {
+			format: GPUTextureFormat;
+			usage: number;
+			sampleCount?: number;
+			mipLevelCount?: number;
+		},
 	): GPUTexture {
-		const key = `${label}:${width}x${height}:${desc.sampleCount ?? 1}:${desc.usage}`;
+		const key = `${label}:${width}x${height}:${desc.sampleCount ?? 1}:${desc.mipLevelCount ?? 1}:${desc.usage}`;
 		this.attachmentsUsed.add(key);
 		let texture = this.attachments.get(key);
 		if (!texture) {
@@ -472,6 +504,7 @@ export class Renderer3D {
 		this.outlinePipeline?.reset();
 		this.bloomPipeline?.resetPools();
 		this.volumetricFogPipeline?.resetPools();
+		this.ssrGiPipeline?.resetPools();
 		this.cameraPool.reset();
 		// The cached camera buffer goes back to the pool and may be handed
 		// out again (e.g. to a shadow pass's light camera): never reuse it
@@ -729,6 +762,7 @@ export class Renderer3D {
 			Array.isArray(world?.shadow) ? world.shadow[0] : world?.shadow,
 			false,
 			hdri,
+			world?.screenIndirect,
 		);
 		return this.lightsPool.getBuffer(this.device, lightsData);
 	}
@@ -740,6 +774,7 @@ export class Renderer3D {
 		lights: Light3DOptions[],
 		shadows: ShadowUniformInfo[],
 		environment?: Environment3DOptions | null,
+		screenIndirect?: ScreenIndirectPass,
 	): GPUBindGroup {
 		const data = Light3D.packDirectLights(lights, shadows);
 		if (data.byteLength > this.device.limits.maxStorageBufferBindingSize)
@@ -793,8 +828,107 @@ export class Renderer3D {
 				{ binding: 3, resource: { buffer: directBuffer } },
 				{ binding: 4, resource: envTex.createView({ dimension: "cube" }) },
 				{ binding: 5, resource: this.envSampler },
+				...this.screenIndirectEntries(screenIndirect),
 			],
 		});
+	}
+
+	/** Group 3 bindings 6..9: the traced screen indirect light, or 1×1 stand-ins. */
+	private screenIndirectEntries(
+		pass?: ScreenIndirectPass,
+	): GPUBindGroupEntry[] {
+		this.screenSampler ??= this.device.createSampler({
+			label: "ScreenIndirectSampler",
+			magFilter: "linear",
+			minFilter: "linear",
+			mipmapFilter: "linear",
+			addressModeU: "clamp-to-edge",
+			addressModeV: "clamp-to-edge",
+		});
+		const stand = (format: GPUTextureFormat) =>
+			this.device.createTexture({
+				label: "ScreenIndirectPlaceholder",
+				size: { width: 1, height: 1 },
+				format,
+				usage: GPUTextureUsage.TEXTURE_BINDING,
+			});
+		this.placeholderScreenIndirect ??= {
+			hits: stand(SSR_HIT_FORMAT),
+			radiance: stand(SCREEN_RADIANCE_FORMAT),
+			gi: stand(SCREEN_GI_FORMAT),
+		};
+		const textures =
+			pass === "apply" && this.screenIndirect
+				? this.screenIndirect
+				: this.placeholderScreenIndirect;
+		return [
+			{ binding: 6, resource: textures.hits.createView() },
+			{ binding: 7, resource: textures.radiance.createView() },
+			{ binding: 8, resource: textures.gi.createView() },
+			{ binding: 9, resource: this.screenSampler },
+		];
+	}
+
+	/**
+	 * Traces screen-space reflections and diffuse GI from the radiance pass
+	 * just ended (`beginPass` with `screenIndirect: "radiance"`, a geometry
+	 * target and `writeHdr`), for the `apply` pass that follows.
+	 */
+	traceScreenIndirect(
+		encoder: GPUCommandEncoder,
+		cameraBuffer: GPUBuffer,
+		environment: Environment3DOptions,
+	): void {
+		const resolved = resolveEnvironment(environment);
+		const geometry = this.linearDepthTexture;
+		const radiance = this.hdrTexture;
+		if (!geometry || !radiance)
+			throw new Error(
+				"traceScreenIndirect needs a radiance pass with a geometry target and writeHdr",
+			);
+		// The radiance pass kept its geometry samples: resolve by nearest sample.
+		this.resolveGeometry(encoder, geometry);
+		const { width, height } = geometry;
+		const storage =
+			GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING;
+		const target = (
+			label: string,
+			format: GPUTextureFormat,
+			mipLevelCount = 1,
+		) =>
+			this.attachment(label, width, height, {
+				format,
+				usage: storage,
+				mipLevelCount,
+			});
+		const textures: ScreenIndirectTextures = {
+			hits: target("Renderer3DSsrHits", SSR_HIT_FORMAT),
+			radiance: target(
+				"Renderer3DScreenRadiance",
+				SCREEN_RADIANCE_FORMAT,
+				mipLevels(width, height, RADIANCE_LEVELS),
+			),
+			gi: target("Renderer3DScreenGi", SCREEN_GI_FORMAT),
+		};
+		this.ssrGiPipeline ??= new SsrGiPipeline(this.device);
+		this.ssrGiPipeline.run({
+			encoder,
+			cameraBuffer,
+			geometry,
+			radiance,
+			hits: textures.hits,
+			radiancePyramid: textures.radiance,
+			bounce: textures.gi,
+			bounceScratch: target("Renderer3DScreenGiScratch", SCREEN_GI_FORMAT),
+			hiz: target(
+				"Renderer3DHiZ",
+				HIZ_FORMAT,
+				mipLevels(width, height, HIZ_LEVELS),
+			),
+			ssr: resolved.ssr,
+			gi: resolved.gi,
+		});
+		this.screenIndirect = textures;
 	}
 
 	/** Local bounds of a mesh, computed once. */
@@ -1117,6 +1251,7 @@ export class Renderer3D {
 					: [world.shadow]
 				: [],
 			world?.environment,
+			world?.screenIndirect,
 		);
 
 		const msaa = this.sampleCount > 1;
@@ -1185,8 +1320,12 @@ export class Renderer3D {
 				{ r: Math.min(camera.far, 65504), g: 0.5, b: 0.5, a: 0 },
 				"clear",
 			);
-			// Outline metadata needs a nearest-sample resolve, not a color average.
-			if (msaa && world?.environment?.outlines) {
+			// Outline metadata and screen-space traces need a nearest-sample
+			// resolve (see GeometryResolvePipeline), not an average.
+			if (
+				msaa &&
+				(world?.environment?.outlines || world?.screenIndirect === "radiance")
+			) {
 				geometryAttachment.resolveTarget = undefined;
 				geometryAttachment.storeOp = "store";
 			}
@@ -2344,6 +2483,9 @@ export class Renderer3D {
 		this.bloomPipeline?.destroy();
 		this.outlinePipeline?.destroy();
 		this.volumetricFogPipeline?.destroy();
+		this.ssrGiPipeline?.destroy();
+		for (const t of Object.values(this.placeholderScreenIndirect ?? {}))
+			t.destroy();
 		this.depthTexture?.destroy();
 		for (const texture of this.shadowTextures.values()) texture.destroy();
 		this.shadowTextures.clear();

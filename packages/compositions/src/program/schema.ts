@@ -1561,6 +1561,32 @@ export type EnvironmentVolumetricFog = z.infer<
 	typeof EnvironmentVolumetricFogSchema
 >;
 
+export const EnvironmentSsrSchema = z
+	.object({
+		/** How fully a found reflection replaces the environment's, 0..1. Default 0.85. */
+		intensity: z.number().min(0).max(1).optional(),
+		/** Roughest surface that traces reflections (0..1). Default 0.6. */
+		maxRoughness: z.number().min(0).max(1).optional(),
+		/** How far behind a surface, in world px, a ray still counts as hitting it. Default 120. */
+		thickness: z.number().min(1).optional(),
+		/** Hi-Z march iterations per ray (16..64). Default 32. */
+		steps: z.number().int().min(16).max(64).optional(),
+	})
+	.strict();
+export type EnvironmentSsr = z.infer<typeof EnvironmentSsrSchema>;
+
+export const EnvironmentGiSchema = z
+	.object({
+		/** Strength of the bounced light, 0..4. Default 1. */
+		intensity: z.number().min(0).max(4).optional(),
+		/** Gather radius in world px. Default 400. */
+		radius: z.number().min(1).optional(),
+		/** Horizon-scan directions per pixel (4..16). Default 6. */
+		samples: z.number().int().min(4).max(16).optional(),
+	})
+	.strict();
+export type EnvironmentGi = z.infer<typeof EnvironmentGiSchema>;
+
 export interface LightNode {
 	id: string;
 	kind: "light";
@@ -1613,6 +1639,10 @@ export interface LightNode {
 	volumetricFogAnisotropy?: number;
 	/** Animatable / signal-driven override for volumetricFog.noise.strength. */
 	volumetricFogNoiseStrength?: number;
+	/** Screen-space reflections of nearby geometry and emissives on glossy surfaces. */
+	ssr?: boolean | EnvironmentSsr;
+	/** Screen-space diffuse GI: occlusion and color bleeding from visible surfaces. */
+	gi?: boolean | EnvironmentGi;
 	/** Optional depth/normal outlines, before depth of field and bloom. */
 	outlines?: boolean | GeometryOutlineOptions;
 	/** Glow around emissive surfaces and hot highlights: `true` or settings. */
@@ -1666,6 +1696,8 @@ export const LightNodeSchema: z.ZodType<LightNode> = z
 		volumetricFogDensity: z.number().min(0).optional(),
 		volumetricFogAnisotropy: z.number().min(-0.95).max(0.95).optional(),
 		volumetricFogNoiseStrength: z.number().min(0).max(1).optional(),
+		ssr: z.union([z.boolean(), EnvironmentSsrSchema]).optional(),
+		gi: z.union([z.boolean(), EnvironmentGiSchema]).optional(),
 		outlines: z.union([z.boolean(), GeometryOutlineOptionsSchema]).optional(),
 		bloom: z.union([z.boolean(), BloomConfigSchema]).optional(),
 		startFrame: z.number().int().min(0).default(0),

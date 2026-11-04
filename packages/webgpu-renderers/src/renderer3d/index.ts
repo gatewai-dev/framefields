@@ -13,6 +13,7 @@ export * from "./shadow-depth.js";
 export * from "./shadow-frustum.js";
 export * from "./shadow-pipeline.js";
 export * from "./ssao-pipeline.js";
+export * from "./ssr-gi-pipeline.js";
 export * from "./surface-params.js";
 export * from "./swarm3d-pipeline.js";
 export * from "./text-extruder.js";

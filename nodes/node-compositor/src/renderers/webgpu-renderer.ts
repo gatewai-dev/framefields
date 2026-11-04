@@ -1466,6 +1466,8 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 						fog: lop.fog,
 						floor: lop.floor,
 						outlines: lop.outlines,
+						ssr: lop.ssr,
+						gi: lop.gi,
 						...(volumetricFog && { volumetricFog }),
 						...(intensity !== undefined && { intensity }),
 					};
@@ -1626,8 +1628,14 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 			const outlineSetting = sceneEnvironment?.outlines;
 			const outlines = outlineSetting === true ? {} : outlineSetting || null;
 			const volumetricFogEnabled = Boolean(sceneEnvironment?.volumetricFog);
+			const screenIndirectEnabled = Boolean(
+				sceneEnvironment?.ssr || sceneEnvironment?.gi,
+			);
 			const geometryEnabled =
-				dofEnabled || Boolean(outlines) || volumetricFogEnabled;
+				dofEnabled ||
+				Boolean(outlines) ||
+				volumetricFogEnabled ||
+				screenIndirectEnabled;
 			let linearDepthTex: GPUTexture | undefined;
 			let linearDepthView: GPUTextureView | undefined;
 			if (geometryEnabled) {
@@ -1870,73 +1878,87 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				);
 			}
 
-			const {
-				pass: pass3d,
-				cameraBindGroup,
-				cameraBuffer,
-				lightsBindGroup,
-			} = r3d.beginPass(
-				encoder,
-				scene3dView,
-				nativeWidth,
-				nativeHeight,
-				camera,
-				"clear",
-				{ r: 0, g: 0, b: 0, a: 0 },
-				linearDepthView,
-				sceneLights,
-				{
-					environment: sceneEnvironment,
-					shadow: shadow.length ? shadow : null,
-				},
-				Boolean(sceneBloom),
-			);
-
-			if (floorSpec && blurredReflectionTex) {
-				r3d.drawFloor(
-					pass3d,
-					cameraBindGroup,
-					lightsBindGroup,
-					blurredReflectionTex,
-					floorSpec,
-					geometryEnabled,
-					Boolean(sceneBloom),
+			const sceneShadow = shadow.length ? shadow : null;
+			/** One forward pass over the scene: floor, then the sorted draws. */
+			const drawScene = (
+				screenIndirect: "radiance" | "apply" | undefined,
+				writeHdr: boolean,
+			) => {
+				const begun = r3d.beginPass(
+					encoder,
+					scene3dView,
+					nativeWidth,
+					nativeHeight,
+					camera,
+					"clear",
+					{ r: 0, g: 0, b: 0, a: 0 },
+					linearDepthView,
+					sceneLights,
+					{
+						environment: sceneEnvironment,
+						shadow: sceneShadow,
+						screenIndirect,
+					},
+					writeHdr,
 				);
-			}
-			for (const item of ordered) {
-				if (item.kind === "quad") {
-					r3d.drawTextureQuad(
-						pass3d,
+				const { pass, cameraBindGroup, lightsBindGroup } = begun;
+				if (floorSpec && blurredReflectionTex) {
+					r3d.drawFloor(
+						pass,
 						cameraBindGroup,
 						lightsBindGroup,
-						item.texture,
-						item.opts,
+						blurredReflectionTex,
+						floorSpec,
 						geometryEnabled,
-					);
-				} else if (item.kind === "slug") {
-					r3d.drawSlugText(
-						pass3d,
-						cameraBindGroup,
-						lightsBindGroup,
-						item.batches,
-						item.opts,
-						item.stackBase,
-						geometryEnabled,
-					);
-				} else if (item.kind === "mesh") {
-					r3d.drawMesh3D(
-						pass3d,
-						cameraBindGroup,
-						lightsBindGroup,
-						item.meshBuffers ?? item.mesh,
-						item.texture,
-						isGlass(item) ? { ...item.opts, backdrop: curTex } : item.opts,
-						geometryEnabled,
+						writeHdr,
 					);
 				}
-			}
+				for (const item of ordered) {
+					if (item.kind === "quad") {
+						r3d.drawTextureQuad(
+							pass,
+							cameraBindGroup,
+							lightsBindGroup,
+							item.texture,
+							item.opts,
+							geometryEnabled,
+						);
+					} else if (item.kind === "slug") {
+						r3d.drawSlugText(
+							pass,
+							cameraBindGroup,
+							lightsBindGroup,
+							item.batches,
+							item.opts,
+							item.stackBase,
+							geometryEnabled,
+						);
+					} else if (item.kind === "mesh") {
+						r3d.drawMesh3D(
+							pass,
+							cameraBindGroup,
+							lightsBindGroup,
+							item.meshBuffers ?? item.mesh,
+							item.texture,
+							isGlass(item) ? { ...item.opts, backdrop: curTex } : item.opts,
+							geometryEnabled,
+						);
+					}
+				}
+				pass.end();
+				return begun;
+			};
 
-			pass3d.end();
+			// Screen-space reflections and GI read the scene's own light: draw
+			// its radiance once, trace it, then shade with what was found.
+			if (screenIndirectEnabled && sceneEnvironment) {
+				const { cameraBuffer: radianceCamera } = drawScene("radiance", true);
+				r3d.traceScreenIndirect(encoder, radianceCamera, sceneEnvironment);
+			}
+			const { cameraBindGroup, cameraBuffer, lightsBindGroup } = drawScene(
+				screenIndirectEnabled ? "apply" : undefined,
+				Boolean(sceneBloom),
+			);
 
 			let final3dTex = scene3dTex;
 			if (outlines && linearDepthTex) {

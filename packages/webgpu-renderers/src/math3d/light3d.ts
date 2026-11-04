@@ -75,9 +75,16 @@ export const MAX_LIGHTS = 8;
 /**
  * 16 (ambient) + 16 (params) + 8 * 64 (lights), then the physical-shading
  * block appended after them: 8 vec4 (128) + shadow matrix (64) +
- * floorParams (16) + HDRI irradiance SH (9 vec4, 144).
+ * floorParams (16) + HDRI irradiance SH (9 vec4, 144) + screen indirect (16).
  */
-export const LIGHT_UNIFORM_SIZE_BYTES = 544 + 128 + 64 + 16 + 144;
+export const LIGHT_UNIFORM_SIZE_BYTES = 544 + 128 + 64 + 16 + 144 + 16;
+
+/**
+ * Which half of a screen-space indirect (SSR / GI) frame a pass draws:
+ * `radiance` writes the unfogged scene radiance the traces read; `apply`
+ * shades with the traced reflections and bounce light.
+ */
+export type ScreenIndirectPass = "radiance" | "apply";
 
 /** A prefiltered HDRI as the lights uniform describes it. */
 export interface HdriUniforms {
@@ -300,6 +307,7 @@ export const Light3D = {
 		shadow?: ShadowUniformInfo | null,
 		isReflectionPass = false,
 		hdri?: HdriUniforms,
+		screenIndirect?: ScreenIndirectPass,
 	): Float32Array {
 		const buffer = new Float32Array(LIGHT_UNIFORM_SIZE_BYTES / 4);
 		Light3D.packPhysicalBlock(
@@ -309,6 +317,7 @@ export const Light3D = {
 			shadow,
 			isReflectionPass,
 			hdri,
+			screenIndirect,
 		);
 
 		if ((!lights || lights.length === 0) && !environment) {
@@ -459,6 +468,7 @@ export const Light3D = {
 		shadow?: ShadowUniformInfo | null,
 		isReflectionPass = false,
 		hdri?: HdriUniforms,
+		screenIndirect?: ScreenIndirectPass,
 	): void {
 		const base = 8 + MAX_LIGHTS * 16; // first float after the lights array
 		let ambR = 0;
@@ -480,9 +490,22 @@ export const Light3D = {
 		buffer[base + 3] = 1; // exposure multiplier
 
 		let envIntensity = 1.0;
+		// x = 0 off, 1 radiance pass, 2 apply; y / z = SSR / GI strength (-1 off); w = SSR max roughness.
+		buffer.set([0, -1, -1, 0], base + 88);
 		if (environment) {
 			const env = resolveEnvironment(environment);
 			envIntensity = env.intensity;
+			if (screenIndirect && !isReflectionPass && (env.ssr || env.gi)) {
+				buffer.set(
+					[
+						screenIndirect === "radiance" ? 1 : 2,
+						env.ssr?.intensity ?? -1,
+						env.gi?.intensity ?? -1,
+						env.ssr?.maxRoughness ?? 0,
+					],
+					base + 88,
+				);
+			}
 			// 1 procedural; 2 + max mip with a prefiltered HDRI cubemap bound.
 			const envMode = hdri ? 2 + hdri.maxMip : 1;
 			if (hdri) buffer.set(hdri.sh.subarray(0, 36), base + 52);

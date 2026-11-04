@@ -96,6 +96,7 @@ export function opening(fly: number, landed: number, row: Rect): LayoutNode[] {
 	);
 	const card = raise(
 		Layer.box({
+			overflow: "hidden",
 			position: "absolute",
 			x,
 			y,

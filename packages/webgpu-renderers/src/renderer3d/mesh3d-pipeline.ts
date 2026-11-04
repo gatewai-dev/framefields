@@ -144,7 +144,7 @@ export class Mesh3DPipeline {
 	/** Outgrown white buffers: earlier draws this frame may still read them. */
 	private retiredColorBuffers: GPUBuffer[] = [];
 
-	// 16 (model) + 16 (normal) + 4 (tint) + 4 (params) + 4 (materialParams) + 4 (shade) + 8 (pbr, emissive) + 4 (maps) = 60 floats (240 bytes)
+	// Transform, tint, draw/material params, shade, shared surface block, maps.
 	private modelData = new Float32Array(52 + SURFACE_PARAMS_FLOATS);
 
 	constructor(
@@ -480,12 +480,15 @@ export class Mesh3DPipeline {
 		this.modelData[45] = shade[1];
 		this.modelData[46] = shade[2];
 		this.modelData[47] = data.alphaCutoff ?? 0;
-		packSurfaceParams(data, this.modelData, 48);
+		packSurfaceParams(data, this.modelData, 48, data.shadeColor);
 		const maps = data.maps;
-		this.modelData[56] = maps?.normal ? (maps.normalScale ?? 1) : 0;
-		this.modelData[57] = maps?.occlusion ? (maps.occlusionStrength ?? 1) : 0;
-		this.modelData[58] = maps?.metallicRoughness ? 1 : 0;
-		this.modelData[59] = maps?.emissive ? 1 : 0;
+		const mapsOffset = 48 + SURFACE_PARAMS_FLOATS;
+		this.modelData[mapsOffset] = maps?.normal ? (maps.normalScale ?? 1) : 0;
+		this.modelData[mapsOffset + 1] = maps?.occlusion
+			? (maps.occlusionStrength ?? 1)
+			: 0;
+		this.modelData[mapsOffset + 2] = maps?.metallicRoughness ? 1 : 0;
+		this.modelData[mapsOffset + 3] = maps?.emissive ? 1 : 0;
 		const glass = data.glass;
 		if (glass) {
 			// shade.rgb and pbr.zw are unused outside toon: glass parameters.

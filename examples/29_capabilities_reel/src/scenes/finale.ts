@@ -230,6 +230,7 @@ export async function finaleScene(): Promise<Node> {
 				]),
 			),
 			Layer.box({
+				overflow: "hidden",
 				id: "finale-install",
 				position: "absolute",
 				x: CX - 250,

@@ -3,21 +3,28 @@
  * grade on top. An ember split-line sweeps across with the riser while the RGB
  * curve draws itself in the corner — the grade lands on the downbeat.
  */
-import { ColorBalance, Curves, GradientMap, Layer, LayerAnimation, Vignette } from "framefields";
 import {
+	ColorBalance,
+	Curves,
+	GradientMap,
+	Layer,
+	LayerAnimation,
+	Vignette,
+} from "framefields";
+import {
+	asset,
+	chapter,
 	EASE_OUT,
 	EMBER,
 	H,
-	PAPER,
-	STONE,
-	W,
-	asset,
-	chapter,
 	headline,
 	keys,
 	label,
+	PAPER,
+	STONE,
 	scene,
 	scrim,
+	W,
 } from "../theme.js";
 
 export const GRADE_FROM = 198;
@@ -37,10 +44,19 @@ const WIPE_END = WIPE[WIPE.length - 1][0];
 
 /** Everything that rides the line shares one track. */
 const wipe = (offset = 0, prop: "x" | "width" = "x") =>
-	keys(prop, WIPE.map(([f, u, e]) => [f, offset + u * W, e] as [number, number, string?]));
+	keys(
+		prop,
+		WIPE.map(
+			([f, u, e]) => [f, offset + u * W, e] as [number, number, string?],
+		),
+	);
 
 /** Slow push shared by both passes so they stay pixel-aligned. */
-const push = () => keys("scale", [[0, 1.0], [GRADE_TO - GRADE_FROM, 1.05, "sine.inOut"]]);
+const push = () =>
+	keys("scale", [
+		[0, 1.0],
+		[GRADE_TO - GRADE_FROM, 1.05, "sine.inOut"],
+	]);
 
 function plate(id: string) {
 	return Layer.video(asset("portrait.mp4"), {
@@ -58,15 +74,41 @@ function plate(id: string) {
 
 export function gradeScene() {
 	const log = plate("grade-log")
-		.apply(new GradientMap({ stops: [{ position: 0, color: "#000000" }, { position: 1, color: "#FFFFFF" }], opacity: 0.6 }))
-		.apply(new Curves({ master: [{ x: 0, y: 0.13 }, { x: 0.5, y: 0.52 }, { x: 1, y: 0.84 }] }))
+		.apply(
+			new GradientMap({
+				stops: [
+					{ position: 0, color: "#000000" },
+					{ position: 1, color: "#FFFFFF" },
+				],
+				opacity: 0.6,
+			}),
+		)
+		.apply(
+			new Curves({
+				master: [
+					{ x: 0, y: 0.13 },
+					{ x: 0.5, y: 0.52 },
+					{ x: 1, y: 0.84 },
+				],
+			}),
+		)
 		.animate(push());
 
 	const graded = plate("grade-final")
 		.apply(
 			new Curves({
-				master: [{ x: 0, y: 0.02 }, { x: 0.25, y: 0.17 }, { x: 0.5, y: 0.5 }, { x: 0.75, y: 0.83 }, { x: 1, y: 0.98 }],
-				blue: [{ x: 0, y: 0 }, { x: 0.5, y: 0.47 }, { x: 1, y: 0.93 }],
+				master: [
+					{ x: 0, y: 0.02 },
+					{ x: 0.25, y: 0.17 },
+					{ x: 0.5, y: 0.5 },
+					{ x: 0.75, y: 0.83 },
+					{ x: 1, y: 0.98 },
+				],
+				blue: [
+					{ x: 0, y: 0 },
+					{ x: 0.5, y: 0.47 },
+					{ x: 1, y: 0.93 },
+				],
 			}),
 		)
 		.apply(
@@ -119,17 +161,49 @@ export function gradeScene() {
 				inAt: 6,
 				outAt: 90,
 			}),
-			...chapter({ id: "grade-ch", index: "02", name: "Color", color: PAPER, accent: PAPER, inAt: 12, outAt: 92 }),
+			...chapter({
+				id: "grade-ch",
+				index: "02",
+				name: "Color",
+				color: PAPER,
+				accent: PAPER,
+				inAt: 12,
+				outAt: 92,
+			}),
 			curvesCard(),
 		],
 	});
 }
 
 /** A caption glued to the split-line. */
-function rider(id: string, text: string, offset: number, align: "start" | "end", inAt: number) {
-	const node = label({ id, text, x: offset, y: 88, width: 300, align, color: PAPER, inAt, outAt: WIPE_END - 6 });
-	return Layer.box({ id: `${id}-rail`, position: "absolute", x: 0, y: 0, width: W, height: 140, overflow: "visible", children: [node] })
-		.animate(wipe(0));
+function rider(
+	id: string,
+	text: string,
+	offset: number,
+	align: "start" | "end",
+	inAt: number,
+) {
+	const node = label({
+		id,
+		text,
+		x: offset,
+		y: 88,
+		width: 300,
+		align,
+		color: PAPER,
+		inAt,
+		outAt: WIPE_END - 6,
+	});
+	return Layer.box({
+		id: `${id}-rail`,
+		position: "absolute",
+		x: 0,
+		y: 0,
+		width: W,
+		height: 140,
+		overflow: "visible",
+		children: [node],
+	}).animate(wipe(0));
 }
 
 /** RGB curve readout: the neutral log line, then the S-curve drawing in with the wipe. */
@@ -141,10 +215,27 @@ function curvesCard() {
 	const y = H - 96 - size;
 	// Strokes are clipped to their layer, so curve layers get a little bleed.
 	const bleed = 6;
-	const pt = (u: number, v: number) => `${(bleed + u * plot).toFixed(1)} ${(bleed + (1 - v) * plot).toFixed(1)}`;
+	const pt = (u: number, v: number) =>
+		`${(bleed + u * plot).toFixed(1)} ${(bleed + (1 - v) * plot).toFixed(1)}`;
 	const grid = [0.25, 0.5, 0.75].flatMap((t, i) => [
-		Layer.shape("rect", { id: `grade-grid-v${i}`, position: "absolute", x: pad + t * plot, y: pad, width: 1, height: plot, fillColor: "rgba(238,233,224,0.10)" }),
-		Layer.shape("rect", { id: `grade-grid-h${i}`, position: "absolute", x: pad, y: pad + t * plot, width: plot, height: 1, fillColor: "rgba(238,233,224,0.10)" }),
+		Layer.shape("rect", {
+			id: `grade-grid-v${i}`,
+			position: "absolute",
+			x: pad + t * plot,
+			y: pad,
+			width: 1,
+			height: plot,
+			fillColor: "rgba(238,233,224,0.10)",
+		}),
+		Layer.shape("rect", {
+			id: `grade-grid-h${i}`,
+			position: "absolute",
+			x: pad,
+			y: pad + t * plot,
+			width: plot,
+			height: 1,
+			fillColor: "rgba(238,233,224,0.10)",
+		}),
 	]);
 	const curve = (id: string, d: string, color: string, width: number) =>
 		Layer.shape("path", {
@@ -162,6 +253,7 @@ function curvesCard() {
 		});
 
 	return Layer.box({
+		overflow: "hidden",
 		id: "grade-card",
 		position: "absolute",
 		x,
@@ -175,9 +267,12 @@ function curvesCard() {
 		children: [
 			...grid,
 			curve("grade-curve-log", `M${pt(0, 0.13)} L${pt(1, 0.84)}`, STONE, 2),
-			curve("grade-curve-s", `M${pt(0, 0.02)} C${pt(0.42, 0.0)} ${pt(0.58, 1.0)} ${pt(1, 0.98)}`, EMBER, 3).animate(
-				keys("trimEnd", WIPE),
-			),
+			curve(
+				"grade-curve-s",
+				`M${pt(0, 0.02)} C${pt(0.42, 0.0)} ${pt(0.58, 1.0)} ${pt(1, 0.98)}`,
+				EMBER,
+				3,
+			).animate(keys("trimEnd", WIPE)),
 		],
 	}).animate(
 		LayerAnimation.create()

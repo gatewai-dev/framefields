@@ -78,6 +78,7 @@ function lockup(at: number): LayoutNode {
 		startFrame: at,
 		children: [
 			Layer.box({
+				overflow: "hidden",
 				position: "absolute",
 				x: W / 2 - mark / 2,
 				y: H / 2 - 120,

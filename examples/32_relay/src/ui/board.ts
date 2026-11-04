@@ -58,6 +58,7 @@ function card(c: Card, x: number, y: number, contents?: LayerAnimation) {
 	];
 	return raise(
 		Layer.box({
+			overflow: "hidden",
 			position: "absolute",
 			x,
 			y,
@@ -93,6 +94,7 @@ function header(): LayoutNode[] {
 	[MAYA, LEO, AVA].forEach((p, i) => {
 		nodes.push(
 			Layer.box({
+				overflow: "hidden",
 				position: "absolute",
 				x: CW - space(4) - 28 - (2 - i) * 22 - 2,
 				y: 22,

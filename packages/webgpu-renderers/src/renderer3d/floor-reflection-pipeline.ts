@@ -220,7 +220,7 @@ fn fs_mrt(in: VsOut) -> FsOutputMrt {
     var out: FsOutputMrt;
     let s = shadeFloor(in);
     out.color = vec4<f32>(s.display * s.alpha, s.alpha);
-    out.linearDepth = vec4<f32>(s.linearDepth, 0.0, 0.0, 1.0);
+    out.linearDepth = geometryPixel(s.linearDepth, vec3<f32>(0.0, -1.0, 0.0), 1.0);
     out.depth = s.depth;
     return out;
 }
@@ -240,7 +240,7 @@ fn fs_mrt_bloom(in: VsOut) -> FsOutputMrtBloom {
     var out: FsOutputMrtBloom;
     let s = shadeFloor(in);
     out.color = vec4<f32>(s.display * s.alpha, s.alpha);
-    out.linearDepth = vec4<f32>(s.linearDepth, 0.0, 0.0, 1.0);
+    out.linearDepth = geometryPixel(s.linearDepth, vec3<f32>(0.0, -1.0, 0.0), 1.0);
     out.hdr = vec4<f32>(s.hdr * s.alpha, 1.0);
     out.depth = s.depth;
     return out;

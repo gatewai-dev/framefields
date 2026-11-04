@@ -97,3 +97,7 @@ packages/**/models/
 
 # Generated package README, built from the repo root README (scripts/sync-readme.mjs)
 packages/framefields/README.md
+
+# Local examples, not tracked
+examples/34_spatial_styling/
+examples/35_robot_uprising/

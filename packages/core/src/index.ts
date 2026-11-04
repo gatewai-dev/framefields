@@ -7,6 +7,7 @@ export * from "./media-time-signal.js";
 export * from "./node-metadata.js";
 export * from "./render-diagnostics.js";
 export * from "./signals/index.js";
+export * from "./spatial-styling.js";
 export * from "./types/index.js";
 export * from "./utils/assert.js";
 export * from "./utils/color.js";

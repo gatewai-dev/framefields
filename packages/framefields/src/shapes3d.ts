@@ -3,6 +3,7 @@ import type {
 	LayoutNode,
 	MaterialType,
 	Model3DNode,
+	ToonShading,
 } from "@framefields/compositions/program";
 import {
 	type CapsuleGeometryOptions,
@@ -33,6 +34,10 @@ import { createSwarm3D, type Swarm3DOptions } from "./swarm3d.js";
 
 /** Physically based surface options every 3D builder accepts. */
 export interface Surface3DOptions {
+	/** Art-directed lighting for material: "toon". */
+	toon?: ToonShading;
+	/** Opt out of the scene's geometry outlines while retaining depth occlusion. */
+	outline?: boolean;
 	/** Light the surface gives off: a CSS color added on top of lighting. */
 	emissive?: string;
 	/** Emissive multiplier; above 1 glows past white and blooms. Default 1. */
@@ -42,6 +47,8 @@ export interface Surface3DOptions {
 }
 
 const MATERIAL_KEYS = [
+	"toon",
+	"outline",
 	"material",
 	"shininess",
 	"roughness",
@@ -646,7 +653,11 @@ export const Layer3D = {
 				) {
 					node.ambientIntensity = options.ambientIntensity;
 				}
-				Object.assign(node, faceProps);
+				Object.assign(
+					node,
+					{ ...materialProps(options), ...materialProps(node) },
+					faceProps,
+				);
 				return node;
 			}
 			const cfg: CubeFaceConfig =

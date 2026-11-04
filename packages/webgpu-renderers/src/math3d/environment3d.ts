@@ -4,7 +4,7 @@
  * with an environment is shaded physically; one without keeps the original
  * Blinn-Phong look.
  */
-import { parseCssColor } from "@framefields/core";
+import { type GeometryOutlineOptions, parseCssColor } from "@framefields/core";
 
 /**
  * "neutral" (default, Khronos PBR Neutral): colors as authored, highlights
@@ -64,6 +64,7 @@ export interface Environment3DOptions {
 	toneMapping?: ToneMapping;
 	fog?: Environment3DFog;
 	floor?: Environment3DFloor;
+	outlines?: boolean | GeometryOutlineOptions;
 }
 
 interface PresetDef {

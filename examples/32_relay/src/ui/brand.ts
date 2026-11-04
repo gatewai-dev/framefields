@@ -50,6 +50,7 @@ export function relayMark(o: {
 		);
 	}
 	return Layer.box({
+		overflow: "hidden",
 		...(o.id && { id: o.id }),
 		position: "absolute",
 		x: o.x,

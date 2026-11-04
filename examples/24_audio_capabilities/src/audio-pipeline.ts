@@ -26,6 +26,7 @@ function createCard(title: string, subtitle: string, badge: string) {
 		gap: 20,
 		children: [
 			Layer.box({
+				overflow: "hidden",
 				padding: 16,
 				background: "#1e232d",
 				borderRadius: 20,

@@ -219,6 +219,7 @@ export function stamp(o: {
 	const size = o.fontSize ?? 30;
 	const pad = size * 0.45;
 	return Layer.box({
+		overflow: "hidden",
 		id: o.id,
 		position: "absolute",
 		x: o.x,

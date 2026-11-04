@@ -17,15 +17,18 @@
 import {
 	Effect,
 	type EffectDomain,
+	type GeometryOutlineOptions,
 	type MediaTimeRemapInput,
 	MediaTimeRemapInputSchema,
 	type MeshAudioDeformConfig,
 	type TextSpan,
 	type TextSpanMark,
+	type ToonShading,
 	validateMediaTimeRemap,
 } from "@framefields/core";
 import { ColorSchema } from "@framefields/node-sdk";
 export type { TextSpan, TextSpanMark };
+export type { ToonShading, GeometryOutlineOptions };
 
 import {
 	type AdvancedTextAnimator,
@@ -687,6 +690,27 @@ export type LayerAnimationSpec<TProp extends AnimatableProp = AnimatableProp> =
 // Container `children` fields use z.lazy closures; the union schema is
 // cast to z.ZodType<LayoutNode> — the documented pattern (zod-recursion).
 
+export const ToonShadingSchema: z.ZodType<ToonShading> = z
+	.object({
+		shadowColor: ColorSchema.optional(),
+		lightColor: ColorSchema.optional(),
+		threshold: z.number().min(-1).max(1).optional(),
+		softness: z.number().min(0).max(2).optional(),
+		diffuse: z.number().min(0).max(1).optional(),
+	})
+	.strict();
+
+export const GeometryOutlineOptionsSchema: z.ZodType<GeometryOutlineOptions> = z
+	.object({
+		color: ColorSchema.optional(),
+		width: z.number().min(0).max(32).optional(),
+		referenceHeight: z.number().positive().optional(),
+		creaseAngle: z.number().min(0).max(180).optional(),
+		depthThreshold: z.number().positive().max(1).optional(),
+		opacity: z.number().min(0).max(1).optional(),
+	})
+	.strict();
+
 const BaseNodeFields = {
 	id: z.string().min(1),
 	/** Graph binding — which connected input this node renders (for text/media nodes). */
@@ -781,6 +805,10 @@ const BaseNodeFields = {
 	emissiveIntensity: z.number().min(0).optional(),
 	/** Falls into a `castShadow` light's shadow map. Meshes default on, flat layers off. */
 	castShadow: z.boolean().optional(),
+	/** Art-directed toon lighting, including cast shadows and colored lights. */
+	toon: ToonShadingSchema.optional(),
+	/** Participate in scene geometry outlines (default true). Excluded surfaces still occlude. */
+	outline: z.boolean().optional(),
 	/**
 	 * Track matte: another layer whose alpha or brightness masks this one.
 	 * Laid out like a sibling (same parent), timed with this node; with no
@@ -871,6 +899,8 @@ export interface CompositionNodeBase {
 	emissive?: string;
 	emissiveIntensity?: number;
 	castShadow?: boolean;
+	toon?: ToonShading;
+	outline?: boolean;
 	matte?: { node: unknown; mode?: MatteMode };
 	matteId?: string;
 	matteOf?: string;
@@ -1409,6 +1439,8 @@ export interface LightNode {
 	toneMapping?: ToneMapping;
 	fog?: EnvironmentFog;
 	floor?: EnvironmentFloor;
+	/** Optional depth/normal outlines, before depth of field and bloom. */
+	outlines?: boolean | GeometryOutlineOptions;
 	/** Glow around emissive surfaces and hot highlights: `true` or settings. */
 	bloom?: boolean | BloomConfig;
 	startFrame?: number;
@@ -1448,6 +1480,7 @@ export const LightNodeSchema: z.ZodType<LightNode> = z
 		toneMapping: ToneMappingSchema.optional(),
 		fog: EnvironmentFogSchema.optional(),
 		floor: EnvironmentFloorSchema.optional(),
+		outlines: z.union([z.boolean(), GeometryOutlineOptionsSchema]).optional(),
 		bloom: z.union([z.boolean(), BloomConfigSchema]).optional(),
 		startFrame: z.number().int().min(0).default(0),
 		durationFrames: z.number().int().min(1).optional(),
@@ -1544,7 +1577,7 @@ export const FlexNodeSchema: z.ZodType<FlexNode> = z
 		staggerDirection: z
 			.enum(["forward", "reverse", "center-out"])
 			.default("forward"),
-		overflow: z.enum(["visible", "hidden"]).default("hidden"),
+		overflow: z.enum(["visible", "hidden"]).default("visible"),
 		background: ColorSchema.optional(),
 		borderRadius: z.number().min(0).optional(),
 		borderColor: ColorSchema.optional(),
@@ -1566,7 +1599,7 @@ export const BlockNodeSchema: z.ZodType<BlockNode> = z
 		staggerDirection: z
 			.enum(["forward", "reverse", "center-out"])
 			.default("forward"),
-		overflow: z.enum(["visible", "hidden"]).default("hidden"),
+		overflow: z.enum(["visible", "hidden"]).default("visible"),
 		background: ColorSchema.optional(),
 		borderRadius: z.number().min(0).optional(),
 		borderColor: ColorSchema.optional(),
@@ -1589,7 +1622,7 @@ export const BoxNodeSchema: z.ZodType<BoxNode> = z
 		staggerDirection: z
 			.enum(["forward", "reverse", "center-out"])
 			.default("forward"),
-		overflow: z.enum(["visible", "hidden"]).default("hidden"),
+		overflow: z.enum(["visible", "hidden"]).default("visible"),
 		borderColor: ColorSchema.optional(),
 		borderWidth: z.number().min(0).optional(),
 		strokeAlign: z.enum(["inside", "center", "outside"]).optional(),

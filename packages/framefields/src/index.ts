@@ -558,6 +558,8 @@ export {
 	type FlexNode,
 	FlexNodeSchema,
 	type FromToOptions,
+	type GeometryOutlineOptions,
+	GeometryOutlineOptionsSchema,
 	type GlyphAnchorGrouping,
 	GlyphAnchorGroupingSchema,
 	type GlyphAnchorPoint,
@@ -657,6 +659,8 @@ export {
 	TextWigglySelectorSchema,
 	type ToneMapping,
 	ToneMappingSchema,
+	type ToonShading,
+	ToonShadingSchema,
 	type TrackSource,
 	type TypewriterAnimator,
 	TypewriterAnimatorSchema,
@@ -3501,6 +3505,7 @@ export type EnvironmentOptions = Partial<
 		| "toneMapping"
 		| "fog"
 		| "floor"
+		| "outlines"
 		| "bloom"
 		| "startFrame"
 		| "durationFrames"

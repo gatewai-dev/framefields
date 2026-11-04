@@ -74,6 +74,7 @@ function field(
 ): LayoutNode[] {
 	const nodes: LayoutNode[] = [
 		Layer.box({
+			overflow: "hidden",
 			position: "absolute",
 			...r,
 			borderRadius: space(1),
@@ -202,6 +203,7 @@ function checklist(t: Timeline): LayoutNode[] {
 		}).animate(rise(y, checklistItemAt(t, i), 8, sec(0.35)));
 	});
 	const add = Layer.box({
+		overflow: "hidden",
 		position: "absolute",
 		...ADD_CHECKLIST,
 		borderRadius: space(1),
@@ -235,6 +237,7 @@ function footer(t: Timeline): LayoutNode[] {
 	return [
 		rule(0, FOOTER_Y, MODAL.width, { color: LINE }),
 		Layer.box({
+			overflow: "hidden",
 			position: "absolute",
 			...CANCEL_BUTTON,
 			borderRadius: space(1),
@@ -252,6 +255,7 @@ function footer(t: Timeline): LayoutNode[] {
 			],
 		}),
 		Layer.box({
+			overflow: "hidden",
 			position: "absolute",
 			...SAVE_BUTTON,
 			borderRadius: space(1),
@@ -283,6 +287,7 @@ function menu(
 	const highlight = local(optionIn(r, hover.index));
 	return raise(
 		Layer.box({
+			overflow: "hidden",
 			position: "absolute",
 			...r,
 			anchorY: 0,
@@ -398,6 +403,7 @@ export function taskModal(t: Timeline): LayoutNode[] {
 			rule(0, 72, MODAL.width, { color: LINE }),
 			text(REQUEST.subject, { x: PAD, y: 92, size: 26, strong: true }),
 			Layer.box({
+				overflow: "hidden",
 				position: "absolute",
 				x: PAD,
 				y: 136,
@@ -437,6 +443,7 @@ export function taskModal(t: Timeline): LayoutNode[] {
 	);
 	const modal = raise(
 		Layer.box({
+			overflow: "hidden",
 			id: "task-modal",
 			position: "absolute",
 			...MODAL,

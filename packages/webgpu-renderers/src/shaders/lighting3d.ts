@@ -382,15 +382,56 @@ struct Shaded {
     hdr : vec3<f32>,
 };
 
+// Two-sided, art-directed diffuse lighting. Shares the full direct-light
+// storage, range/spot attenuation and PCF shadows with the physical renderer.
+fn shadeToon(worldPos: vec3<f32>, worldNormal: vec3<f32>, base: vec3<f32>, ambient: f32, shade: vec4<f32>, lightTint: vec4<f32>, params: vec4<f32>) -> vec3<f32> {
+    if (lights.params.y < 0.5) { return base; }
+    var N = normalize(worldNormal);
+    let V = normalize(cam.cameraPos.xyz - worldPos);
+    if (dot(N, V) < 0.0) { N = -N; }
+    var illumination = lights.ambientColor.rgb * ambient * lightTint.rgb;
+    var visibility = clamp(max(illumination.r, max(illumination.g, illumination.b)), 0.0, 1.0);
+    for (var i = 0; i < i32(lights.params.x); i++) {
+        let ls = sampleLight(i, worldPos);
+        if (!ls.valid) { continue; }
+        let cosine = dot(N, ls.L);
+        let softness = max(params.x, 0.0001);
+        let band = smoothstep(lightTint.w - softness * 0.5, lightTint.w + softness * 0.5, cosine);
+        let light = directLights[i];
+        let strength = band * ls.attenuation * light.colorIntensity.w * shadowFactor(worldPos, N, i);
+        let contribution = light.colorIntensity.rgb * lightTint.rgb * strength * mix(1.0, max(cosine, 0.0), shade.w);
+        // Remove the shadow floor only as actual modeled light arrives.
+        // Using the pre-diffuse band here creates a dark ring between the
+        // shadow floor and the lit region, which slides as a surface turns.
+        let energy = max(contribution.r, max(contribution.g, contribution.b));
+        visibility = max(visibility, clamp(energy, 0.0, 1.0));
+        illumination += contribution;
+    }
+    return base * (shade.rgb * (1.0 - visibility) + illumination);
+}
+
+// The existing linear-depth attachment doubles as a geometry buffer:
+// r = optical depth, gb = octahedral world normal, a = outline participation.
+// Geometric normals deliberately ignore normal maps and texture seams.
+fn geometryPixel(depth: f32, normal: vec3<f32>, outlined: f32) -> vec4<f32> {
+    let n = normalize(normal);
+    let p = n.xy / max(abs(n.x) + abs(n.y) + abs(n.z), 1e-6);
+    let signs = select(vec2<f32>(-1.0), vec2<f32>(1.0), p >= vec2<f32>(0.0));
+    let oct = select((1.0 - abs(p.yx)) * signs, p, n.z >= 0.0);
+    return vec4<f32>(depth, oct * 0.5 + 0.5, outlined);
+}
+
 /// Shades a surface for the scene's mode.
 /// material: x shininess, y specularIntensity, z ambientIntensity, w mode (0 unlit).
 /// pbr: x roughness (<0 = default), y metallic, z/w unused.
 /// emissive: rgb sRGB color, w strength.
-fn shadeSurfaceFull(worldPos: vec3<f32>, worldNormal: vec3<f32>, baseColor: vec3<f32>, material: vec4<f32>, pbr: vec4<f32>, emissive: vec4<f32>) -> Shaded {
+fn shadeSurfaceFull(worldPos: vec3<f32>, worldNormal: vec3<f32>, baseColor: vec3<f32>, material: vec4<f32>, pbr: vec4<f32>, emissive: vec4<f32>, toonShadow: vec4<f32>, toonLight: vec4<f32>, toonParams: vec4<f32>) -> Shaded {
     var out: Shaded;
     if (lights.params.z < 0.5) {
         var c = baseColor;
-        if (material.w >= 0.5) {
+        if (material.w > 1.5) {
+            c = shadeToon(worldPos, worldNormal, baseColor, material.z, toonShadow, toonLight, toonParams);
+        } else if (material.w >= 0.5) {
             c = applyLighting3D(worldPos, worldNormal, baseColor, material);
         }
         c += emissive.rgb * emissive.w;
@@ -401,6 +442,8 @@ fn shadeSurfaceFull(worldPos: vec3<f32>, worldNormal: vec3<f32>, baseColor: vec3
     var radiance: vec3<f32>;
     if (material.w < 0.5) {
         radiance = srgbToLinear(baseColor);
+    } else if (material.w > 1.5) {
+        radiance = srgbToLinear(shadeToon(worldPos, worldNormal, baseColor, material.z, toonShadow, toonLight, toonParams));
     } else {
         let rough = select(pbr.x, 0.5, pbr.x < 0.0);
         radiance = shadePhysical(worldPos, worldNormal, srgbToLinear(baseColor), rough, clamp(pbr.y, 0.0, 1.0), material.z);
@@ -436,9 +479,6 @@ fn shadeSurfaceFull(worldPos: vec3<f32>, worldNormal: vec3<f32>, baseColor: vec3
     return out;
 }
 
-fn shadeSurface(worldPos: vec3<f32>, worldNormal: vec3<f32>, baseColor: vec3<f32>, material: vec4<f32>, pbr: vec4<f32>, emissive: vec4<f32>) -> vec3<f32> {
-    return shadeSurfaceFull(worldPos, worldNormal, baseColor, material, pbr, emissive).display;
-}
 `;
 
 /** Group-3 bindings every lit 3D shader declares. */

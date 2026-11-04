@@ -339,4 +339,41 @@ describe("Paragraph Node", () => {
 		expect(g).toBe(0);
 		expect(b).toBe(0);
 	});
+
+	it("keeps shadow and stroke passes in their own colours under glyph animators", () => {
+		// Each pass reuses one scratch buffer: copy the first glyph's colour at draw time.
+		const colours: number[][] = [];
+		mockCtx.renderer.slugPipeline.draw.mockImplementation(
+			(_pass: unknown, _stack: unknown, _font: unknown, data: Float32Array) => {
+				colours.push(Array.from(data.subarray(16, 19)));
+			},
+		);
+		drawParagraphNode(mockCtx, mockPass, {
+			text: "Outlined",
+			dstRect: { x: 0, y: 0, width: 300, height: 100 },
+			fontFamily: "Inter",
+			fontSize: 32,
+			color: "#00ff00",
+			stroke: "#0000ff",
+			strokeWidth: 3,
+			shadows: [{ color: "#ff0000", offset: { x: 0, y: 4 } }],
+			animators: [
+				{
+					id: "settled-fade",
+					unit: "character" as const,
+					rangeStart: 0,
+					rangeEnd: 0.4,
+					offset: 1,
+					easing: "linear",
+					transform: { opacity: 0 },
+				},
+			],
+		});
+		// shadow, stroke, fill
+		expect(colours).toEqual([
+			[1, 0, 0],
+			[0, 0, 1],
+			[0, 1, 0],
+		]);
+	});
 });

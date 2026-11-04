@@ -1,4 +1,7 @@
-import type { MeshAudioDeformConfig } from "@framefields/core";
+import type {
+	GeometryOutlineOptions,
+	MeshAudioDeformConfig,
+} from "@framefields/core";
 import { type Color, parseColor } from "../color.js";
 import {
 	FbxLoader,
@@ -25,6 +28,7 @@ import type {
 } from "../loaders/types.js";
 import type {
 	Environment3DFloor,
+	Environment3DFog,
 	Environment3DOptions,
 	ShadowUniformInfo,
 } from "../math3d/environment3d.js";
@@ -47,6 +51,8 @@ import type { SlugGlyphBatch } from "../slug/slug-pipeline.js";
 import { AudioMeshDeformPipeline } from "./audio-mesh-deform-pipeline.js";
 import { type BloomOptions, BloomPipeline } from "./bloom-pipeline.js";
 import { FloorReflectionPipeline } from "./floor-reflection-pipeline.js";
+import { GeometryOutlinePipeline } from "./geometry-outline-pipeline.js";
+import { GeometryResolvePipeline } from "./geometry-resolve-pipeline.js";
 import { decodeKtx2, isKtx2 } from "./ktx2.js";
 import {
 	type GPUMeshBuffers,
@@ -103,7 +109,7 @@ export interface DrawQuad3DOpts extends SurfaceParams {
 	/** Pre-computed normal matrix */
 	normalMatrix?: Mat4;
 	/** Material shading mode ("lit" vs "unlit") */
-	material?: "lit" | "unlit";
+	material?: "lit" | "unlit" | "toon";
 	/** Blinn-Phong specular shininess exponent */
 	shininess?: number;
 	/** Roughness factor [0, 1] */
@@ -299,6 +305,8 @@ export class Renderer3D {
 	private shadowSampler: GPUSampler | null = null;
 	private meshBounds = new WeakMap<Mesh3DData, Aabb>();
 	private bloomPipeline: BloomPipeline | null = null;
+	private outlinePipeline: GeometryOutlinePipeline | null = null;
+	private geometryResolvePipeline: GeometryResolvePipeline | null = null;
 	private lastCameraBuffer: GPUBuffer | null = null;
 
 	/**
@@ -453,6 +461,7 @@ export class Renderer3D {
 			this.attachments.delete(key);
 		}
 		this.attachmentsUsed.clear();
+		this.outlinePipeline?.reset();
 		this.bloomPipeline?.resetPools();
 		this.cameraPool.reset();
 		// The cached camera buffer goes back to the pool and may be handed
@@ -490,11 +499,14 @@ export class Renderer3D {
 		format: GPUTextureFormat,
 		width: number,
 		height: number,
+		sampled = false,
 	): GPUTexture {
 		return this.attachment(label, width, height, {
 			format,
 			sampleCount: this.sampleCount,
-			usage: GPUTextureUsage.RENDER_ATTACHMENT,
+			usage:
+				GPUTextureUsage.RENDER_ATTACHMENT |
+				(sampled ? GPUTextureUsage.TEXTURE_BINDING : 0),
 		});
 	}
 
@@ -1001,6 +1013,7 @@ export class Renderer3D {
 				this.format,
 				surfaceWidth,
 				surfaceHeight,
+				Boolean(world?.environment?.outlines),
 			);
 		}
 		const colorAttachments: GPURenderPassColorAttachment[] = [
@@ -1011,6 +1024,10 @@ export class Renderer3D {
 				loadOp,
 			),
 		];
+		if (msaa && world?.environment?.outlines) {
+			// Ink shades the original color and geometry samples before resolving.
+			colorAttachments[0].storeOp = "store";
+		}
 
 		if (linearDepthTargetView) {
 			if (msaa) {
@@ -1020,16 +1037,21 @@ export class Renderer3D {
 					"rgba16float",
 					surfaceWidth,
 					surfaceHeight,
+					true,
 				);
 			}
-			colorAttachments.push(
-				attach(
-					linearDepthTargetView,
-					msaa ? this.msaaLinearDepthTexture : null,
-					{ r: camera.far, g: 0, b: 0, a: 1 },
-					"clear",
-				),
+			const geometryAttachment = attach(
+				linearDepthTargetView,
+				msaa ? this.msaaLinearDepthTexture : null,
+				{ r: Math.min(camera.far, 65504), g: 0.5, b: 0.5, a: 0 },
+				"clear",
 			);
+			// Outline metadata needs a nearest-sample resolve, not a color average.
+			if (msaa && world?.environment?.outlines) {
+				geometryAttachment.resolveTarget = undefined;
+				geometryAttachment.storeOp = "store";
+			}
+			colorAttachments.push(geometryAttachment);
 		}
 
 		this.passWritesHdr = writeHdr;
@@ -1197,10 +1219,11 @@ export class Renderer3D {
 	}
 
 	/**
-	 * A layer's unit quad ([-0.5, 0.5] square) in world space:
-	 * T(pos) * Rz * Ry * Rx * S(w * sx, h * sy, sz) * T(0.5 - ax, 0.5 - ay, 0).
+	 * A centered unit quad in world space. Translate to the authored pivot,
+	 * rotate and scale, then offset the unit quad back from that pivot.
+	 * Shared with children in preserve-3d containers.
 	 */
-	private quadModelMatrix(opts: DrawQuad3DOpts): Mat4 {
+	quadModelMatrix(opts: DrawQuad3DOpts): Mat4 {
 		if (opts.modelMatrix) return opts.modelMatrix;
 		const {
 			position,
@@ -1213,7 +1236,13 @@ export class Renderer3D {
 		let m = Matrix4Math.identity();
 		m = Matrix4Math.multiply(
 			m,
-			Matrix4Math.translate(position[0], position[1], position[2]),
+			// Position is the untransformed center. Move to the authored pivot
+			// before rotating/scaling, then move back in unit-quad space below.
+			Matrix4Math.translate(
+				position[0] + (anchor[0] - 0.5) * width,
+				position[1] + (anchor[1] - 0.5) * height,
+				position[2],
+			),
 		);
 
 		const rxRad = (rotation[0] * Math.PI) / 180;
@@ -1310,6 +1339,8 @@ export class Renderer3D {
 					metallic: opts.metallic,
 					emissive: opts.emissive,
 					emissiveIntensity: opts.emissiveIntensity,
+					toon: opts.toon,
+					outline: opts.outline,
 					matte: opts.matte,
 				},
 				useMrt,
@@ -1383,6 +1414,8 @@ export class Renderer3D {
 				metallic,
 				emissive: opts.emissive,
 				emissiveIntensity: opts.emissiveIntensity,
+				toon: opts.toon,
+				outline: opts.outline,
 				matte: opts.matte,
 				relief: opts.relief,
 			},
@@ -1731,6 +1764,8 @@ export class Renderer3D {
 				metallic,
 				emissive: opts.emissive,
 				emissiveIntensity: opts.emissiveIntensity,
+				toon: opts.toon,
+				outline: opts.outline,
 				matte: opts.matte,
 				maps: opts.maps,
 				isInstanced: Boolean(
@@ -1949,6 +1984,52 @@ export class Renderer3D {
 		);
 	}
 
+	/** Geometry ink is applied before lens blur, independently of material shading. */
+	resolveGeometry(encoder: GPUCommandEncoder, geometry: GPUTexture): void {
+		if (this.sampleCount <= 1 || !this.msaaLinearDepthTexture) return;
+		this.geometryResolvePipeline ??= new GeometryResolvePipeline(this.device);
+		this.geometryResolvePipeline.render(
+			encoder,
+			this.msaaLinearDepthTexture,
+			geometry.createView(),
+		);
+	}
+
+	applyOutlines(
+		encoder: GPUCommandEncoder,
+		source: GPUTexture,
+		geometry: GPUTexture,
+		dest: GPUTextureView,
+		camera: Camera3DPose,
+		options: GeometryOutlineOptions,
+		fog?: Environment3DFog,
+	): void {
+		let colorSource = source;
+		let geometrySource = geometry;
+		if (this.sampleCount > 1) {
+			if (!this.msaaColorTexture || !this.msaaLinearDepthTexture)
+				throw new Error(
+					"Geometry outlines require the scene's retained MSAA color and geometry samples",
+				);
+			colorSource = this.msaaColorTexture;
+			geometrySource = this.msaaLinearDepthTexture;
+		}
+		this.outlinePipeline ??= new GeometryOutlinePipeline(
+			this.device,
+			this.format,
+			this.sampleCount,
+		);
+		this.outlinePipeline.render(
+			encoder,
+			colorSource,
+			geometrySource,
+			dest,
+			camera,
+			options,
+			fog,
+		);
+	}
+
 	applyDepthOfField(
 		encoder: GPUCommandEncoder,
 		sourceColorTex: GPUTexture,
@@ -2020,6 +2101,7 @@ export class Renderer3D {
 		for (const texture of this.attachments.values()) texture.destroy();
 		this.attachments.clear();
 		this.bloomPipeline?.destroy();
+		this.outlinePipeline?.destroy();
 		this.depthTexture?.destroy();
 		for (const texture of this.shadowTextures.values()) texture.destroy();
 		this.shadowTextures.clear();

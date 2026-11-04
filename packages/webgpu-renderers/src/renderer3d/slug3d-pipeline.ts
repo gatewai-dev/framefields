@@ -41,7 +41,7 @@ export class Slug3DPipeline {
 	private modelPool: BufferPool;
 	private instancePool: BufferPool;
 	private fontBindGroups = new WeakMap<GPUTexture, GPUBindGroup>();
-	// 16 (model) + 16 (normal) + 4 (params) + 4 (materialParams) + 8 (pbr, emissive) = 48 floats (192 bytes)
+	// Transform, draw/material params and the shared surface block.
 	private modelData = new Float32Array(40 + SURFACE_PARAMS_FLOATS);
 
 	constructor(

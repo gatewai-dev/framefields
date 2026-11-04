@@ -1495,9 +1495,14 @@ export function drawParagraphNode(
 				}
 			}
 
+			// The glyph's own fill: the start of any animator colour sweep.
+			const isHighlighted =
+				props.highlightWordIndex !== undefined &&
+				glyph.wordIndex === props.highlightWordIndex;
+			const spanColor = glyph.fill ? parseColor(glyph.fill) : undefined;
+			let fillColor = isHighlighted ? highlightColor : (spanColor ?? baseColor);
 			let customScaleX = 1.0;
 			let customScaleY = 1.0;
-			let animatorColor: Color | undefined;
 			let transZ = 0;
 			let chromaticShift = 0;
 			let dissolveProgress = 0;
@@ -1521,7 +1526,7 @@ export function drawParagraphNode(
 						scaleY: customScaleY,
 						opacity,
 						blurAmount,
-						color: baseColor,
+						color: fillColor,
 					},
 					false,
 					props.frame ?? 0,
@@ -1538,9 +1543,7 @@ export function drawParagraphNode(
 				if (blurOverride === undefined) {
 					blurAmount = kResult.blurAmount;
 				}
-				if (kResult.color) {
-					animatorColor = kResult.color;
-				}
+				if (kResult.color) fillColor = kResult.color;
 				if (kResult.lineSpacing !== undefined) {
 					transY += computeLineLeadingDisplacement(
 						glyph.lineIndex,
@@ -1577,14 +1580,8 @@ export function drawParagraphNode(
 				);
 			}
 
-			const isHighlighted =
-				props.highlightWordIndex !== undefined &&
-				glyph.wordIndex === props.highlightWordIndex;
-			const spanColor = glyph.fill ? parseColor(glyph.fill) : undefined;
-			const col =
-				animatorColor ??
-				colorOverride ??
-				(isHighlighted ? highlightColor : (spanColor ?? baseColor));
+			// A stroke or shadow pass paints in its own colour; animators tint the fill.
+			const col = colorOverride ?? fillColor;
 
 			const writeInstance = (boldShift: number) => {
 				const offset = visibleCount * 24;

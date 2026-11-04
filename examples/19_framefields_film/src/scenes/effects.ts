@@ -220,7 +220,7 @@ export function effectsScene() {
 		{
 			name: "grade",
 			title: "Graded",
-			fx: (c) => warm(c).apply(new Vignette({ strength: 0.4 })),
+			fx: (c) => warm(c).apply(new Vignette({ strength: 40 })),
 		},
 		{
 			name: "halftone",

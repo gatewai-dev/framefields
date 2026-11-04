@@ -46,7 +46,7 @@ export async function buildFilm(): Promise<Composition> {
 			durationFrames: DURATION,
 		}),
 	);
-	film.apply(new Vignette({ strength: 0.12, radius: 0.95, softness: 0.7 }));
-	film.apply(new FilmGrain({ strength: 0.035, size: 1.4, animated: true }));
+	film.apply(new Vignette({ strength: 12, radius: 0.95, softness: 0.7 }));
+	film.apply(new FilmGrain({ strength: 3.5, size: 1.4, animated: true }));
 	return film;
 }

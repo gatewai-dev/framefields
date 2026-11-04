@@ -9,20 +9,18 @@ description: Apply, configure, and modulate WebGPU post-processing shaders, styl
 Import everything from the [`framefields`](https://www.npmjs.com/package/framefields) npm package. If the project doesn't have framefields set up yet, follow the `framefields` skill first (install, project scaffold, first render).
 
 ## Overview
-`framefields` features a native WebGPU shader execution pipeline for 2D VFX, tonal grading, cinematic lens simulation, spatial relighting, and real-time neural vision conditioning.
+Effects are typed `Effect` classes (grading, lens, texture, stylize, keying, temporal). Every prop takes a static value or a `Signal`.
 
-Effects in framefields are strongly typed `Effect` subclasses whose uniform properties can be driven by static values, time-varying keyframes, reactive `Signal` instances, or audio extraction pipelines.
-
-See [references/effects-catalog.md](references/effects-catalog.md) for the generated prop-level catalog, defaults, and type bounds.
+**Before setting a prop, look it up in [references/effects-catalog.md](references/effects-catalog.md)**: the generated list of every class with its props, defaults and ranges. Scales differ between effects, and a value on the wrong scale renders as nothing.
 
 ---
 
 ## Attaching Effects
 
-There are 4 main attachment modes in the engine:
+Four ways to attach effects:
 
-### 1. Layer-Level Effect Pipeline
-Attach one or more effects to any layer (`box`, `flex`, `shape`, `text`, `media`) directly via `.withEffect(effect)` or `.withEffects([...])`:
+### 1. A layer (`withEffect` / `withEffects`)
+Any layer (`box`, `flex`, `shape`, `text`, `media`):
 
 ```typescript
 import { Layer, Curves, Vignette, Blur, Pixelate } from "framefields";
@@ -32,33 +30,27 @@ const videoLayer = Layer.video("assets/footage.mp4", { fit: "cover" })
   .withEffect(new Curves({
     master: [{ x: 0, y: 0.05 }, { x: 0.5, y: 0.52 }, { x: 1, y: 0.95 }]
   }))
-  .withEffect(new Vignette({ strength: 0.4, radius: 0.85, softness: 0.6 }))
+  .withEffect(new Vignette({ strength: 40, radius: 0.85, softness: 0.6 }))
   .withEffect(new Blur({ strength: 8, blurType: "Gaussian" }));
 
 // Styled container box with blur
 const cardLayer = Layer.box({ width: 400, height: 300, background: "#1e1e24" })
-  .withEffect(new Blur({ radius: 12 }));
+  .withEffect(new Blur({ strength: 12 }));
 
 // Kinetic text with pixelation
 const titleLayer = Layer.text("CYBERPUNK", { fontSize: 72 })
   .withEffect(new Pixelate({ size: 8 }));
 ```
 
-### 2. Whole-Composition Master Emulsion
-Apply an overarching post-processing grade or film emulsion across all rendered layers:
+### 2. The whole composition (`comp.apply`)
+A grade or grain over everything rendered:
 ```typescript
 import { Composition, FilmGrain, ColorBalance } from "framefields";
 
-const comp = new Composition({ width: 1920, height: 1080, fps: 30 });
+const comp = new Composition({ width: 1920, height: 1080, fps: 30, durationMs: 10_000 });
 
 // Shared organic 35mm grain applied across titles, background video, and vector graphics
-comp.apply(new FilmGrain({
-  strength: 0.06,
-  size: 1.5,
-  monochrome: true,
-  animated: true,
-  speed: 1.0,
-}));
+comp.apply(new FilmGrain({ strength: 18, size: 1.5, monochrome: true }));
 
 comp.apply(new ColorBalance({
   shadows: { cyanRed: 4, yellowBlue: -6 },
@@ -67,8 +59,8 @@ comp.apply(new ColorBalance({
 }));
 ```
 
-### 3. Spatial & Tracked Sections (`comp.section` / `Layer.section`)
-Isolate a sub-region of a plate or canvas to apply localized effects:
+### 3. A region (`comp.section` / `Layer.section`)
+Effects inside a rectangle (or a tracked object) of a plate:
 ```typescript
 // Box blur on a tracked object or explicit bounding rectangle
 const blurredPlate = comp.section({
@@ -82,14 +74,14 @@ const blurredPlate = comp.section({
 });
 ```
 
-### 4. Fluid Fluent Media Chains (`Media`)
-Process clips outside a layout tree before mounting or exporting:
+### 4. Media chains (`Media`)
+Process a clip outside the layout tree:
 ```typescript
 import { Media, ApplyLUT, Crop } from "framefields";
 
 const clip = Media.video("assets/raw_log.mp4")
   .apply(new ApplyLUT({ lutUrl: "assets/luts/cinematic.cube", intensity: 1.0 }))
-  .apply(new Crop({ cropType: "rectangle", topPercentage: 10, heightPercentage: 80 }));
+  .apply(new Crop({ cropType: "rect", topPercentage: 10, heightPercentage: 80 }));
 
 const pngBuffer = await clip.renderFrame({ atMs: 1500 });
 ```
@@ -132,7 +124,7 @@ const pngBuffer = await clip.renderFrame({ atMs: 1500 });
 
 ### 4. Matte, Keying & Edge Operations
 - **`ColorKey`**: Studio greenscreen/bluescreen keyer with spill suppression and smoothness controls.
-- **`Crop`**: Rectangular, circular, or arbitrary polygon path cropping with corner rounding.
+- **`Crop`**: `cropType: "rect"` (percent edges, `roundness` for rounded or circular corners) or `"path"` (`pathPoints` polygon); `mode: "rest"` keeps the outside instead.
 
 ### 5. Stylize Looks (`Styles.*`)
 
@@ -146,7 +138,7 @@ The effects behind them, for finer control:
 - **`Dither`**: `bayer` / `noise` / `halftone`; 1-bit duotone (`dark` / `light`) or per-channel `levels`.
 - **`Ascii`**: glyphs by brightness; `colorMode: "mono" | "source" | "green"`, `cellSize`, `fg` / `bg`, `invert`.
 - **`Toon`**: brightness bands plus Sobel ink lines (`edgeColor`, `edgeWidth`, `edgeThreshold`).
-- **Geometry outlines for 3D:** use `Layer.environment(..., { outlines: { width: 2, referenceHeight: 1080, color: "#16131c", creaseAngle: 45 } })`. These use depth and surface normals rather than image contrast, ignore painted textures and lighting boundaries, follow scene fog, and render before camera depth blur and bloom. A layer/model with `outline: false` still occludes ink behind it. `material: "toon"` plus `toon: { shadowColor, lightColor, threshold, softness, diffuse }` controls actual surface lighting, including colored lights and cast shadows. These scene/material capabilities are independent of the 2D `Toon` effect and do not change the default physical look; see `framefields-compose` for defaults and ranges.
+- **3D ink and cel shading** are scene features, not this image effect: `Layer.environment(..., { outlines })` and `material: "toon"` (see `framefields-compose`, *3D Look*).
 - **`RGBSplit`**: chromatic aberration along `angle` or `radial`.
 - **`CRT`**: curvature, scanlines, aperture mask, noise, flicker, vignette; `tracking` and `chroma` give VHS wobble and colour bleed.
 - **`Painterly`**: Kuwahara `oil` / `watercolor` (pigment edges, paper grain).
@@ -166,17 +158,13 @@ Cutouts, subject mattes, tracked boxes, pose, smart re-framing, subject outlines
 
 ## Reactive Signal Modulation
 
-Uniforms on any `Effect` accept reactive `Signal` instances instead of static values. When the signal changes, the GPU uniform buffer updates automatically without rebuilding the pipeline:
+Any numeric prop takes a `Signal` (audio envelopes, physics impacts, vision bounds, `sineSignal`), sampled every frame:
 
 ```typescript
-import { Layer, Blur, sineSignal, computed } from "framefields";
+import { Layer, Blur, sineSignal } from "framefields";
 
 // Oscillating breath blur
-const blurSignal = sineSignal({
-  frequencyHz: 0.5,
-  min: 0,
-  max: 20
-});
+const blurSignal = sineSignal({ frequency: 0.5, min: 0, max: 20 });
 
 const layer = Layer.image("assets/bg.jpg")
   .withEffect(new Blur({
@@ -186,6 +174,7 @@ const layer = Layer.image("assets/bg.jpg")
 ```
 
 ### Best Practices:
-1. **Emulsion Restraint:** Keep `FilmGrain` (`0.04–0.08`) and `Vignette` (`0.2–0.45`) subtle. Over-filtering looks amateurish.
-2. **Order Matters:** Place tonal grading (`Curves`, `ColorBalance`) before lens optics (`Blur`, `DepthOfField`), and apply grain (`FilmGrain`) as the outermost layer.
-3. **No Redundant Shaders:** For static image exports, set `animated: false` on `FilmGrain` to preserve deterministic static renders.
+1. **Check the prop's scale in the catalog before picking a number.** Scales differ per effect: `FilmGrain` and `Vignette` `strength` run 0–100 (defaults 15 and 50), `Blur` `strength` 0–100, while `Blur` `radius` is the 0–1 size of a *partial* blur region, not the blur amount. A value on the wrong scale renders as nothing, without an error.
+2. **Emulsion restraint:** keep `FilmGrain` around 10–25 and `Vignette` around 25–45. Over-filtering looks amateurish.
+3. **Order matters:** Place tonal grading (`Curves`, `ColorBalance`) before lens optics (`Blur`, `DepthOfField`), and apply grain (`FilmGrain`) as the outermost layer.
+4. **Stills:** set `animated: false` on `FilmGrain` so the grain does not change between frames of a held image.

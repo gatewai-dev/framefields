@@ -18,7 +18,15 @@ import { motionScene } from "./scenes/motion.js";
 import { openScene } from "./scenes/open.js";
 import { resolveScene } from "./scenes/resolve.js";
 import { trackScene } from "./scenes/track.js";
-import { DURATION_FRAMES, FPS, H, INK, W, asset, registerFonts } from "./theme.js";
+import {
+	asset,
+	DURATION_FRAMES,
+	FPS,
+	H,
+	INK,
+	registerFonts,
+	W,
+} from "./theme.js";
 
 export { trackScene };
 
@@ -44,7 +52,7 @@ export async function buildFilm(): Promise<Composition> {
 	film.add(Layer.audio(asset("score.mp3"), { id: "score", volume: 1 }));
 
 	// One shared emulsion over everything keeps paper, footage and type in the same world.
-	film.apply(new FilmGrain({ strength: 0.05, size: 1.6, animated: true }));
+	film.apply(new FilmGrain({ strength: 5, size: 1.6, animated: true }));
 
 	return film;
 }

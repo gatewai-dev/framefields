@@ -1,6 +1,6 @@
 ---
 name: framefields-compose
-description: Design, structure, and animate code-first video compositions using the framefields WebGPU SDK. Use when creating scenes, layout trees, kinetic typography, camera trajectories, vector shapes, or audio-synchronized motion graphics in framefields.
+description: Design, structure, and animate code-first video compositions using the framefields WebGPU SDK. Use when writing or changing a framefields film — scenes and transitions, layout trees, keyframes and easing, kinetic typography, shapes and morphs, charts, blend modes and mattes, 3D scenes (cameras, lights, materials, outlines, models), physics, GPU particles, procedural VFX layers, time remapping, or audio-synchronized motion.
 ---
 
 # framefields-compose
@@ -9,9 +9,9 @@ description: Design, structure, and animate code-first video compositions using 
 Import everything from the [`framefields`](https://www.npmjs.com/package/framefields) npm package. If the project doesn't have framefields set up yet, follow the `framefields` skill first (install, project scaffold, first render).
 
 ## Overview
-`framefields` is a code-first, deterministic video composition SDK executing natively on WebGPU (Dawn) in Node.js. It replaces browser-based rendering (Puppeteer/Chromium) with high-performance GPU pipelines, Yoga flexbox layout, Slug vector typography, 3D camera transforms, and reactive audio/signal drivers.
+`framefields` is a code-first, deterministic video SDK on native WebGPU (Dawn) in Node.js: Yoga flexbox layout, GPU vector text, 3D, physics, particles, and signal-driven animation.
 
-Every composition is defined as a tree of layout nodes compiled into a deterministic execution program: `(composition, frame) → pixels`.
+A composition is a tree of layout nodes compiled into a deterministic program: `(composition, frame) → pixels`.
 
 ---
 
@@ -23,11 +23,8 @@ A `Composition` instance defines canvas dimensions, frame rate, background, regi
 ```typescript
 import { Composition, Layer, FontManager } from "framefields";
 
-// Always register fonts before assembling layers
-await FontManager.register({
-  family: "Inter",
-  source: "assets/fonts/Inter.ttf"
-});
+// Register fonts before building text layers (the composition picks them up)
+await FontManager.register({ family: "Inter", source: "assets/fonts/Inter.ttf" });
 
 const comp = new Composition({
   width: 1920,
@@ -35,11 +32,10 @@ const comp = new Composition({
   fps: 30,
   durationMs: 10000, // or computeDuration()
   backgroundColor: "#0E0D0C",
-  fonts: ["assets/fonts/Inter.ttf"],
 });
 
 comp.add(Layer.box({ /* ... */ }));
-comp.add(Layer.audio("assets/score.mp3", { volume: 1 }));
+comp.add(Layer.audio("assets/score.mp3", { volume: 1, durationFrames: 300 }));
 ```
 
 ### 2. Scene Architecture (Production Pattern)
@@ -53,6 +49,8 @@ For the exported `Scene` / `Sequence` builder, scene windows are half-open: `[st
 
 ```typescript
 // theme.ts
+import { Layer, type LayoutNode } from "framefields";
+
 export const W = 1920;
 export const H = 1080;
 export const FPS = 30;
@@ -63,7 +61,7 @@ export const INK = "#0E0D0C";
 export const PAPER = "#EEE9E0";
 export const EMBER = "#FF5A1F";
 
-export function scene(options: { id: string; from: number; to: number; children: unknown[] }) {
+export function scene(options: { id: string; from: number; to: number; children: LayoutNode[] }) {
   return Layer.box({
     id: options.id,
     position: "absolute",
@@ -73,7 +71,7 @@ export function scene(options: { id: string; from: number; to: number; children:
     height: H,
     startFrame: options.from,
     durationFrames: options.to - options.from,
-    children: options.children as never,
+    children: options.children,
   });
 }
 ```
@@ -100,11 +98,11 @@ All `Layer.*` builders return `AnimatableNode<T>` instances with chainable `.ani
 | `Layer.caption(src, options)` | `"media"` | SRT-driven synchronized subtitle engine. Bottom-anchored auto-wrapping cues. |
 | `Layer.chart(options, props)` | `"box"` | Charts built from native nodes (d3 scales and geometry). `type`: `"line" \| "area" \| "bar" \| "scatter" \| "candlestick" \| "pie" \| "donut"`. Options: `width`, `height`, `series: [{ name, data, color, type, curve, pointRadius }]` or `data`, `categories`, `stacked`, `xAxis`/`yAxis` (`min`, `max`, `ticks`, `grid`, `format`: a d3-format string like `"$,.0f"`), `legend`, `valueLabels`, `fontFamily`, `fontSize`, `colors`, `animate: { start, duration, stagger, ease } \| false`. `props` positions the chart box. Children get ids `<id>-bar-<series>-<i>`, `<id>-line-<series>`, `<id>-slice-<i>`. Keep scatter charts to a few hundred points: each point is a node. |
 | `Layer.camera(options)` | `"camera"` | 3D scene camera with FOV, lens rack focus, and orbital coordinates. |
-| `Layer.light(options)` | `"light"` | 3D lighting primitive (`ambient`, `directional`, `point`, `spot`). Directional and spot take `castShadow: true`, `shadowSoftness`, `shadowDarkness`. |
+| `Layer.light(options)` | `"light"` | 3D lighting primitive (`ambient`, `directional`, `point`, `spot`); also `Layer.ambientLight` / `directionalLight` / `pointLight` / `spotLight` and `Light.*`, all taking one options object. Directional and spot take `castShadow: true`, `shadowSoftness`, `shadowDarkness`. |
 | `Layer.environment(preset, options)` | `"light"` | The 3D scene's world: studio image-based light, exposure, tone mapping, fog, bloom. **Adding one switches the scene to physically based shading.** See *3D Look* below. |
 | `Layer.sequence(entries, options)` | `"box"` | Scenes back to back with `Transition`s between them; returns a box whose `totalFrames` is the length. See *Scenes & Transitions*. |
 | `Layer.model(options)` | `"model3d"` | 3D mesh loader (`.gltf`, `.glb`, `.obj`, `.fbx`, `.stl`, `.ply`). Supports skinning and audio deformation compute shaders. |
-| `Layer3D.roundedBox / sphere / cylinder / capsule / torus / ring / prism / pyramid / polyhedron / icosahedron / icosphere / shard(options)` | `"model3d"` | Procedural solid meshes, centered on `x`/`y`/`z` (y is down, so "top" is -y). `roundedBox`: `width`, `height`, `depth`, `radius`, `segments`, `taper`. `sphere`: `radius`. `cylinder`: `radius` or `radiusTop`/`radiusBottom`, `height`, `openEnded`, `flatShaded`. `capsule`: `radius`, `height` (cylindrical shaft) or `totalHeight`. `torus`: `radius`, `tube` (tube radius), `arc`. `ring`: flat annulus (`innerRadius`, `outerRadius`). `prism` / `pyramid`: solid capped flat-shaded N-gon prism or pyramid (`sides`, `radius`, `height`). `polyhedron` (`type: "tetrahedron" \| "octahedron" \| "dodecahedron" \| "icosahedron"`), `icosahedron`, `icosphere` (`radius`, `detail`, `flatShaded`). `shard`: procedural flat-faceted polyhedron rock/crystal (`radius`, `cuts`, `irregularity`, `seed`). Surface: `color`, `tint`, `roughness`, `metallic`, `emissive`, `emissiveIntensity`, `material` (`"lit" \| "glass" \| "acrylic" \| "frosted"`), `castShadow`, `wireframe`. Shared GPU buffers cache identical shapes. |
+| `Layer3D.roundedBox / sphere / cylinder / capsule / torus / ring / prism / pyramid / polyhedron / icosahedron / icosphere / shard(options)` | `"model3d"` | Procedural solid meshes, centered on `x`/`y`/`z` (y is down, so "top" is -y). `roundedBox`: `width`, `height`, `depth`, `radius`, `segments`, `taper`. `sphere`: `radius`. `cylinder`: `radius` or `radiusTop`/`radiusBottom`, `height` (required), `openEnded`, `flatShaded`. `capsule`: `radius`, `length` (straight shaft; total height is `length + 2 * radius`). `torus`: `radius`, `tube` (tube radius), `arc`. `ring`: flat annulus (`innerRadius`, `outerRadius`). `prism` / `pyramid`: solid capped flat-shaded N-gon prism or pyramid (`sides`, `radius`, `height`). `polyhedron` (`type: "tetrahedron" \| "octahedron" \| "dodecahedron" \| "icosahedron"`), `icosahedron`, `icosphere` (`radius`, `detail`, `flatShaded`). `shard`: procedural flat-faceted polyhedron rock/crystal (`radius` or `size: [x, y, z]`, `facets`, `irregularity`, `seed`). Surface: `color`, `tint`, `roughness`, `metallic`, `emissive`, `emissiveIntensity`, `material` (`"lit" \| "glass" \| "acrylic" \| "frosted"`), `castShadow`, `wireframe`. Shared GPU buffers cache identical shapes. |
 | `Layer3D.extrude / lathe / tube / line / points(options)` | `"model3d"` | Custom & path-driven 3D geometry. `extrude`: extrude a 2D SVG path `d` (with holes) or `contour`/`holes` (`depth`, `bevelThickness`, `bevelSize`, `bevelSegments`, `bevelColor`). `lathe`: revolve a 2D `points` profile `[r, y][]` around the Y axis (`segments`, `phiStart`, `phiLength`, `closed`, `flatShaded`). `tube`: sweep a solid or thick-walled hollow pipe (`radius`, `innerRadius`, `radiusTaper`, `closed`, `capped`) along a `Path3D` or 3D control `points` using rotation-minimizing frames. `line`: 3D polyline (`points` or `Path3D`, `dashSize`, `gapSize`, per-vertex `colors`). `points`: 3D point cloud (`points`, `pointSize` for lit sphere dots or `0` for `point-list`, per-point `colors`). |
 | `Layer3D.instances(options)` | `"model3d"` | Hardware-instanced single or multi-variant mesh rendering in 1 GPU draw call. Options: `count`, `mesh` / `meshes` (array of Layer3D primitives or meshes), `instanceAt(index, frame): { position, rotation, scale, color, emissive }`, or bind directly to Rapier `Physics.world3d` bodies via `bodies: Body3D[]` with `emissiveBySpeed` and `colorRamp`. |
 | `Layer3D.swarm(options)` | `"model3d"` | Continuous 3D GPU particle swarm with compute-driven physics, 3D curl turbulence, vortex/cyclone field (`swirl`, `pull`, `axial`), ground plane collisions with Coulomb sliding friction and rotational roll torque, kinetic heat accumulation/cooling, and zero-copy packing directly into GPU instance buffers. |
@@ -112,8 +110,6 @@ All `Layer.*` builders return `AnimatableNode<T>` instances with chainable `.ani
 ---
 
 ## Media time remapping
-
-`Layer.ambientLight({ color, intensity, id })` and `Light.ambient({ color, intensity, id })` accept options objects like the other light helpers; the positional `(color, intensity, options)` form remains supported. Animation-builder instances passed through a layer's `animation` option are normalized to program specs, including `CameraAnimation`.
 
 Video and audio layers accept `timeRemap` with an explicit `durationFrames`. Map frames are layer-local; `sourceSec` is absolute source time. Increasing source times play forward; decreasing source times play in reverse; equal source times hold the picture and silence the audio. Rate changes also change audio pitch. Do not combine this with `trimStartSec`.
 
@@ -345,7 +341,7 @@ puppet.animate(walkCycle, bob, LayerAnimation.stepped(2));
 A path shape's `d` is animatable: keyframe two or more SVG paths and they morph. Any paths work (different point counts, curves, arcs, several subpaths); they are resampled and lined up so the morph does not twist. Eases apply as usual.
 
 ```typescript
-Layer.shape("path", { position: "absolute", x: 0, y: 0, width: 400, height: 400, d: BLOB_A, fillColor: "#3B82F6" })
+Layer.shape("path", { position: "absolute", x: 0, y: 0, width: 400, height: 400, d: BLOB_A, fill: "#3B82F6" })
   .animate(LayerAnimation.keys("d", [[0, BLOB_A], [24, STAR, "back.out(1.4)"], [48, HEART, "expo.inOut"]]));
 ```
 
@@ -468,23 +464,19 @@ comp.add([
 
 Layer3D.sphere({ radius: 90, color: "#e8e8e8", metallic: 1, roughness: 0.15 });  // chrome
 Layer3D.roundedBox({ ..., color: "#ff5a1f", roughness: 0.45 });                  // satin plastic
-Layer3D.cylinder({ ..., color: "#111", emissive: "#4da3ff", emissiveIntensity: 3 }); // neon tube
+Layer3D.cylinder({ ..., height: 400, color: "#111", emissive: "#4da3ff", emissiveIntensity: 3 }); // neon tube
 ```
 
 - **Tone mapping `"neutral"` (default) keeps brand colors as authored**: orange stays orange. Use `"agx"` for a filmic roll-off.
 - **Bloom only takes light well past white** (emissive ≳ 3, hot speculars), so ordinary bright surfaces don't glow. Raise `emissiveIntensity` to make something glow.
 - **Shadows:** directional and spot lights can each cast shadows, subject to device texture-array limits. Meshes cast by default (`castShadow: false` opts out); flat layers (planes, cards) cast only with `castShadow: true`. Everything receives.
 - **Art-directed materials:** `material: "toon"` works on meshes, flat 3D cards and native 3D text. Its `toon` options are `shadowColor` (shadow-side albedo multiplier; model shade color or `#80808c`), `lightColor` (lit-side multiplier; white), `threshold` (terminator cosine; 0.075), `softness` (transition width; 0.25) and `diffuse` (0 flat through 1 Lambert; 0). Toon surfaces use all scene lights, their colors, point/spot attenuation and real cast shadows; environment exposure, tone mapping, fog and emissive bloom still apply. Lower `threshold` to wrap light around a surface, or raise `shadowColor` for a bright shadow floor on illustrated cards. Physical and unlit materials are independent of these options.
-- **Geometry outlines:** `Layer.environment("neutral", { outlines: true })`, or `outlines: { color: "#191721", width: 2, referenceHeight: 1080, creaseAngle: 45, depthThreshold: 0.01, opacity: 1 }`. Width is in pixels at `referenceHeight` (default 1080), scaled with output height. Silhouettes/depth jumps use inverse-depth curvature; creases use surface normals, so textures, shadows and coplanar triangle seams do not acquire ink. `creaseAngle: 180` keeps only silhouettes/depth edges; `width: 0`, `opacity: 0` or `outlines: false` hides ink. Set `outline: false` on a 3D layer/model to exclude it while preserving its occlusion of outlines behind it (useful for already-outlined character artwork). Ink follows scene fog and runs **before** camera depth blur and bloom. This is a scene geometry pass, separate from the image-based `Toon` effect.
+- **Geometry outlines (ink):** `Layer.environment("neutral", { outlines: true })`, or `outlines: { color: "#191721", width: 2, referenceHeight: 1080, creaseAngle: 45, depthThreshold: 0.01, opacity: 1 }`. `width` is px at `referenceHeight`, scaled with the output height; start near 1 px at export height. Ink comes from depth and normals, so textures, shadows and coplanar seams get none; `creaseAngle: 180` keeps only silhouettes. `outline: false` on a layer/model excludes it but keeps it occluding ink behind it (for already-inked artwork). Ink follows fog and runs before depth blur and bloom; heavy lens blur spreads it into wide bands. Separate from the image-space `Toon` effect. `Layer3D.cube({ faces: { front: Layer.box(...) } })` faces inherit the cube's `toon`, `outline`, emissive and shadow settings unless set per face. Example: `examples/34_spatial_styling` in the engine repo.
 - **3D pivots:** `anchorX/Y` choose the point held fixed during scale/rotation; changing an anchor at identity transform leaves the layer in place. Use `anchorY: 1` to keep a character's feet planted while scaling.
-
-With MSAA enabled, geometry ink shades the original color/depth/normal samples and then resolves color. Detecting contours only after the scene resolves loses subpixel coverage, especially where two outlined surfaces meet. Lens blur receives a separate nearest-sample depth resolve; normals and depths are never color-averaged for ink detection. Already-inked character artwork can remain excluded without losing occlusion. See `examples/34_spatial_styling` in the engine repository for daylight and firelit native scenes using these controls.
-
-Custom `Layer3D.cube({ faces: { front: Layer.box(...) } })` artwork inherits the cube's surface settings (including `toon`, `outline`, emissive and shadow casting), while explicit face settings take precedence. For delicate illustrated scenes, start near a one-pixel outline at the export height and use moderate lens blur: heavy defocus can spread a dark contour into a wide band on distant architecture.
 - **Fog** fades to `fog.color` exactly, so set it to the composition background for a seamless horizon.
 - **Models:** glTF materials bring base color, normal, metallic-roughness, occlusion and emissive maps; OBJ (`map_Kd`, `norm` in the `.mtl`) and FBX bring diffuse and normal maps, looked up next to the model. Textures can be PNG, JPEG, WebP, GIF, TIFF, AVIF or Basis KTX2 (ETC1S/UASTC, transcoded offline to RGBA8); TGA, PSD and DDS are skipped with a warning. Draco and meshopt-compressed glTF geometry is decoded by the asynchronous compositor loader; individual maps retain their own UV sets and texture transforms. glTF morph weights animate on the GPU before skinning. Unknown required glTF extensions fail clearly. Vertex colors (VOX, PLY, OFF, glTF `COLOR_0`) multiply the base color.
 - **Model orientation:** the world is y-down, so a y-up model (most glTF, OBJ and FBX files) needs `rotateX: 180` to stand upright.
-- **Planar reflective floor:** `floor: { y, color, reflectivity, roughness, fadeDistance, opacity }` renders an exact mirrored-camera reflection pass with subterranean fragment clipping, 2-pass anisotropic roughness blur ($\sigma_y \approx 3.5 \sigma_x$ along the reflection axis), Schlick Fresnel grazing angle boost, linear distance fade, and HDR radiance bloom output.
+- **Reflective floor:** `floor: { y, color, reflectivity, roughness, fadeDistance, opacity }` mirrors the scene; `roughness` blurs the reflection, which also fades with distance and strengthens at grazing angles.
 - `emissive` / `emissiveIntensity` / `exposure` animate like any prop (`.keys("emissiveIntensity", …)`).
 - **Transparent 3D meshes:** glTF `BLEND` materials and meshes with reduced opacity draw after opaque scene items, sorted back to front by each mesh's bounds center without writing depth. This is an object-level approximation: intersecting or self-overlapping meshes cannot always sort correctly; translucent flat layers and glass use separate rendering paths.
 - **Glass:** `material: "glass" | "acrylic" | "frosted"` on any Layer3D primitive, extruded text (`Layer3D.extrudedText`) or model refracts whatever is behind it on screen — the video, 2D layers, particles — with a rainbow fringe (`dispersion`, default 0.04), bend strength `thickness` (px, default 80) and `ior` (1.5). `color` tints the glass (deeper toward the edges); `frosted` blurs by `roughness`. Glass needs no environment: it draws its own studio reflections, and against a dark grade it reads best — skip `Lighting.*` rigs for glass-only scenes (their environment washes glass out). Glass shows only 2D content and opaque 3D drawn before it, not other glass.
@@ -583,12 +575,11 @@ Layer.vfx({ effectType: "Aurora", width: W, height: H, colorStart: "#2bff88", co
 1. **Local Keyframe Coordinates:** Keyframes are strictly relative to the node's own timeline window (`0` = node appearance). Never offset keyframe frames by the parent's `startFrame`.
 2. **Coordinate Overrides:** Animating `y` overrides the node's layout `y`. If a node is placed at `y: 400`, animate `fromTo("y", 440, 400)`, NOT `fromTo("y", 40, 0)`.
 3. **No String Styles for Borders:** Use `borderColor` and `borderWidth`. CSS `border: "1px solid red"` is silently ignored.
-4. **Font Registration is Mandatory:** In headless WebGPU, system fonts do not exist. Every font must be registered via `FontManager.register()` and listed in `comp.fonts`. Emoji need a color emoji font too: framefields ships none, so register one with `FontManager.registerEmojiFont("assets/fonts/NotoColorEmoji.ttf")` (a CBDT/CBLC bitmap font such as Noto Color Emoji). Without it exports draw nothing for emoji.
+4. **Font Registration is Mandatory:** In headless WebGPU, system fonts do not exist. Register every font with `FontManager.register()` before building text layers. Emoji need a color emoji font too: framefields ships none, so register one with `FontManager.registerEmojiFont("assets/fonts/NotoColorEmoji.ttf")` (a CBDT/CBLC bitmap font such as Noto Color Emoji). Without it exports draw nothing for emoji.
 5. **Integer Frames Only:** Keyframe frames, start frames, and durations must be integers. Decimal frames cause schema validation errors.
-6. **Relative vs. Absolute:** Providing `x` or `y` without `position: "relative"` turns the node into an absolute-positioned layer removed from flex flow.
+6. **`x`/`y` mean absolute:** a node with `x` or `y` and no `position` is absolutely positioned (out of flex flow), relative to its parent's content box.
 7. **Audio Layer Duration:** Every `Layer.audio()` must be assigned `durationFrames` to prevent audio truncation in headless rendering.
-8. **Premultiplied Alpha:** Alpha shaders operate with premultiplied alpha. Never use `"src-alpha"` factor in custom blends.
-9. **Lint before rendering:** `comp.lint()` lists colors/gradients that would draw transparent, low-contrast text, off-canvas layers, shadow settings that do nothing and `roughness`/`metallic` without an environment. `renderVideo({ qa: true })` includes these findings.
-10. **Lottie vs. Image Layers:** Use `Layer.lottie("file.json" | "file.lottie", { width, height, fit })` for Lottie vector animations. Never pass `.json` or `.lottie` to `Layer.image()`, which only decodes raster formats and throws/warns if given a vector animation.
-11. **AI-generated media are assets, not build steps:** Images, clips, music or voice made with `ai` (from `framefields`) are generated once by a separate script into `assets/generated/` and loaded like any other file. Never call `ai` from `buildFilm()` or a scene function: it would spend money and change the film on every render, preview and test. The `framefields` skill (section 6) covers the key, the script and the model catalog.
-12. **Zooming into flat layers stays sharp:** text, shapes, images and SVGs rasterize at their scale on the canvas (up to 4×), so a camera push or a parent at `scale: 2` keeps glyphs and edges crisp. A leaf keeps its layout-size raster, and softens when magnified, if it is 3D or deflickered, is media with `effects`/`crop`, or carries an effect other than `LayerStyle` or a Gaussian/box `Blur`.
+8. **Lint before rendering:** `comp.lint()` lists colors/gradients that would draw transparent, low-contrast text, off-canvas layers, shadow settings that do nothing and `roughness`/`metallic` without an environment. `renderVideo({ qa: true })` includes these findings.
+9. **Lottie vs. Image Layers:** Use `Layer.lottie("file.json" | "file.lottie", { width, height, fit })` for Lottie vector animations. Never pass `.json` or `.lottie` to `Layer.image()`, which only decodes raster formats and throws/warns if given a vector animation.
+10. **AI-generated media are assets, not build steps:** Images, clips, music or voice made with `ai` (from `framefields`) are generated once by a separate script into `assets/generated/` and loaded like any other file. Never call `ai` from `buildFilm()` or a scene function: it would spend money and change the film on every render, preview and test. The `framefields` skill (section 6) covers the key, the script and the model catalog.
+11. **Zooming into flat layers stays sharp:** text, shapes, images and SVGs rasterize at their scale on the canvas (up to 4×), so a camera push or a parent at `scale: 2` keeps glyphs and edges crisp. A leaf keeps its layout-size raster, and softens when magnified, if it is 3D or deflickered, is media with `effects`/`crop`, or carries an effect other than `LayerStyle` or a Gaussian/box `Blur`.

@@ -423,6 +423,7 @@ if (!result.qa!.passed) process.exitCode = 1; // fail CI / the agent loop
 | `unknown_color` | warning | A color string that is not a color: it draws transparent |
 | `low_contrast_text` | warning | Text below 3:1 contrast against the solid color behind it (suggests a readable one) |
 | `offscreen_layer` | warning | A static absolute layer entirely outside the canvas |
+| `duplicate_id` | error | Two layers share an id: the renderer keeps one and drops the other |
 | `shadow_unsupported_light` | warning | `castShadow` on a point or ambient light |
 | `pbr_without_environment` | info | `roughness` / `metallic` set but no `Layer.environment()` (no physical shading) |
 | `static_track` | info | Every keyframe on a track holds the same value |

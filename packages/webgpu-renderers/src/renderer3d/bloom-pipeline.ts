@@ -159,8 +159,13 @@ export class BloomPipeline {
 	private module: GPUShaderModule;
 	private pipelineLayout: GPUPipelineLayout;
 	private sampler: GPUSampler;
-	private mips: GPUTexture[] = [];
-	private mipKey = "";
+	/**
+	 * Mip chains by size and depth. Scenes with different bloom share a frame
+	 * (one command buffer), so a chain stays alive until the frame is done:
+	 * chains not used in a frame are destroyed at the next `resetPools`.
+	 */
+	private chains = new Map<string, GPUTexture[]>();
+	private usedThisFrame = new Set<string>();
 	private placeholder: GPUTexture;
 	private uniformPool = new BufferPool(
 		48,
@@ -267,17 +272,22 @@ export class BloomPipeline {
 		return pipe;
 	}
 
-	private ensureMips(width: number, height: number, levels: number): void {
+	private mipChain(
+		width: number,
+		height: number,
+		levels: number,
+	): GPUTexture[] {
 		const key = `${width}x${height}x${levels}`;
-		if (key === this.mipKey) return;
-		for (const t of this.mips) t.destroy();
-		this.mips = [];
+		this.usedThisFrame.add(key);
+		const cached = this.chains.get(key);
+		if (cached) return cached;
+		const chain: GPUTexture[] = [];
 		let w = width;
 		let h = height;
 		for (let i = 0; i < levels; i++) {
 			w = Math.max(1, Math.floor(w / 2));
 			h = Math.max(1, Math.floor(h / 2));
-			this.mips.push(
+			chain.push(
 				this.device.createTexture({
 					label: `BloomMip${i}`,
 					size: { width: w, height: h },
@@ -288,7 +298,8 @@ export class BloomPipeline {
 			);
 			if (w === 1 && h === 1) break;
 		}
-		this.mipKey = key;
+		this.chains.set(key, chain);
+		return chain;
 	}
 
 	private uniforms(
@@ -371,8 +382,7 @@ export class BloomPipeline {
 			mode: display ? 1 : 0,
 		};
 		const levels = Math.max(1, Math.min(8, Math.round(options.radius ?? 6)));
-		this.ensureMips(source.width, source.height, levels);
-		const mips = this.mips;
+		const mips = this.mipChain(source.width, source.height, levels);
 		const u = (w: number, h: number) => this.uniforms(1 / w, 1 / h, opts);
 
 		const glowSource = hdrSource ?? source;
@@ -420,13 +430,24 @@ export class BloomPipeline {
 		);
 	}
 
-	/** Call once per frame before `apply`: recycles the per-pass uniforms. */
+	/**
+	 * Call once per frame before `apply`: recycles the per-pass uniforms and
+	 * frees the mip chains the last frame did not use.
+	 */
 	resetPools(): void {
 		this.uniformPool.reset();
+		for (const [key, chain] of this.chains) {
+			if (this.usedThisFrame.has(key)) continue;
+			for (const t of chain) t.destroy();
+			this.chains.delete(key);
+		}
+		this.usedThisFrame.clear();
 	}
 
 	destroy(): void {
-		for (const t of this.mips) t.destroy();
+		for (const chain of this.chains.values())
+			for (const t of chain) t.destroy();
+		this.chains.clear();
 		this.placeholder.destroy();
 		this.uniformPool.destroy();
 	}

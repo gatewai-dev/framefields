@@ -418,7 +418,41 @@ export class Renderer3D {
 		});
 	}
 
+	/**
+	 * Size-dependent render targets, by label, size, samples and usage. One
+	 * frame (one command buffer) can render 3D scenes of different sizes, so
+	 * a target is never destroyed while the frame may use it: targets the last
+	 * frame did not use are destroyed at the next `resetPools`.
+	 */
+	private attachments = new Map<string, GPUTexture>();
+	private attachmentsUsed = new Set<string>();
+	private attachment(
+		label: string,
+		width: number,
+		height: number,
+		desc: { format: GPUTextureFormat; usage: number; sampleCount?: number },
+	): GPUTexture {
+		const key = `${label}:${width}x${height}:${desc.sampleCount ?? 1}:${desc.usage}`;
+		this.attachmentsUsed.add(key);
+		let texture = this.attachments.get(key);
+		if (!texture) {
+			texture = this.device.createTexture({
+				label,
+				size: { width, height },
+				...desc,
+			});
+			this.attachments.set(key, texture);
+		}
+		return texture;
+	}
+
 	resetPools(): void {
+		for (const [key, texture] of this.attachments) {
+			if (this.attachmentsUsed.has(key)) continue;
+			texture.destroy();
+			this.attachments.delete(key);
+		}
+		this.attachmentsUsed.clear();
 		this.bloomPipeline?.resetPools();
 		this.cameraPool.reset();
 		// The cached camera buffer goes back to the pool and may be handed
@@ -437,37 +471,27 @@ export class Renderer3D {
 	}
 
 	getOrCreateDepthTexture(width: number, height: number): GPUTexture {
-		if (
-			!this.depthTexture ||
-			this.depthTexture.width !== width ||
-			this.depthTexture.height !== height
-		) {
-			this.depthTexture?.destroy();
-			this.depthTexture = this.device.createTexture({
-				label: "Renderer3DDepthTexture",
-				size: { width, height },
+		this.depthTexture = this.attachment(
+			"Renderer3DDepthTexture",
+			width,
+			height,
+			{
 				format: "depth24plus",
 				sampleCount: this.sampleCount,
 				usage: GPUTextureUsage.RENDER_ATTACHMENT,
-			});
-		}
+			},
+		);
 		return this.depthTexture;
 	}
 
 	private getOrCreateMsaaTexture(
-		current: GPUTexture | null,
+		_current: GPUTexture | null,
 		label: string,
 		format: GPUTextureFormat,
 		width: number,
 		height: number,
 	): GPUTexture {
-		if (current && current.width === width && current.height === height) {
-			return current;
-		}
-		current?.destroy();
-		return this.device.createTexture({
-			label,
-			size: { width, height },
+		return this.attachment(label, width, height, {
 			format,
 			sampleCount: this.sampleCount,
 			usage: GPUTextureUsage.RENDER_ATTACHMENT,
@@ -480,110 +504,85 @@ export class Renderer3D {
 	}
 
 	private getOrCreateHdrTexture(width: number, height: number): GPUTexture {
-		if (
-			!this.hdrTexture ||
-			this.hdrTexture.width !== width ||
-			this.hdrTexture.height !== height
-		) {
-			this.hdrTexture?.destroy();
-			this.hdrTexture = this.device.createTexture({
-				label: "Renderer3DHdrRadiance",
-				size: { width, height },
-				format: "rgba16float",
-				usage:
-					GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
-			});
-		}
+		this.hdrTexture = this.attachment("Renderer3DHdrRadiance", width, height, {
+			format: "rgba16float",
+
+			usage:
+				GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+		});
 		return this.hdrTexture;
 	}
 
 	getOrCreateLinearDepthTexture(width: number, height: number): GPUTexture {
-		if (
-			!this.linearDepthTexture ||
-			this.linearDepthTexture.width !== width ||
-			this.linearDepthTexture.height !== height
-		) {
-			this.linearDepthTexture?.destroy();
-			this.linearDepthTexture = this.device.createTexture({
-				label: "Renderer3DLinearDepthTexture",
-				size: { width, height },
+		this.linearDepthTexture = this.attachment(
+			"Renderer3DLinearDepthTexture",
+			width,
+			height,
+			{
 				format: "rgba16float",
+
 				usage:
 					GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
-			});
-		}
+			},
+		);
 		return this.linearDepthTexture;
 	}
 
 	getOrCreateReflectionTexture(width: number, height: number): GPUTexture {
-		if (
-			!this.reflectionColorTexture ||
-			this.reflectionColorTexture.width !== width ||
-			this.reflectionColorTexture.height !== height
-		) {
-			this.reflectionColorTexture?.destroy();
-			this.reflectionColorTexture = this.device.createTexture({
-				label: "Renderer3DReflectionColor",
-				size: { width, height },
+		this.reflectionColorTexture = this.attachment(
+			"Renderer3DReflectionColor",
+			width,
+			height,
+			{
 				format: this.format,
+
 				usage:
 					GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
-			});
-		}
+			},
+		);
 		return this.reflectionColorTexture;
 	}
 
 	getOrCreateReflectionMsaaTexture(width: number, height: number): GPUTexture {
-		if (
-			!this.reflectionMsaaColorTexture ||
-			this.reflectionMsaaColorTexture.width !== width ||
-			this.reflectionMsaaColorTexture.height !== height
-		) {
-			this.reflectionMsaaColorTexture?.destroy();
-			this.reflectionMsaaColorTexture = this.device.createTexture({
-				label: "Renderer3DReflectionMsaaColor",
-				size: { width, height },
+		this.reflectionMsaaColorTexture = this.attachment(
+			"Renderer3DReflectionMsaaColor",
+			width,
+			height,
+			{
 				format: this.format,
 				sampleCount: this.sampleCount,
 				usage: GPUTextureUsage.RENDER_ATTACHMENT,
-			});
-		}
+			},
+		);
 		return this.reflectionMsaaColorTexture;
 	}
 
 	getOrCreateReflectionDepthTexture(width: number, height: number): GPUTexture {
-		if (
-			!this.reflectionDepthTexture ||
-			this.reflectionDepthTexture.width !== width ||
-			this.reflectionDepthTexture.height !== height
-		) {
-			this.reflectionDepthTexture?.destroy();
-			this.reflectionDepthTexture = this.device.createTexture({
-				label: "Renderer3DReflectionDepth",
-				size: { width, height },
+		this.reflectionDepthTexture = this.attachment(
+			"Renderer3DReflectionDepth",
+			width,
+			height,
+			{
 				format: "depth24plus",
 				sampleCount: this.sampleCount,
 				usage: GPUTextureUsage.RENDER_ATTACHMENT,
-			});
-		}
+			},
+		);
 		return this.reflectionDepthTexture;
 	}
 
 	getOrCreateReflectionTempTexture(width: number, height: number): GPUTexture {
-		if (
-			!this.reflectionTempTexture ||
-			this.reflectionTempTexture.width !== width ||
-			this.reflectionTempTexture.height !== height
-		) {
-			this.reflectionTempTexture?.destroy();
-			this.reflectionTempTexture = this.device.createTexture({
-				label: "Renderer3DReflectionTemp",
-				size: { width, height },
+		this.reflectionTempTexture = this.attachment(
+			"Renderer3DReflectionTemp",
+			width,
+			height,
+			{
 				format: this.format,
+
 				usage:
 					GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
-			});
-		}
+			},
+		);
 		return this.reflectionTempTexture;
 	}
 
@@ -591,20 +590,17 @@ export class Renderer3D {
 		width: number,
 		height: number,
 	): GPUTexture {
-		if (
-			!this.reflectionBlurredTexture ||
-			this.reflectionBlurredTexture.width !== width ||
-			this.reflectionBlurredTexture.height !== height
-		) {
-			this.reflectionBlurredTexture?.destroy();
-			this.reflectionBlurredTexture = this.device.createTexture({
-				label: "Renderer3DReflectionBlurred",
-				size: { width, height },
+		this.reflectionBlurredTexture = this.attachment(
+			"Renderer3DReflectionBlurred",
+			width,
+			height,
+			{
 				format: this.format,
+
 				usage:
 					GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
-			});
-		}
+			},
+		);
 		return this.reflectionBlurredTexture;
 	}
 
@@ -2021,6 +2017,8 @@ export class Renderer3D {
 	}
 
 	destroy(): void {
+		for (const texture of this.attachments.values()) texture.destroy();
+		this.attachments.clear();
 		this.bloomPipeline?.destroy();
 		this.depthTexture?.destroy();
 		for (const texture of this.shadowTextures.values()) texture.destroy();

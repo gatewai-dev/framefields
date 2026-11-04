@@ -225,6 +225,9 @@ const swarmStateMap = new WeakMap<object, Swarm3DState>();
 const deviceRenderer3DCache = new WeakMap<GPUDevice, Map<string, Renderer3D>>();
 
 /** One Renderer3D per device, target format and MSAA sample count. */
+/** The command encoder the 3D pools were last recycled for, per device. */
+const poolEncoder = new WeakMap<GPUDevice, GPUCommandEncoder>();
+
 function getRenderer3D(
 	device: GPUDevice,
 	format: GPUTextureFormat,
@@ -990,13 +993,18 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 			ctx.renderer.format ?? "rgba8unorm",
 			sampleCount3d,
 		);
-		r3d.resetPools();
-
 		const relightPipe = getScreenSpaceRelightPipeline(
 			ctx.device,
 			ctx.renderer.format ?? "rgba8unorm",
 		);
-		relightPipe.resetPools();
+		// The pools recycle per-pass uniforms once per frame, and a frame is one
+		// command encoder: a nested scene drawn into the same encoder must not
+		// recycle buffers the passes encoded before it still read.
+		if (poolEncoder.get(ctx.device) !== encoder) {
+			poolEncoder.set(ctx.device, encoder);
+			r3d.resetPools();
+			relightPipe.resetPools();
+		}
 
 		// 2. Initial clear
 		const clearColor = parseColor(vop.backgroundColor);

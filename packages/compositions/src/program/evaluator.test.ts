@@ -502,6 +502,32 @@ describe("Container Staggering", () => {
 });
 
 describe("Evaluator — Signal to Color Modulation", () => {
+	it("reads a signal on the composition clock unless the track asks for its layer's", () => {
+		const ramp = [0, 10, 20, 30, 40, 50];
+		const track = (clock?: "composition" | "layer"): AnimationTrack => ({
+			id: "sig-clock",
+			prop: "x",
+			source: {
+				type: "signal",
+				inputHandleId: "ramp",
+				multiplier: 1,
+				offset: 0,
+				smoothingWindowFrames: 0,
+				...(clock && { clock }),
+			},
+			keyframes: [],
+		});
+		const at = (clock?: "composition" | "layer") =>
+			evaluateTrackAtFrame(track(clock), 4, 30, {
+				startFrame: 3,
+				signals: { ramp },
+			});
+		// A layer starting on frame 3, seen on composition frame 4.
+		expect(at()).toBe(40);
+		expect(at("composition")).toBe(40);
+		expect(at("layer")).toBe(10);
+	});
+
 	it("interpolates colors based on signal amplitude", () => {
 		const track: AnimationTrack = {
 			id: "sig-color-1",

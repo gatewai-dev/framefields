@@ -787,7 +787,8 @@ export function evaluateTrackAtFrame(
 		}
 
 		case "signal": {
-			const sigVal = evaluateSignal(source, frame, fps, context.signals);
+			const at = source.clock === "layer" ? localFrame : frame;
+			const sigVal = evaluateSignal(source, at, fps, context.signals);
 			if (COLOR_PROPS.has(track.prop)) {
 				const src = source as {
 					colorMode?: "interpolate" | "hueRotate" | "threshold";

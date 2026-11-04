@@ -57,7 +57,7 @@ export async function buildFilm(): Promise<Composition> {
 	);
 
 	// One lens and one emulsion over everything keeps plates and type in the same world.
-	film.apply(new Vignette({ strength: 0.3, radius: 0.85, softness: 0.6 }));
-	film.apply(new FilmGrain({ strength: 0.05, size: 1.6, animated: true }));
+	film.apply(new Vignette({ strength: 30, radius: 0.85, softness: 0.6 }));
+	film.apply(new FilmGrain({ strength: 5, size: 1.6, animated: true }));
 	return film;
 }

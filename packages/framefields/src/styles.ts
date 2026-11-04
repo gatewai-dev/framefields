@@ -4,7 +4,8 @@
  * knobs that matter most; for anything finer, build the stack from the
  * effect classes directly.
  */
-import type { Effect } from "@framefields/core";
+
+import type { AnyVisualEffect } from "./effects/index.js";
 import {
 	Ascii,
 	Contour,
@@ -24,8 +25,8 @@ import {
 	Vignette,
 } from "./effects/index.js";
 
-type Look = Effect<object>[];
-const look = (...effects: unknown[]): Look => effects as Look;
+type Look = AnyVisualEffect[];
+const look = (...effects: AnyVisualEffect[]): Look => effects;
 
 export const Styles = {
 	/** 8-bit game: PICO-8 palette, chunky pixels, light dithering. */

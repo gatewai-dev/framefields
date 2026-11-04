@@ -4,23 +4,23 @@
  * verb lands in the sky.
  */
 import { Layer, LayerAnimation, Vignette } from "framefields";
-import { LINE_WIDTH } from "./open.js";
 import {
+	asset,
+	chapter,
 	EASE_IN_OUT,
 	EASE_OUT,
 	EMBER,
 	H,
-	INK,
-	PAPER,
-	SAND,
-	W,
-	asset,
-	chapter,
 	headline,
+	INK,
 	keys,
 	label,
+	PAPER,
+	SAND,
 	scene,
+	W,
 } from "../theme.js";
+import { LINE_WIDTH } from "./open.js";
 
 export const FILM_FROM = 68;
 export const FILM_TO = 198;
@@ -37,10 +37,20 @@ type Key = [number, number, string?];
  * The window, the plate inside it and its edge all derive from these keys (same
  * frames, same eases), so they move as one piece.
  */
-const WIDTHS: Key[] = [[18, LINE_WIDTH], [42, W, EASE_IN_OUT]];
-const HEIGHTS: Key[] = [[0, 4], [16, 360, EASE_IN_OUT], [18, 360], [42, H, EASE_IN_OUT]];
-const map = (list: Key[], fn: (v: number) => number): Key[] => list.map(([f, v, e]) => [f, fn(v), e]);
-const sized = (anim = LayerAnimation.create()) => keys("width", WIDTHS, keys("height", HEIGHTS, anim));
+const WIDTHS: Key[] = [
+	[18, LINE_WIDTH],
+	[42, W, EASE_IN_OUT],
+];
+const HEIGHTS: Key[] = [
+	[0, 4],
+	[16, 360, EASE_IN_OUT],
+	[18, 360],
+	[42, H, EASE_IN_OUT],
+];
+const map = (list: Key[], fn: (v: number) => number): Key[] =>
+	list.map(([f, v, e]) => [f, fn(v), e]);
+const sized = (anim = LayerAnimation.create()) =>
+	keys("width", WIDTHS, keys("height", HEIGHTS, anim));
 
 export function filmScene() {
 	const len = FILM_TO - FILM_FROM;
@@ -67,11 +77,24 @@ export function filmScene() {
 						height: H,
 						muted: true,
 					})
-						.apply(new Vignette({ strength: 0.35, radius: 0.85, softness: 0.6 }))
+						.apply(new Vignette({ strength: 35, radius: 0.85, softness: 0.6 }))
 						.animate(
-							keys("x", map(WIDTHS, (w) => (w - W) / 2),
-								keys("y", [...map(HEIGHTS, (h) => (h - H) / 2), [46, 0], [70, -REFRAME, EASE_OUT]],
-									keys("scale", [[0, 1.22], [len, 1.0, "power2.out"]]))),
+							keys(
+								"x",
+								map(WIDTHS, (w) => (w - W) / 2),
+								keys(
+									"y",
+									[
+										...map(HEIGHTS, (h) => (h - H) / 2),
+										[46, 0],
+										[70, -REFRAME, EASE_OUT],
+									],
+									keys("scale", [
+										[0, 1.22],
+										[len, 1.0, "power2.out"],
+									]),
+								),
+							),
 						),
 					// The ember line's last trace: the window's frame, fading as it grows.
 					Layer.box({
@@ -84,9 +107,27 @@ export function filmScene() {
 						borderColor: EMBER,
 						borderWidth: 4,
 						strokeAlign: "inside",
-					}).animate(sized(keys("opacity", [[20, 1], [38, 0, "power2.in"]]))),
+					}).animate(
+						sized(
+							keys("opacity", [
+								[20, 1],
+								[38, 0, "power2.in"],
+							]),
+						),
+					),
 				],
-			}).animate(sized(keys("x", map(WIDTHS, (w) => (W - w) / 2), keys("y", map(HEIGHTS, (h) => (H - h) / 2))))),
+			}).animate(
+				sized(
+					keys(
+						"x",
+						map(WIDTHS, (w) => (W - w) / 2),
+						keys(
+							"y",
+							map(HEIGHTS, (h) => (H - h) / 2),
+						),
+					),
+				),
+			),
 			letterbox("film-bar-top", 0, 44),
 			letterbox("film-bar-bottom", H - BAR, 44, true),
 			headline({
@@ -100,7 +141,15 @@ export function filmScene() {
 				inAt: 52,
 				outAt: len - 16,
 			}),
-			...chapter({ id: "film-ch", index: "01", name: "Composite", color: PAPER, inAt: 60, outAt: len - 12, y: H - BAR / 2 - 11 }),
+			...chapter({
+				id: "film-ch",
+				index: "01",
+				name: "Composite",
+				color: PAPER,
+				inAt: 60,
+				outAt: len - 12,
+				y: H - BAR / 2 - 11,
+			}),
 			label({
 				id: "film-caption",
 				text: "Layers  ·  Masks  ·  Transforms",
@@ -126,6 +175,10 @@ function letterbox(id: string, y: number, at: number, fromBottom = false) {
 		height: BAR,
 		fillColor: INK,
 	}).animate(
-		LayerAnimation.create().fromTo("y", fromBottom ? H : -BAR, y, { start: at, end: at + 22, ease: EASE_OUT }),
+		LayerAnimation.create().fromTo("y", fromBottom ? H : -BAR, y, {
+			start: at,
+			end: at + 22,
+			ease: EASE_OUT,
+		}),
 	);
 }

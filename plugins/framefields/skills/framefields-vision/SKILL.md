@@ -314,4 +314,3 @@ report.tracks; // [{ trackId, category, frames: [start, end], centerPath, … }]
 | A preview of a clip outside the project shows nothing | Add its folder to `startPreview(…, { root: [process.cwd(), dir] })` |
 | Renders offline or in CI | Copy the model cache, or set `FRAMEFIELDS_MODELS_BASE_URL` |
 | SAM 2.1 Tiny mask loses a small object, its edges, or the subject after a cut | `sam2: { model: "small" }` |
-| Check the models themselves | `await runner.preload([...])` on a fresh `FRAMEFIELDS_MODELS_DIR`; SAM: `pnpm --filter @framefields/vision-sam test:sam2` (Tiny and Small) / `test:sam3` on a GPU machine |

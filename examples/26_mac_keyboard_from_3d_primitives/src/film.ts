@@ -209,7 +209,7 @@ export async function buildFilm(): Promise<Composition> {
 		caption(),
 	]);
 	// Fine grain dithers the floor's light pool, which would band in 8 bits.
-	film.apply(new Vignette({ strength: 0.18, radius: 0.9, softness: 0.75 }));
-	film.apply(new FilmGrain({ strength: 0.03, size: 1.2, animated: true }));
+	film.apply(new Vignette({ strength: 18, radius: 0.9, softness: 0.75 }));
+	film.apply(new FilmGrain({ strength: 3, size: 1.2, animated: true }));
 	return film;
 }

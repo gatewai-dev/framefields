@@ -118,7 +118,7 @@ export function gradeScene() {
 				highlights: { cyanRed: 4, yellowBlue: -6 },
 			}),
 		)
-		.apply(new Vignette({ strength: 0.45, radius: 0.8, softness: 0.65 }))
+		.apply(new Vignette({ strength: 45, radius: 0.8, softness: 0.65 }))
 		.animate(push());
 
 	return scene({

@@ -15,7 +15,7 @@ Because video rendering is resource-intensive and native GPU pipelines run async
 
 ---
 
-## The 5-Step Verification Ladder
+## The Verification Ladder
 
 Always proceed through the ladder in order. Catching a layout or timing bug at step 1 or 2 takes seconds; catching it after a 30-second 4K video render wastes minutes.
 
@@ -78,7 +78,6 @@ To verify easing curves, cut points, kinetic sweeps, or text wrapping without en
 
 ```typescript
 import fs from "node:fs/promises";
-import { renderFrameGrid } from "framefields";
 
 // Samples frames across the intro sweep (frames 0 to 60)
 const gridPng = await comp.renderFrameGrid({
@@ -122,8 +121,8 @@ describe("Hero Scene Conformance", () => {
 
 ---
 
-### Step 4.5: Show the User Before Exporting (`preview`)
-When a person is in the loop, let them watch the composition before you spend time on the final render. `startPreview` serves a localhost player with the soundtrack, a timeline with the waveform, and frame stepping. The page loads the composition's own code and renders it with WebGPU in the browser, in real time: a device that can't draw every frame in time skips some, and the sound keeps its speed; the server only serves that code and the project's files. The page mixes the soundtrack itself with the export's mixer, in 2-second blocks around the playhead, each continuing the effect state of the block before (exactly the export's from the film's start; after a seek the first block warms its effects up from 2 s earlier until the background pass replaces it), so sound starts at once; the rest mixes in the background for the waveform and the master gain. It mixes in a background worker with its own GPU device, so it doesn't stall drawing. `framefieldsPreview.state()` reports `audioMixed` (blocks mixed, and how many are exact) and `audioMixer` (`worker`, `page` or `server`, the fallbacks in order). Point it at the module that builds the composition:
+### Step 5: Show the User Before Exporting (`preview`)
+When a person is in the loop, let them watch the composition before you spend time on the final render. `startPreview` serves a localhost player with the soundtrack, a timeline with the waveform, and frame stepping. The page loads the composition's own code and renders it with WebGPU in the browser, in real time: a device that can't draw every frame in time skips some, and the sound keeps its speed; the server only serves that code and the project's files. The soundtrack is the export's own mix, made in the page around the playhead, so sound starts at once. Point it at the module that builds the composition:
 
 ```typescript
 import { startPreview } from "framefields";
@@ -143,27 +142,25 @@ await session.closed; // keep the process alive while the user watches
 - **Point at a moment.** `#t=12.5` in the URL opens the player at 12.5 s (`#frame=750` by frame), and the address follows the playhead when it stops, so a link you give the user lands where you mean.
 - **Drive it from a script, not with clicks.** If you can run JavaScript in the page (an agent browser), use `window.framefieldsPreview`: `await seek(seconds)` or `await seekFrame(n)` resolve once that frame is drawn (take the screenshot then), `play()` and `pause()` control playback, `notes()` lists the notes, and `state()` returns `{ state: "loading" | "ready" | "error", error, frame, time, playing, buffering, audio, connected, playbackFps, renderMs, meta }`. `<html data-preview="ready">` marks the first frame drawn. A hidden tab pauses playback, since browsers throttle it.
 - **Show it where the user is.** `startPreview` only serves the page and returns the URL. If your app has a built-in browser, open the URL there. Otherwise give the user the link, or pass `open: true` to open their default browser (skipped when an open tab reconnects on its own). The page needs WebGPU (current Chrome, Edge or Safari).
-- **Playback runs in real time, on any device.** Play draws the frame due on the clock and skips the ones it missed, so it starts at once and the sound keeps its speed; a slow device shows fewer frames. Next to the timecode the page shows the frame rate playback reaches, apart from the film's own `fps`; `state()` reports it as `playbackFps`, and `renderMs` is how long the last frame took to draw. Paused, the page draws the exact frame under the playhead. Vision effects analyse each frame from the one drawn before it: while paused, the page analyses up to 20 s ahead so that stretch plays exactly, but past it a device that skips frames shows cutouts and tracking from the last frame it drew. Check them paused, or in the export.
-- Audio is the same mix `renderVideo` muxes (`audio: false` skips it). Playback uses the soundtrack as its clock; when a frame takes long (a video seek, a heavy shot), the picture skips ahead to catch up with the sound.
+- **Playback runs in real time.** A slow device skips frames to keep pace with the sound; `state()` reports the reached `playbackFps` and the last frame's `renderMs`. Paused, the page draws the exact frame. Vision effects analyse each frame from the one drawn before it, so check cutouts and tracking paused or in the export.
 
 ---
 
-### Step 5: Full Video Export (`renderVideo`)
+### Step 6: Full Video Export (`renderVideo`)
 Once static frames and motion grids are verified, encode the final MP4/WebM video:
 
 ```typescript
-import path from "node:path";
-
 const result = await comp.renderVideo({
   outputPath: "output/final-video.mp4",
-  quality: "high", // "draft" | "medium" | "high" | "lossless"
-  codec: "avc",    // "avc" (H.264) | "hevc" (H.265) | "vp9" | "av1"
-  audioCodec: "aac",
-  concurrency: 4,  // Parallel frame encoding threads
+  quality: "very_high", // "very_low" | "low" | "high" | "very_high" (default)
+  codec: "h264",        // "h264" (default, MP4) | "vp9" | "vp8" (WebM) | "gif"; "aac" | "mp3" | "opus" render audio only
 });
+await result.cleanup?.(); // releases temporary files
+```
 
-// Always invoke cleanup to release temporary frame cache and file handles
-await result.cleanup?.();
+There is no HEVC or AV1 output; an unknown `codec` falls back to H.264.
+
+```typescript
 ```
 
 Pass `qa: true` to have the engine check the output while it renders (see **Built-in Video QA** below) and return the findings as `result.qa`.
@@ -218,7 +215,7 @@ await stitchChunks({ chunks: ["out/chunk-0.mp4", "out/chunk-1.mp4"], audio: "out
 - Names use letters, digits, `-`, `_` and `.` (at most 64). Errors name the render and field: `framefields.json: renders.teaser needs "entry"`.
 - `npx framefields renders` lists them (`--json` for tools). `npx framefields check` with no argument checks every render; `npx framefields check teaser` checks one (artifacts under `output/check/<name>` when checking several).
 - After adding a render, run `framefields check <name>`, then commit and push: the cloud and the dashboard read `framefields.json` from the pushed branch, and the dashboard greys out a render whose `entry` isn't on that branch.
-- Named renders need a framefields release that has them (the one after 2.11.0). With older versions, render a module path (below).
+- Named renders need framefields 2.12 or later. With older versions, render a module path (below).
 
 ## Rendering in the Cloud (`framefields render --cloud`)
 
@@ -265,7 +262,7 @@ try {
 }
 ```
 
-Options passed to `renderCloud` override the named render's; `signal` cancels. `cloudClient()` exposes `start`, `status` and `cancel` for callers that track renders themselves. The HTTP API is `POST /v1/render` (`source`, `target`, `render`, `workers`, `max_workers`, `dry_run`, optional `name` and `title`), `GET` and `DELETE /v1/render/:id`, with `Authorization: Bearer <key>`.
+Options passed to `renderCloud` override the named render's; `signal` cancels. `cloudClient({ apiKey })` (key defaults to `FRAMEFIELDS_API_KEY`) exposes `start`, `status` and `cancel` for callers that track renders themselves. The HTTP API is `POST /v1/render` (`source`, `target`, `render`, `workers`, `max_workers`, `dry_run`, optional `name` and `title`), `GET` and `DELETE /v1/render/:id`, with `Authorization: Bearer <key>`.
 
 ### Cloud render failures
 
@@ -453,8 +450,8 @@ ffmpeg -i output/final-video.mp4 -af "volumedetect" -f null -
 
 | Symptom | Root Cause | Solution |
 |---|---|---|
-| Entire frame renders black | Missing font registration or `NaN` in uniform | Ensure every font used in `Layer.text` is registered via `FontManager.register()` and listed in `comp.fonts`. Verify all signal outputs are finite numbers. |
-| Media layer is invisible / blank | Bad input handle binding or zero opacity | Check that the media path exists and `opacity > 0`. If using an effect or section, ensure `fit: "cover"` and valid container dimensions. |
+| Entire frame renders black | Missing font registration or `NaN` in a signal | Register every font `Layer.text` uses with `FontManager.register()` before building layers. Check signal outputs are finite numbers. |
+| Media layer is invisible / blank | Wrong path, an LFS pointer file, or zero opacity | Check the path exists and is real media (`git lfs pull`, `framefields assets pull`), and `opacity > 0`. |
 | Audio cuts out early | Missing `durationFrames` on audio layer | Explicitly assign `durationFrames: totalFrames` on `Layer.audio()`. |
 | Vision cutout / mask is empty on a single `renderFrame` | Vision reads the previous rendered frame; frame 0 has none | Render two or more consecutive frames with the same `HeadlessMediaRenderer` and keep the last. `renderVideo` handles this automatically. |
 | Ghosted double of the subject in a vision cutout | Frames rendered out of order (frame grid, or jumping from frame 3 to 48), so the cutout uses pixels from another frame | Verify vision layers with sequential frames or the exported MP4, not `renderFrameGrid`. |
@@ -464,5 +461,5 @@ ffmpeg -i output/final-video.mp4 -af "volumedetect" -f null -
 | Encoder fails to open (`h264_rkmpp`, NVENC) | framefields < 2.2 uses the hardware encoder untested | Use framefields 2.2+, which falls back to libx264 etc., or set `FRAMEFIELDS_HW_CODECS=off`. |
 | Render worker or cloud render fails | Project not render-ready (lockfile, export, LFS) | Read the `code` and `hint`; see **Cloud render failures** above and https://framefields.dev/docs/guides/render-service/ |
 | Stitched video has a jump at a chunk seam | Chunks rendered with different framefields versions, settings or GPU types, or a stateful effect that reads wall-clock time | Render all chunks from one commit and one job; keep effects deterministic in the frame number. |
+| An effect shows no change | Value on the wrong scale (e.g. `Vignette` `strength: 0.4` on its 0–100 scale) | Look the prop up in the `framefields-effects` catalog. |
 | Text looks misaligned or truncated | Layout node box smaller than text string | Set explicit wrapping `width` (e.g. `width: 1400`) or use `width: "fill"`. |
-| Colors appear washed out / dark edges | Unpremultiplied alpha blending | The engine operates with premultiplied alpha. Ensure custom shaders use `srcFactor: "one"`. |

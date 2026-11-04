@@ -11,7 +11,9 @@ const currentDir =
 const outputDir = path.resolve(currentDir, "../output");
 
 async function main(): Promise<void> {
-	console.log("=== Framefields Film: Chapter 05 'Track it.' Scene Rendering ===");
+	console.log(
+		"=== Framefields Film: Chapter 05 'Track it.' Scene Rendering ===",
+	);
 	await fs.mkdir(outputDir, { recursive: true });
 	await registerFonts();
 
@@ -26,7 +28,7 @@ async function main(): Promise<void> {
 	});
 
 	comp.add(trackScene({ from: 0, to: totalFrames }));
-	comp.apply(new FilmGrain({ strength: 0.05, size: 1.6, animated: true }));
+	comp.apply(new FilmGrain({ strength: 5, size: 1.6, animated: true }));
 
 	console.log(
 		`✓ Composition assembled: ${W}x${H} @ ${FPS} FPS (${totalFrames} frames)`,
@@ -40,8 +42,7 @@ async function main(): Promise<void> {
 		const heroFrames = [
 			{
 				frame: 12,
-				label:
-					"Soft-Alpha Cutout · 3D Ground Contact Rings · Reticle Lock",
+				label: "Soft-Alpha Cutout · 3D Ground Contact Rings · Reticle Lock",
 			},
 			{
 				frame: 48,

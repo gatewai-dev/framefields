@@ -79,7 +79,8 @@ function collectInterfaces() {
 /** Brace-matched class bodies, so nested `super({ ... })` objects do not truncate the scan. */
 function collectClasses() {
 	const classes = [];
-	const re = /export class (\w+) extends Effect<(\w+)> \{/g;
+	// `Effect<Props, "Op", "domain">`, possibly wrapped over several lines.
+	const re = /export class (\w+) extends Effect<\s*(\w+Props)\b[^{]*?> \{/g;
 	for (const match of source.matchAll(re)) {
 		const start = match.index + match[0].length;
 		let depth = 1;
@@ -194,7 +195,7 @@ function buildCatalog() {
 		"or `comp.section({ effects: [...] })` for a spatial or tracked region. Every prop is an",
 	);
 	lines.push(
-		"`EffectProp<T>`: a plain value, a reactive signal, or a function hook — see `sections.md`.",
+		"`EffectProp<T>`: a plain value, a reactive signal, or a function hook.",
 	);
 	lines.push("");
 	lines.push(

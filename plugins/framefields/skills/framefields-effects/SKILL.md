@@ -146,6 +146,7 @@ The effects behind them, for finer control:
 - **`Dither`**: `bayer` / `noise` / `halftone`; 1-bit duotone (`dark` / `light`) or per-channel `levels`.
 - **`Ascii`**: glyphs by brightness; `colorMode: "mono" | "source" | "green"`, `cellSize`, `fg` / `bg`, `invert`.
 - **`Toon`**: brightness bands plus Sobel ink lines (`edgeColor`, `edgeWidth`, `edgeThreshold`).
+- **Geometry outlines for 3D:** use `Layer.environment(..., { outlines: { width: 2, referenceHeight: 1080, color: "#16131c", creaseAngle: 45 } })`. These use depth and surface normals rather than image contrast, ignore painted textures and lighting boundaries, follow scene fog, and render before camera depth blur and bloom. A layer/model with `outline: false` still occludes ink behind it. `material: "toon"` plus `toon: { shadowColor, lightColor, threshold, softness, diffuse }` controls actual surface lighting, including colored lights and cast shadows. These scene/material capabilities are independent of the 2D `Toon` effect and do not change the default physical look; see `framefields-compose` for defaults and ranges.
 - **`RGBSplit`**: chromatic aberration along `angle` or `radial`.
 - **`CRT`**: curvature, scanlines, aperture mask, noise, flicker, vignette; `tracking` and `chroma` give VHS wobble and colour bleed.
 - **`Painterly`**: Kuwahara `oil` / `watercolor` (pigment edges, paper grain).

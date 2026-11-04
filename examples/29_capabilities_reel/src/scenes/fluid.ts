@@ -66,6 +66,7 @@ function panel(
 		children: [
 			...children,
 			Layer.box({
+				overflow: "hidden",
 				position: "absolute",
 				x: 16,
 				y: h - 50,

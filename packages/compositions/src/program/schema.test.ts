@@ -1189,3 +1189,27 @@ describe("media time remapping schema", () => {
 			);
 	});
 });
+
+describe("container overflow", () => {
+	it("lets children draw past the container unless it is hidden", () => {
+		for (const node of [
+			{ id: "f", kind: "flex", children: [] },
+			{ id: "k", kind: "block", children: [] },
+			{ id: "b", kind: "box", background: "#000", children: [] },
+		])
+			expect(
+				(LayoutNodeSchema.parse(node) as { overflow?: string }).overflow,
+			).toBe("visible");
+		expect(
+			(
+				LayoutNodeSchema.parse({
+					id: "h",
+					kind: "box",
+					background: "#000",
+					overflow: "hidden",
+					children: [],
+				}) as { overflow?: string }
+			).overflow,
+		).toBe("hidden");
+	});
+});

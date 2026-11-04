@@ -19,6 +19,9 @@ struct TextModelUniforms {
 	materialParams : vec4<f32>, // x = shininess, y = specularIntensity, z = ambientIntensity, w = materialMode (0=unlit, 1=lit)
 	pbr            : vec4<f32>, // x = roughness (<0 = default), y = metallic
 	emissive       : vec4<f32>, // rgb = sRGB emissive color, w = strength
+    toonShadow     : vec4<f32>, // rgb shadow-side multiplier, w diffuse modelling
+    toonLight      : vec4<f32>, // rgb lit-side multiplier, w terminator threshold
+    toonParams     : vec4<f32>, // x terminator softness, y outline participation
 };
 
 @group(0) @binding(0) var<uniform> cam    : CameraUniforms;
@@ -151,7 +154,7 @@ fn shadeText(in : VSOut, fw : vec2<f32>) -> TextFragment {
 	if (shaded.a < 0.0001) {
 		return out;
 	}
-	let lit = shadeSurfaceFull(in.worldPos, in.worldNormal, shaded.rgb / shaded.a, model.materialParams, model.pbr, model.emissive);
+	let lit = shadeSurfaceFull(in.worldPos, in.worldNormal, shaded.rgb / shaded.a, model.materialParams, model.pbr, model.emissive, model.toonShadow, model.toonLight, model.toonParams);
 	out.color = vec4<f32>(lit.display * shaded.a, shaded.a);
 	out.hdr = vec4<f32>(lit.hdr * shaded.a, shaded.a);
 	return out;
@@ -192,7 +195,7 @@ struct MrtBloomOutput {
 @fragment fn fs_mrt(in : VSOut) -> MrtOutput {
 	var out : MrtOutput;
 	out.color = textFragment(in).color;
-	out.depth = vec4<f32>(in.linearDepth, 0.0, 0.0, 1.0);
+	out.depth = geometryPixel(in.linearDepth, in.worldNormal, model.toonParams.y);
 	return out;
 }
 
@@ -208,7 +211,7 @@ struct MrtBloomOutput {
 	let f = textFragment(in);
 	var out : MrtBloomOutput;
 	out.color = f.color;
-	out.depth = vec4<f32>(in.linearDepth, 0.0, 0.0, 1.0);
+	out.depth = geometryPixel(in.linearDepth, in.worldNormal, model.toonParams.y);
 	out.hdr = f.hdr;
 	return out;
 }

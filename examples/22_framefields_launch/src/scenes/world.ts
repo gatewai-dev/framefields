@@ -281,6 +281,7 @@ function carousel(at: number, len: number) {
 		faceInward: true,
 		items: CARDS.map((name, i) =>
 			Layer.box({
+				overflow: "hidden",
 				id: `world-card-${i}`,
 				width: 420,
 				height: 280,

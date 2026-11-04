@@ -255,6 +255,7 @@ export function nodesScene(): Node {
 					trimStartSec: 1 + at / 30,
 				}).withEffects(fx as never),
 				Layer.box({
+					overflow: "hidden",
 					position: "absolute",
 					x: 70,
 					y: 70,

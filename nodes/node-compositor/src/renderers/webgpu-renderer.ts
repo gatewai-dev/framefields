@@ -3,6 +3,7 @@
 import { resolveMediaSourceUrl } from "@framefields/client-utils";
 import { decodeAudioSource } from "@framefields/compositions";
 import {
+	type CompositionNodeBase,
 	collectNodeOps,
 	computeLayout,
 	initLayout,
@@ -93,6 +94,41 @@ import { has3DTransform, type Quad2D, Transform3DMath } from "./transform3d.js";
 // Mesh vertex buffers are cached by identity, so their alpha classification can
 // also be computed once instead of scanning large models on every frame.
 const meshHasAlpha = new WeakMap<Mesh3DData, boolean>();
+/**
+ * How far a text node's ink can reach past its layout box, in px: an outside
+ * stroke reaches its full width past the outline (any other alignment, half),
+ * a shadow its offset plus blur. One px of slack covers antialiasing.
+ */
+function textInkOutset(
+	target: Record<string, unknown> | undefined,
+	lop: Record<string, unknown>,
+): number {
+	const num = (v: unknown) => (typeof v === "number" && v > 0 ? v : 0);
+	const width = num(target?.strokeWidth ?? lop.strokeWidth);
+	const hasStroke = Boolean(
+		target?.stroke ?? target?.strokeColor ?? lop.stroke,
+	);
+	const stroke = hasStroke
+		? lop.strokeAlign === "outside"
+			? width
+			: width / 2
+		: 0;
+	let shadow = 0;
+	const shadows = lop.shadows;
+	if (Array.isArray(shadows))
+		for (const s of shadows as {
+			offset?: { x?: number; y?: number };
+			blurRadius?: number;
+		}[])
+			shadow = Math.max(
+				shadow,
+				Math.max(Math.abs(s.offset?.x ?? 0), Math.abs(s.offset?.y ?? 0)) +
+					2 * num(s.blurRadius),
+			);
+	const reach = stroke + shadow;
+	return reach > 0 ? Math.ceil(reach) + 1 : 0;
+}
+
 function hasVertexAlpha(mesh: Mesh3DData): boolean {
 	const cached = meshHasAlpha.get(mesh);
 	if (cached !== undefined) return cached;
@@ -523,13 +559,15 @@ function drawProjectedQuad(
  * then the node's own, then (meshes) the model file's material.
  */
 function surfaceProps(
-	target: any,
-	lop: any,
+	target: Partial<CompositionNodeBase> | undefined,
+	lop: Partial<CompositionNodeBase>,
 	mat?: { emissive?: [number, number, number]; emissiveStrength?: number },
 ): {
 	emissive?: string | [number, number, number];
 	emissiveIntensity?: number;
 	castShadow?: boolean;
+	toon?: CompositionNodeBase["toon"];
+	outline?: boolean;
 } {
 	// glTF emissiveFactor is linear; draws take display (sRGB) colors.
 	const toSrgb = (v: number) =>
@@ -554,6 +592,8 @@ function surfaceProps(
 			1;
 	}
 	if (lop.castShadow !== undefined) out.castShadow = lop.castShadow;
+	out.toon = target?.toon ?? lop.toon;
+	out.outline = target?.outline ?? lop.outline;
 	return out;
 }
 
@@ -1343,6 +1383,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 						toneMapping: lop.toneMapping,
 						fog: lop.fog,
 						floor: lop.floor,
+						outlines: lop.outlines,
 						...(intensity !== undefined && { intensity }),
 					};
 					sceneBloom =
@@ -1484,9 +1525,12 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 			);
 			const scene3dView = scene3dTex.createView();
 
+			const outlineSetting = sceneEnvironment?.outlines;
+			const outlines = outlineSetting === true ? {} : outlineSetting || null;
+			const geometryEnabled = dofEnabled || Boolean(outlines);
 			let linearDepthTex: GPUTexture | undefined;
 			let linearDepthView: GPUTextureView | undefined;
-			if (dofEnabled) {
+			if (geometryEnabled) {
 				linearDepthTex = r3d.getOrCreateLinearDepthTexture(
 					nativeWidth,
 					nativeHeight,
@@ -1736,7 +1780,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					lightsBindGroup,
 					blurredReflectionTex,
 					floorSpec,
-					dofEnabled,
+					geometryEnabled,
 					Boolean(sceneBloom),
 				);
 			}
@@ -1748,7 +1792,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 						lightsBindGroup,
 						item.texture,
 						item.opts,
-						dofEnabled,
+						geometryEnabled,
 					);
 				} else if (item.kind === "slug") {
 					r3d.drawSlugText(
@@ -1758,7 +1802,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 						item.batches,
 						item.opts,
 						item.stackBase,
-						dofEnabled,
+						geometryEnabled,
 					);
 				} else if (item.kind === "mesh") {
 					r3d.drawMesh3D(
@@ -1768,7 +1812,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 						item.meshBuffers ?? item.mesh,
 						item.texture,
 						isGlass(item) ? { ...item.opts, backdrop: curTex } : item.opts,
-						dofEnabled,
+						geometryEnabled,
 					);
 				}
 			}
@@ -1776,15 +1820,33 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 			pass3d.end();
 
 			let final3dTex = scene3dTex;
+			if (outlines && linearDepthTex) {
+				if (dofEnabled) r3d.resolveGeometry(encoder, linearDepthTex);
+				const outlinedTex = ctx.renderer.getTemporaryTexture(
+					nativeWidth,
+					nativeHeight,
+					[curTex, targetTexture, scene3dTex, linearDepthTex, ...curExcludes],
+				);
+				r3d.applyOutlines(
+					encoder,
+					scene3dTex,
+					linearDepthTex,
+					outlinedTex.createView(),
+					camera,
+					outlines,
+					sceneEnvironment?.fog,
+				);
+				final3dTex = outlinedTex;
+			}
 			if (dofEnabled && linearDepthTex) {
 				const dofResultTex = ctx.renderer.getTemporaryTexture(
 					nativeWidth,
 					nativeHeight,
-					[curTex, targetTexture, scene3dTex, ...curExcludes],
+					[curTex, targetTexture, scene3dTex, final3dTex, ...curExcludes],
 				);
 				r3d.applyDepthOfField(
 					encoder,
-					scene3dTex,
+					final3dTex,
 					linearDepthTex,
 					dofResultTex.createView(),
 					cameraBuffer,
@@ -3573,22 +3635,31 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				padX = Math.max(80, Math.ceil(rect.width * 0.2));
 				padY = Math.max(50, Math.ceil(rect.height * 0.5));
 			}
+			// Text ink may reach past its box: an outside stroke, a shadow. The
+			// layer grows to hold it, so nothing is cut at the node's edge.
+			if (kind === "text" && !isPathText) {
+				const ink = textInkOutset(target, lop);
+				padX = Math.max(padX, ink);
+				padY = Math.max(padY, ink);
+			}
 			// Path text draws into a canvas-sized layer so glyphs following a path
 			// beyond the node box aren't clipped. Path coordinates stay local to
 			// the node (like every other child), so the layer still sits at the
 			// node's layout position.
 			const layerW = isPathText ? targetW : rect.width + padX * 2;
 			const layerH = isPathText ? targetH : rect.height + padY * 2;
-			if (!isPathText && hasKineticAnimators) {
-				localX -= padX;
-				localY -= padY;
-			}
+			localX -= padX;
+			localY -= padY;
 			// Anchor-aware pivot (H2): scale/rotation happen AROUND the node's
 			// anchor point (0.5/0.5 = center) instead of its top-left corner.
-			// For path text the anchor is a point of the node box, not of the
-			// oversized layer, so a badge spins around its own centre.
-			const anchorX = lop.anchorX ?? 0.5;
-			const anchorY = lop.anchorY ?? 0.5;
+			// The anchor is a point of the node box, not of an oversized or
+			// padded layer, so a badge spins around its own centre.
+			const anchorX = isPathText
+				? ((lop.anchorX ?? 0.5) * rect.width) / layerW
+				: (padX + (lop.anchorX ?? 0.5) * rect.width) / layerW;
+			const anchorY = isPathText
+				? ((lop.anchorY ?? 0.5) * rect.height) / layerH
+				: (padY + (lop.anchorY ?? 0.5) * rect.height) / layerH;
 			const localMatrix = toDOMMatrix(
 				buildLayerMatrix({
 					x: localX,
@@ -3599,8 +3670,8 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					scale,
 					scaleX,
 					scaleY,
-					anchorX: isPathText ? (anchorX * rect.width) / layerW : anchorX,
-					anchorY: isPathText ? (anchorY * rect.height) / layerH : anchorY,
+					anchorX,
+					anchorY,
 				}),
 			);
 			const layerMatrix = parentMatrix.multiply(localMatrix);
@@ -3616,15 +3687,9 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 			const translateZ = target?.translateZ ?? lop.translateZ ?? 0;
 			const perspective = target?.perspective ?? lop.perspective ?? 0;
 			const perspectiveOriginX =
-				target?.perspectiveOriginX ??
-				lop.perspectiveOriginX ??
-				lop.anchorX ??
-				0.5;
+				target?.perspectiveOriginX ?? lop.perspectiveOriginX ?? anchorX;
 			const perspectiveOriginY =
-				target?.perspectiveOriginY ??
-				lop.perspectiveOriginY ??
-				lop.anchorY ??
-				0.5;
+				target?.perspectiveOriginY ?? lop.perspectiveOriginY ?? anchorY;
 			const backfaceVisibility =
 				target?.backfaceVisibility ?? lop.backfaceVisibility ?? "visible";
 
@@ -3862,54 +3927,6 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 						borderPass.end();
 					}
 
-					let modelMatrix: Mat4 | undefined;
-					if (parent3DMatrix) {
-						let localM = Matrix4Math.identity();
-						const childX = target?.x ?? lop.x ?? 0;
-						const childY = target?.y ?? lop.y ?? 0;
-						const childZ = target?.z ?? lop.z ?? 0;
-						localM = Matrix4Math.multiply(
-							localM,
-							Matrix4Math.translate(childX, childY, childZ),
-						);
-						const rxRad =
-							((target?.rotateX ?? lop.rotateX ?? 0) * Math.PI) / 180;
-						const ryRad =
-							((target?.rotateY ?? lop.rotateY ?? 0) * Math.PI) / 180;
-						const rzRad =
-							((target?.rotateZ ?? lop.rotateZ ?? 0) !== 0
-								? (target?.rotateZ ?? lop.rotateZ ?? 0)
-								: rotation) *
-							(Math.PI / 180);
-						if (rzRad !== 0)
-							localM = Matrix4Math.multiply(localM, Matrix4Math.rotateZ(rzRad));
-						if (ryRad !== 0)
-							localM = Matrix4Math.multiply(localM, Matrix4Math.rotateY(ryRad));
-						if (rxRad !== 0)
-							localM = Matrix4Math.multiply(localM, Matrix4Math.rotateX(rxRad));
-
-						const sx = layerW * scale * scaleX;
-						const sy = layerH * scale * scaleY;
-						const sz = target?.scaleZ ?? lop.scaleZ ?? 1;
-						localM = Matrix4Math.multiply(
-							localM,
-							Matrix4Math.scale(sx, sy, sz),
-						);
-
-						const ax = lop.anchorX ?? 0.5;
-						const ay = lop.anchorY ?? 0.5;
-						const pivotX = 0.5 - ax;
-						const pivotY = 0.5 - ay;
-						if (pivotX !== 0 || pivotY !== 0) {
-							localM = Matrix4Math.multiply(
-								localM,
-								Matrix4Math.translate(pivotX, pivotY, 0),
-							);
-						}
-
-						modelMatrix = Matrix4Math.multiply(parent3DMatrix, localM);
-					}
-
 					const quadOpts: DrawQuad3DOpts = {
 						position: [
 							localX + layerW * 0.5,
@@ -3948,9 +3965,27 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 						ambientIntensity: target?.ambientIntensity ?? lop.ambientIntensity,
 						metallic: target?.metallic ?? lop.metallic,
 						...surfaceProps(target, lop),
-						...(modelMatrix && { modelMatrix }),
+
 						...reliefOpts(lop.id, localX, localY, layerW, layerH),
 					};
+					if (parent3DMatrix) {
+						const r3d = getRenderer3D(
+							ctx.device,
+							ctx.renderer.format ?? "rgba8unorm",
+							sampleCount3d,
+						);
+						quadOpts.modelMatrix = Matrix4Math.multiply(
+							parent3DMatrix,
+							r3d.quadModelMatrix({
+								...quadOpts,
+								position: [
+									target?.x ?? lop.x ?? 0,
+									target?.y ?? lop.y ?? 0,
+									target?.z ?? lop.z ?? 0,
+								],
+							}),
+						);
+					}
 
 					pending3DItems.push({
 						kind: "quad",
@@ -4148,7 +4183,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 
 					return { finalTex: activeTex, finalView: activeView };
 				}
-				const shouldClip = lop.overflow !== "visible";
+				const shouldClip = (target?.overflow ?? lop.overflow) === "hidden";
 				const scissorRect = shouldClip
 					? computeContainerScissor(layerMatrix, layerW, layerH)
 					: null;
@@ -5596,49 +5631,6 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					borderPass.end();
 				}
 
-				let modelMatrix: Mat4 | undefined;
-				if (parent3DMatrix) {
-					let localM = Matrix4Math.identity();
-					const childX = target?.x ?? lop.x ?? 0;
-					const childY = target?.y ?? lop.y ?? 0;
-					const childZ = target?.z ?? lop.z ?? 0;
-					localM = Matrix4Math.multiply(
-						localM,
-						Matrix4Math.translate(childX, childY, childZ),
-					);
-					const rxRad = ((target?.rotateX ?? lop.rotateX ?? 0) * Math.PI) / 180;
-					const ryRad = ((target?.rotateY ?? lop.rotateY ?? 0) * Math.PI) / 180;
-					const rzRad =
-						((target?.rotateZ ?? lop.rotateZ ?? 0) !== 0
-							? (target?.rotateZ ?? lop.rotateZ ?? 0)
-							: rotation) *
-						(Math.PI / 180);
-					if (rzRad !== 0)
-						localM = Matrix4Math.multiply(localM, Matrix4Math.rotateZ(rzRad));
-					if (ryRad !== 0)
-						localM = Matrix4Math.multiply(localM, Matrix4Math.rotateY(ryRad));
-					if (rxRad !== 0)
-						localM = Matrix4Math.multiply(localM, Matrix4Math.rotateX(rxRad));
-
-					const sx = layerW * scale * scaleX;
-					const sy = layerH * scale * scaleY;
-					const sz = target?.scaleZ ?? lop.scaleZ ?? 1;
-					localM = Matrix4Math.multiply(localM, Matrix4Math.scale(sx, sy, sz));
-
-					const ax = lop.anchorX ?? 0.5;
-					const ay = lop.anchorY ?? 0.5;
-					const pivotX = 0.5 - ax;
-					const pivotY = 0.5 - ay;
-					if (pivotX !== 0 || pivotY !== 0) {
-						localM = Matrix4Math.multiply(
-							localM,
-							Matrix4Math.translate(pivotX, pivotY, 0),
-						);
-					}
-
-					modelMatrix = Matrix4Math.multiply(parent3DMatrix, localM);
-				}
-
 				const quadOpts: DrawQuad3DOpts = {
 					position: [
 						localX + layerW * 0.5,
@@ -5676,9 +5668,27 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					ambientIntensity: target?.ambientIntensity ?? lop.ambientIntensity,
 					metallic: target?.metallic ?? lop.metallic,
 					...surfaceProps(target, lop),
-					...(modelMatrix && { modelMatrix }),
+
 					...reliefOpts(lop.id, localX, localY, layerW, layerH),
 				};
+				if (parent3DMatrix) {
+					const r3d = getRenderer3D(
+						ctx.device,
+						ctx.renderer.format ?? "rgba8unorm",
+						sampleCount3d,
+					);
+					quadOpts.modelMatrix = Matrix4Math.multiply(
+						parent3DMatrix,
+						r3d.quadModelMatrix({
+							...quadOpts,
+							position: [
+								target?.x ?? lop.x ?? 0,
+								target?.y ?? lop.y ?? 0,
+								target?.z ?? lop.z ?? 0,
+							],
+						}),
+					);
+				}
 
 				// The texture quad carries the layer's backdrop and border; a
 				// text layer that drew neither needs only its glyphs.

@@ -84,7 +84,7 @@ export interface ModelUniformData extends SurfaceParams {
 	height?: number;
 	/** Fraction of the texture the layer covers, [u, v] (default the whole texture) */
 	textureExtent?: [number, number];
-	material?: "lit" | "unlit";
+	material?: "lit" | "unlit" | "toon";
 	/** Screen-space track matte: the layer shows where this texture's alpha does. */
 	matte?: GPUTexture;
 	/** Turns the flat quad into a surface lifted by another picture's brightness. */
@@ -106,6 +106,8 @@ export type MaterialUniformData = Pick<
 	| "metallic"
 	| "emissive"
 	| "emissiveIntensity"
+	| "toon"
+	| "outline"
 >;
 
 /** [shininess, specularIntensity, ambientIntensity, materialMode] as the 3D shaders' lighting reads them. */
@@ -121,7 +123,8 @@ export function packMaterialParams(
 			? data.metallic
 			: (data.specularIntensity ?? 0.5);
 	const ambientInt = data.ambientIntensity ?? 1.0;
-	const materialMode = data.material === "unlit" ? 0.0 : 1.0;
+	const materialMode =
+		data.material === "unlit" ? 0.0 : data.material === "toon" ? 2.0 : 1.0;
 	return [shininess, specInt, ambientInt, materialMode];
 }
 
@@ -145,7 +148,7 @@ export class Quad3DPipeline {
 		indices: GPUBuffer;
 		count: number;
 	};
-	// 16 (model) + 16 (normal) + 4 (tint) + 4 (borderColor) + 4 (params) + 4 (dimensions) + 4 (materialParams) + 8 (pbr, emissive) + 12 (relief) = 72 floats (288 bytes)
+	// Transform, colors, draw/dimensions/material params, shared surface block, relief.
 	private modelData = new Float32Array(MODEL_FLOATS);
 
 	constructor(

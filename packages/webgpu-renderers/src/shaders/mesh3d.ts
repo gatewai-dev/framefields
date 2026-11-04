@@ -22,6 +22,9 @@ struct ModelUniforms {
     shade          : vec4<f32>, // rgb = toon shadow-side color multiplier, a = alpha cutoff (0 = none)
     pbr            : vec4<f32>, // x = roughness (<0 = default), y = metallic
     emissive       : vec4<f32>, // rgb = sRGB emissive color, w = strength
+    toonShadow     : vec4<f32>, // rgb shadow-side multiplier, w diffuse modelling
+    toonLight      : vec4<f32>, // rgb lit-side multiplier, w terminator threshold
+    toonParams     : vec4<f32>, // x terminator softness, y outline participation
     maps           : vec4<f32>, // x = normal scale (0 = no map), y = occlusion strength, z = has metallic-roughness map, w = has emissive map
 };
 
@@ -162,37 +165,6 @@ fn vs_main(
     return out;
 }
 
-// Toon (MToon-style): the base color as authored where the light reaches,
-// the shade color past a soft terminator. Highlights stay out: the texture
-// already paints them.
-fn toonLighting(in: VertexOutput, baseColor: vec3<f32>) -> vec3<f32> {
-    var N = normalize(in.worldNormal);
-    let V = normalize(cam.cameraPos.xyz - in.worldPos);
-    if (dot(N, V) < 0.0) {
-        N = -N;
-    }
-    var lit = 0.0;
-    let numLights = i32(lights.params.x);
-    for (var i = 0; i < 8; i++) {
-        if (i >= numLights) {
-            break;
-        }
-        let light = lights.lights[i];
-        let lightType = light.posType.w;
-        var L = vec3<f32>(0.0, 0.0, 1.0);
-        if (lightType > 0.5 && lightType < 1.5) {
-            L = normalize(-light.dirRadius.xyz);
-        } else if (lightType >= 1.5) {
-            L = normalize(light.posType.xyz - in.worldPos);
-        } else {
-            continue;
-        }
-        let terminator = smoothstep(-0.05, 0.2, dot(N, L));
-        lit = max(lit, terminator * min(light.colorIntensity.w, 1.0));
-    }
-    return baseColor * mix(model.shade.rgb, vec3<f32>(1.0), lit);
-}
-
 struct MeshFragment {
     color : vec4<f32>, // premultiplied display color
     hdr   : vec4<f32>, // premultiplied scene radiance (bloom source)
@@ -260,7 +232,7 @@ fn shadeGlass(in: VertexOutput, Nin: vec3<f32>, tint: vec3<f32>, alpha: f32, rim
     let transmitted = col * depthTint * (1.0 - 0.45 * rim * rim);
     let f0 = pow((ior - 1.0) / (ior + 1.0), 2.0);
     let F = f0 + (1.0 - f0) * pow(rim, 5.0);
-    let lit = shadeSurfaceFull(in.worldPos, N, vec3<f32>(0.0), model.materialParams, vec4<f32>(model.pbr.x, 0.0, 0.0, 0.0), vec4<f32>(0.0));
+    let lit = shadeSurfaceFull(in.worldPos, N, vec3<f32>(0.0), model.materialParams, vec4<f32>(model.pbr.x, 0.0, 0.0, 0.0), vec4<f32>(0.0), model.toonShadow, model.toonLight, model.toonParams);
     // Grazing faces mirror the room; keep that faint so dark scenes stay dark
     // and the studio highlights below carry the shape.
     let sheen = vec3<f32>(0.9, 0.94, 1.0) * F * 0.22 + tint * 0.05 * (0.4 + rim);
@@ -308,19 +280,6 @@ fn shadeMesh(in: VertexOutput, isFront: bool) -> MeshFragment {
 
     let baseRgb = texColor.rgb * in.color.rgb * model.colorTint.rgb;
     var out: MeshFragment;
-    if (model.materialParams.w > 1.5) {
-        var toon = baseRgb;
-        if (lights.params.y >= 0.5) {
-            toon = toonLighting(in, baseRgb);
-        }
-        if (model.params.w > 0.5 && (in.emissive.w > 0.0 || dot(in.emissive.rgb, in.emissive.rgb) > 0.0)) {
-            toon += in.emissive.rgb * in.emissive.w;
-        }
-        out.color = vec4<f32>(toon * alpha, alpha);
-        out.hdr = vec4<f32>(srgbToLinear(toon) * alpha, alpha);
-        return out;
-    }
-
     var N = normalize(in.worldNormal);
     if (model.maps.x > 0.0) {
         var tn = normalSample * 2.0 - 1.0;
@@ -350,7 +309,7 @@ fn shadeMesh(in: VertexOutput, isFront: bool) -> MeshFragment {
     if (model.params.w > 0.5 && (in.emissive.w > 0.0 || dot(in.emissive.rgb, in.emissive.rgb) > 0.0)) {
         emissive = in.emissive;
     }
-    let shaded = shadeSurfaceFull(in.worldPos, N, baseRgb, material, pbr, emissive);
+    let shaded = shadeSurfaceFull(in.worldPos, N, baseRgb, material, pbr, emissive, model.toonShadow, model.toonLight, model.toonParams);
     out.color = vec4<f32>(shaded.display * alpha, alpha);
     out.hdr = vec4<f32>(shaded.hdr * alpha, alpha);
     return out;
@@ -381,7 +340,7 @@ fn fs_single(in: VertexOutput, @builtin(front_facing) isFront: bool) -> @locatio
 fn fs_mrt(in: VertexOutput, @builtin(front_facing) isFront: bool) -> MrtOutput {
     var out: MrtOutput;
     out.color = shadeMesh(in, isFront).color;
-    out.depth = vec4<f32>(in.linearDepth, 0.0, 0.0, 1.0);
+    out.depth = geometryPixel(in.linearDepth, in.worldNormal, model.toonParams.y);
     return out;
 }
 
@@ -399,7 +358,7 @@ fn fs_mrt_bloom(in: VertexOutput, @builtin(front_facing) isFront: bool) -> MrtBl
     let f = shadeMesh(in, isFront);
     var out: MrtBloomOutput;
     out.color = f.color;
-    out.depth = vec4<f32>(in.linearDepth, 0.0, 0.0, 1.0);
+    out.depth = geometryPixel(in.linearDepth, in.worldNormal, model.toonParams.y);
     out.hdr = f.hdr;
     return out;
 }

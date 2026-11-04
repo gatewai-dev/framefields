@@ -105,6 +105,7 @@ function tile(
 	const { x, y } = slot(i);
 	return [
 		Layer.box({
+			overflow: "hidden",
 			id: `tools-tile-${i}`,
 			position: "absolute",
 			x: x - TILE / 2,
@@ -203,6 +204,7 @@ export function toolsScene() {
 				outAt: light.at - from - 6,
 			}),
 			Layer.box({
+				overflow: "hidden",
 				id: "tools-import",
 				position: "absolute",
 				x: CX - 520,

@@ -137,6 +137,7 @@ export interface Person {
 
 export function avatar(p: Person, o: { x: number; y: number; size: number }) {
 	return Layer.box({
+		overflow: "hidden",
 		position: "absolute",
 		x: o.x,
 		y: o.y,

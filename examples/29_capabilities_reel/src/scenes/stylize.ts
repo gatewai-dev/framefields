@@ -144,6 +144,7 @@ export function stylizeScene(): Node {
 					]),
 				),
 				Layer.box({
+					overflow: "hidden",
 					position: "absolute",
 					x: 12,
 					y: TH - 44,

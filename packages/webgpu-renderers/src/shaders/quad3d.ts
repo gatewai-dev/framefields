@@ -22,6 +22,9 @@ struct ModelUniforms {
     materialParams : vec4<f32>, // x = shininess, y = specularIntensity, z = ambientIntensity, w = materialMode (0=unlit, 1=lit)
     pbr            : vec4<f32>, // x = roughness (<0 = default), y = metallic
     emissive       : vec4<f32>, // rgb = sRGB emissive color, w = strength
+    toonShadow     : vec4<f32>, // rgb shadow-side multiplier, w diffuse modelling
+    toonLight      : vec4<f32>, // rgb lit-side multiplier, w terminator threshold
+    toonParams     : vec4<f32>, // x terminator softness, y outline participation
     relief         : vec4<f32>, // x = amount (px), y = on, w = grid cells per side
     reliefRect     : vec4<f32>, // xy = where the layer's box starts in reliefTex (0..1), zw = its size
     reliefEye      : vec4<f32>, // xyz = the eye the surface keeps its look from (the default camera)
@@ -216,7 +219,7 @@ fn shadeQuad(in: VertexOutput, isFront: bool) -> QuadFragment {
         discard;
     }
     
-    let shaded = shadeSurfaceFull(in.worldPos, in.worldNormal, baseRgb, model.materialParams, model.pbr, model.emissive);
+    let shaded = shadeSurfaceFull(in.worldPos, in.worldNormal, baseRgb, model.materialParams, model.pbr, model.emissive, model.toonShadow, model.toonLight, model.toonParams);
     var out: QuadFragment;
     out.color = vec4<f32>(shaded.display * alpha, alpha);
     out.hdr = vec4<f32>(shaded.hdr * alpha, alpha);
@@ -248,7 +251,7 @@ fn fs_single(in: VertexOutput, @builtin(front_facing) isFront: bool) -> @locatio
 fn fs_mrt(in: VertexOutput, @builtin(front_facing) isFront: bool) -> MrtOutput {
     var out: MrtOutput;
     out.color = shadeQuad(in, isFront).color;
-    out.depth = vec4<f32>(in.linearDepth, 0.0, 0.0, 1.0);
+    out.depth = geometryPixel(in.linearDepth, in.worldNormal, model.toonParams.y);
     return out;
 }
 
@@ -266,7 +269,7 @@ fn fs_mrt_bloom(in: VertexOutput, @builtin(front_facing) isFront: bool) -> MrtBl
     let f = shadeQuad(in, isFront);
     var out: MrtBloomOutput;
     out.color = f.color;
-    out.depth = vec4<f32>(in.linearDepth, 0.0, 0.0, 1.0);
+    out.depth = geometryPixel(in.linearDepth, in.worldNormal, model.toonParams.y);
     out.hdr = f.hdr;
     return out;
 }

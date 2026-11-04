@@ -147,6 +147,7 @@ function sidebar(t: Timeline): LayoutNode {
 	];
 	const children: LayoutNode[] = [
 		Layer.box({
+			overflow: "hidden",
 			position: "absolute",
 			x: 24,
 			y: 24,
@@ -204,6 +205,7 @@ function sidebar(t: Timeline): LayoutNode {
 	});
 	children.push(
 		Layer.box({
+			overflow: "hidden",
 			position: "absolute",
 			x: 24,
 			y: CH - 64,
@@ -256,6 +258,7 @@ function sidebar(t: Timeline): LayoutNode {
 function header(t: Timeline): LayoutNode[] {
 	const at = t.loaded;
 	const deploy = Layer.box({
+		overflow: "hidden",
 		id: "deploy-button",
 		position: "absolute",
 		...DEPLOY_BUTTON,
@@ -298,6 +301,7 @@ function header(t: Timeline): LayoutNode[] {
 			rise(60, at + 2),
 		),
 		Layer.box({
+			overflow: "hidden",
 			position: "absolute",
 			...VISIT_BUTTON,
 			borderRadius: 11,
@@ -512,6 +516,7 @@ const ROWS: Row[] = [
 
 function pill(label: string, color: string, x: number, y: number, w = 96) {
 	return Layer.box({
+		overflow: "hidden",
 		position: "absolute",
 		x,
 		y,
@@ -615,6 +620,7 @@ function table(t: Timeline): LayoutNode {
 		]),
 	);
 	const promote = Layer.box({
+		overflow: "hidden",
 		id: "promote-button",
 		position: "absolute",
 		x: PROMOTE_BUTTON.x - TABLE.x,
@@ -649,6 +655,7 @@ function table(t: Timeline): LayoutNode {
 		.animate(press(t.promoteDown, t.promoteUp));
 	// Promoting swaps the Ready pill for a Production badge in its place.
 	const production = Layer.box({
+		overflow: "hidden",
 		position: "absolute",
 		x: statusX - 20,
 		y: (ROW_H - 28) / 2,
@@ -747,6 +754,7 @@ function toast(t: Timeline): LayoutNode {
 	const show = t.promoteUp + sec(0.3);
 	const hide = show + sec(2.6);
 	return Layer.box({
+		overflow: "hidden",
 		position: "absolute",
 		x,
 		y,

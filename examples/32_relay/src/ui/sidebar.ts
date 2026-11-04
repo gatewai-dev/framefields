@@ -61,6 +61,7 @@ function row(
 function unreadBadge(t: Timeline): LayoutNode {
 	const size = 20;
 	return Layer.box({
+		overflow: "hidden",
 		position: "absolute",
 		x: ROW_X + ROW_W - space(1.5) - size,
 		y: NAV_Y + (ROW_H - size) / 2,
@@ -119,6 +120,7 @@ export function sidebar(t: Timeline): LayoutNode {
 		text("Fieldwork", { x: 60, y: 25, size: 15, strong: true }),
 		icon("chevron", { x: 140, y: 27, size: 16 }),
 		Layer.box({
+			overflow: "hidden",
 			position: "absolute",
 			x: space(2),
 			y: 64,

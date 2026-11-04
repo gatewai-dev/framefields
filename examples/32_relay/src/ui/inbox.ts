@@ -196,6 +196,7 @@ function button(
 	glyph: "plus" | "reply",
 ) {
 	return Layer.box({
+		overflow: "hidden",
 		position: "absolute",
 		...r,
 		borderRadius: space(1),

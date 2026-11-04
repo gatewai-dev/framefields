@@ -168,11 +168,16 @@ export function lintComposition(
 			if (type === "environment") hasEnvironment = true;
 			if (type === "ambient") ambientLights.push(id);
 			if (node.castShadow) {
-				if (type !== "directional" && type !== "spot")
+				if (
+					type !== "directional" &&
+					type !== "spot" &&
+					type !== "point" &&
+					type !== "rect"
+				)
 					push(
 						"warning",
 						"shadow_unsupported_light",
-						`'${id}' is a ${String(type)} light: only directional and spot lights cast shadows.`,
+						`'${id}' is a ${String(type)} light: only directional, spot, point, and rect lights cast shadows.`,
 						id,
 					);
 			}

@@ -196,7 +196,24 @@ export const AnimatablePropSchema = z.enum([
 	// Physically based surfaces & world
 	"emissive",
 	"emissiveIntensity",
+	"clearcoat",
+	"clearcoatRoughness",
+	"anisotropy",
+	"anisotropyRotation",
+	"subsurface",
+	"subsurfaceColor",
+	"sheen",
+	"sheenColor",
+	"sheenRoughness",
+	"iridescence",
+	"iridescenceThickness",
+	"iridescenceIor",
+	"triplanarScale",
+	"triplanarSharpness",
 	"exposure",
+	"volumetricFogDensity",
+	"volumetricFogAnisotropy",
+	"volumetricFogNoiseStrength",
 ]);
 export type AnimatableProp = z.infer<typeof AnimatablePropSchema>;
 
@@ -222,15 +239,7 @@ export type SpatialAnimatableProp =
 	| "translateZ"
 	| "motionBlurShutter";
 
-export type BoxAnimatableProp =
-	| SpatialAnimatableProp
-	| "gap"
-	| "padding"
-	| "borderRadius"
-	| "fill"
-	| "color"
-	| "borderColor"
-	| "borderWidth"
+export type MaterialAnimatableProp =
 	| "shininess"
 	| "roughness"
 	| "specularIntensity"
@@ -242,8 +251,33 @@ export type BoxAnimatableProp =
 	| "fresnelPower"
 	| "emissive"
 	| "emissiveIntensity"
+	| "clearcoat"
+	| "clearcoatRoughness"
+	| "anisotropy"
+	| "anisotropyRotation"
+	| "subsurface"
+	| "subsurfaceColor"
+	| "sheen"
+	| "sheenColor"
+	| "sheenRoughness"
+	| "iridescence"
+	| "iridescenceThickness"
+	| "iridescenceIor"
+	| "triplanarScale"
+	| "triplanarSharpness"
 	| "envIntensity"
 	| "exposure";
+
+export type BoxAnimatableProp =
+	| SpatialAnimatableProp
+	| MaterialAnimatableProp
+	| "gap"
+	| "padding"
+	| "borderRadius"
+	| "fill"
+	| "color"
+	| "borderColor"
+	| "borderWidth";
 
 export type TextAnimatableProp =
 	| SpatialAnimatableProp
@@ -304,15 +338,24 @@ export type CameraAnimatableProp =
 
 export type LightAnimatableProp =
 	| SpatialAnimatableProp
+	| "targetX"
+	| "targetY"
+	| "targetZ"
 	| "intensity"
 	| "angle"
 	| "radius"
 	| "penumbra"
 	| "decay"
-	| "color";
+	| "color"
+	| "exposure"
+	| "volumetricFogDensity"
+	| "volumetricFogAnisotropy"
+	| "volumetricFogNoiseStrength";
 
 export type Model3DAnimatableProp =
 	| SpatialAnimatableProp
+	| MaterialAnimatableProp
+	| "color"
 	| "animationProgress"
 	| "animationTime"
 	| "animationSpeed"
@@ -711,6 +754,23 @@ export const GeometryOutlineOptionsSchema: z.ZodType<GeometryOutlineOptions> = z
 	})
 	.strict();
 
+export const IridescenceConfigSchema = z
+	.object({
+		intensity: z.number().min(0).max(1).optional(),
+		thickness: z.number().min(100).max(1200).optional(),
+		ior: z.number().min(1.05).max(2.5).optional(),
+	})
+	.strict();
+export type IridescenceConfig = z.infer<typeof IridescenceConfigSchema>;
+
+export const TriplanarConfigSchema = z
+	.object({
+		scale: z.number().min(0).optional(),
+		sharpness: z.number().min(1).max(16).optional(),
+	})
+	.strict();
+export type TriplanarConfig = z.infer<typeof TriplanarConfigSchema>;
+
 const BaseNodeFields = {
 	id: z.string().min(1),
 	/** Graph binding — which connected input this node renders (for text/media nodes). */
@@ -803,6 +863,38 @@ const BaseNodeFields = {
 	emissive: ColorSchema.optional(),
 	/** Emissive multiplier; above 1 glows past white (feeds bloom). Default 1. */
 	emissiveIntensity: z.number().min(0).optional(),
+	/** Secondary dielectric clearcoat/varnish lobe 0..1. */
+	clearcoat: z.number().min(0).max(1).optional(),
+	/** Roughness of the clearcoat layer 0..1 (default 0.08). */
+	clearcoatRoughness: z.number().min(0).max(1).optional(),
+	/** Anisotropic GGX highlight stretch -1..1. */
+	anisotropy: z.number().min(-1).max(1).optional(),
+	/** Brush tangent rotation in degrees around the surface normal. */
+	anisotropyRotation: z.number().optional(),
+	/** Subsurface wrap diffuse and translucent back-scattering 0..1. */
+	subsurface: z.number().min(0).max(1).optional(),
+	/** Subsurface scatter & transmission tint color. */
+	subsurfaceColor: ColorSchema.optional(),
+	/** Charlie cloth / velvet grazing retro-reflection lobe 0..1. */
+	sheen: z.number().min(0).max(1).optional(),
+	/** Cloth sheen tint color. */
+	sheenColor: ColorSchema.optional(),
+	/** Cloth sheen microfiber roughness 0.05..1 (default 0.5). */
+	sheenRoughness: z.number().min(0.05).max(1).optional(),
+	/** Thin-film spectral iridescence 0..1 or `{ intensity, thickness, ior }`. */
+	iridescence: z
+		.union([z.number().min(0).max(1), IridescenceConfigSchema])
+		.optional(),
+	/** Thin-film thickness in nanometers 100..1200 (default 400). */
+	iridescenceThickness: z.number().min(100).max(1200).optional(),
+	/** Thin-film refractive index 1.05..2.5 (default 1.3). */
+	iridescenceIor: z.number().min(1.05).max(2.5).optional(),
+	/** Seamless world-space triplanar texture projection. */
+	triplanar: z.union([z.boolean(), TriplanarConfigSchema]).optional(),
+	/** World-space triplanar tiling scale. */
+	triplanarScale: z.number().min(0).optional(),
+	/** World-space triplanar axis blend sharpness 1..16 (default 4). */
+	triplanarSharpness: z.number().min(1).max(16).optional(),
 	/** Falls into a `castShadow` light's shadow map. Meshes default on, flat layers off. */
 	castShadow: z.boolean().optional(),
 	/** Art-directed toon lighting, including cast shadows and colored lights. */
@@ -898,6 +990,21 @@ export interface CompositionNodeBase {
 	fresnelPower?: number;
 	emissive?: string;
 	emissiveIntensity?: number;
+	clearcoat?: number;
+	clearcoatRoughness?: number;
+	anisotropy?: number;
+	anisotropyRotation?: number;
+	subsurface?: number;
+	subsurfaceColor?: string;
+	sheen?: number;
+	sheenColor?: string;
+	sheenRoughness?: number;
+	iridescence?: number | IridescenceConfig;
+	iridescenceThickness?: number;
+	iridescenceIor?: number;
+	triplanar?: boolean | TriplanarConfig;
+	triplanarScale?: number;
+	triplanarSharpness?: number;
 	castShadow?: boolean;
 	toon?: ToonShading;
 	outline?: boolean;
@@ -1261,7 +1368,8 @@ export const CameraLensSchema = z
 	})
 	.strict();
 
-export type CameraLens = z.infer<typeof CameraLensSchema>;
+/** Camera lens as authored: fields with schema defaults may be left out. */
+export type CameraLens = z.input<typeof CameraLensSchema>;
 
 export const CameraDoFSchema = z
 	.object({
@@ -1287,7 +1395,7 @@ export const CameraShakeSchema = z
 	})
 	.strict();
 
-export type CameraShake = z.infer<typeof CameraShakeSchema>;
+export type CameraShake = z.input<typeof CameraShakeSchema>;
 
 export interface CameraNode {
 	id: string;
@@ -1338,12 +1446,14 @@ export type LightType =
 	| "directional"
 	| "point"
 	| "spot"
+	| "rect"
 	| "environment";
 export const LightTypeSchema = z.enum([
 	"ambient",
 	"directional",
 	"point",
 	"spot",
+	"rect",
 	/** Scene world: image-based light, tone mapping, exposure, fog. Turns on physical shading. */
 	"environment",
 ]);
@@ -1351,8 +1461,10 @@ export const LightTypeSchema = z.enum([
 export const EnvironmentPresetSchema = z.enum([
 	"studio",
 	"soft",
+	"warm",
 	"sunset",
 	"night",
+	"neon",
 	"neutral",
 ]);
 export type EnvironmentPreset = z.infer<typeof EnvironmentPresetSchema>;
@@ -1403,6 +1515,52 @@ export const EnvironmentFloorSchema = z
 
 export type EnvironmentFloor = z.infer<typeof EnvironmentFloorSchema>;
 
+export const EnvironmentVolumetricFogNoiseSchema = z
+	.object({
+		/** World-space noise frequency (1 / period in px). Default 0.003. */
+		scale: z.number().min(0.0001).optional(),
+		/** Density modulation depth 0..1. Default 0.45. */
+		strength: z.number().min(0).max(1).optional(),
+		/** Wind drift velocity [vx, vy, vz] in world px/sec. Default [20, -8, 12]. */
+		speed: z.tuple([z.number(), z.number(), z.number()]).optional(),
+		/** FBM octaves 1..3. Default 2. */
+		octaves: z.number().int().min(1).max(3).optional(),
+	})
+	.strict();
+export type EnvironmentVolumetricFogNoise = z.infer<
+	typeof EnvironmentVolumetricFogNoiseSchema
+>;
+
+export const EnvironmentVolumetricFogSchema = z
+	.object({
+		/** Base extinction/scattering density (typical range 0.002..0.15, default 0.02). */
+		density: z.number().min(0).optional(),
+		/** In-scattering albedo tint (default: environment horizon color). */
+		color: ColorSchema.optional(),
+		/** Henyey-Greenstein forward/back scatter asymmetry g in (-0.95..0.95). Default 0.55. */
+		anisotropy: z.number().min(-0.95).max(0.95).optional(),
+		/** Exponential height falloff rate (0 = uniform, >0 = ground mist). Default 0.0015. */
+		heightFalloff: z.number().min(0).optional(),
+		/** Reference world Y height for ground fog (px, y down). Default 540. */
+		baseHeight: z.number().optional(),
+		/** Raymarch step count per half-res pixel (8..64, default 28). */
+		steps: z.number().int().min(8).max(64).optional(),
+		/** Maximum raymarch distance from camera in world px. Default 2800. */
+		maxDistance: z.number().min(100).optional(),
+		/** Multiplier on direct-light in-scattering / god rays. Default 1.5. */
+		lightIntensity: z.number().min(0).optional(),
+		/** Multiplier on ambient / sky in-scattering. Default 0.35. */
+		ambientIntensity: z.number().min(0).optional(),
+		/** Optional 3D procedural FBM turbulence in the fog medium. */
+		noise: z
+			.union([z.boolean(), EnvironmentVolumetricFogNoiseSchema])
+			.optional(),
+	})
+	.strict();
+export type EnvironmentVolumetricFog = z.infer<
+	typeof EnvironmentVolumetricFogSchema
+>;
+
 export interface LightNode {
 	id: string;
 	kind: "light";
@@ -1420,16 +1578,24 @@ export interface LightNode {
 	decay?: number;
 	angle?: number;
 	penumbra?: number;
-	/** Directional / spot: render a shadow map. */
+	/** Area light width in world px (default 240, rect lights only). */
+	width?: number;
+	/** Area light height in world px (default 140, rect lights only). */
+	height?: number;
+	/** Emit from both faces of a rect light (default false). */
+	twoSided?: boolean;
+	/** Directional / spot / point / rect: render a shadow map. */
 	castShadow?: boolean;
 	/** Shadow edge blur in shadow-map texels. Default 2.5. */
 	shadowSoftness?: number;
 	/** 0..1, how dark shadows get. Default 1. */
 	shadowDarkness?: number;
-	/** Shadow map resolution (texels per side). Default 2048. */
+	/** Shadow map resolution (texels per side). Default 2048 (1024 for point). */
 	shadowMapSize?: number;
 	// environment
 	preset?: EnvironmentPreset;
+	/** Equirectangular panorama for real HDRI IBL: a `.hdr` (Radiance RGBE) or `.exr` (OpenEXR) path, or the file's bytes. */
+	hdri?: string | Uint8Array;
 	top?: string;
 	horizon?: string;
 	bottom?: string;
@@ -1439,6 +1605,14 @@ export interface LightNode {
 	toneMapping?: ToneMapping;
 	fog?: EnvironmentFog;
 	floor?: EnvironmentFloor;
+	/** Froxel-style volumetric participating media & shadowed light shafts (god rays). */
+	volumetricFog?: boolean | EnvironmentVolumetricFog;
+	/** Animatable / signal-driven override for volumetricFog.density. */
+	volumetricFogDensity?: number;
+	/** Animatable / signal-driven override for volumetricFog.anisotropy. */
+	volumetricFogAnisotropy?: number;
+	/** Animatable / signal-driven override for volumetricFog.noise.strength. */
+	volumetricFogNoiseStrength?: number;
 	/** Optional depth/normal outlines, before depth of field and bloom. */
 	outlines?: boolean | GeometryOutlineOptions;
 	/** Glow around emissive surfaces and hot highlights: `true` or settings. */
@@ -1466,11 +1640,17 @@ export const LightNodeSchema: z.ZodType<LightNode> = z
 		decay: z.number().min(0).default(2.0),
 		angle: z.number().min(0).max(180).default(45),
 		penumbra: z.number().min(0).max(1).default(0.2),
+		width: z.number().min(0).optional(),
+		height: z.number().min(0).optional(),
+		twoSided: z.boolean().optional(),
 		castShadow: z.boolean().optional(),
 		shadowSoftness: z.number().min(0).max(64).optional(),
 		shadowDarkness: z.number().min(0).max(1).optional(),
 		shadowMapSize: z.number().int().min(256).max(8192).optional(),
 		preset: EnvironmentPresetSchema.optional(),
+		hdri: z
+			.union([z.string(), z.custom<Uint8Array>((v) => v instanceof Uint8Array)])
+			.optional(),
 		top: ColorSchema.optional(),
 		horizon: ColorSchema.optional(),
 		bottom: ColorSchema.optional(),
@@ -1480,6 +1660,12 @@ export const LightNodeSchema: z.ZodType<LightNode> = z
 		toneMapping: ToneMappingSchema.optional(),
 		fog: EnvironmentFogSchema.optional(),
 		floor: EnvironmentFloorSchema.optional(),
+		volumetricFog: z
+			.union([z.boolean(), EnvironmentVolumetricFogSchema])
+			.optional(),
+		volumetricFogDensity: z.number().min(0).optional(),
+		volumetricFogAnisotropy: z.number().min(-0.95).max(0.95).optional(),
+		volumetricFogNoiseStrength: z.number().min(0).max(1).optional(),
 		outlines: z.union([z.boolean(), GeometryOutlineOptionsSchema]).optional(),
 		bloom: z.union([z.boolean(), BloomConfigSchema]).optional(),
 		startFrame: z.number().int().min(0).default(0),
@@ -1525,6 +1711,26 @@ export interface Model3DNode {
 	specularIntensity?: number;
 	ambientIntensity?: number;
 	metallic?: number;
+	emissive?: string;
+	emissiveIntensity?: number;
+	clearcoat?: number;
+	clearcoatRoughness?: number;
+	anisotropy?: number;
+	anisotropyRotation?: number;
+	subsurface?: number;
+	subsurfaceColor?: string;
+	sheen?: number;
+	sheenColor?: string;
+	sheenRoughness?: number;
+	iridescence?: number | IridescenceConfig;
+	iridescenceThickness?: number;
+	iridescenceIor?: number;
+	triplanar?: boolean | TriplanarConfig;
+	triplanarScale?: number;
+	triplanarSharpness?: number;
+	toon?: ToonShading;
+	outline?: boolean;
+	castShadow?: boolean;
 	color?: string;
 	colorTint?: string;
 	opacity?: number;

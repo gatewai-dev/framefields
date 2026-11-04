@@ -1,9 +1,11 @@
 import type {
 	BoxNode,
+	IridescenceConfig,
 	LayoutNode,
 	MaterialType,
 	Model3DNode,
 	ToonShading,
+	TriplanarConfig,
 } from "@framefields/compositions/program";
 import {
 	type CapsuleGeometryOptions,
@@ -28,7 +30,12 @@ import {
 	type TubePathSpec,
 } from "@framefields/webgpu-renderers";
 import { autoId } from "./ids.js";
-import { type AnimatableNode, Layer } from "./index.js";
+import {
+	type AnimatableNode,
+	Layer,
+	type Model3DOptions,
+	type SignalOrNumber,
+} from "./index.js";
 import type { PhysicsBody3D } from "./physics/world3d.js";
 import { createSwarm3D, type Swarm3DOptions } from "./swarm3d.js";
 
@@ -44,6 +51,37 @@ export interface Surface3DOptions {
 	emissiveIntensity?: number;
 	/** Falls into a `castShadow` light's shadow map (meshes default on, flat layers off). */
 	castShadow?: boolean;
+	// Substrate lobes: physical shading only (needs `Layer.environment`).
+	/** Clear varnish layer over the base 0..1 (car paint, lacquer, wet coats). */
+	clearcoat?: SignalOrNumber;
+	/** Roughness of the clearcoat layer 0..1. Default 0.08. */
+	clearcoatRoughness?: SignalOrNumber;
+	/** Stretched highlight -1..1 (brushed metal, satin, hair). 0 = round. */
+	anisotropy?: SignalOrNumber;
+	/** Brush direction in degrees around the surface normal. Default 0. */
+	anisotropyRotation?: SignalOrNumber;
+	/** Light bleeding through the surface 0..1 (wax, jade, skin, leaves). */
+	subsurface?: SignalOrNumber;
+	/** Color of the scattered light (CSS color). Default "#ff6b4a". */
+	subsurfaceColor?: string;
+	/** Velvet / cloth rim glow at grazing angles 0..1. */
+	sheen?: SignalOrNumber;
+	/** Sheen tint (CSS color). Default "#ffffff". */
+	sheenColor?: string;
+	/** Sheen fiber roughness 0.05..1. Default 0.5. */
+	sheenRoughness?: SignalOrNumber;
+	/** Thin-film rainbow (soap, oil, beetle shells): 0..1 or `{ intensity, thickness, ior }`. */
+	iridescence?: SignalOrNumber | IridescenceConfig;
+	/** Film thickness in nanometers 100..1200. Default 400. */
+	iridescenceThickness?: SignalOrNumber;
+	/** Film refractive index 1.05..2.5. Default 1.3. */
+	iridescenceIor?: SignalOrNumber;
+	/** Project textures in world space instead of UVs: `true` or `{ scale, sharpness }`. */
+	triplanar?: boolean | TriplanarConfig;
+	/** Triplanar tiling: repeats per 256 world px (> 0 turns triplanar on). */
+	triplanarScale?: SignalOrNumber;
+	/** Triplanar axis blend sharpness 1..16. Default 4. */
+	triplanarSharpness?: SignalOrNumber;
 }
 
 const MATERIAL_KEYS = [
@@ -63,6 +101,21 @@ const MATERIAL_KEYS = [
 	"emissive",
 	"emissiveIntensity",
 	"castShadow",
+	"clearcoat",
+	"clearcoatRoughness",
+	"anisotropy",
+	"anisotropyRotation",
+	"subsurface",
+	"subsurfaceColor",
+	"sheen",
+	"sheenColor",
+	"sheenRoughness",
+	"iridescence",
+	"iridescenceThickness",
+	"iridescenceIor",
+	"triplanar",
+	"triplanarScale",
+	"triplanarSharpness",
 ] as const;
 
 /** The material and surface options that were actually given. */
@@ -106,6 +159,12 @@ export interface Cube3DOptions extends Surface3DOptions {
 	rotateX?: number;
 	rotateY?: number;
 	rotateZ?: number;
+	/** Alias for `rotateX`. */
+	rotationX?: number;
+	/** Alias for `rotateY`. */
+	rotationY?: number;
+	/** Alias for `rotateZ`. */
+	rotationZ?: number;
 	faces?: {
 		front?: CubeFaceInput;
 		back?: CubeFaceInput;
@@ -139,6 +198,12 @@ export interface Carousel3DOptions {
 	rotateX?: number;
 	rotateY?: number;
 	rotateZ?: number;
+	/** Alias for `rotateX`. */
+	rotationX?: number;
+	/** Alias for `rotateY`. */
+	rotationY?: number;
+	/** Alias for `rotateZ`. */
+	rotationZ?: number;
 	faceInward?: boolean;
 	itemWidth?: number;
 	itemHeight?: number;
@@ -154,8 +219,12 @@ export interface Prism3DOptions extends Surface3DOptions {
 	radius?: number;
 	/** Optional top (-y) radius; defaults to `radius`. */
 	radiusTop?: number;
+	/** Alias for `radiusTop`. */
+	topRadius?: number;
 	/** Optional bottom (+y) radius; defaults to `radius`. */
 	radiusBottom?: number;
+	/** Alias for `radiusBottom`. */
+	bottomRadius?: number;
 	/** Height along Y (default 100). */
 	height?: number;
 	x?: number;
@@ -164,6 +233,12 @@ export interface Prism3DOptions extends Surface3DOptions {
 	rotateX?: number;
 	rotateY?: number;
 	rotateZ?: number;
+	/** Alias for `rotateX`. */
+	rotationX?: number;
+	/** Alias for `rotateY`. */
+	rotationY?: number;
+	/** Alias for `rotateZ`. */
+	rotationZ?: number;
 	scale?: number;
 	scaleX?: number;
 	scaleY?: number;
@@ -205,6 +280,8 @@ export interface Pyramid3DOptions extends Surface3DOptions {
 	radius?: number;
 	/** Optional top (-y) truncation radius for a frustum pyramid (default 0 = sharp apex). */
 	radiusTop?: number;
+	/** Alias for `radiusTop`. */
+	topRadius?: number;
 	/** Height from base (+y) to apex (-y) (default 100). */
 	height?: number;
 	/** Leave the base cap off (default false = solid capped pyramid). */
@@ -217,6 +294,12 @@ export interface Pyramid3DOptions extends Surface3DOptions {
 	rotateX?: number;
 	rotateY?: number;
 	rotateZ?: number;
+	/** Alias for `rotateX`. */
+	rotationX?: number;
+	/** Alias for `rotateY`. */
+	rotationY?: number;
+	/** Alias for `rotateZ`. */
+	rotationZ?: number;
 	scale?: number;
 	scaleX?: number;
 	scaleY?: number;
@@ -251,6 +334,12 @@ export interface Plane3DOptions extends Surface3DOptions {
 	rotateX?: number;
 	rotateY?: number;
 	rotateZ?: number;
+	/** Alias for `rotateX`. */
+	rotationX?: number;
+	/** Alias for `rotateY`. */
+	rotationY?: number;
+	/** Alias for `rotateZ`. */
+	rotationZ?: number;
 	background?: string;
 	borderRadius?: number;
 	twoSided?: boolean;
@@ -283,6 +372,12 @@ export interface Grid3DOptions {
 	rotateX?: number;
 	rotateY?: number;
 	rotateZ?: number;
+	/** Alias for `rotateX`. */
+	rotationX?: number;
+	/** Alias for `rotateY`. */
+	rotationY?: number;
+	/** Alias for `rotateZ`. */
+	rotationZ?: number;
 	opacity?: number;
 }
 
@@ -300,6 +395,12 @@ export interface Text3DOptions extends Surface3DOptions {
 	rotateX?: number;
 	rotateY?: number;
 	rotateZ?: number;
+	/** Alias for `rotateX`. */
+	rotationX?: number;
+	/** Alias for `rotateY`. */
+	rotationY?: number;
+	/** Alias for `rotateZ`. */
+	rotationZ?: number;
 	scale?: number;
 	scaleX?: number;
 	scaleY?: number;
@@ -362,6 +463,12 @@ export interface Primitive3DNodeOptions extends Surface3DOptions {
 	rotateX?: number;
 	rotateY?: number;
 	rotateZ?: number;
+	/** Alias for `rotateX`. */
+	rotationX?: number;
+	/** Alias for `rotateY`. */
+	rotationY?: number;
+	/** Alias for `rotateZ`. */
+	rotationZ?: number;
 	scale?: number;
 	scaleX?: number;
 	scaleY?: number;
@@ -478,6 +585,12 @@ export interface Instances3DOptions extends Surface3DOptions {
 	rotateX?: number;
 	rotateY?: number;
 	rotateZ?: number;
+	/** Alias for `rotateX`. */
+	rotationX?: number;
+	/** Alias for `rotateY`. */
+	rotationY?: number;
+	/** Alias for `rotateZ`. */
+	rotationZ?: number;
 	scale?: number;
 	color?: string;
 	colorTint?: string;
@@ -535,9 +648,9 @@ function primitiveNode(
 		x: o.x ?? 0,
 		y: o.y ?? 0,
 		z: o.z ?? 0,
-		rotateX: o.rotateX ?? 0,
-		rotateY: o.rotateY ?? 0,
-		rotateZ: o.rotateZ ?? 0,
+		rotateX: o.rotateX ?? o.rotationX ?? 0,
+		rotateY: o.rotateY ?? o.rotationY ?? 0,
+		rotateZ: o.rotateZ ?? o.rotationZ ?? 0,
 		scale: o.scale ?? 1,
 		scaleX: o.scaleX ?? 1,
 		scaleY: o.scaleY ?? 1,
@@ -759,9 +872,9 @@ export const Layer3D = {
 			height: h,
 			is3D: true,
 			transformStyle: "preserve-3d",
-			rotateX: options.rotateX ?? 0,
-			rotateY: options.rotateY ?? 0,
-			rotateZ: options.rotateZ ?? 0,
+			rotateX: options.rotateX ?? options.rotationX ?? 0,
+			rotateY: options.rotateY ?? options.rotationY ?? 0,
+			rotateZ: options.rotateZ ?? options.rotationZ ?? 0,
 			opacity: options.opacity ?? 1,
 			background: "transparent",
 			children: faces,
@@ -810,9 +923,9 @@ export const Layer3D = {
 			height: options.itemHeight ?? 200,
 			is3D: true,
 			transformStyle: "preserve-3d",
-			rotateX: options.rotateX ?? 0,
-			rotateY: options.rotateY ?? 0,
-			rotateZ: options.rotateZ ?? 0,
+			rotateX: options.rotateX ?? options.rotationX ?? 0,
+			rotateY: options.rotateY ?? options.rotationY ?? 0,
+			rotateZ: options.rotateZ ?? options.rotationZ ?? 0,
 			opacity: options.opacity ?? 1,
 			background: "transparent",
 			children: transformedItems,
@@ -826,10 +939,12 @@ export const Layer3D = {
 	 * outward flat-shaded facet normals, and full material options.
 	 * If `sideConfigs` are provided, builds a multi-panel preserve-3d container with all material props applied.
 	 */
-	prism(options: Prism3DOptions): Shape3DContainer {
-		const n = Math.max(3, Math.round(options.sides));
+	prism(options: Prism3DOptions = {}): SolidShape3DNode {
+		const n = Math.max(3, Math.round(options.sides ?? 6));
+		const radius = options.radius ?? 60;
+		const height = options.height ?? 100;
 		if (options.sideConfigs && options.sideConfigs.length > 0) {
-			const { radius, height, twoSided = true } = options;
+			const { twoSided = true } = options;
 			const sideWidth = 2 * radius * Math.tan(Math.PI / n);
 			const angleStep = 360 / n;
 			const panels: AnimatableNode<BoxNode>[] = [];
@@ -900,25 +1015,28 @@ export const Layer3D = {
 				height,
 				is3D: true,
 				transformStyle: "preserve-3d",
-				rotateX: options.rotateX ?? 0,
-				rotateY: options.rotateY ?? 0,
-				rotateZ: options.rotateZ ?? 0,
+				rotateX: options.rotateX ?? options.rotationX ?? 0,
+				rotateY: options.rotateY ?? options.rotationY ?? 0,
+				rotateZ: options.rotateZ ?? options.rotationZ ?? 0,
 				opacity: options.opacity ?? 1,
 				background: "transparent",
 				children: panels,
 			});
 
-			return withParts(container, { faces: panels });
+			return withParts(container, {
+				faces: panels,
+				items: panels,
+			}) as unknown as SolidShape3DNode;
 		}
 
 		const modelNode = primitiveNode(
 			"prism",
 			{
 				type: "cylinder",
-				radius: options.radius,
-				radiusTop: options.radiusTop ?? options.radius,
-				radiusBottom: options.radiusBottom ?? options.radius,
-				height: options.height,
+				radius,
+				radiusTop: options.radiusTop ?? options.topRadius ?? radius,
+				radiusBottom: options.radiusBottom ?? options.bottomRadius ?? radius,
+				height,
 				segments: n,
 				openEnded: options.openEnded ?? false,
 				flatShaded: options.flatShaded ?? true,
@@ -933,23 +1051,23 @@ export const Layer3D = {
 		return withParts(modelNode, {
 			faces: [modelNode],
 			items: [modelNode],
-		}) as unknown as Shape3DContainer;
+		}) as unknown as SolidShape3DNode;
 	},
 
 	/**
 	 * Creates a solid N-sided regular polygonal pyramid (or truncated pyramid when `radiusTop > 0`)
 	 * with a bottom cap and crisp flat-shaded side facets.
 	 */
-	pyramid(options: Pyramid3DOptions): AnimatableNode<Model3DNode> {
+	pyramid(options: Pyramid3DOptions = {}): AnimatableNode<Model3DNode> {
 		const n = Math.max(3, Math.round(options.sides ?? 4));
 		return primitiveNode(
 			"pyramid",
 			{
 				type: "cylinder",
 				radius: options.radius ?? 60,
-				radiusTop: options.radiusTop ?? 0,
+				radiusTop: options.radiusTop ?? options.topRadius ?? 0,
 				radiusBottom: options.radius ?? 60,
-				height: options.height,
+				height: options.height ?? 100,
 				segments: n,
 				openEnded: options.openEnded ?? false,
 				flatShaded: options.flatShaded ?? true,
@@ -976,9 +1094,9 @@ export const Layer3D = {
 			z: options.z ?? 0,
 			is3D: true,
 			twoSided: options.twoSided ?? true,
-			rotateX: options.rotateX ?? 0,
-			rotateY: options.rotateY ?? 0,
-			rotateZ: options.rotateZ ?? 0,
+			rotateX: options.rotateX ?? options.rotationX ?? 0,
+			rotateY: options.rotateY ?? options.rotationY ?? 0,
+			rotateZ: options.rotateZ ?? options.rotationZ ?? 0,
 			background: options.background ?? "#3b82f6",
 			borderRadius: options.borderRadius ?? 0,
 			opacity: options.opacity ?? 1,
@@ -1046,9 +1164,9 @@ export const Layer3D = {
 			z: options.z ?? 0,
 			is3D: true,
 			transformStyle: "preserve-3d",
-			rotateX: options.rotateX ?? 90,
-			rotateY: options.rotateY ?? 0,
-			rotateZ: options.rotateZ ?? 0,
+			rotateX: options.rotateX ?? options.rotationX ?? 90,
+			rotateY: options.rotateY ?? options.rotationY ?? 0,
+			rotateZ: options.rotateZ ?? options.rotationZ ?? 0,
 			background: "transparent",
 			opacity: options.opacity ?? 1,
 			children: lines,
@@ -1074,9 +1192,9 @@ export const Layer3D = {
 			z: options.z ?? 0,
 			is3D: true,
 			twoSided: options.twoSided ?? true,
-			rotateX: options.rotateX ?? 0,
-			rotateY: options.rotateY ?? 0,
-			rotateZ: options.rotateZ ?? 0,
+			rotateX: options.rotateX ?? options.rotationX ?? 0,
+			rotateY: options.rotateY ?? options.rotationY ?? 0,
+			rotateZ: options.rotateZ ?? options.rotationZ ?? 0,
 			fontSize: options.fontSize ?? 48,
 			fontFamily: options.fontFamily,
 			fontWeight: options.fontWeight ?? "bold",
@@ -1166,9 +1284,9 @@ export const Layer3D = {
 			x: options.x ?? 0,
 			y: options.y ?? 0,
 			z: options.z ?? 0,
-			rotateX: options.rotateX ?? 0,
-			rotateY: options.rotateY ?? 0,
-			rotateZ: options.rotateZ ?? 0,
+			rotateX: options.rotateX ?? options.rotationX ?? 0,
+			rotateY: options.rotateY ?? options.rotationY ?? 0,
+			rotateZ: options.rotateZ ?? options.rotationZ ?? 0,
 			scale: options.scale ?? 1,
 			scaleX: options.scaleX ?? 1,
 			scaleY: options.scaleY ?? 1,
@@ -1206,7 +1324,7 @@ export const Layer3D = {
 				width: options.width,
 				height: options.height,
 				depth: options.depth,
-				radius: options.radius,
+				radius: options.radius ?? options.cornerRadius ?? options.borderRadius,
 				segments: options.segments,
 				taper: options.taper,
 			},
@@ -1230,8 +1348,8 @@ export const Layer3D = {
 			{
 				type: "cylinder",
 				radius: options.radius,
-				radiusTop: options.radiusTop,
-				radiusBottom: options.radiusBottom,
+				radiusTop: options.radiusTop ?? options.topRadius,
+				radiusBottom: options.radiusBottom ?? options.bottomRadius,
 				height: options.height,
 				segments: options.segments,
 				openEnded: options.openEnded,
@@ -1253,8 +1371,8 @@ export const Layer3D = {
 			"torus",
 			{
 				type: "torus",
-				radius: options.radius,
-				tube: options.tube,
+				radius: options.radius ?? options.majorRadius,
+				tube: options.tube ?? options.minorRadius ?? options.tubeRadius,
 				radialSegments: options.radialSegments,
 				tubularSegments: options.tubularSegments,
 				arc: options.arc,
@@ -1507,9 +1625,9 @@ export const Layer3D = {
 			x: options.x ?? 0,
 			y: options.y ?? 0,
 			z: options.z ?? 0,
-			rotateX: options.rotateX ?? 0,
-			rotateY: options.rotateY ?? 0,
-			rotateZ: options.rotateZ ?? 0,
+			rotateX: options.rotateX ?? options.rotationX ?? 0,
+			rotateY: options.rotateY ?? options.rotationY ?? 0,
+			rotateZ: options.rotateZ ?? options.rotationZ ?? 0,
 			scale: options.scale ?? 1,
 			color: options.color,
 			colorTint: options.colorTint,
@@ -1549,77 +1667,56 @@ export const Layer3D = {
 	/**
 	 * Creates a 3D model node rendered natively with WebGPU mesh shaders.
 	 */
-	model(options: Partial<Model3DNode> = {}): AnimatableNode<Model3DNode> {
+	model(options: Model3DOptions = {}): AnimatableNode<Model3DNode> {
 		return Layer.model(options);
 	},
 
 	/**
 	 * Convenience helper to create a 3D Wavefront OBJ model node.
 	 */
-	obj(
-		src: string,
-		options: Partial<Model3DNode> = {},
-	): AnimatableNode<Model3DNode> {
+	obj(src: string, options: Model3DOptions = {}): AnimatableNode<Model3DNode> {
 		return Layer.obj(src, options);
 	},
 
 	/**
 	 * Convenience helper to create a 3D Autodesk FBX model node with skeletal animation support.
 	 */
-	fbx(
-		src: string,
-		options: Partial<Model3DNode> = {},
-	): AnimatableNode<Model3DNode> {
+	fbx(src: string, options: Model3DOptions = {}): AnimatableNode<Model3DNode> {
 		return Layer.fbx(src, options);
 	},
 
 	/**
 	 * Convenience helper to create a 3D glTF 2.0 model node.
 	 */
-	gltf(
-		src: string,
-		options: Partial<Model3DNode> = {},
-	): AnimatableNode<Model3DNode> {
+	gltf(src: string, options: Model3DOptions = {}): AnimatableNode<Model3DNode> {
 		return Layer.gltf(src, options);
 	},
 
 	/**
 	 * Convenience helper to create a 3D GLB binary container model node.
 	 */
-	glb(
-		src: string,
-		options: Partial<Model3DNode> = {},
-	): AnimatableNode<Model3DNode> {
+	glb(src: string, options: Model3DOptions = {}): AnimatableNode<Model3DNode> {
 		return Layer.glb(src, options);
 	},
 
 	/**
 	 * Convenience helper to create a 3D STL CAD / 3D printing model node.
 	 */
-	stl(
-		src: string,
-		options: Partial<Model3DNode> = {},
-	): AnimatableNode<Model3DNode> {
+	stl(src: string, options: Model3DOptions = {}): AnimatableNode<Model3DNode> {
 		return Layer.stl(src, options);
 	},
 
 	/**
 	 * Convenience helper to create a 3D Stanford PLY scan model node.
 	 */
-	ply(
-		src: string,
-		options: Partial<Model3DNode> = {},
-	): AnimatableNode<Model3DNode> {
+	ply(src: string, options: Model3DOptions = {}): AnimatableNode<Model3DNode> {
 		return Layer.ply(src, options);
 	},
 
 	/**
 	 * Convenience helper to create a 3D MagicaVoxel VOX model node.
 	 */
-	vox(
-		src: string,
-		options: Partial<Model3DNode> = {},
-	): AnimatableNode<Model3DNode> {
+	vox(src: string, options: Model3DOptions = {}): AnimatableNode<Model3DNode> {
 		return Layer.vox(src, options);
 	},
 
@@ -1628,7 +1725,7 @@ export const Layer3D = {
 	 */
 	threeDS(
 		src: string,
-		options: Partial<Model3DNode> = {},
+		options: Model3DOptions = {},
 	): AnimatableNode<Model3DNode> {
 		return Layer.threeDS(src, options);
 	},
@@ -1636,10 +1733,7 @@ export const Layer3D = {
 	/**
 	 * Convenience helper to create a 3D Object File Format (OFF) model node.
 	 */
-	off(
-		src: string,
-		options: Partial<Model3DNode> = {},
-	): AnimatableNode<Model3DNode> {
+	off(src: string, options: Model3DOptions = {}): AnimatableNode<Model3DNode> {
 		return Layer.off(src, options);
 	},
 };

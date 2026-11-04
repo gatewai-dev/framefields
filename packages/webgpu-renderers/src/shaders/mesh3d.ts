@@ -14,18 +14,22 @@ export const mesh3dWgsl = `
 ${lighting3dWgsl}
 
 struct ModelUniforms {
-    modelMatrix    : mat4x4<f32>,
-    normalMatrix   : mat4x4<f32>,
-    colorTint      : vec4<f32>,
-    params         : vec4<f32>, // x = opacity, y = twoSided, z = isSkinned, w = flags (bit 0 instanced, bit 1 map UVs, bit 2 matrix instances)
-    materialParams : vec4<f32>, // x = shininess, y = specularIntensity, z = ambientIntensity, w = materialMode (0=unlit, 1=lit, 2=toon)
-    shade          : vec4<f32>, // rgb = toon shadow-side color multiplier, a = alpha cutoff (0 = none)
-    pbr            : vec4<f32>, // x = roughness (<0 = default), y = metallic
-    emissive       : vec4<f32>, // rgb = sRGB emissive color, w = strength
-    toonShadow     : vec4<f32>, // rgb shadow-side multiplier, w diffuse modelling
-    toonLight      : vec4<f32>, // rgb lit-side multiplier, w terminator threshold
-    toonParams     : vec4<f32>, // x terminator softness, y outline participation
-    maps           : vec4<f32>, // x = normal scale (0 = no map), y = occlusion strength, z = has metallic-roughness map, w = has emissive map
+    modelMatrix          : mat4x4<f32>,
+    normalMatrix         : mat4x4<f32>,
+    colorTint            : vec4<f32>,
+    params               : vec4<f32>, // x = opacity, y = twoSided, z = isSkinned, w = flags (bit 0 instanced, bit 1 map UVs, bit 2 matrix instances)
+    materialParams       : vec4<f32>, // x = shininess, y = specularIntensity, z = ambientIntensity, w = materialMode (0=unlit, 1=lit, 2=toon)
+    shade                : vec4<f32>, // rgb = toon shadow-side color multiplier, a = alpha cutoff (0 = none)
+    pbr                  : vec4<f32>, // x = roughness (<0 = default), y = metallic
+    emissive             : vec4<f32>, // rgb = sRGB emissive color, w = strength
+    toonShadow           : vec4<f32>, // rgb shadow-side multiplier, w diffuse modelling
+    toonLight            : vec4<f32>, // rgb lit-side multiplier, w terminator threshold
+    toonParams           : vec4<f32>, // x terminator softness, y outline participation, z sheenRoughness, w triplanarSharpness
+    substrateClearcoat   : vec4<f32>, // x = clearcoat, y = clearcoatRoughness, z = anisotropy, w = anisotropyRotationRad
+    substrateSubsurface  : vec4<f32>, // x = subsurface, yzw = subsurfaceColor (sRGB)
+    substrateSheen       : vec4<f32>, // x = sheen, yzw = sheenColor (sRGB)
+    substrateIridescence : vec4<f32>, // x = iridescence, y = thicknessNm, z = filmIor, w = triplanarUvFreq
+    maps                 : vec4<f32>, // x = normal scale (0 = no map), y = occlusion strength, z = has metallic-roughness map, w = has emissive map
 };
 
 struct SkinningUniforms {
@@ -254,18 +258,49 @@ fn shadeGlass(in: VertexOutput, Nin: vec3<f32>, tint: vec3<f32>, alpha: f32, rim
     return out;
 }
 
+fn sampleTriplanar4(tex: texture_2d<f32>, p: vec3<f32>, dp1: vec3<f32>, dp2: vec3<f32>, weights: vec3<f32>) -> vec4<f32> {
+    let sx = textureSampleGrad(tex, texSampler, fract(p.zy), dp1.zy, dp2.zy);
+    let sy = textureSampleGrad(tex, texSampler, fract(p.xz), dp1.xz, dp2.xz);
+    let sz = textureSampleGrad(tex, texSampler, fract(p.xy), dp1.xy, dp2.xy);
+    return sx * weights.x + sy * weights.y + sz * weights.z;
+}
+
 fn shadeMesh(in: VertexOutput, isFront: bool) -> MeshFragment {
     // Every sample and derivative up front, in uniform control flow.
     var texColor = textureSample(mainTex, texSampler, in.uv);
-    let normalSample = textureSample(normalTex, texSampler, in.normalUv).xyz;
-    let mrSample = textureSample(metalRoughTex, texSampler, in.mrUv);
-    let aoSample = textureSample(occlusionTex, texSampler, in.aoUv).r;
-    let emissiveSample = textureSample(emissiveTex, texSampler, in.emissiveUv).rgb;
+    var normalSample = textureSample(normalTex, texSampler, in.normalUv).xyz;
+    var mrSample = textureSample(metalRoughTex, texSampler, in.mrUv);
+    var aoSample = textureSample(occlusionTex, texSampler, in.aoUv).r;
+    var emissiveSample = textureSample(emissiveTex, texSampler, in.emissiveUv).rgb;
     let dp1 = dpdx(in.worldPos);
     let dp2 = dpdy(in.worldPos);
     let duv1 = dpdx(in.normalUv);
     let duv2 = dpdy(in.normalUv);
     let rimWidth = fwidth(1.0 - abs(dot(normalize(in.worldNormal), normalize(cam.cameraPos.xyz - in.worldPos))));
+
+    let triFreq = model.substrateIridescence.w;
+    if (triFreq > 0.0) {
+        let sharpness = max(1.0, model.toonParams.w);
+        let absN = max(abs(normalize(in.worldNormal)), vec3<f32>(1e-4));
+        let wPow = pow(absN, vec3<f32>(sharpness));
+        let wTri = wPow / max(wPow.x + wPow.y + wPow.z, 1e-5);
+        let pTri = in.worldPos * triFreq;
+        let dp1Tri = dp1 * triFreq;
+        let dp2Tri = dp2 * triFreq;
+        texColor = sampleTriplanar4(mainTex, pTri, dp1Tri, dp2Tri, wTri);
+        if (model.maps.x > 0.0) {
+            normalSample = sampleTriplanar4(normalTex, pTri, dp1Tri, dp2Tri, wTri).xyz;
+        }
+        if (model.maps.z > 0.5) {
+            mrSample = sampleTriplanar4(metalRoughTex, pTri, dp1Tri, dp2Tri, wTri);
+        }
+        if (model.maps.y > 0.0) {
+            aoSample = sampleTriplanar4(occlusionTex, pTri, dp1Tri, dp2Tri, wTri).r;
+        }
+        if (model.maps.w > 0.5) {
+            emissiveSample = sampleTriplanar4(emissiveTex, pTri, dp1Tri, dp2Tri, wTri).rgb;
+        }
+    }
 
     if (!isFront && model.params.y < 0.5) {
         discard;
@@ -309,7 +344,13 @@ fn shadeMesh(in: VertexOutput, isFront: bool) -> MeshFragment {
     if (model.params.w > 0.5 && (in.emissive.w > 0.0 || dot(in.emissive.rgb, in.emissive.rgb) > 0.0)) {
         emissive = in.emissive;
     }
-    let shaded = shadeSurfaceFull(in.worldPos, N, baseRgb, material, pbr, emissive, model.toonShadow, model.toonLight, model.toonParams);
+    let substrate = SubstrateParams(
+        model.substrateClearcoat,
+        model.substrateSubsurface,
+        model.substrateSheen,
+        model.substrateIridescence,
+    );
+    let shaded = shadeSurfaceSubstrate(in.worldPos, N, baseRgb, material, pbr, emissive, model.toonShadow, model.toonLight, model.toonParams, substrate);
     out.color = vec4<f32>(shaded.display * alpha, alpha);
     out.hdr = vec4<f32>(shaded.hdr * alpha, alpha);
     return out;

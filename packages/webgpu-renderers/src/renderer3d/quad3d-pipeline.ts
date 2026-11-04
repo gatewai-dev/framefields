@@ -16,7 +16,8 @@ import {
 
 /**
  * Group 3 of every lit 3D shader: the lights uniform, then the shadow map and
- * its comparison sampler (a 1×1 cleared map when no light casts shadows).
+ * its comparison sampler (a 1×1 cleared map when no light casts shadows), the
+ * direct lights, and the HDRI radiance cubemap with its sampler.
  */
 export function createLightsLayout(
 	device: GPUDevice,
@@ -44,6 +45,16 @@ export function createLightsLayout(
 				binding: 3,
 				visibility: GPUShaderStage.FRAGMENT,
 				buffer: { type: "read-only-storage" },
+			},
+			{
+				binding: 4,
+				visibility: GPUShaderStage.FRAGMENT,
+				texture: { sampleType: "float", viewDimension: "cube" },
+			},
+			{
+				binding: 5,
+				visibility: GPUShaderStage.FRAGMENT,
+				sampler: { type: "filtering" },
 			},
 		],
 	});
@@ -96,19 +107,11 @@ export interface ModelUniformData extends SurfaceParams {
 	metallic?: number;
 }
 
-export type MaterialUniformData = Pick<
-	ModelUniformData,
-	| "material"
-	| "shininess"
-	| "roughness"
-	| "specularIntensity"
-	| "ambientIntensity"
-	| "metallic"
-	| "emissive"
-	| "emissiveIntensity"
-	| "toon"
-	| "outline"
->;
+export type MaterialUniformData = SurfaceParams &
+	Pick<
+		ModelUniformData,
+		"material" | "shininess" | "specularIntensity" | "ambientIntensity"
+	>;
 
 /** [shininess, specularIntensity, ambientIntensity, materialMode] as the 3D shaders' lighting reads them. */
 export function packMaterialParams(

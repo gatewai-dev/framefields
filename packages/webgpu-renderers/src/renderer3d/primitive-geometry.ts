@@ -33,6 +33,10 @@ export interface RoundedBoxGeometryOptions extends PrimitiveSurface {
 	depth: number;
 	/** Corner and edge radius, clamped to half the smallest side. Default 0 (a sharp box). */
 	radius?: number;
+	/** Alias for `radius`. */
+	cornerRadius?: number;
+	/** Alias for `radius`. */
+	borderRadius?: number;
 	/** Segments per rounded quarter (default 4). */
 	segments?: number;
 	/**
@@ -53,8 +57,12 @@ export interface CylinderGeometryOptions extends PrimitiveSurface {
 	type: "cylinder";
 	/** Radius of the top (-y) cap; defaults to `radius`. */
 	radiusTop?: number;
+	/** Alias for `radiusTop`. */
+	topRadius?: number;
 	/** Radius of the bottom (+y) cap; defaults to `radius`. */
 	radiusBottom?: number;
+	/** Alias for `radiusBottom`. */
+	bottomRadius?: number;
 	radius?: number;
 	height: number;
 	/** Segments around (default 32). */
@@ -69,8 +77,14 @@ export interface TorusGeometryOptions extends PrimitiveSurface {
 	type: "torus";
 	/** Major radius from the torus center to the center of the tube (default 60). */
 	radius?: number;
+	/** Alias for `radius`. */
+	majorRadius?: number;
 	/** Minor radius of the circular tube cross-section (default 20). */
 	tube?: number;
+	/** Alias for `tube`. */
+	minorRadius?: number;
+	/** Alias for `tube`. */
+	tubeRadius?: number;
 	/** Segments around the tube cross-section (default 24). */
 	radialSegments?: number;
 	/** Segments around the main ring (default 48). */
@@ -397,7 +411,8 @@ function roundedBox(o: RoundedBoxGeometryOptions, mb: MeshBuilder): void {
 	const hx = o.width / 2;
 	const hy = o.height / 2;
 	const hz = o.depth / 2;
-	const r = Math.max(0, Math.min(o.radius ?? 0, hx, hy, hz));
+	const rawR = o.radius ?? o.cornerRadius ?? o.borderRadius ?? 0;
+	const r = Math.max(0, Math.min(rawR, hx, hy, hz));
 	const seg = Math.max(1, Math.round(o.segments ?? 4));
 	const taper = o.taper ?? 1;
 	const ix = hx - r;
@@ -508,8 +523,11 @@ function sphere(o: SphereGeometryOptions, mb: MeshBuilder): void {
 
 function cylinder(o: CylinderGeometryOptions, mb: MeshBuilder): void {
 	const seg = Math.max(3, Math.round(o.segments ?? 32));
-	const rTop = Math.max(0, o.radiusTop ?? o.radius ?? 50);
-	const rBottom = Math.max(0, o.radiusBottom ?? o.radius ?? 50);
+	const rTop = Math.max(0, o.radiusTop ?? o.topRadius ?? o.radius ?? 50);
+	const rBottom = Math.max(
+		0,
+		o.radiusBottom ?? o.bottomRadius ?? o.radius ?? 50,
+	);
 	const hy = o.height / 2;
 
 	if (o.flatShaded) {
@@ -594,8 +612,8 @@ function cylinder(o: CylinderGeometryOptions, mb: MeshBuilder): void {
  * camera looking along +Z), with major radius `radius` and tube radius `tube`.
  */
 function torus(o: TorusGeometryOptions, mb: MeshBuilder): void {
-	const R = Math.max(1e-3, o.radius ?? 60);
-	const r = Math.max(1e-3, o.tube ?? 20);
+	const R = Math.max(1e-3, o.radius ?? o.majorRadius ?? 60);
+	const r = Math.max(1e-3, o.tube ?? o.minorRadius ?? o.tubeRadius ?? 20);
 	const radialSegments = Math.max(3, Math.round(o.radialSegments ?? 24));
 	const tubularSegments = Math.max(3, Math.round(o.tubularSegments ?? 48));
 	const arcDeg = o.arc ?? 360;

@@ -28,6 +28,8 @@ export interface LightingRigOptions {
 	shadowSoftness?: number;
 	/** Fog fading into the background, e.g. `{ color: BG, start: 2500, end: 6000 }`. */
 	fog?: EnvironmentOptions["fog"];
+	/** Volumetric fog & shadowed light shafts (god rays): `true` or settings. */
+	volumetricFog?: EnvironmentOptions["volumetricFog"];
 	/** Glow around emissive surfaces and highlights: `true` or settings. */
 	bloom?: EnvironmentOptions["bloom"];
 	/** Prefix for the rig's node ids. */
@@ -121,6 +123,7 @@ function rig(
 			exposure: options.exposure,
 			toneMapping: options.toneMapping,
 			fog: options.fog,
+			volumetricFog: options.volumetricFog,
 			bloom: options.bloom,
 		}),
 		Light.directional({

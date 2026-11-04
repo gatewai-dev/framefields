@@ -592,11 +592,11 @@ class NodeSurfacePool {
 	}
 
 	release(device: GPUDevice, surface: NodeSurfaceProvider): void {
-		if (this.idle.length >= this.maxIdle) {
+		while (this.idle.length >= this.maxIdle) {
+			const evicted = this.idle.shift();
 			try {
-				surface.destroy();
+				evicted?.surface.destroy();
 			} catch {}
-			return;
 		}
 		this.idle.push({ device, surface });
 	}
@@ -704,8 +704,8 @@ export class HeadlessWebGPURenderer {
 		fps = 24,
 		options: {
 			renderId?: string;
-			/** "rgba" skips PNG encoding and returns width*height*4 raw pixels. */
-			format?: "png" | "rgba";
+			/** "rgba" / "raw" skips image encoding and returns width*height*4 raw pixels. */
+			format?: "png" | "rgba" | "raw" | "jpeg" | "jpg" | "webp";
 		} = {},
 	): Promise<Buffer> {
 		await HeadlessWebGPURenderer.initialize();
@@ -834,15 +834,19 @@ export class HeadlessWebGPURenderer {
 				pixels.byteLength,
 			);
 
-			if (options.format === "rgba") return Buffer.from(pixelsArr);
+			if (options.format === "rgba" || options.format === "raw")
+				return Buffer.from(pixelsArr);
 
-			const pngBuffer = await sharp(Buffer.from(pixelsArr), {
+			const img = sharp(Buffer.from(pixelsArr), {
 				raw: { width, height, channels: 4 },
-			})
-				.png()
-				.toBuffer();
-
-			return pngBuffer;
+			});
+			if (options.format === "jpeg" || options.format === "jpg") {
+				return img.jpeg().toBuffer();
+			}
+			if (options.format === "webp") {
+				return img.webp().toBuffer();
+			}
+			return img.png().toBuffer();
 		} finally {
 			try {
 				clearAllVideoCache();
@@ -884,8 +888,8 @@ export class HeadlessWebGPURenderer {
 			fps?: number;
 			/** Reuse compiled state across calls; see `renderImage`. */
 			renderId?: string;
-			/** "rgba" returns raw width*height*4 pixels instead of a PNG. */
-			format?: "png" | "rgba";
+			/** "rgba" / "raw" returns raw width*height*4 pixels instead of an encoded image. */
+			format?: "png" | "rgba" | "raw" | "jpeg" | "jpg" | "webp";
 		} = {},
 	): Promise<Buffer> {
 		const vm =

@@ -26,15 +26,17 @@ import type {
 	Mesh3DData,
 	Model3DData,
 } from "../loaders/types.js";
-import type {
-	Environment3DFloor,
-	Environment3DFog,
-	Environment3DOptions,
-	ShadowUniformInfo,
+import {
+	type Environment3DFloor,
+	type Environment3DFog,
+	type Environment3DOptions,
+	resolveEnvironment,
+	type ShadowUniformInfo,
 } from "../math3d/environment3d.js";
 import {
 	Camera3D,
 	type Camera3DPose,
+	type HdriUniforms,
 	LIGHT_UNIFORM_SIZE_BYTES,
 	Light3D,
 	type Light3DOptions,
@@ -53,6 +55,7 @@ import { type BloomOptions, BloomPipeline } from "./bloom-pipeline.js";
 import { FloorReflectionPipeline } from "./floor-reflection-pipeline.js";
 import { GeometryOutlinePipeline } from "./geometry-outline-pipeline.js";
 import { GeometryResolvePipeline } from "./geometry-resolve-pipeline.js";
+import { getOrCreateHdrEnvironment } from "./hdr-environment.js";
 import { decodeKtx2, isKtx2 } from "./ktx2.js";
 import {
 	type GPUMeshBuffers,
@@ -64,12 +67,14 @@ import { Quad3DPipeline, type Relief3D } from "./quad3d-pipeline.js";
 import { SHADOW_DEPTH_FORMAT } from "./shadow-depth.js";
 import {
 	type Aabb,
+	fitPointShadowFrusta,
 	fitShadowFrustum,
 	transformAabb,
 } from "./shadow-frustum.js";
 import { Slug3DPipeline } from "./slug3d-pipeline.js";
 import type { SurfaceParams } from "./surface-params.js";
 import { Swarm3DPipeline } from "./swarm3d-pipeline.js";
+import { VolumetricFogPipeline } from "./volumetric-fog-pipeline.js";
 
 const ADDRESS_MODES: Record<"repeat" | "clamp" | "mirror", GPUAddressMode> = {
 	repeat: "repeat",
@@ -303,10 +308,13 @@ export class Renderer3D {
 	private shadowTextures = new Map<string, GPUTexture>();
 	private placeholderShadowTexture: GPUTexture | null = null;
 	private shadowSampler: GPUSampler | null = null;
+	private placeholderEnvTexture: GPUTexture | null = null;
+	private envSampler: GPUSampler | null = null;
 	private meshBounds = new WeakMap<Mesh3DData, Aabb>();
 	private bloomPipeline: BloomPipeline | null = null;
 	private outlinePipeline: GeometryOutlinePipeline | null = null;
 	private geometryResolvePipeline: GeometryResolvePipeline | null = null;
+	private volumetricFogPipeline: VolumetricFogPipeline | null = null;
 	private lastCameraBuffer: GPUBuffer | null = null;
 
 	/**
@@ -463,6 +471,7 @@ export class Renderer3D {
 		this.attachmentsUsed.clear();
 		this.outlinePipeline?.reset();
 		this.bloomPipeline?.resetPools();
+		this.volumetricFogPipeline?.resetPools();
 		this.cameraPool.reset();
 		// The cached camera buffer goes back to the pool and may be handed
 		// out again (e.g. to a shadow pass's light camera): never reuse it
@@ -692,6 +701,15 @@ export class Renderer3D {
 		return buffer;
 	}
 
+	/** The environment's prefiltered HDRI, as the lights uniform describes it. */
+	private hdriUniforms(
+		environment?: Environment3DOptions | null,
+	): HdriUniforms | undefined {
+		if (!environment?.hdri) return undefined;
+		const env = getOrCreateHdrEnvironment(this.device, environment.hdri);
+		return { maxMip: env.mipLevelCount - 1, sh: env.sh };
+	}
+
 	createCameraBindGroup(cameraBuffer: GPUBuffer): GPUBindGroup {
 		return this.cameraUniformBindGroupCache.getBindGroup(
 			this.device,
@@ -704,20 +722,24 @@ export class Renderer3D {
 		lights?: Light3DOptions[],
 		world?: Scene3DWorld,
 	): GPUBuffer {
+		const hdri = this.hdriUniforms(world?.environment);
 		const lightsData = Light3D.packLightsUniforms(
 			lights ?? [],
 			world?.environment,
 			Array.isArray(world?.shadow) ? world.shadow[0] : world?.shadow,
+			false,
+			hdri,
 		);
 		return this.lightsPool.getBuffer(this.device, lightsData);
 	}
 
-	/** Lights uniform + shadow map + comparison sampler (group 3 of every lit shader). */
+	/** Lights uniform + shadow map + comparison sampler + environment map (group 3 of every lit shader). */
 	private createLightsBindGroup(
 		lightsBuffer: GPUBuffer,
 		withShadow: boolean,
 		lights: Light3DOptions[],
 		shadows: ShadowUniformInfo[],
+		environment?: Environment3DOptions | null,
 	): GPUBindGroup {
 		const data = Light3D.packDirectLights(lights, shadows);
 		if (data.byteLength > this.device.limits.maxStorageBufferBindingSize)
@@ -740,6 +762,23 @@ export class Renderer3D {
 			usage:
 				GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT,
 		});
+		this.envSampler ??= this.device.createSampler({
+			label: "HdrEnvironmentSampler",
+			magFilter: "linear",
+			minFilter: "linear",
+			mipmapFilter: "linear",
+			addressModeU: "repeat",
+			addressModeV: "clamp-to-edge",
+		});
+		this.placeholderEnvTexture ??= this.device.createTexture({
+			label: "HdrEnvironmentPlaceholder",
+			size: { width: 1, height: 1, depthOrArrayLayers: 6 },
+			format: "rgba16float",
+			usage: GPUTextureUsage.TEXTURE_BINDING,
+		});
+		const envTex = environment?.hdri
+			? getOrCreateHdrEnvironment(this.device, environment.hdri).cube
+			: this.placeholderEnvTexture;
 		const map =
 			withShadow && this.shadowTexture
 				? this.shadowTexture
@@ -752,6 +791,8 @@ export class Renderer3D {
 				{ binding: 1, resource: map.createView({ dimension: "2d-array" }) },
 				{ binding: 2, resource: this.shadowSampler },
 				{ binding: 3, resource: { buffer: directBuffer } },
+				{ binding: 4, resource: envTex.createView({ dimension: "cube" }) },
+				{ binding: 5, resource: this.envSampler },
 			],
 		});
 	}
@@ -793,48 +834,15 @@ export class Renderer3D {
 		);
 	}
 
-	/**
-	 * Renders the shadow map for `light` (a directional or spot light with
-	 * `castShadow`) from `casters`, fitting its frustum around them and deep
-	 * enough for `receivers`. Pass the result to `beginPass` as `world.shadow`.
-	 */
-	renderShadowMap(
-		encoder: GPUCommandEncoder,
-		light: Light3DOptions,
-		lightIndex: number,
-		casters: ShadowCaster3D[],
-		receivers: Aabb[],
-		options: ShadowMapOptions3D = {},
-	): ShadowUniformInfo | null {
-		const kind = light.lightType ?? light.type;
-		if (kind !== "directional" && kind !== "spot") return null;
-		const processed = Light3D.processLight(light);
-		const position: Vec3 = [
-			processed.posType[0],
-			processed.posType[1],
-			processed.posType[2],
-		];
-		const direction: Vec3 = [
-			processed.dirRadius[0],
-			processed.dirRadius[1],
-			processed.dirRadius[2],
-		];
-		const mapSize = options.mapSize ?? 2048;
-		const layer = options.layer ?? 0;
-		const layerCount = options.layerCount ?? 1;
-		if (layerCount > this.device.limits.maxTextureArrayLayers)
+	private getOrCreateShadowTexture(
+		mapSize: number,
+		layerCount: number,
+	): GPUTexture {
+		if (layerCount > this.device.limits.maxTextureArrayLayers) {
 			throw new Error(
 				`Shadow maps require ${layerCount} texture layers, exceeding the device limit of ${this.device.limits.maxTextureArrayLayers}`,
 			);
-		const casterBounds = casters.map((c) => this.worldBounds(c));
-		const frustum = fitShadowFrustum(
-			{ type: kind, position, direction, angle: light.angle },
-			casterBounds,
-			receivers,
-			mapSize,
-		);
-		if (!frustum) return null;
-
+		}
 		const key = `${mapSize}:${layerCount}`;
 		let texture = this.shadowTextures.get(key);
 		if (!texture) {
@@ -852,13 +860,24 @@ export class Renderer3D {
 			this.shadowTextures.set(key, texture);
 		}
 		this.shadowTexture = texture;
+		return texture;
+	}
 
-		// The light's "camera": only viewProj matters to the vertex shaders.
+	private renderShadowLayerPass(
+		encoder: GPUCommandEncoder,
+		texture: GPUTexture,
+		layer: number,
+		mapSize: number,
+		viewProj: Mat4,
+		position: Vec3,
+		direction: Vec3,
+		casters: ShadowCaster3D[],
+	): void {
 		const lightCam = new Float32Array(80);
-		lightCam.set(frustum.viewProj, 32);
-		lightCam.set(frustum.viewProj, 0);
+		lightCam.set(viewProj, 32);
+		lightCam.set(viewProj, 0);
 		lightCam[5] = 1;
-		lightCam.set(frustum.viewProj, 16);
+		lightCam.set(viewProj, 16);
 		lightCam[64] = position[0];
 		lightCam[65] = position[1];
 		lightCam[66] = position[2];
@@ -875,7 +894,7 @@ export class Renderer3D {
 			label: "ShadowMapPass",
 			colorAttachments: [],
 			depthStencilAttachment: {
-				view: this.shadowTexture.createView({
+				view: texture.createView({
 					dimension: "2d",
 					baseArrayLayer: layer,
 					arrayLayerCount: 1,
@@ -929,6 +948,122 @@ export class Renderer3D {
 			}
 		}
 		pass.end();
+	}
+
+	/**
+	 * Renders the shadow map for `light` (a directional, spot, rect, or point light with
+	 * `castShadow`) from `casters`, fitting its frustum around them and deep
+	 * enough for `receivers`. Pass the result to `beginPass` as `world.shadow`.
+	 */
+	renderShadowMap(
+		encoder: GPUCommandEncoder,
+		light: Light3DOptions,
+		lightIndex: number,
+		casters: ShadowCaster3D[],
+		receivers: Aabb[],
+		options: ShadowMapOptions3D = {},
+	): ShadowUniformInfo | null {
+		const kind = light.lightType ?? light.type;
+		if (
+			kind !== "directional" &&
+			kind !== "spot" &&
+			kind !== "rect" &&
+			kind !== "point"
+		) {
+			return null;
+		}
+		const processed = Light3D.processLight(light);
+		const position: Vec3 = [
+			processed.posType[0],
+			processed.posType[1],
+			processed.posType[2],
+		];
+		const direction: Vec3 = [
+			processed.dirRadius[0],
+			processed.dirRadius[1],
+			processed.dirRadius[2],
+		];
+		const mapSize =
+			options.mapSize ??
+			(kind === "point" && (options.layerCount ?? 6) === 6 ? 1024 : 2048);
+		const layer = options.layer ?? 0;
+		const casterBounds = casters.map((c) => this.worldBounds(c));
+
+		if (kind === "point") {
+			const totalLayers = Math.max(layer + 6, options.layerCount ?? 6);
+			const frusta = fitPointShadowFrusta(
+				position,
+				processed.dirRadius[3],
+				casterBounds,
+				receivers,
+				mapSize,
+			);
+			if (!frusta) return null;
+			const texture = this.getOrCreateShadowTexture(mapSize, totalLayers);
+			const cubeDirs: Vec3[] = [
+				[1, 0, 0],
+				[-1, 0, 0],
+				[0, 1, 0],
+				[0, -1, 0],
+				[0, 0, 1],
+				[0, 0, -1],
+			];
+			for (let f = 0; f < 6; f++) {
+				this.renderShadowLayerPass(
+					encoder,
+					texture,
+					layer + f,
+					mapSize,
+					frusta.viewProjs[f],
+					position,
+					cubeDirs[f],
+					casters,
+				);
+			}
+			const mat = new Float32Array(16);
+			mat[0] = frusta.far;
+			return {
+				matrix: mat,
+				lightIndex,
+				mapSize,
+				softness: options.softness ?? light.shadowSoftness ?? 2.5,
+				bias: 0.0012,
+				normalOffset: frusta.texelWorldSize * 1.8,
+				darkness: options.darkness ?? light.shadowDarkness ?? 1,
+				baseLayer: layer,
+				layerCount: 6,
+				mode: 2,
+				near: frusta.near,
+				far: frusta.far,
+			};
+		}
+
+		const totalLayers = Math.max(layer + 1, options.layerCount ?? 1);
+		const frustum = fitShadowFrustum(
+			{
+				type: kind,
+				position,
+				direction,
+				angle: light.angle,
+				radius: processed.dirRadius[3],
+			},
+			casterBounds,
+			receivers,
+			mapSize,
+		);
+		if (!frustum) return null;
+
+		const texture = this.getOrCreateShadowTexture(mapSize, totalLayers);
+		this.renderShadowLayerPass(
+			encoder,
+			texture,
+			layer,
+			mapSize,
+			frustum.viewProj,
+			position,
+			direction,
+			casters,
+		);
 
 		return {
 			matrix: frustum.viewProj,
@@ -938,6 +1073,9 @@ export class Renderer3D {
 			bias: kind === "directional" ? 0.0006 : 0.00008,
 			normalOffset: frustum.texelWorldSize * 1.5,
 			darkness: options.darkness ?? light.shadowDarkness ?? 1,
+			baseLayer: layer,
+			layerCount: 1,
+			mode: 1,
 		};
 	}
 
@@ -978,6 +1116,7 @@ export class Renderer3D {
 					? world.shadow
 					: [world.shadow]
 				: [],
+			world?.environment,
 		);
 
 		const msaa = this.sampleCount > 1;
@@ -1115,11 +1254,13 @@ export class Renderer3D {
 		const cameraBuffer = this.packCameraUniforms(camera, reflWidth, reflHeight);
 		const cameraBindGroup = this.createCameraBindGroup(cameraBuffer);
 
+		const hdri = this.hdriUniforms(world?.environment);
 		const lightsData = Light3D.packLightsUniforms(
 			lights ?? [],
 			world?.environment,
 			Array.isArray(world?.shadow) ? world.shadow[0] : world?.shadow,
 			true,
+			hdri,
 		);
 		const lightsBuffer = this.lightsPool.getBuffer(this.device, lightsData);
 		const lightsBindGroup = this.createLightsBindGroup(
@@ -1131,6 +1272,7 @@ export class Renderer3D {
 					? world.shadow
 					: [world.shadow]
 				: [],
+			world?.environment,
 		);
 
 		const msaa = this.sampleCount > 1;
@@ -1342,6 +1484,21 @@ export class Renderer3D {
 					toon: opts.toon,
 					outline: opts.outline,
 					matte: opts.matte,
+					clearcoat: opts.clearcoat,
+					clearcoatRoughness: opts.clearcoatRoughness,
+					anisotropy: opts.anisotropy,
+					anisotropyRotation: opts.anisotropyRotation,
+					subsurface: opts.subsurface,
+					subsurfaceColor: opts.subsurfaceColor,
+					sheen: opts.sheen,
+					sheenColor: opts.sheenColor,
+					sheenRoughness: opts.sheenRoughness,
+					iridescence: opts.iridescence,
+					iridescenceThickness: opts.iridescenceThickness,
+					iridescenceIor: opts.iridescenceIor,
+					triplanar: opts.triplanar,
+					triplanarScale: opts.triplanarScale,
+					triplanarSharpness: opts.triplanarSharpness,
 				},
 				useMrt,
 				this.passWritesHdr,
@@ -1418,6 +1575,21 @@ export class Renderer3D {
 				outline: opts.outline,
 				matte: opts.matte,
 				relief: opts.relief,
+				clearcoat: opts.clearcoat,
+				clearcoatRoughness: opts.clearcoatRoughness,
+				anisotropy: opts.anisotropy,
+				anisotropyRotation: opts.anisotropyRotation,
+				subsurface: opts.subsurface,
+				subsurfaceColor: opts.subsurfaceColor,
+				sheen: opts.sheen,
+				sheenColor: opts.sheenColor,
+				sheenRoughness: opts.sheenRoughness,
+				iridescence: opts.iridescence,
+				iridescenceThickness: opts.iridescenceThickness,
+				iridescenceIor: opts.iridescenceIor,
+				triplanar: opts.triplanar,
+				triplanarScale: opts.triplanarScale,
+				triplanarSharpness: opts.triplanarSharpness,
 			},
 			useMrt,
 			this.passWritesHdr,
@@ -1768,6 +1940,21 @@ export class Renderer3D {
 				outline: opts.outline,
 				matte: opts.matte,
 				maps: opts.maps,
+				clearcoat: opts.clearcoat,
+				clearcoatRoughness: opts.clearcoatRoughness,
+				anisotropy: opts.anisotropy,
+				anisotropyRotation: opts.anisotropyRotation,
+				subsurface: opts.subsurface,
+				subsurfaceColor: opts.subsurfaceColor,
+				sheen: opts.sheen,
+				sheenColor: opts.sheenColor,
+				sheenRoughness: opts.sheenRoughness,
+				iridescence: opts.iridescence,
+				iridescenceThickness: opts.iridescenceThickness,
+				iridescenceIor: opts.iridescenceIor,
+				triplanar: opts.triplanar,
+				triplanarScale: opts.triplanarScale,
+				triplanarSharpness: opts.triplanarSharpness,
 				isInstanced: Boolean(
 					opts.instanceBuffer || (opts.instanceCount && opts.instanceCount > 1),
 				),
@@ -2065,6 +2252,60 @@ export class Renderer3D {
 		pass.end();
 	}
 
+	/**
+	 * Raymarches volumetric fog and shadowed light shafts at half-resolution,
+	 * then composites over `sourceColorTex` into `destView` using depth-aware
+	 * bilateral upsampling.
+	 */
+	applyVolumetricFog(
+		encoder: GPUCommandEncoder,
+		sourceColorTex: GPUTexture,
+		linearDepthTex: GPUTexture,
+		destView: GPUTextureView,
+		cameraBindGroup: GPUBindGroup,
+		lightsBindGroup: GPUBindGroup,
+		environment: Environment3DOptions,
+		timeSeconds = 0,
+		frameIndex = 0,
+	): void {
+		const resolved = resolveEnvironment(environment);
+		if (!resolved.volumetricFog) return;
+		const fullWidth = sourceColorTex.width;
+		const fullHeight = sourceColorTex.height;
+		const halfWidth = Math.max(1, Math.ceil(fullWidth / 2));
+		const halfHeight = Math.max(1, Math.ceil(fullHeight / 2));
+		const halfFogTex = this.attachment(
+			"Renderer3DVolumetricFogHalf",
+			halfWidth,
+			halfHeight,
+			{
+				format: "rgba16float",
+				usage:
+					GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+			},
+		);
+		this.volumetricFogPipeline ??= new VolumetricFogPipeline(
+			this.device,
+			this.format,
+		);
+		this.volumetricFogPipeline.render({
+			encoder,
+			sourceColorTex,
+			linearDepthTex,
+			halfFogTex,
+			destView,
+			cameraBindGroup,
+			lightsBindGroup,
+			fog: resolved.volumetricFog,
+			fullWidth,
+			fullHeight,
+			halfWidth,
+			halfHeight,
+			timeSeconds,
+			frameIndex,
+		});
+	}
+
 	/** Uploads raw `InstanceData` float buffer to a GPU storage buffer from the instance pool. */
 	uploadInstanceData(data: Float32Array): GPUBuffer {
 		return this.instancePool.getBuffer(this.device, data);
@@ -2102,10 +2343,12 @@ export class Renderer3D {
 		this.attachments.clear();
 		this.bloomPipeline?.destroy();
 		this.outlinePipeline?.destroy();
+		this.volumetricFogPipeline?.destroy();
 		this.depthTexture?.destroy();
 		for (const texture of this.shadowTextures.values()) texture.destroy();
 		this.shadowTextures.clear();
 		this.placeholderShadowTexture?.destroy();
+		this.placeholderEnvTexture?.destroy();
 		this.linearDepthTexture?.destroy();
 		this.msaaColorTexture?.destroy();
 		this.msaaLinearDepthTexture?.destroy();

@@ -8,6 +8,34 @@ import type {
 	TrackSource,
 } from "./schema.js";
 
+/** Common 3D Euler rotation aliases accepted alongside `rotateX` / `rotateY` / `rotateZ`. */
+export type AnimatablePropAlias = "rotationX" | "rotationY" | "rotationZ";
+
+export type CanonicalAnimatableProp<
+	P extends AnimatableProp | AnimatablePropAlias,
+> = P extends "rotationX"
+	? "rotateX"
+	: P extends "rotationY"
+		? "rotateY"
+		: P extends "rotationZ"
+			? "rotateZ"
+			: P;
+
+const PROP_ALIASES: Record<AnimatablePropAlias, AnimatableProp> = {
+	rotationX: "rotateX",
+	rotationY: "rotateY",
+	rotationZ: "rotateZ",
+};
+
+export function normalizeAnimatableProp(
+	prop: AnimatableProp | AnimatablePropAlias,
+): AnimatableProp {
+	return (
+		(PROP_ALIASES as Record<string, AnimatableProp | undefined>)[prop] ??
+		(prop as AnimatableProp)
+	);
+}
+
 /**
  * One keyframe as a tuple: `[frame, value]` or `[frame, value, ease]`. The
  * ease shapes the motion arriving at this keyframe from the one before.
@@ -321,38 +349,63 @@ export class LayerAnimation<TProp extends AnimatableProp = AnimatableProp>
 		return this;
 	}
 
-	public static fromTo<P extends AnimatableProp = AnimatableProp>(
+	public static fromTo<
+		P extends AnimatableProp | AnimatablePropAlias = AnimatableProp,
+	>(
 		prop: P,
 		fromValue: number | string | boolean,
 		toValue: number | string | boolean,
 		options: FromToOptions = {},
-	): LayerAnimation<P> {
-		return new LayerAnimation<P>().fromTo(prop, fromValue, toValue, options);
+	): LayerAnimation<CanonicalAnimatableProp<P>> {
+		return new LayerAnimation<CanonicalAnimatableProp<P>>().fromTo(
+			prop,
+			fromValue,
+			toValue,
+			options,
+		);
 	}
 
 	/** A track from a list of `[frame, value, ease?]` keyframes; see {@link LayerAnimation.keys}. */
-	public static keys<P extends AnimatableProp = AnimatableProp>(
+	public static keys<
+		P extends AnimatableProp | AnimatablePropAlias = AnimatableProp,
+	>(
 		prop: P,
 		keyframes: readonly KeyframeTuple[],
 		options?: TrackKeyOptions,
-	): LayerAnimation<P> {
-		return new LayerAnimation<P>().keys(prop, keyframes, options);
+	): LayerAnimation<CanonicalAnimatableProp<P>> {
+		return new LayerAnimation<CanonicalAnimatableProp<P>>().keys(
+			prop,
+			keyframes,
+			options,
+		);
 	}
 
-	public static signal<P extends AnimatableProp = AnimatableProp>(
+	public static signal<
+		P extends AnimatableProp | AnimatablePropAlias = AnimatableProp,
+	>(
 		prop: P,
 		signalOrHandleId: unknown,
 		options: SignalTrackOptions = {},
-	): LayerAnimation<P> {
-		return new LayerAnimation<P>().signal(prop, signalOrHandleId, options);
+	): LayerAnimation<CanonicalAnimatableProp<P>> {
+		return new LayerAnimation<CanonicalAnimatableProp<P>>().signal(
+			prop,
+			signalOrHandleId,
+			options,
+		);
 	}
 
-	public static colorSignal<P extends AnimatableProp = AnimatableProp>(
+	public static colorSignal<
+		P extends AnimatableProp | AnimatablePropAlias = AnimatableProp,
+	>(
 		prop: P,
 		signalOrHandleId: unknown,
 		options: ColorSignalOptions,
-	): LayerAnimation<P> {
-		return new LayerAnimation<P>().colorSignal(prop, signalOrHandleId, options);
+	): LayerAnimation<CanonicalAnimatableProp<P>> {
+		return new LayerAnimation<CanonicalAnimatableProp<P>>().colorSignal(
+			prop,
+			signalOrHandleId,
+			options,
+		);
 	}
 
 	public static kineticSweep(
@@ -396,14 +449,14 @@ export class LayerAnimation<TProp extends AnimatableProp = AnimatableProp>
 	}
 
 	public static wiggle(
-		prop: AnimatableProp,
+		prop: AnimatableProp | AnimatablePropAlias,
 		options: WiggleOptions = {},
 	): LayerAnimation {
 		return new LayerAnimation().wiggle(prop, options);
 	}
 
 	public static spring(
-		prop: AnimatableProp,
+		prop: AnimatableProp | AnimatablePropAlias,
 		options: SpringOptions = {},
 	): LayerAnimation {
 		return new LayerAnimation().spring(prop, options);
@@ -454,6 +507,30 @@ export class LayerAnimation<TProp extends AnimatableProp = AnimatableProp>
 		return new LayerAnimation().fromTo("rotateZ", fromAngle, toAngle, options);
 	}
 
+	public static rotationX(
+		fromAngle: number,
+		toAngle: number,
+		options: FromToOptions = {},
+	): LayerAnimation {
+		return new LayerAnimation().fromTo("rotateX", fromAngle, toAngle, options);
+	}
+
+	public static rotationY(
+		fromAngle: number,
+		toAngle: number,
+		options: FromToOptions = {},
+	): LayerAnimation {
+		return new LayerAnimation().fromTo("rotateY", fromAngle, toAngle, options);
+	}
+
+	public static rotationZ(
+		fromAngle: number,
+		toAngle: number,
+		options: FromToOptions = {},
+	): LayerAnimation {
+		return new LayerAnimation().fromTo("rotateZ", fromAngle, toAngle, options);
+	}
+
 	public static rotation(
 		fromAngle: number,
 		toAngle: number,
@@ -496,10 +573,11 @@ export class LayerAnimation<TProp extends AnimatableProp = AnimatableProp>
 	 * - `-1`: loops indefinitely.
 	 * - `N`: repeats N times after the initial iteration (total N + 1 iterations).
 	 */
-	public repeat(count = -1, prop?: AnimatableProp): this {
+	public repeat(count = -1, prop?: AnimatableProp | AnimatablePropAlias): this {
+		const canonical = prop ? normalizeAnimatableProp(prop) : undefined;
 		this.defaultRepeat = count;
 		for (const track of this.tracks) {
-			if (!prop || track.prop === prop) {
+			if (!canonical || track.prop === canonical) {
 				track.repeat = count;
 			}
 		}
@@ -509,10 +587,14 @@ export class LayerAnimation<TProp extends AnimatableProp = AnimatableProp>
 	/**
 	 * Enables or disables yoyo (alternate playback direction on each repeat iteration).
 	 */
-	public yoyo(enable = true, prop?: AnimatableProp): this {
+	public yoyo(
+		enable = true,
+		prop?: AnimatableProp | AnimatablePropAlias,
+	): this {
+		const canonical = prop ? normalizeAnimatableProp(prop) : undefined;
 		this.defaultYoyo = enable;
 		for (const track of this.tracks) {
-			if (!prop || track.prop === prop) {
+			if (!canonical || track.prop === canonical) {
 				track.yoyo = enable;
 			}
 		}
@@ -523,7 +605,10 @@ export class LayerAnimation<TProp extends AnimatableProp = AnimatableProp>
 	 * Shorthand to loop keyframed animation continuously (infinite repeat).
 	 * If `options.yoyo` is true, oscillates back and forth.
 	 */
-	public loop(options: { yoyo?: boolean } = {}, prop?: AnimatableProp): this {
+	public loop(
+		options: { yoyo?: boolean } = {},
+		prop?: AnimatableProp | AnimatablePropAlias,
+	): this {
 		this.repeat(-1, prop);
 		if (options.yoyo) {
 			this.yoyo(true, prop);
@@ -535,11 +620,12 @@ export class LayerAnimation<TProp extends AnimatableProp = AnimatableProp>
 	 * Creates a keyframed track animating from fromValue to toValue.
 	 */
 	public fromTo(
-		prop: AnimatableProp,
+		rawProp: AnimatableProp | AnimatablePropAlias,
 		fromValue: number | string | boolean,
 		toValue: number | string | boolean,
 		options: FromToOptions = {},
 	): this {
+		const prop = normalizeAnimatableProp(rawProp);
 		const start = options.from ?? options.start ?? options.fromFrame ?? 0;
 		const end =
 			options.to ??
@@ -610,11 +696,12 @@ export class LayerAnimation<TProp extends AnimatableProp = AnimatableProp>
 	 * Appends a keyframe to an existing track for prop, or creates a new track.
 	 */
 	public keyframe(
-		prop: AnimatableProp,
+		rawProp: AnimatableProp | AnimatablePropAlias,
 		frame: number,
 		value: number | string | boolean,
 		ease?: string | EaseRef,
 	): this {
+		const prop = normalizeAnimatableProp(rawProp);
 		let track = this.tracks.find(
 			(t) => t.prop === prop && (!t.source || t.source.type === "keyframe"),
 		);
@@ -653,10 +740,11 @@ export class LayerAnimation<TProp extends AnimatableProp = AnimatableProp>
 	 * Frames are rounded to whole frames, so beat math can be passed straight in.
 	 */
 	public keys(
-		prop: AnimatableProp,
+		rawProp: AnimatableProp | AnimatablePropAlias,
 		keyframes: readonly KeyframeTuple[],
 		options?: TrackKeyOptions,
 	): this {
+		const prop = normalizeAnimatableProp(rawProp);
 		for (const [frame, value, ease] of keyframes) {
 			this.keyframe(prop, Math.round(frame), value, ease);
 		}
@@ -854,6 +942,33 @@ export class LayerAnimation<TProp extends AnimatableProp = AnimatableProp>
 		return this.fromTo("rotateZ", fromAngle, toAngle, options);
 	}
 
+	/** Alias for {@link rotateX}. */
+	public rotationX(
+		fromAngle: number,
+		toAngle: number,
+		options: FromToOptions = {},
+	): this {
+		return this.fromTo("rotateX", fromAngle, toAngle, options);
+	}
+
+	/** Alias for {@link rotateY}. */
+	public rotationY(
+		fromAngle: number,
+		toAngle: number,
+		options: FromToOptions = {},
+	): this {
+		return this.fromTo("rotateY", fromAngle, toAngle, options);
+	}
+
+	/** Alias for {@link rotateZ}. */
+	public rotationZ(
+		fromAngle: number,
+		toAngle: number,
+		options: FromToOptions = {},
+	): this {
+		return this.fromTo("rotateZ", fromAngle, toAngle, options);
+	}
+
 	/**
 	 * Animate scale along the X axis.
 	 */
@@ -953,10 +1068,11 @@ export class LayerAnimation<TProp extends AnimatableProp = AnimatableProp>
 	 * registered with `comp.addSignal(name, signal)`.
 	 */
 	public signal(
-		prop: AnimatableProp,
+		rawProp: AnimatableProp | AnimatablePropAlias,
 		signalOrHandleId: unknown,
 		options: SignalTrackOptions = {},
 	): this {
+		const prop = normalizeAnimatableProp(rawProp);
 		const { handleId, inline } = resolveSignalArg(signalOrHandleId);
 		const id = `${prop}_sig_${handleId}_${this.tracks.length}`;
 
@@ -989,10 +1105,11 @@ export class LayerAnimation<TProp extends AnimatableProp = AnimatableProp>
 	 * registered name, as in {@link LayerAnimation.signal}).
 	 */
 	public colorSignal(
-		prop: AnimatableProp,
+		rawProp: AnimatableProp | AnimatablePropAlias,
 		signalOrHandleId: unknown,
 		options: ColorSignalOptions,
 	): this {
+		const prop = normalizeAnimatableProp(rawProp);
 		const { handleId, inline } = resolveSignalArg(signalOrHandleId);
 		const id = `${prop}_colorSig_${handleId}_${this.tracks.length}`;
 
@@ -1022,7 +1139,11 @@ export class LayerAnimation<TProp extends AnimatableProp = AnimatableProp>
 	/**
 	 * Adds organic Perlin noise wiggling to a property.
 	 */
-	public wiggle(prop: AnimatableProp, options: WiggleOptions = {}): this {
+	public wiggle(
+		rawProp: AnimatableProp | AnimatablePropAlias,
+		options: WiggleOptions = {},
+	): this {
+		const prop = normalizeAnimatableProp(rawProp);
 		const id = `${prop}_wiggle_${this.tracks.length}`;
 		const source: TrackSource = {
 			type: "wiggle",
@@ -1044,7 +1165,11 @@ export class LayerAnimation<TProp extends AnimatableProp = AnimatableProp>
 	/**
 	 * Adds physical harmonic spring overshoot behavior to a property transition.
 	 */
-	public spring(prop: AnimatableProp, options: SpringOptions = {}): this {
+	public spring(
+		rawProp: AnimatableProp | AnimatablePropAlias,
+		options: SpringOptions = {},
+	): this {
+		const prop = normalizeAnimatableProp(rawProp);
 		const id = `${prop}_spring_${this.tracks.length}`;
 		const source: TrackSource = {
 			type: "springOvershoot",

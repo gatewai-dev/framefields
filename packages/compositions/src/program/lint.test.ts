@@ -103,7 +103,7 @@ describe("lintComposition", () => {
 
 	it("flags lights and materials that do nothing", () => {
 		const c = codes([
-			{ id: "p", kind: "light", lightType: "point", castShadow: true },
+			{ id: "a", kind: "light", lightType: "ambient", castShadow: true },
 			{ id: "m", kind: "model3d", metallic: 1 },
 		]);
 		expect(c).toContain("shadow_unsupported_light");
@@ -111,6 +111,8 @@ describe("lintComposition", () => {
 		expect(
 			codes([
 				{ id: "e", kind: "light", lightType: "environment" },
+				{ id: "p", kind: "light", lightType: "point", castShadow: true },
+				{ id: "r", kind: "light", lightType: "rect", castShadow: true },
 				{ id: "m", kind: "model3d", metallic: 1 },
 			]),
 		).toEqual([]);

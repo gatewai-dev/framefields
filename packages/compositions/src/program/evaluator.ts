@@ -633,6 +633,9 @@ const COLOR_PROPS = new Set([
 	"strokeColor",
 	"textBackgroundColor",
 	"color",
+	"emissive",
+	"subsurfaceColor",
+	"sheenColor",
 ]);
 
 function computeRepeatFrame(

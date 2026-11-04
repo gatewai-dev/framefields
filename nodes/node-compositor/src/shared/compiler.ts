@@ -60,6 +60,23 @@ export interface LayerStub {
 	specularIntensity?: number;
 	ambientIntensity?: number;
 	metallic?: number;
+	emissive?: string;
+	emissiveIntensity?: number;
+	clearcoat?: number;
+	clearcoatRoughness?: number;
+	anisotropy?: number;
+	anisotropyRotation?: number;
+	subsurface?: number;
+	subsurfaceColor?: string;
+	sheen?: number;
+	sheenColor?: string;
+	sheenRoughness?: number;
+	iridescence?: number | Record<string, unknown>;
+	iridescenceThickness?: number;
+	iridescenceIor?: number;
+	triplanar?: boolean | Record<string, unknown>;
+	triplanarScale?: number;
+	triplanarSharpness?: number;
 	// 3D Camera Props
 	cameraX?: number;
 	cameraY?: number;
@@ -90,11 +107,16 @@ export interface LayerStub {
 	scaleY?: number;
 	// 3D Light Props
 	lightType?: string;
+	color?: string;
 	intensity?: number;
 	radius?: number;
 	angle?: number;
 	penumbra?: number;
 	decay?: number;
+	exposure?: number;
+	volumetricFogDensity?: number;
+	volumetricFogAnisotropy?: number;
+	volumetricFogNoiseStrength?: number;
 	[key: string]: unknown;
 }
 
@@ -728,12 +750,36 @@ function hashNodes(
 				specularIntensity: lop.specularIntensity,
 				ambientIntensity: lop.ambientIntensity,
 				metallic: lop.metallic,
+				emissive: lop.emissive,
+				emissiveIntensity: lop.emissiveIntensity,
+				clearcoat: lop.clearcoat,
+				clearcoatRoughness: lop.clearcoatRoughness,
+				anisotropy: lop.anisotropy,
+				anisotropyRotation: lop.anisotropyRotation,
+				subsurface: lop.subsurface,
+				subsurfaceColor: lop.subsurfaceColor,
+				sheen: lop.sheen,
+				sheenColor: lop.sheenColor,
+				sheenRoughness: lop.sheenRoughness,
+				iridescence: lop.iridescence,
+				iridescenceThickness: lop.iridescenceThickness,
+				iridescenceIor: lop.iridescenceIor,
+				triplanar: lop.triplanar,
+				triplanarScale: lop.triplanarScale,
+				triplanarSharpness: lop.triplanarSharpness,
 				// 3D Light Props
 				lightType: lop.lightType,
+				color: lop.color,
 				intensity: lop.intensity,
 				radius: lop.radius,
 				angle: lop.angle,
 				penumbra: lop.penumbra,
+				exposure: lop.exposure,
+				hdri: typeof lop.hdri === "string" ? lop.hdri : Boolean(lop.hdri),
+				volumetricFog: lop.volumetricFog,
+				volumetricFogDensity: lop.volumetricFogDensity,
+				volumetricFogAnisotropy: lop.volumetricFogAnisotropy,
+				volumetricFogNoiseStrength: lop.volumetricFogNoiseStrength,
 				// 3D Model Props
 				animationProgress: lop.animationProgress,
 				animationTime: lop.animationTime,
@@ -869,7 +915,7 @@ export function compileTimeline(
 					: false),
 			z: lop.z ?? (lop.kind === "camera" ? (lop.z ?? -1500) : 0),
 			scaleZ: lop.scaleZ ?? 1,
-			twoSided: lop.twoSided ?? true,
+			twoSided: lop.twoSided ?? lop.kind !== "light",
 			// 3D Material Props
 			material: lop.material,
 			shininess: lop.shininess,
@@ -877,6 +923,23 @@ export function compileTimeline(
 			specularIntensity: lop.specularIntensity,
 			ambientIntensity: lop.ambientIntensity,
 			metallic: lop.metallic,
+			emissive: lop.emissive,
+			emissiveIntensity: lop.emissiveIntensity,
+			clearcoat: lop.clearcoat,
+			clearcoatRoughness: lop.clearcoatRoughness,
+			anisotropy: lop.anisotropy,
+			anisotropyRotation: lop.anisotropyRotation,
+			subsurface: lop.subsurface,
+			subsurfaceColor: lop.subsurfaceColor,
+			sheen: lop.sheen,
+			sheenColor: lop.sheenColor,
+			sheenRoughness: lop.sheenRoughness,
+			iridescence: lop.iridescence,
+			iridescenceThickness: lop.iridescenceThickness,
+			iridescenceIor: lop.iridescenceIor,
+			triplanar: lop.triplanar,
+			triplanarScale: lop.triplanarScale,
+			triplanarSharpness: lop.triplanarSharpness,
 			// 3D Model Props
 			animationProgress: lop.animationProgress ?? 0,
 			animationTime: lop.animationTime ?? 0,
@@ -911,11 +974,16 @@ export function compileTimeline(
 			orbitElevation: lop.orbitElevation,
 			// 3D Light Props
 			lightType: lop.lightType,
+			color: lop.color,
 			intensity: lop.intensity ?? (lop.kind === "light" ? 1 : undefined),
 			radius: lop.radius,
 			angle: lop.angle,
 			penumbra: lop.penumbra,
 			decay: lop.decay,
+			exposure: lop.exposure,
+			volumetricFogDensity: lop.volumetricFogDensity,
+			volumetricFogAnisotropy: lop.volumetricFogAnisotropy,
+			volumetricFogNoiseStrength: lop.volumetricFogNoiseStrength,
 		};
 
 		for (const track of lop.animation?.tracks ?? []) {

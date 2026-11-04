@@ -3,6 +3,7 @@ import { Light3D } from "../math3d/light3d.js";
 import type { Mat4 } from "../math3d/matrix4.js";
 import {
 	type Aabb,
+	fitPointShadowFrusta,
 	fitShadowFrustum,
 	transformAabb,
 } from "./shadow-frustum.js";
@@ -100,7 +101,7 @@ describe("Light3D physical block", () => {
 		expect(agx[8 + 8 * 16 + 3]).toBeCloseTo(2); // exposure +1 stop
 	});
 
-	it("indexes the shadow light among non-ambient lights", () => {
+	it("indexes the shadow light among non-ambient lights (including point and rect)", () => {
 		const lights = [
 			{ type: "ambient" as const },
 			{ type: "point" as const },
@@ -109,6 +110,57 @@ describe("Light3D physical block", () => {
 		expect(Light3D.shadowCasterIndex(lights)).toBe(1);
 		expect(
 			Light3D.shadowCasterIndex([{ type: "point" as const, castShadow: true }]),
-		).toBe(-1);
+		).toBe(0);
+		expect(
+			Light3D.shadowCasterIndex([{ type: "rect" as const, castShadow: true }]),
+		).toBe(0);
+	});
+
+	it("packs rect area light orthonormal basis and half-dimensions into direct lights", () => {
+		const packed = Light3D.packDirectLights([
+			{
+				type: "rect",
+				x: 100,
+				y: 200,
+				z: -300,
+				targetX: 100,
+				targetY: 200,
+				targetZ: 0,
+				width: 400,
+				height: 160,
+				twoSided: true,
+			},
+		]);
+		expect(packed[3]).toBe(4); // type = 4 (rect)
+		expect(packed[15]).toBe(1); // twoSided = 1
+		expect(packed[43]).toBeCloseTo(200); // halfWidth = 200
+		expect(packed[47]).toBeCloseTo(80); // halfHeight = 80
+	});
+
+	it("fits 6 cube-face frusta for omnidirectional point light shadows", () => {
+		const casterPosX = box(300, 0, 0, 40);
+		const casterNegZ = box(0, 0, -400, 40);
+		const frusta = fitPointShadowFrusta(
+			[0, 0, 0],
+			1000,
+			[casterPosX, casterNegZ],
+			[casterPosX, casterNegZ],
+			1024,
+		);
+		expect(frusta).not.toBeNull();
+		if (!frusta) throw new Error("expected frusta");
+		expect(frusta.viewProjs).toHaveLength(6);
+		// Face 0 (+X) sees casterPosX at the center of its frustum
+		const [x0, y0, z0] = project(frusta.viewProjs[0], [300, 0, 0]);
+		expect(Math.abs(x0)).toBeLessThan(1e-5);
+		expect(Math.abs(y0)).toBeLessThan(1e-5);
+		expect(z0).toBeGreaterThan(0);
+		expect(z0).toBeLessThan(1);
+		// Face 5 (-Z) sees casterNegZ at the center of its frustum
+		const [x5, y5, z5] = project(frusta.viewProjs[5], [0, 0, -400]);
+		expect(Math.abs(x5)).toBeLessThan(1e-5);
+		expect(Math.abs(y5)).toBeLessThan(1e-5);
+		expect(z5).toBeGreaterThan(0);
+		expect(z5).toBeLessThan(1);
 	});
 });

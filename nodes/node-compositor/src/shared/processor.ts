@@ -97,7 +97,10 @@ export function processCompositor(
 		isVideoMode,
 		fps,
 		...(durationMs !== undefined && { durationMs }),
-		resolveMedia: (inputHandleId) => mediaByHandle.get(inputHandleId),
+		resolveMedia: (inputHandleId) =>
+			inputHandleId === undefined
+				? undefined
+				: mediaByHandle.get(inputHandleId),
 		signals: signalsObj,
 	});
 }

@@ -568,6 +568,21 @@ function surfaceProps(
 	castShadow?: boolean;
 	toon?: CompositionNodeBase["toon"];
 	outline?: boolean;
+	clearcoat?: number;
+	clearcoatRoughness?: number;
+	anisotropy?: number;
+	anisotropyRotation?: number;
+	subsurface?: number;
+	subsurfaceColor?: string;
+	sheen?: number;
+	sheenColor?: string;
+	sheenRoughness?: number;
+	iridescence?: CompositionNodeBase["iridescence"];
+	iridescenceThickness?: number;
+	iridescenceIor?: number;
+	triplanar?: CompositionNodeBase["triplanar"];
+	triplanarScale?: number;
+	triplanarSharpness?: number;
 } {
 	// glTF emissiveFactor is linear; draws take display (sRGB) colors.
 	const toSrgb = (v: number) =>
@@ -594,6 +609,44 @@ function surfaceProps(
 	if (lop.castShadow !== undefined) out.castShadow = lop.castShadow;
 	out.toon = target?.toon ?? lop.toon;
 	out.outline = target?.outline ?? lop.outline;
+	const clearcoat = target?.clearcoat ?? lop.clearcoat;
+	if (clearcoat !== undefined) out.clearcoat = clearcoat;
+	const clearcoatRoughness =
+		target?.clearcoatRoughness ?? lop.clearcoatRoughness;
+	if (clearcoatRoughness !== undefined)
+		out.clearcoatRoughness = clearcoatRoughness;
+	const anisotropy = target?.anisotropy ?? lop.anisotropy;
+	if (anisotropy !== undefined) out.anisotropy = anisotropy;
+	const anisotropyRotation =
+		target?.anisotropyRotation ?? lop.anisotropyRotation;
+	if (anisotropyRotation !== undefined)
+		out.anisotropyRotation = anisotropyRotation;
+	const subsurface = target?.subsurface ?? lop.subsurface;
+	if (subsurface !== undefined) out.subsurface = subsurface;
+	const subsurfaceColor = target?.subsurfaceColor ?? lop.subsurfaceColor;
+	if (subsurfaceColor !== undefined) out.subsurfaceColor = subsurfaceColor;
+	const sheen = target?.sheen ?? lop.sheen;
+	if (sheen !== undefined) out.sheen = sheen;
+	const sheenColor = target?.sheenColor ?? lop.sheenColor;
+	if (sheenColor !== undefined) out.sheenColor = sheenColor;
+	const sheenRoughness = target?.sheenRoughness ?? lop.sheenRoughness;
+	if (sheenRoughness !== undefined) out.sheenRoughness = sheenRoughness;
+	const iridescence = target?.iridescence ?? lop.iridescence;
+	if (iridescence !== undefined) out.iridescence = iridescence;
+	const iridescenceThickness =
+		target?.iridescenceThickness ?? lop.iridescenceThickness;
+	if (iridescenceThickness !== undefined)
+		out.iridescenceThickness = iridescenceThickness;
+	const iridescenceIor = target?.iridescenceIor ?? lop.iridescenceIor;
+	if (iridescenceIor !== undefined) out.iridescenceIor = iridescenceIor;
+	const triplanar = target?.triplanar ?? lop.triplanar;
+	if (triplanar !== undefined) out.triplanar = triplanar;
+	const triplanarScale = target?.triplanarScale ?? lop.triplanarScale;
+	if (triplanarScale !== undefined) out.triplanarScale = triplanarScale;
+	const triplanarSharpness =
+		target?.triplanarSharpness ?? lop.triplanarSharpness;
+	if (triplanarSharpness !== undefined)
+		out.triplanarSharpness = triplanarSharpness;
 	return out;
 }
 
@@ -1368,12 +1421,41 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					| "directional"
 					| "point"
 					| "spot"
+					| "rect"
 					| "environment";
 				if (lightType === "environment") {
 					// The scene's world: the last visible one wins.
 					const intensity = target?.intensity ?? lop.intensity;
+					const vfDensity =
+						target?.volumetricFogDensity ?? lop.volumetricFogDensity;
+					const vfAnisotropy =
+						target?.volumetricFogAnisotropy ?? lop.volumetricFogAnisotropy;
+					const vfNoiseStrength =
+						target?.volumetricFogNoiseStrength ??
+						lop.volumetricFogNoiseStrength;
+					const rawVf = lop.volumetricFog;
+					const baseVf =
+						rawVf === true
+							? {}
+							: rawVf && typeof rawVf === "object"
+								? { ...rawVf }
+								: undefined;
+					const volumetricFog = baseVf
+						? {
+								...baseVf,
+								...(vfDensity !== undefined && { density: vfDensity }),
+								...(vfAnisotropy !== undefined && { anisotropy: vfAnisotropy }),
+								...(vfNoiseStrength !== undefined && {
+									noise: {
+										...(typeof baseVf.noise === "object" ? baseVf.noise : {}),
+										strength: vfNoiseStrength,
+									},
+								}),
+							}
+						: undefined;
 					sceneEnvironment = {
 						preset: lop.preset,
+						hdri: lop.hdri,
 						top: lop.top,
 						horizon: lop.horizon,
 						bottom: lop.bottom,
@@ -1384,6 +1466,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 						fog: lop.fog,
 						floor: lop.floor,
 						outlines: lop.outlines,
+						...(volumetricFog && { volumetricFog }),
 						...(intensity !== undefined && { intensity }),
 					};
 					sceneBloom =
@@ -1407,6 +1490,16 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				const angle = target?.angle ?? lop.angle ?? 45;
 				const penumbra = target?.penumbra ?? lop.penumbra ?? 0.2;
 				const decay = target?.decay ?? lop.decay ?? 1;
+				const width =
+					typeof (target?.width ?? lop.width) === "number"
+						? ((target?.width ?? lop.width) as number)
+						: undefined;
+				const height =
+					typeof (target?.height ?? lop.height) === "number"
+						? ((target?.height ?? lop.height) as number)
+						: undefined;
+				const twoSided = Boolean(target?.twoSided ?? lop.twoSided);
+				const rotation = target?.rotation ?? lop.rotation ?? 0;
 
 				sceneLights.push({
 					type: lightType,
@@ -1414,10 +1507,15 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					intensity,
 					position: [x, y, z],
 					target: [targetX, targetY, targetZ],
+					...(Array.isArray(lop.direction) && { direction: lop.direction }),
 					radius,
 					angle,
 					penumbra,
 					decay,
+					...(width !== undefined && { width }),
+					...(height !== undefined && { height }),
+					twoSided,
+					rotation,
 					castShadow: Boolean(lop.castShadow),
 					shadowSoftness: target?.shadowSoftness ?? lop.shadowSoftness,
 					shadowDarkness: target?.shadowDarkness ?? lop.shadowDarkness,
@@ -1527,7 +1625,9 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 
 			const outlineSetting = sceneEnvironment?.outlines;
 			const outlines = outlineSetting === true ? {} : outlineSetting || null;
-			const geometryEnabled = dofEnabled || Boolean(outlines);
+			const volumetricFogEnabled = Boolean(sceneEnvironment?.volumetricFog);
+			const geometryEnabled =
+				dofEnabled || Boolean(outlines) || volumetricFogEnabled;
 			let linearDepthTex: GPUTexture | undefined;
 			let linearDepthView: GPUTextureView | undefined;
 			if (geometryEnabled) {
@@ -1545,12 +1645,16 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 			const shadowLights = sceneLights
 				.filter((light) => (light.lightType ?? light.type) !== "ambient")
 				.map((light, index) => ({ light, index }))
-				.filter(
-					({ light }) =>
+				.filter(({ light }) => {
+					const k = light.lightType ?? light.type;
+					return (
 						light.castShadow &&
-						((light.lightType ?? light.type) === "directional" ||
-							(light.lightType ?? light.type) === "spot"),
-				);
+						(k === "directional" ||
+							k === "spot" ||
+							k === "rect" ||
+							k === "point")
+					);
+				});
 			if (shadowLights.length > 0) {
 				const casters: ShadowCaster3D[] = [];
 				const receivers: ReturnType<typeof r3d.worldBounds>[] = [];
@@ -1580,7 +1684,19 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					}
 				}
 				if (casters.length > 0) {
+					const totalShadowLayers = shadowLights.reduce(
+						(sum, { light }) =>
+							sum + ((light.lightType ?? light.type) === "point" ? 6 : 1),
+						0,
+					);
+					const allPointShadows = shadowLights.every(
+						({ light }) => (light.lightType ?? light.type) === "point",
+					);
+					const resolvedShadowMapSize =
+						shadowMapSize ?? (allPointShadows ? 1024 : 2048);
+					let currentLayer = 0;
 					for (const { light, index } of shadowLights) {
+						const needed = (light.lightType ?? light.type) === "point" ? 6 : 1;
 						const result = r3d.renderShadowMap(
 							encoder,
 							light,
@@ -1588,12 +1704,15 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 							casters,
 							receivers,
 							{
-								mapSize: shadowMapSize,
-								layer: shadow.length,
-								layerCount: shadowLights.length,
+								mapSize: resolvedShadowMapSize,
+								layer: currentLayer,
+								layerCount: totalShadowLayers,
 							},
 						);
-						if (result) shadow.push(result);
+						if (result) {
+							shadow.push(result);
+							currentLayer += result.layerCount ?? needed;
+						}
 					}
 				}
 			}
@@ -1821,7 +1940,9 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 
 			let final3dTex = scene3dTex;
 			if (outlines && linearDepthTex) {
-				if (dofEnabled) r3d.resolveGeometry(encoder, linearDepthTex);
+				if (dofEnabled || volumetricFogEnabled) {
+					r3d.resolveGeometry(encoder, linearDepthTex);
+				}
 				const outlinedTex = ctx.renderer.getTemporaryTexture(
 					nativeWidth,
 					nativeHeight,
@@ -1837,6 +1958,32 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					sceneEnvironment?.fog,
 				);
 				final3dTex = outlinedTex;
+			}
+			if (volumetricFogEnabled && sceneEnvironment && linearDepthTex) {
+				const vfogTex = ctx.renderer.getTemporaryTexture(
+					nativeWidth,
+					nativeHeight,
+					[
+						curTex,
+						targetTexture,
+						scene3dTex,
+						final3dTex,
+						linearDepthTex,
+						...curExcludes,
+					],
+				);
+				r3d.applyVolumetricFog(
+					encoder,
+					final3dTex,
+					linearDepthTex,
+					vfogTex.createView(),
+					cameraBindGroup,
+					lightsBindGroup,
+					sceneEnvironment,
+					shiftedFrame / Math.max(1, fps ?? 24),
+					shiftedFrame,
+				);
+				final3dTex = vfogTex;
 			}
 			if (dofEnabled && linearDepthTex) {
 				const dofResultTex = ctx.renderer.getTemporaryTexture(

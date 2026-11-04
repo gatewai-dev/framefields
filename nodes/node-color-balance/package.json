@@ -1,6 +1,6 @@
 {
 	"name": "@framefields/node-color-balance",
-	"version": "2.13.1",
+	"version": "2.14.0",
 	"private": false,
 	"framefields": {
 		"type": "ColorBalance",

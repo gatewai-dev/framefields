@@ -1,5 +1,19 @@
 # framefields
 
+## 2.14.0
+
+### Minor Changes
+
+- 976c782: Containers no longer clip their children by default: `overflow` defaults to `"visible"`, as in CSS, so tilted badges, outside strokes and shaking titles are not cut at a parent's edge. Set `overflow: "hidden"` where children must stay inside a box, such as a rounded card holding a square header or image. Text layers also make room for their own outside stroke and shadows, which used to be cut at the text box, and scale or rotate around their anchor within that room.
+- 01954c0: 3D scenes render in isolation. A box with a fixed size that holds a camera is its own scene: its camera, lights and environment see only its layers, it runs on its own clock, and it is placed like a picture, so `Layer.sequence` transitions between 3D scenes blend two finished pictures instead of drawing both through one camera. Signal tracks take `{ clock: "layer" }` to sample at the layer's own frame. `comp.lint()` reports `duplicate_id`. Per-pass 3D buffers are recycled once per frame (per command encoder), so a frame holding several 3D scenes never reuses a buffer an earlier pass still reads, and bloom mip chains live until the frame is done. Size-dependent 3D render targets (depth, HDR, MSAA, reflections) are cached per size and kept for the frame, so scenes of different sizes can share a frame.
+- 976c782: Add opt-in geometry-aware scene outlines and art-directed toon lighting for meshes, 3D cards and native text. Outline widths scale with export resolution; exclusions retain occlusion, and ink follows fog before camera depth blur and bloom. Toon materials now use colored direct lights, point/spot attenuation and cast shadows, with configurable shadow/lit colors and terminators. Correct 3D card pivot transforms so changing an anchor does not move identity geometry.
+
+  Shade ink before the MSAA color resolve to preserve subpixel coverage between outlined surfaces. Custom cube-face artwork inherits surface settings while retaining explicit face overrides.
+
+### Patch Changes
+
+- 69e2ed8: Text with glyph animators keeps its stroke and shadow colours. The animator colour used to start from the base fill and override every pass, so outlined or shadowed text turned into a solid fill-coloured blob; colour animators now start from each glyph's own fill (spans and highlights included) and tint only the fill pass.
+
 ## 2.13.1
 
 ### Patch Changes

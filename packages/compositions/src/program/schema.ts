@@ -165,6 +165,7 @@ export const AnimatablePropSchema = z.enum([
 	"maxBlurRadius",
 	"shakeTranslation",
 	"shakeRotation",
+	"relativitySpeed",
 	"orbitRadius",
 	"orbitAzimuth",
 	"orbitElevation",
@@ -298,6 +299,7 @@ export type CameraAnimatableProp =
 	| "maxBlurRadius"
 	| "shakeTranslation"
 	| "shakeRotation"
+	| "relativitySpeed"
 	| "orbitRadius"
 	| "orbitAzimuth"
 	| "orbitElevation";
@@ -381,6 +383,7 @@ export const EXTENDED_3D_ANIMATABLE_PROPS = [
 	"maxBlurRadius",
 	"shakeTranslation",
 	"shakeRotation",
+	"relativitySpeed",
 	"orbitRadius",
 	"orbitAzimuth",
 	"orbitElevation",
@@ -1250,18 +1253,42 @@ export interface ShapeNode extends CompositionNodeBase {
 	trimOffset?: number;
 }
 
+/**
+ * The picture a camera draws. `perspective` is an ordinary lens; the others
+ * are cube cameras: the scene is drawn as six 90° faces around the eye and
+ * remapped, so they can show what no single frustum holds.
+ */
+export const CameraProjectionSchema = z.enum([
+	"perspective",
+	"equirectangular",
+	"fisheye",
+]);
+export type CameraProjection = z.infer<typeof CameraProjectionSchema>;
+
 export const CameraLensSchema = z
 	.object({
 		focalLength: z.number().min(5).max(500).default(50),
-		fov: z.number().min(5).max(160).optional(),
+		/**
+		 * Degrees. Perspective: vertical field of view, up to 160. Fisheye: the
+		 * full angle across the frame's height (equidistant), up to 360.
+		 * Equirectangular always shows the whole sphere and ignores it.
+		 */
+		fov: z.number().min(5).max(360).optional(),
 		sensorWidth: z.number().default(36),
 		near: z.number().min(0.1).default(1),
 		far: z.number().min(10).default(50000),
 		zoom: z.number().min(0.01).default(1.0),
+		projection: CameraProjectionSchema.default("perspective"),
+		/**
+		 * Cube face size in pixels for cube cameras. Default: matches the
+		 * output's sharpness at the centre of the view, up to 4096.
+		 */
+		cubeSize: z.number().int().min(64).max(8192).optional(),
 	})
 	.strict();
 
-export type CameraLens = z.infer<typeof CameraLensSchema>;
+/** A lens as authored: fields with schema defaults may be left out. */
+export type CameraLens = z.input<typeof CameraLensSchema>;
 
 export const CameraDoFSchema = z
 	.object({
@@ -1289,6 +1316,36 @@ export const CameraShakeSchema = z
 
 export type CameraShake = z.infer<typeof CameraShakeSchema>;
 
+/**
+ * The camera moves through the scene near the speed of light. What it sees
+ * is physics, not grading: rays crowd towards the direction of motion
+ * (aberration), colours shift blue ahead and red behind (Doppler) and ahead
+ * brightens (beaming). Always drawn by a cube camera.
+ */
+export const CameraRelativitySchema = z
+	.object({
+		/** β = v / c. Animate it with the `relativitySpeed` prop. */
+		speed: z.number().min(0).max(0.9999).default(0),
+		/** World-space direction of motion. Default: where the camera looks. */
+		direction: z.tuple([z.number(), z.number(), z.number()]).optional(),
+		/** Shift colours along the spectrum. Default true. */
+		doppler: z.boolean().default(true),
+		/** Brighten ahead, dim behind. Default true. */
+		beaming: z.boolean().default(true),
+		/**
+		 * Exposure for the shifted light: "auto" (default) meters the centre of
+		 * the view, so what the camera looks at keeps its brightness at rest;
+		 * a number is fixed stops (0 = the true, often blinding, brightness).
+		 */
+		exposure: z
+			.union([z.literal("auto"), z.number().min(-64).max(16)])
+			.default("auto"),
+	})
+	.strict();
+
+/** Relativity as authored: fields with schema defaults may be left out. */
+export type CameraRelativity = z.input<typeof CameraRelativitySchema>;
+
 export interface CameraNode {
 	id: string;
 	kind: "camera";
@@ -1305,6 +1362,7 @@ export interface CameraNode {
 	lens?: CameraLens;
 	dof?: CameraDoF;
 	shake?: CameraShake;
+	relativity?: CameraRelativity;
 	startFrame?: number;
 	durationFrames?: number;
 	animation?: LayerAnimationSpec;
@@ -1327,6 +1385,7 @@ export const CameraNodeSchema: z.ZodType<CameraNode> = z
 		lens: CameraLensSchema.optional(),
 		dof: CameraDoFSchema.optional(),
 		shake: CameraShakeSchema.optional(),
+		relativity: CameraRelativitySchema.optional(),
 		startFrame: z.number().int().min(0).default(0),
 		durationFrames: z.number().int().min(1).optional(),
 		animation: LayerAnimationSchema.default({ tracks: [] }),

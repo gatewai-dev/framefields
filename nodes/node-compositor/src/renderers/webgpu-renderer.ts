@@ -41,6 +41,7 @@ import {
 	Camera3D,
 	type Camera3DPose,
 	type Color,
+	cubeFaceCameras,
 	type DrawMesh3DOpts,
 	type DrawQuad3DOpts,
 	type Environment3DOptions,
@@ -82,6 +83,7 @@ import {
 import { compileTimeline, seekTimeline } from "../shared/compiler.js";
 import type { CompositorOperation } from "../shared/config.js";
 import { shouldPaintContainerBackground } from "./container-bg.js";
+import { type CubeCamera, resolveCubeCamera } from "./cube-camera.js";
 import { compatibleMeshDraws } from "./mesh-instancing.js";
 import {
 	buildLayerMatrix,
@@ -1240,6 +1242,8 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 		/** Where a relief keeps its look from: the default camera at the scene's field of view. */
 		let reliefEye: [number, number, number] = [0, 0, 0];
 		let dofEnabled = false;
+		/** Set when the camera draws a cube map and remaps it through its lens. */
+		let cubeCamera: CubeCamera | null = null;
 		const sceneLights: Light3DOptions[] = [];
 		let sceneEnvironment: Environment3DOptions | null = null;
 		let sceneBloom: BloomOptions | null = null;
@@ -1342,6 +1346,20 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				camera.fStop = camStub?.fStop ?? camOp?.dof?.fStop ?? 2.8;
 				camera.maxBlurRadius =
 					camStub?.maxBlurRadius ?? camOp?.dof?.maxBlurRadius ?? 24;
+			}
+
+			cubeCamera = resolveCubeCamera(
+				camOp,
+				camera,
+				camStub?.relativitySpeed ?? camOp?.relativity?.speed ?? 0,
+				nativeWidth,
+				nativeHeight,
+				ctx.device.limits.maxTextureDimension2D,
+			);
+			if (cubeCamera && dofEnabled) {
+				throw new Error(
+					`Camera '${camOp?.id}' is a cube camera (${camOp?.relativity ? "relativity" : camOp?.lens?.projection}) with depth of field: depth of field needs a single perspective view.`,
+				);
 			}
 
 			// Collect Active Lights
@@ -1680,147 +1698,235 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				...glass,
 			];
 
-			// Planar floor reflection pass (if environment.floor is active)
+			// One view of the scene: its floor reflection, then every item.
 			const floorSpec = sceneEnvironment?.floor;
-			let blurredReflectionTex: GPUTexture | null = null;
-			if (
-				floorSpec &&
-				typeof floorSpec.y === "number" &&
-				camera.eye[1] < floorSpec.y
-			) {
-				const reflectedCamera: Camera3DPose = {
-					...camera,
-					eye: [camera.eye[0], 2 * floorSpec.y - camera.eye[1], camera.eye[2]],
-					target: [
-						camera.target[0],
-						2 * floorSpec.y - camera.target[1],
-						camera.target[2],
-					],
-					up: [camera.up[0], camera.up[1], camera.up[2]],
-				};
+			const drawView = (
+				view: Camera3DPose,
+				width: number,
+				height: number,
+				colorView: GPUTextureView,
+				geometryView: GPUTextureView | undefined,
+				hdrTargetView: GPUTextureView | undefined,
+				/** The 2D picture glass refracts; a cube face has none. */
+				backdrop: GPUTexture | undefined,
+			): GPUBuffer => {
+				let blurredReflectionTex: GPUTexture | null = null;
+				if (
+					floorSpec &&
+					typeof floorSpec.y === "number" &&
+					view.eye[1] < floorSpec.y
+				) {
+					const reflectedCamera: Camera3DPose = {
+						...view,
+						eye: [view.eye[0], 2 * floorSpec.y - view.eye[1], view.eye[2]],
+						target: [
+							view.target[0],
+							2 * floorSpec.y - view.target[1],
+							view.target[2],
+						],
+						up: [view.up[0], view.up[1], view.up[2]],
+					};
+					const {
+						pass: reflPass,
+						cameraBindGroup: reflCamBind,
+						lightsBindGroup: reflLightsBind,
+						reflectionTexture: reflTex,
+					} = r3d.beginReflectionPass(
+						encoder,
+						width,
+						height,
+						reflectedCamera,
+						sceneLights,
+						{ environment: sceneEnvironment, shadow: null },
+					);
+					for (const item of ordered) {
+						if (item.kind === "quad") {
+							r3d.drawTextureQuad(
+								reflPass,
+								reflCamBind,
+								reflLightsBind,
+								item.texture,
+								item.opts,
+								false,
+							);
+						} else if (item.kind === "slug") {
+							r3d.drawSlugText(
+								reflPass,
+								reflCamBind,
+								reflLightsBind,
+								item.batches,
+								item.opts,
+								item.stackBase,
+								false,
+							);
+						} else if (item.kind === "mesh") {
+							r3d.drawMesh3D(
+								reflPass,
+								reflCamBind,
+								reflLightsBind,
+								item.meshBuffers ?? item.mesh,
+								item.texture,
+								item.opts,
+								false,
+							);
+						}
+					}
+					reflPass.end();
+					blurredReflectionTex = r3d.blurReflection(
+						encoder,
+						reflTex,
+						floorSpec.roughness ?? 0.35,
+					);
+				}
+
 				const {
-					pass: reflPass,
-					cameraBindGroup: reflCamBind,
-					lightsBindGroup: reflLightsBind,
-					reflectionTexture: reflTex,
-				} = r3d.beginReflectionPass(
+					pass: pass3d,
+					cameraBindGroup,
+					cameraBuffer,
+					lightsBindGroup,
+				} = r3d.beginPass(
 					encoder,
-					nativeWidth,
-					nativeHeight,
-					reflectedCamera,
+					colorView,
+					width,
+					height,
+					view,
+					"clear",
+					{ r: 0, g: 0, b: 0, a: 0 },
+					geometryView,
 					sceneLights,
-					{ environment: sceneEnvironment, shadow: null },
+					{
+						environment: sceneEnvironment,
+						shadow: shadow.length ? shadow : null,
+					},
+					Boolean(sceneBloom),
+					hdrTargetView,
 				);
+
+				if (floorSpec && blurredReflectionTex) {
+					r3d.drawFloor(
+						pass3d,
+						cameraBindGroup,
+						lightsBindGroup,
+						blurredReflectionTex,
+						floorSpec,
+						geometryEnabled,
+						Boolean(sceneBloom),
+					);
+				}
 				for (const item of ordered) {
 					if (item.kind === "quad") {
 						r3d.drawTextureQuad(
-							reflPass,
-							reflCamBind,
-							reflLightsBind,
+							pass3d,
+							cameraBindGroup,
+							lightsBindGroup,
 							item.texture,
 							item.opts,
-							false,
+							geometryEnabled,
 						);
 					} else if (item.kind === "slug") {
 						r3d.drawSlugText(
-							reflPass,
-							reflCamBind,
-							reflLightsBind,
+							pass3d,
+							cameraBindGroup,
+							lightsBindGroup,
 							item.batches,
 							item.opts,
 							item.stackBase,
-							false,
+							geometryEnabled,
 						);
 					} else if (item.kind === "mesh") {
 						r3d.drawMesh3D(
-							reflPass,
-							reflCamBind,
-							reflLightsBind,
+							pass3d,
+							cameraBindGroup,
+							lightsBindGroup,
 							item.meshBuffers ?? item.mesh,
 							item.texture,
-							item.opts,
-							false,
+							isGlass(item) ? { ...item.opts, backdrop } : item.opts,
+							geometryEnabled,
 						);
 					}
 				}
-				reflPass.end();
-				blurredReflectionTex = r3d.blurReflection(
-					encoder,
-					reflTex,
-					floorSpec.roughness ?? 0.35,
-				);
-			}
 
-			const {
-				pass: pass3d,
-				cameraBindGroup,
-				cameraBuffer,
-				lightsBindGroup,
-			} = r3d.beginPass(
-				encoder,
-				scene3dView,
-				nativeWidth,
-				nativeHeight,
-				camera,
-				"clear",
-				{ r: 0, g: 0, b: 0, a: 0 },
-				linearDepthView,
-				sceneLights,
-				{
-					environment: sceneEnvironment,
-					shadow: shadow.length ? shadow : null,
-				},
-				Boolean(sceneBloom),
-			);
-
-			if (floorSpec && blurredReflectionTex) {
-				r3d.drawFloor(
-					pass3d,
-					cameraBindGroup,
-					lightsBindGroup,
-					blurredReflectionTex,
-					floorSpec,
-					geometryEnabled,
-					Boolean(sceneBloom),
-				);
-			}
-			for (const item of ordered) {
-				if (item.kind === "quad") {
-					r3d.drawTextureQuad(
-						pass3d,
-						cameraBindGroup,
-						lightsBindGroup,
-						item.texture,
-						item.opts,
-						geometryEnabled,
-					);
-				} else if (item.kind === "slug") {
-					r3d.drawSlugText(
-						pass3d,
-						cameraBindGroup,
-						lightsBindGroup,
-						item.batches,
-						item.opts,
-						item.stackBase,
-						geometryEnabled,
-					);
-				} else if (item.kind === "mesh") {
-					r3d.drawMesh3D(
-						pass3d,
-						cameraBindGroup,
-						lightsBindGroup,
-						item.meshBuffers ?? item.mesh,
-						item.texture,
-						isGlass(item) ? { ...item.opts, backdrop: curTex } : item.opts,
-						geometryEnabled,
-					);
-				}
-			}
-
-			pass3d.end();
+				pass3d.end();
+				return cameraBuffer;
+			};
 
 			let final3dTex = scene3dTex;
-			if (outlines && linearDepthTex) {
+			if (cubeCamera) {
+				// Six 90° faces around the eye, then the lens's picture of them.
+				const size = cubeCamera.faceSize;
+				const cube = r3d.getOrCreateCubeTexture(size, false);
+				const hdrCube = sceneBloom
+					? r3d.getOrCreateCubeTexture(size, true)
+					: null;
+				// Ink as wide on screen as without a cube: a face has size / 2
+				// pixels per radian at its centre, the output centerDensity.
+				const faceOutlines = outlines && {
+					...outlines,
+					referenceHeight:
+						((outlines.referenceHeight ?? 1080) *
+							2 *
+							cubeCamera.centerDensity) /
+						nativeHeight,
+				};
+				const faceTex = faceOutlines
+					? ctx.renderer.getTemporaryTexture(size, size, [
+							curTex,
+							targetTexture,
+							scene3dTex,
+							...curExcludes,
+							...itemTextures,
+						])
+					: null;
+				const faceGeometry = faceOutlines
+					? r3d.getOrCreateLinearDepthTexture(size, size)
+					: null;
+				cubeFaceCameras(camera.eye, camera.near, camera.far).forEach(
+					(face, i) => {
+						const faceView = r3d.cubeFaceView(cube, i);
+						drawView(
+							face,
+							size,
+							size,
+							faceTex ? faceTex.createView() : faceView,
+							faceGeometry?.createView(),
+							hdrCube ? r3d.cubeFaceView(hdrCube, i) : undefined,
+							undefined,
+						);
+						if (faceTex && faceGeometry && faceOutlines) {
+							r3d.applyOutlines(
+								encoder,
+								faceTex,
+								faceGeometry,
+								faceView,
+								face,
+								faceOutlines,
+								sceneEnvironment?.fog,
+							);
+						}
+					},
+				);
+				r3d.remapLens(
+					encoder,
+					cube,
+					hdrCube,
+					scene3dView,
+					nativeWidth,
+					nativeHeight,
+					cubeCamera.remap,
+				);
+			}
+			const cameraBuffer = cubeCamera
+				? null
+				: drawView(
+						camera,
+						nativeWidth,
+						nativeHeight,
+						scene3dView,
+						linearDepthView,
+						undefined,
+						curTex,
+					);
+			if (!cubeCamera && outlines && linearDepthTex) {
 				if (dofEnabled) r3d.resolveGeometry(encoder, linearDepthTex);
 				const outlinedTex = ctx.renderer.getTemporaryTexture(
 					nativeWidth,
@@ -1838,7 +1944,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				);
 				final3dTex = outlinedTex;
 			}
-			if (dofEnabled && linearDepthTex) {
+			if (dofEnabled && linearDepthTex && cameraBuffer) {
 				const dofResultTex = ctx.renderer.getTemporaryTexture(
 					nativeWidth,
 					nativeHeight,

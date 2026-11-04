@@ -469,6 +469,13 @@ export type Keyframe = z.infer<typeof KeyframeSchema>;
 
 export const SignalModeSchema = z.enum(["continuous", "accumulate"]);
 export type SignalMode = z.infer<typeof SignalModeSchema>;
+/**
+ * Which clock a signal track reads: the composition's (default), as audio
+ * analysis and shared signals need, or its layer's own, from the layer's
+ * start frame, as keyframes do: motion authored for one scene of a sequence.
+ */
+export const SignalClockSchema = z.enum(["composition", "layer"]);
+export type SignalClock = z.infer<typeof SignalClockSchema>;
 
 const RawTrackSourceSchema = z.discriminatedUnion("type", [
 	z.object({
@@ -489,6 +496,7 @@ const RawTrackSourceSchema = z.discriminatedUnion("type", [
 		accumulateThreshold: z.number().optional(),
 		debounceFrames: z.number().int().min(0).optional(),
 		channel: z.string().optional(),
+		clock: SignalClockSchema.optional(),
 	}),
 	z.object({
 		type: z.literal("wiggle"),
@@ -530,6 +538,7 @@ export const TrackSourceSchema = z.preprocess((val: unknown) => {
 			accumulateThreshold: thresh,
 			debounceFrames: obj.debounceFrames ?? 2,
 			channel: typeof obj.channel === "string" ? obj.channel : "primary",
+			...(obj.clock !== undefined && { clock: obj.clock }),
 		};
 	}
 	return val;

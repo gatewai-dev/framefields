@@ -64,6 +64,27 @@ export type MediaSignalResolver = (
 	layer: MediaSignalLayer,
 ) => ResolvedMediaTimeRemap;
 
+/**
+ * A container holding a camera and the layers it films is a 3D scene of its
+ * own: its camera, lights and environment see only its layers. It needs a
+ * fixed size to render at. A container holding only a camera (and lights) is
+ * a shot in a camera cut list over the shared world, and stays one.
+ */
+export function isScene3D(node: LayoutNode): boolean {
+	if (
+		(node.kind !== "box" && node.kind !== "flex" && node.kind !== "block") ||
+		typeof node.width !== "number" ||
+		typeof node.height !== "number" ||
+		!Array.isArray(node.children)
+	)
+		return false;
+	const kids = node.children;
+	return (
+		kids.some((c) => c.kind === "camera") &&
+		kids.some((c) => c.kind !== "camera" && c.kind !== "light")
+	);
+}
+
 function nodeToVirtualMedia(
 	node: LayoutNode,
 	resolveMedia: CompositorToProgramOptions["resolveMedia"],
@@ -224,6 +245,10 @@ function nodeToVirtualMedia(
 				? Math.round(node.durationFrames)
 				: inheritedDurationFrames;
 		const nodeChildren = node.children;
+		// A 3D scene renders as a composition of its own on its own clock, which
+		// this layer then places like a picture: transitions, opacity and mattes
+		// on the layer blend whole scenes, each through its own camera.
+		const scene = isScene3D(node);
 		children = nodeChildren.map((c, idx) => {
 			const delay = computeStaggerDelay(
 				idx,
@@ -231,7 +256,7 @@ function nodeToVirtualMedia(
 				staggerFrames,
 				staggerDirection,
 			);
-			const childOffset = inheritedOffset + nodeStart + delay;
+			const childOffset = scene ? delay : inheritedOffset + nodeStart + delay;
 			return nodeToVirtualMedia(
 				c,
 				resolveMedia,
@@ -242,6 +267,33 @@ function nodeToVirtualMedia(
 				resolveSignal,
 			);
 		});
+		if (scene) {
+			const frames =
+				nodeDuration ?? Math.round(((compDurationMs ?? 10000) / 1000) * fps);
+			const durationMs = (frames / fps) * 1000;
+			media = {
+				metadata: {
+					width: node.width as number,
+					height: node.height as number,
+					fps,
+					durationMs,
+				},
+				operation: {
+					op: "Compositor",
+					width: node.width as number,
+					height: node.height as number,
+					fps,
+					mode: "Video",
+					dataType: "Video",
+					volume: 1,
+					...(typeof node.background === "string" && {
+						backgroundColor: node.background,
+					}),
+				},
+				children,
+			} as unknown as VirtualMediaData;
+			children = [media];
+		}
 	}
 
 	let dataType: DataType = "Image";
@@ -346,6 +398,12 @@ function nodeToVirtualMedia(
 		operation: {
 			op: "CompositorLayer",
 			...node,
+			// A scene is placed as media: its nested composition paints its background.
+			...(isScene3D(node) && {
+				kind: "media",
+				background: undefined,
+				children: undefined,
+			}),
 			startFrame,
 			durationFrames: dur,
 			dataType,
@@ -428,6 +486,8 @@ export function compositorToProgram(
 		),
 	} as unknown as VirtualMediaData;
 
+	shareSignals(rootMedia.children ?? [], programSignals);
+
 	const effectsList: ProgramEffect[] = Array.isArray(options.effects)
 		? options.effects
 		: Array.isArray(config.effects)
@@ -471,10 +531,26 @@ export function compositorToProgram(
 	return rootMedia;
 }
 
-/** Recursively gather every node op from a render tree (in order). */
+/** Hands every nested scene composition the program's signals, which its tracks read. */
+function shareSignals(
+	nodes: readonly VirtualMediaData[],
+	signals: Record<string, unknown>,
+) {
+	for (const vm of nodes) {
+		if (vm?.operation?.op === "Compositor")
+			(vm.operation as { signals?: unknown }).signals = signals;
+		shareSignals(vm?.children ?? [], signals);
+	}
+}
+
+/**
+ * Recursively gather every node op from a render tree (in order), stopping at
+ * nested scene compositions: their layers belong to their own render.
+ */
 export function collectNodeOps(nodes: VirtualMediaData[]): VirtualMediaData[] {
 	const out: VirtualMediaData[] = [];
 	const walk = (vm: VirtualMediaData) => {
+		if (vm?.operation?.op === "Compositor") return;
 		if (vm?.operation?.op === "CompositorLayer") {
 			out.push(vm);
 		}

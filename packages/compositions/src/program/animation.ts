@@ -4,6 +4,7 @@ import type {
 	AnimationTrack,
 	EaseRef,
 	LayerAnimationSpec,
+	SignalClock,
 	TrackSource,
 } from "./schema.js";
 
@@ -66,6 +67,13 @@ export interface SignalTrackOptions {
 	mode?: "continuous" | "accumulate";
 	threshold?: number;
 	debounceFrames?: number;
+	/**
+	 * `"composition"` (default) samples the signal at the composition frame,
+	 * as audio analysis and shared signals need. `"layer"` samples it at the
+	 * layer's own frame, counted from its start like keyframes: for motion
+	 * authored per scene, which then plays right inside `Layer.sequence`.
+	 */
+	clock?: SignalClock;
 }
 
 export interface ColorSignalOptions {
@@ -963,6 +971,7 @@ export class LayerAnimation<TProp extends AnimatableProp = AnimatableProp>
 			accumulateThreshold: options.threshold ?? 0.15,
 			debounceFrames: options.debounceFrames ?? 2,
 			channel: options.channel ?? "primary",
+			...(options.clock && { clock: options.clock }),
 		};
 		if (inline) attachInlineSignal(source, inline);
 

@@ -8,6 +8,14 @@ const codes = (layout: unknown[], extra = {}) =>
 	);
 
 describe("lintComposition", () => {
+	it("flags two layers with one id, wherever they sit in the tree", () => {
+		expect(
+			codes([
+				{ id: "scene-a", kind: "box", children: [{ id: "hero", kind: "box" }] },
+				{ id: "scene-b", kind: "box", children: [{ id: "hero", kind: "box" }] },
+			]),
+		).toEqual(["duplicate_id"]);
+	});
 	it("flags unreadable colors and gradients", () => {
 		expect(
 			codes([

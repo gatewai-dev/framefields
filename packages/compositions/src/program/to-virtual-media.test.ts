@@ -6,7 +6,7 @@ import {
 } from "@framefields/core";
 import { describe, expect, it } from "vitest";
 import type { CompositorProgramConfig, LayoutNode } from "./schema.js";
-import { compositorToProgram } from "./to-virtual-media.js";
+import { compositorToProgram, isScene3D } from "./to-virtual-media.js";
 
 const doc = {
 	width: 1920,
@@ -439,5 +439,77 @@ describe("compositorToProgram", () => {
 		expect(textOp?.op).toBe("CompositorLayer");
 		expect(textOp?.kind).toBe("text");
 		expect(textOp?.effects).toEqual([{ op: "FilmGrain", strength: 0.1 }]);
+	});
+});
+
+describe("compositorToProgram: 3D scenes", () => {
+	const scene = (id: string, startFrame: number): LayoutNode =>
+		({
+			id,
+			kind: "box",
+			position: "absolute",
+			width: 1080,
+			height: 1920,
+			background: "#202020",
+			startFrame,
+			durationFrames: 60,
+			children: [
+				{ id: `${id}-cam`, kind: "camera", z: -800 },
+				{
+					id: `${id}-cube`,
+					kind: "box",
+					is3D: true,
+					width: 100,
+					height: 100,
+					startFrame: 10,
+				},
+			],
+		}) as unknown as LayoutNode;
+	const ramp = [0, 1, 2];
+	const program = compositorToProgram(
+		{
+			width: 1080,
+			height: 1920,
+			fps: 30,
+			mode: "Video",
+			layout: [scene("a", 0), scene("b", 50)],
+			signals: { ramp },
+		} as unknown as CompositorProgramConfig,
+		{ isVideoMode: true, fps: 30, durationMs: 4000 },
+	);
+	const [a, b] = program.children as VirtualMediaData[];
+
+	it("places a container holding a camera as media whose content is its own composition", () => {
+		const op = b.operation as Record<string, unknown>;
+		expect(op.kind).toBe("media");
+		expect(op.startFrame).toBe(50);
+		expect(op.background).toBeUndefined();
+		const nested = b.children?.[0];
+		expect(nested?.operation.op).toBe("Compositor");
+		expect((nested?.operation as Record<string, unknown>).backgroundColor).toBe(
+			"#202020",
+		);
+		expect((nested?.operation as Record<string, unknown>).signals).toEqual({
+			ramp,
+		});
+	});
+	it("leaves a box holding only a camera as a shot over the shared world", () => {
+		expect(
+			isScene3D({
+				id: "shot",
+				kind: "box",
+				width: 1080,
+				height: 1920,
+				children: [{ id: "shot-cam", kind: "camera" }],
+			} as unknown as LayoutNode),
+		).toBe(false);
+	});
+	it("keeps the scene's layers on the scene's own clock", () => {
+		const layers = b.children?.[0].children ?? [];
+		const cube = layers.find(
+			(l) => (l.operation as { id?: string }).id === "b-cube",
+		);
+		expect(cube?.operation.startFrame).toBe(10);
+		expect(a.children?.[0].children?.length).toBe(2);
 	});
 });

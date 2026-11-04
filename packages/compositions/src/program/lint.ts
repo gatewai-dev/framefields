@@ -120,9 +120,20 @@ export function lintComposition(
 	let has3D = false;
 	const pbrNodes: string[] = [];
 	const emojiText: string[] = [];
+	const seenIds = new Set<string>();
 
 	const visit = (node: AnyNode, backdrop: string | null, atRoot: boolean) => {
 		const id = String(node.id ?? "?");
+		if (typeof node.id === "string") {
+			if (seenIds.has(node.id))
+				push(
+					"error",
+					"duplicate_id",
+					`Two layers share the id '${id}': the renderer keeps one and drops the other. Give every layer its own id (scenes reused in one composition need their own prefix).`,
+					id,
+				);
+			seenIds.add(node.id);
+		}
 		if (
 			options.emojiFont === false &&
 			node.kind === "text" &&

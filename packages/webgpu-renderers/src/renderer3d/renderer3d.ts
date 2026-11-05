@@ -50,14 +50,20 @@ import { BufferPool } from "../renderer2d/buffer-pool.js";
 import { SamplerCache } from "../renderer2d/sampler-cache.js";
 import { UniformBindGroupCache } from "../renderer2d/uniform-bind-group-cache.js";
 import { dofBokehWgsl } from "../shaders/dof-bokeh.js";
-import { quadVelocityWgsl } from "../shaders/mesh-velocity.js";
+import {
+	floorVelocityWgsl,
+	quadVelocityWgsl,
+} from "../shaders/mesh-velocity.js";
 import type { SlugGlyphBatch } from "../slug/slug-pipeline.js";
 import { AudioMeshDeformPipeline } from "./audio-mesh-deform-pipeline.js";
 import { type BloomOptions, BloomPipeline } from "./bloom-pipeline.js";
 import { FloorReflectionPipeline } from "./floor-reflection-pipeline.js";
 import { GeometryOutlinePipeline } from "./geometry-outline-pipeline.js";
 import { GeometryResolvePipeline } from "./geometry-resolve-pipeline.js";
-import { getOrCreateHdrEnvironment } from "./hdr-environment.js";
+import {
+	getOrCreateHdrEnvironment,
+	type HdrEnvironment,
+} from "./hdr-environment.js";
 import { decodeKtx2, isKtx2 } from "./ktx2.js";
 import {
 	type GPUMeshBuffers,
@@ -71,6 +77,7 @@ import {
 } from "./mesh3d-pipeline.js";
 import { MorphPipeline } from "./morph-pipeline.js";
 import {
+	MOTION_BLUR_TILE_FORMAT,
 	type MotionBlurPassOptions,
 	MotionBlurPipeline,
 } from "./motion-blur-pipeline.js";
@@ -332,7 +339,7 @@ export class Renderer3D {
 	private passWritesHdr = false;
 	private cameraUniformData = new Float32Array(80); // 320 bytes = 80 floats
 	private velocityCameraPool = new BufferPool(
-		192,
+		256,
 		GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
 	);
 	private quadMotionPool = new BufferPool(
@@ -344,6 +351,17 @@ export class Renderer3D {
 		pipeline: GPURenderPipeline;
 		layout: GPUBindGroupLayout;
 	};
+	private floorVelocity?: {
+		pipeline: GPURenderPipeline;
+		layout: GPUBindGroupLayout;
+	};
+	/**
+	 * Environments looked up this frame: a pass asks several times, and a
+	 * file path is checked on disk (stat) once per frame, not per lookup.
+	 */
+	private hdrEnvironments = new Map<string, HdrEnvironment>();
+	/** The HDR target blurred by `applyMotionBlur`: what bloom reads after it. */
+	private hdrBlurred: GPUTexture | null = null;
 	private meshBuffersCache = new WeakMap<Mesh3DData, GPUMeshBuffers>();
 	private materialTextures = new WeakMap<
 		Material3D,
@@ -525,7 +543,22 @@ export class Renderer3D {
 		return texture;
 	}
 
+	private hdrEnvironment(
+		source: NonNullable<Environment3DOptions["hdri"]>,
+	): HdrEnvironment {
+		if (typeof source !== "string") {
+			return getOrCreateHdrEnvironment(this.device, source);
+		}
+		let env = this.hdrEnvironments.get(source);
+		if (!env) {
+			env = getOrCreateHdrEnvironment(this.device, source);
+			this.hdrEnvironments.set(source, env);
+		}
+		return env;
+	}
+
 	resetPools(): void {
+		this.hdrEnvironments.clear();
 		for (const [key, texture] of this.attachments) {
 			if (this.attachmentsUsed.has(key)) continue;
 			texture.destroy();
@@ -588,7 +621,7 @@ export class Renderer3D {
 
 	/** The HDR radiance target the last `beginPass(…, writeHdr)` drew into. */
 	hdrSource(): GPUTexture | null {
-		return this.hdrTexture;
+		return this.hdrBlurred ?? this.hdrTexture;
 	}
 
 	private getOrCreateHdrTexture(width: number, height: number): GPUTexture {
@@ -773,7 +806,7 @@ export class Renderer3D {
 		environment?: Environment3DOptions | null,
 	): HdriUniforms | undefined {
 		if (!environment?.hdri) return undefined;
-		const env = getOrCreateHdrEnvironment(this.device, environment.hdri);
+		const env = this.hdrEnvironment(environment.hdri);
 		return { maxMip: env.mipLevelCount - 1, sh: env.sh };
 	}
 
@@ -846,7 +879,7 @@ export class Renderer3D {
 			usage: GPUTextureUsage.TEXTURE_BINDING,
 		});
 		const envTex = environment?.hdri
-			? getOrCreateHdrEnvironment(this.device, environment.hdri).cube
+			? this.hdrEnvironment(environment.hdri).cube
 			: this.placeholderEnvTexture;
 		const map =
 			withShadow && this.shadowTexture
@@ -1369,6 +1402,7 @@ export class Renderer3D {
 		}
 
 		this.passWritesHdr = writeHdr;
+		this.hdrBlurred = null;
 		if (writeHdr) {
 			this.hdrTexture = this.getOrCreateHdrTexture(surfaceWidth, surfaceHeight);
 			if (msaa) {
@@ -2172,13 +2206,15 @@ export class Renderer3D {
 			format: VELOCITY_DEPTH_FORMAT,
 			usage: GPUTextureUsage.RENDER_ATTACHMENT,
 		});
-		const data = new Float32Array(48);
-		data.set(Camera3D.computeViewProjectionMatrix(camera), 0);
+		const data = new Float32Array(64);
+		const viewProj = Camera3D.computeViewProjectionMatrix(camera);
+		data.set(viewProj, 0);
 		data.set(Camera3D.computeViewProjectionMatrix(prevCamera), 16);
+		data.set(Matrix4Math.invert(viewProj) ?? Matrix4Math.identity(), 32);
 		const fwd = Vector3Math.normalize(
 			Vector3Math.subtract(camera.target, camera.eye),
 		);
-		data.set([...camera.eye, 1, ...fwd, 0, width, height, 0, 0], 32);
+		data.set([...camera.eye, 1, ...fwd, 0, width, height, 0, 0], 48);
 		const cameraBindGroup = this.device.createBindGroup({
 			layout: this.mesh3dPipeline.velocityCameraLayout,
 			entries: [
@@ -2290,6 +2326,77 @@ export class Renderer3D {
 		pass.draw(4);
 	}
 
+	/** Draws the environment floor's motion (camera motion only) into the velocity pass. */
+	drawFloorVelocity(
+		pass: GPURenderPassEncoder,
+		cameraBindGroup: GPUBindGroup,
+		floor: Environment3DFloor,
+	): void {
+		this.floorVelocity ??= this.fullscreenVelocityPipeline(
+			"Renderer3DFloorVelocity",
+			floorVelocityWgsl,
+			"vs_floor_velocity",
+			"fs_floor_velocity",
+		);
+		const { pipeline, layout } = this.floorVelocity;
+		const group = this.device.createBindGroup({
+			layout,
+			entries: [
+				{
+					binding: 0,
+					resource: {
+						buffer: this.quadMotionPool.getBuffer(
+							this.device,
+							new Float32Array([floor.y, 0, 0, 0]),
+						),
+					},
+				},
+			],
+		});
+		pass.setPipeline(pipeline);
+		pass.setBindGroup(0, cameraBindGroup);
+		pass.setBindGroup(1, group);
+		pass.draw(3);
+	}
+
+	private fullscreenVelocityPipeline(
+		label: string,
+		code: string,
+		vertex: string,
+		fragment: string,
+	): { pipeline: GPURenderPipeline; layout: GPUBindGroupLayout } {
+		const module = this.device.createShaderModule({ label, code });
+		const layout = this.device.createBindGroupLayout({
+			label: `${label}Layout`,
+			entries: [
+				{
+					binding: 0,
+					visibility: GPUShaderStage.FRAGMENT,
+					buffer: { type: "uniform" },
+				},
+			],
+		});
+		const pipeline = this.device.createRenderPipeline({
+			label,
+			layout: this.device.createPipelineLayout({
+				bindGroupLayouts: [this.mesh3dPipeline.velocityCameraLayout, layout],
+			}),
+			vertex: { module, entryPoint: vertex },
+			fragment: {
+				module,
+				entryPoint: fragment,
+				targets: [{ format: VELOCITY_FORMAT }],
+			},
+			depthStencil: {
+				format: VELOCITY_DEPTH_FORMAT,
+				depthWriteEnabled: true,
+				depthCompare: "less-equal",
+			},
+			primitive: { topology: "triangle-list" },
+		});
+		return { pipeline, layout };
+	}
+
 	private quadVelocityPipeline(): {
 		pipeline: GPURenderPipeline;
 		layout: GPUBindGroupLayout;
@@ -2352,15 +2459,37 @@ export class Renderer3D {
 		target: GPUTextureView,
 		options: MotionBlurPassOptions = {},
 	): void {
-		this.motionBlurPipeline ??= new MotionBlurPipeline(this.device);
-		this.motionBlurPipeline.render(
-			encoder,
-			color,
-			velocity,
-			target,
-			this.format,
-			options,
-		);
+		const blur = (this.motionBlurPipeline ??= new MotionBlurPipeline(
+			this.device,
+		));
+		const usage =
+			GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING;
+		const tiles = (label: string, width: number, height: number) =>
+			this.attachment(label, width, height, {
+				format: MOTION_BLUR_TILE_FORMAT,
+				usage,
+			});
+		blur.render(encoder, color, velocity, target, this.format, options, tiles);
+		// Bloom reads the pass's HDR radiance: it streaks with the picture.
+		const hdr = this.passWritesHdr ? this.hdrTexture : null;
+		if (hdr && hdr.width === color.width && hdr.height === color.height) {
+			const blurred = this.attachment(
+				"Renderer3DHdrBlurred",
+				hdr.width,
+				hdr.height,
+				{ format: hdr.format, usage },
+			);
+			blur.render(
+				encoder,
+				hdr,
+				velocity,
+				blurred.createView(),
+				hdr.format,
+				options,
+				tiles,
+			);
+			this.hdrBlurred = blurred;
+		}
 	}
 
 	loadModel(

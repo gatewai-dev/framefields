@@ -48,6 +48,7 @@ import {
 	type CrowdBake,
 	type DrawMesh3DOpts,
 	type DrawQuad3DOpts,
+	type Environment3DFloor,
 	type Environment3DOptions,
 	type ExtrudedTextGeometryOptions,
 	FRACTURE_INTERIOR_MATERIAL,
@@ -1087,17 +1088,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				: (frame ?? 0),
 		);
 		const compositionFrame = props.compositionFrame ?? shiftedFrame;
-		// Shutter motion blur reads every 3D draw one frame earlier: after a
-		// seek, render the frame before first, recording only.
 		const historyOnly = props.motionHistoryOnly === true;
-		if (
-			!historyOnly &&
-			frame != null &&
-			sceneMotionBlur(virtualMedia) &&
-			motionHistory(ctx.device, props.renderId).needsPrevious(shiftedFrame)
-		) {
-			await renderMotionHistory(args, frame - 1);
-		}
 
 		// 1. Create a temporary texture at native resolution
 		const compTex = ctx.renderer.getTemporaryTexture(
@@ -1115,6 +1106,18 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 			durationSec,
 		});
 		const { targetsById } = compiled;
+		// Shutter motion blur reads every 3D draw one frame earlier: after a
+		// seek, render the frame before first, recording only. The history is
+		// this composition's (render id and content), not the render id's: still
+		// renders reuse ids across compositions.
+		if (
+			!historyOnly &&
+			frame != null &&
+			sceneMotionBlur(virtualMedia) &&
+			motionHistory(ctx.device, compiled.key).needsPrevious(shiftedFrame)
+		) {
+			await renderMotionHistory(args, frame - 1);
+		}
 		seekTimeline(compiled, shiftedFrame, fps ?? 24);
 
 		const r3d = getRenderer3D(
@@ -1439,7 +1442,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 			const blur = (camOp as CameraNode | undefined)?.motionBlur;
 			if (blur && fps) {
 				motionBlur = blur === true ? {} : blur;
-				history = motionHistory(ctx.device, props.renderId);
+				history = motionHistory(ctx.device, compiled.key);
 			}
 
 			// Collect Active Lights
@@ -1671,6 +1674,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 			color: GPUTexture,
 			into: GPUTexture,
 			blur: CameraMotionBlur,
+			floor: Environment3DFloor | undefined,
 		) => {
 			const r3d = getRenderer3D(
 				ctx.device,
@@ -1684,6 +1688,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				cam,
 				h.previousCamera(shiftedFrame) ?? cam,
 			);
+			if (floor) r3d.drawFloorVelocity(vel.pass, vel.cameraBindGroup, floor);
 			for (const [item, key] of motionItems()) {
 				if (item.kind === "mesh") {
 					const prev = key
@@ -2175,7 +2180,14 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					nativeHeight,
 					[curTex, targetTexture, scene3dTex, final3dTex, ...curExcludes],
 				);
-				blurScene(history, camera, final3dTex, blurredTex, motionBlur);
+				blurScene(
+					history,
+					camera,
+					final3dTex,
+					blurredTex,
+					motionBlur,
+					floorSpec && blurredReflectionTex ? floorSpec : undefined,
+				);
 				final3dTex = blurredTex;
 			}
 			if (history) recordMotion(history, camera);
@@ -2616,6 +2628,15 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					return;
 				}
 			}
+			// Recording motion needs only the 3D draws: flat leaves (video,
+			// text, effects) skip their work in the history pass.
+			if (
+				historyOnly &&
+				!isContainer &&
+				kind !== "model3d" &&
+				!has3DTransform(target, lop)
+			)
+				return;
 			if (kind === "model3d") {
 				const r3d = getRenderer3D(
 					ctx.device,
@@ -3680,6 +3701,12 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					finalModelMatrix,
 					model.rootTransform ?? Matrix4Math.identity(),
 				);
+				// The layer's own props as a matrix (before any parent maps them):
+				// physics works in that space, the parent's, like every body.
+				const layerProps = Matrix4Math.multiply(
+					Matrix4Math.translate(sampledX - posX, sampledY - posY, 0),
+					localM,
+				);
 				// A whole fracture rests exactly (identity joints): pieces stay sealed.
 				const wholeFracture = Boolean(
 					lop.fracture3d &&
@@ -3688,7 +3715,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				const posed =
 					(lop.fracture3d &&
 						!wholeFracture &&
-						fracturePose(model, lop.fracture3d, shiftedFrame ?? 0, sceneRoot, [
+						fracturePose(model, lop.fracture3d, shiftedFrame ?? 0, layerProps, [
 							scX,
 							scY,
 							scZ,
@@ -3702,7 +3729,8 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 								clip,
 								clipSec,
 								sceneRoot,
-								key: String(lop.id),
+								// Per composition: node ids repeat across compositions.
+								key: `${compiled.key}:${lop.id}`,
 							})
 						: undefined);
 				const skinCache = new Map<number, Float32Array>();
@@ -6414,6 +6442,9 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 			true,
 		);
 		currentCompTex = renderResult.finalTex;
+		// The frame is recorded even when nothing 3D drew (hidden, not started),
+		// so the next frame needs no history pass and the camera's motion is known.
+		if (history && camera) history.recordFrame(shiftedFrame, camera);
 
 		ctx.renderer.popTransform();
 		ctx.renderer.popScissor();

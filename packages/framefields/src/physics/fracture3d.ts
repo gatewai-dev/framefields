@@ -5,9 +5,11 @@
  * into the node (`fracture3d.track`), where the renderer turns them into
  * the joints of one rigidly skinned mesh.
  */
-import type {
-	Fracture3DSpec,
-	LayoutNode,
+import {
+	type AnimatedLayer,
+	type Fracture3DSpec,
+	type LayoutNode,
+	sampleLayerProp,
 } from "@framefields/compositions/program";
 import {
 	createRandom,
@@ -16,8 +18,15 @@ import {
 	Matrix4Math,
 	type Model3DData,
 } from "@framefields/webgpu-renderers";
-import type { Vec3 } from "./backend.js";
-import type { LayerLike, PhysicsBody3D, PhysicsWorld3D } from "./world3d.js";
+import type { Quat, Vec3 } from "./backend.js";
+import {
+	type Body3DOptions,
+	type LayerLike,
+	type PhysicsBody3D,
+	type PhysicsWorld3D,
+	quatFromEuler,
+	rotateByQuat,
+} from "./world3d.js";
 
 export interface Fracture3DOptions {
 	/** Voronoi pieces (2..256). Default 48. */
@@ -28,7 +37,9 @@ export interface Fracture3DOptions {
 	impactPoint?: [number, number, number];
 	/**
 	 * Composition frame the layer breaks at, or `"onImpact"` (default): the
-	 * first frame a body hits it.
+	 * first frame a body hits it. An animated layer (position, rotation)
+	 * collides along its path while whole and breaks where it is, its pieces
+	 * carrying its motion.
 	 */
 	fractureFrame?: number | "onImpact";
 	/** Color of the faces the break exposes. Default "#d8d2c4". */
@@ -106,6 +117,62 @@ const apply = (m: Mat4, p: Vec3): Vec3 => [
 	m[2] * p[0] + m[6] * p[1] + m[10] * p[2] + m[14],
 ];
 
+const SCALE_PROPS = ["scale", "scaleX", "scaleY", "scaleZ"];
+
+/** The animated props among `props` (tracks on them). */
+function animatedProps(node: LayerLike, props: readonly string[]): string[] {
+	const tracks = (node.animation as AnimatedLayer["animation"])?.tracks ?? [];
+	return props.filter((p) => tracks.some((t) => t.prop === p));
+}
+
+/** Rigid pieces cannot change size: a fractured layer's scale holds still. */
+function assertRigid(node: LayerLike): void {
+	const scaling = animatedProps(node, SCALE_PROPS);
+	if (!scaling.length) return;
+	const id = typeof node.id === "string" ? ` "${node.id}"` : "";
+	throw new Error(
+		`Physics.fracture: layer${id} animates ${scaling.join(", ")}; rigid pieces cannot change size. Keep a fractured layer's scale still (position and rotation may animate).`,
+	);
+}
+
+/**
+ * The layer's animated position and rotation as kinematic drivers, sampled
+ * as the compositor draws them (GSAP eases, stepped timing, signals), so the
+ * stand-in collider is where the layer is; undefined when it holds still.
+ * Read lazily: animation added after `fracture()` counts.
+ */
+function followLayer(
+	node: LayerLike,
+	fps: number,
+): Body3DOptions["follow"] | undefined {
+	const layer = node as AnimatedLayer;
+	const at = (prop: string) => (frame: number) =>
+		sampleLayerProp(layer, prop, frame, fps);
+	// The renderer reads rotateZ, falling back to the 2D `rotation`.
+	const rotateZ = (frame: number) =>
+		animatedProps(node, ["rotateZ"]).length || typeof node.rotateZ === "number"
+			? sampleLayerProp(layer, "rotateZ", frame, fps)
+			: sampleLayerProp(layer, "rotation", frame, fps);
+	return {
+		x: at("x"),
+		y: at("y"),
+		z: at("z"),
+		rotateX: at("rotateX"),
+		rotateY: at("rotateY"),
+		rotateZ,
+	};
+}
+
+const MOVING_PROPS = [
+	"x",
+	"y",
+	"z",
+	"rotateX",
+	"rotateY",
+	"rotateZ",
+	"rotation",
+];
+
 /** @internal */
 export function createFracture(
 	world: PhysicsWorld3D,
@@ -120,6 +187,7 @@ export function createFracture(
 			`Physics.fracture: layer${id} has no mesh. Fracture a Layer3D primitive, extruded text, or a model node that carries modelData.`,
 		);
 	}
+	assertRigid(node);
 	const pose = nodePose(node);
 	const toObject = Matrix4Math.invert(pose.matrix) ?? Matrix4Math.identity();
 	const spec: Fracture3DSpec = {
@@ -136,7 +204,19 @@ export function createFracture(
 	const { cells } = fractureModel(model, spec);
 	node.fracture3d = spec;
 
-	const intact = world.body(target, { type: "fixed", output: "none" });
+	// While whole, a collider of its own shape stands in: fixed, or kinematic
+	// along the layer's animation.
+	const moving = animatedProps(node, MOVING_PROPS).length > 0;
+	const intact = world.body(
+		target,
+		moving
+			? {
+					type: "kinematic",
+					output: "none",
+					follow: followLayer(node, world.fps),
+				}
+			: { type: "fixed", output: "none" },
+	);
 	const pieces = cells.map((cell) =>
 		world.shapedBody(
 			undefined,
@@ -174,25 +254,45 @@ export function createFracture(
 		if (!due) return;
 		fracture.brokeAt = f;
 		intact.sim.setEnabled(false);
-		breakApart(world, pieces, options, radius, pose.position, hitter, f);
+		breakApart(world, pieces, options, radius, intact, pose, hitter, f);
 	});
 	world.onSimulated(() => {
+		assertRigid(node);
 		spec.track = recordTrack(pieces, world.startFrame + world.frames);
 	});
 	return fracture;
 }
 
-/** Wakes every piece: outward from the impact, plus some of the hitter's momentum. */
+/** Where the stand-in is and how it moves (px, quaternion, px/s, rad/s). */
+function standInState(world: PhysicsWorld3D, intact: PhysicsBody3D) {
+	const ppm = world.pixelsPerMeter;
+	return {
+		position: intact.sim.position().map((v) => v * ppm) as Vec3,
+		rotation: intact.sim.rotation(),
+		velocity: intact.sim.velocity().map((v) => v * ppm) as Vec3,
+		spin: intact.sim.angularVelocity() as Vec3,
+	};
+}
+
+/**
+ * Wakes every piece where the layer is now (the stand-in's pose, which
+ * follows its animation), carrying the layer's own motion, plus a burst
+ * outward from the impact and some of the hitter's momentum.
+ */
 function breakApart(
 	world: PhysicsWorld3D,
 	pieces: readonly PhysicsBody3D[],
 	options: Fracture3DOptions,
 	radius: number,
-	center: Vec3,
+	intact: PhysicsBody3D,
+	rest: NodePose,
 	hitter: PhysicsBody3D | undefined,
 	frame: number,
 ): void {
 	const ppm = world.pixelsPerMeter;
+	const layer = standInState(world, intact);
+	const q0 = quatFromEuler(...rest.rotation);
+	const undoRest: Quat = [-q0[0], -q0[1], -q0[2], q0[3]];
 	const hitAt = hitter?.sim.position().map((v) => v * ppm) as Vec3 | undefined;
 	const transfer = options.momentumTransfer ?? 0.35;
 	// The stand-in collider just bounced the hitter; it should have gone on
@@ -209,22 +309,49 @@ function breakApart(
 			hitter.sim.angularVelocity(),
 		);
 	}
-	const impact = options.impactPoint ?? hitAt ?? center;
+	const impact = options.impactPoint ?? hitAt ?? layer.position;
 	const speed = options.explosionSpeed ?? 0;
 	const spin = options.spin ?? speed / 3;
 	const rand = createRandom((options.seed ?? 1) * 7717 + 3);
 	for (const piece of pieces) {
-		const p = piece.center();
+		// The piece rests at the layer's authored pose: move it with the layer.
+		const c = piece.center();
+		const local = rotateByQuat(
+			[
+				c[0] - rest.position[0],
+				c[1] - rest.position[1],
+				c[2] - rest.position[2],
+			],
+			undoRest,
+		);
+		const arm = rotateByQuat(local, layer.rotation);
+		const p: Vec3 = [
+			layer.position[0] + arm[0],
+			layer.position[1] + arm[1],
+			layer.position[2] + arm[2],
+		];
+		// Rigid motion of the layer at this point: v + ω × r.
+		const w0 = layer.spin;
+		const carried: Vec3 = [
+			layer.velocity[0] + w0[1] * arm[2] - w0[2] * arm[1],
+			layer.velocity[1] + w0[2] * arm[0] - w0[0] * arm[2],
+			layer.velocity[2] + w0[0] * arm[1] - w0[1] * arm[0],
+		];
 		const d: Vec3 = [p[0] - impact[0], p[1] - impact[1], p[2] - impact[2]];
 		const dist = Math.hypot(...d) || 1;
 		const falloff = 1 / (1 + (dist / Math.max(1, radius)) ** 2);
 		const v = d.map(
-			(x, i) => (x / dist) * speed * falloff + hitVel[i]! * transfer * falloff,
+			(x, i) =>
+				carried[i]! +
+				(x / dist) * speed * falloff +
+				hitVel[i]! * transfer * falloff,
 		) as Vec3;
 		const axis = [rand() - 0.5, rand() - 0.5, rand() - 0.5];
 		const len = Math.hypot(...axis) || 1;
-		const w = axis.map((a) => (a / len) * spin * (0.5 + rand())) as Vec3;
-		piece.wake(frame, v, w);
+		const w = axis.map(
+			(a, i) => (a / len) * spin * (0.5 + rand()) + (w0[i]! * 180) / Math.PI,
+		) as Vec3;
+		piece.wake(frame, v, w, { position: p, rotation: layer.rotation });
 	}
 }
 

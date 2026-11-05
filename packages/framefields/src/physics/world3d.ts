@@ -104,7 +104,8 @@ export function quatFromEuler(rx: number, ry: number, rz: number): Quat {
 	return quatMul(quatMul(qz, qy), qx);
 }
 
-function quatMul(a: Quat, b: Quat): Quat {
+/** @internal */
+export function quatMul(a: Quat, b: Quat): Quat {
 	const [ax, ay, az, aw] = a;
 	const [bx, by, bz, bw] = b;
 	return [
@@ -188,12 +189,27 @@ export class PhysicsBody3D implements CoreBody<Vec3, Quat> {
 	/**
 	 * @internal Starts the body now, mid-simulation (`frame` relative to the
 	 * world's start): it moves from the next frame, at this velocity (px/s,
-	 * degrees per second).
+	 * degrees per second), from `pose` (px) when given.
 	 */
-	wake(frame: number, velocity: Vec3, angularVelocity: Vec3): void {
+	wake(
+		frame: number,
+		velocity: Vec3,
+		angularVelocity: Vec3,
+		pose?: { position: Vec3; rotation: Quat },
+	): void {
 		this.wokeAt = frame;
 		const ppm = this.world.pixelsPerMeter;
 		this.sim.setEnabled(true);
+		if (pose) {
+			this.sim.setPose(
+				[
+					pose.position[0] / ppm,
+					pose.position[1] / ppm,
+					pose.position[2] / ppm,
+				],
+				pose.rotation,
+			);
+		}
 		this.sim.setVelocity(
 			[velocity[0] / ppm, velocity[1] / ppm, velocity[2] / ppm],
 			[
@@ -349,7 +365,8 @@ export class PhysicsBody3D implements CoreBody<Vec3, Quat> {
 	}
 }
 
-function rotateByQuat(v: Vec3, q: Quat): Vec3 {
+/** @internal */
+export function rotateByQuat(v: Vec3, q: Quat): Vec3 {
 	const r = quatMul(quatMul(q, [v[0], v[1], v[2], 0]), [
 		-q[0],
 		-q[1],
@@ -479,6 +496,10 @@ export class PhysicsWorld3D extends WorldCore<Vec3, Quat, PhysicsBody3D> {
 			options,
 			this.newRecording(),
 		);
+		// A kinematic body following drivers starts where they put it, not at
+		// the layer's own pose (else its first step sweeps through the gap).
+		const start = body.kinematicTarget(this.startFrame);
+		if (start) simBody.setPose(start.position, start.rotation);
 		return this.addBody(body);
 	}
 

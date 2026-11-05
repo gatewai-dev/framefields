@@ -57,6 +57,7 @@
 		"@framefields/renderers": "workspace:*",
 		"@framefields/webgpu-renderers": "workspace:*",
 		"@mediabunny/mp3-encoder": "^1.61.6",
+		"gsap": "^3.15.0",
 		"yoga-layout": "^3.2.1"
 	},
 	"publishConfig": {

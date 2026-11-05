@@ -17,7 +17,14 @@ export interface MotionBlurPassOptions {
 	softDepth?: number;
 }
 
-const TILE_FORMAT: GPUTextureFormat = "rgba16float";
+/** Format of the tile textures `render` takes. */
+export const MOTION_BLUR_TILE_FORMAT: GPUTextureFormat = "rgba16float";
+const TILE_FORMAT = MOTION_BLUR_TILE_FORMAT;
+
+/** Side of a tile (the longest blur), px, for these options. */
+export function motionBlurTileSize(options: MotionBlurPassOptions): number {
+	return Math.max(4, Math.min(160, Math.round(options.maxBlur ?? 48)));
+}
 
 export class MotionBlurPipeline {
 	private readonly device: GPUDevice;
@@ -27,8 +34,6 @@ export class MotionBlurPipeline {
 	private readonly reconstruct = new Map<GPUTextureFormat, GPURenderPipeline>();
 	/** One uniform block per blur this frame: an encoder may blur several scenes. */
 	private readonly params: BufferPool;
-	private tiles: { a: GPUTexture; b: GPUTexture; w: number; h: number } | null =
-		null;
 
 	constructor(device: GPUDevice) {
 		this.device = device;
@@ -58,31 +63,11 @@ export class MotionBlurPipeline {
 		});
 	}
 
-	private tileTextures(w: number, h: number): { a: GPUTexture; b: GPUTexture } {
-		if (this.tiles && this.tiles.w === w && this.tiles.h === h)
-			return this.tiles;
-		this.tiles?.a.destroy();
-		this.tiles?.b.destroy();
-		const make = (label: string) =>
-			this.device.createTexture({
-				label,
-				size: { width: w, height: h },
-				format: TILE_FORMAT,
-				usage:
-					GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
-			});
-		this.tiles = {
-			a: make("motion-blur-tile-max"),
-			b: make("motion-blur-neighbor-max"),
-			w,
-			h,
-		};
-		return this.tiles;
-	}
-
 	/**
 	 * Blurs `color` (premultiplied) by `velocity` (`VELOCITY_FORMAT`, same
-	 * size) into `target` (a view of `targetFormat`, same size).
+	 * size) into `target` (a view of `targetFormat`, same size). `tiles`
+	 * returns a render-attachment texture of the tile grid's size: the
+	 * caller owns them, since one frame may blur scenes of several sizes.
 	 */
 	render(
 		encoder: GPUCommandEncoder,
@@ -90,14 +75,16 @@ export class MotionBlurPipeline {
 		velocity: GPUTexture,
 		target: GPUTextureView,
 		targetFormat: GPUTextureFormat,
-		options: MotionBlurPassOptions = {},
+		options: MotionBlurPassOptions,
+		tiles: (label: string, width: number, height: number) => GPUTexture,
 	): void {
-		const k = Math.max(4, Math.min(160, Math.round(options.maxBlur ?? 48)));
+		const k = motionBlurTileSize(options);
 		const width = color.width;
 		const height = color.height;
 		const tw = Math.ceil(width / k);
 		const th = Math.ceil(height / k);
-		const { a, b } = this.tileTextures(tw, th);
+		const a = tiles("MotionBlurTileMax", tw, th);
+		const b = tiles("MotionBlurNeighborMax", tw, th);
 		const params = this.params.getBuffer(
 			this.device,
 			new Float32Array([
@@ -168,7 +155,5 @@ export class MotionBlurPipeline {
 
 	destroy(): void {
 		this.params.destroy();
-		this.tiles?.a.destroy();
-		this.tiles?.b.destroy();
 	}
 }

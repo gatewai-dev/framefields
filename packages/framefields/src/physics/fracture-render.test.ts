@@ -9,6 +9,7 @@ import {
 	CompositorProgramSchema,
 	Layer,
 	Layer3D,
+	LayerAnimation,
 	type LayoutNode,
 } from "../index.js";
 import { decodePngPixels } from "../test-utils/pixels.js";
@@ -162,5 +163,119 @@ describe("Physics.fracture", () => {
 		) as LayoutNode;
 		const replay = await scene([copy]).renderFrame({ frame: 25 });
 		expect(replay).toEqual(direct);
+	});
+
+	it("breaks a moving layer where it is, its pieces carrying its motion", async () => {
+		// Slides right 4 px per frame and turns; breaks at frame 12 with no
+		// burst and no gravity: the pieces keep flying as the layer did.
+		const slide = () =>
+			slab("slab").animate(
+				LayerAnimation.create()
+					.keys("x", [
+						[0, C - 80],
+						[40, C + 80],
+					])
+					.keys("rotateZ", [
+						[0, 0],
+						[40, 20],
+					]),
+			);
+		const whole = scene([slide()]);
+		const target = slide();
+		const comp = scene([target]);
+		const world = await Physics.world3d({ fps: FPS, frames: 40, gravity: 0 });
+		const broken = world.fracture(target, { cells: 10, fractureFrame: 12 });
+		world.simulate();
+		expect(broken.frame).toBe(12);
+		const centroid = async (c: Composition, f: number) => {
+			const { pixels } = await decodePngPixels(
+				await c.renderFrame({ frame: f }),
+			);
+			let sx = 0;
+			let n = 0;
+			for (let i = 0; i < pixels.length; i += 4) {
+				if ((pixels[i] ?? 0) > 128) {
+					sx += (i / 4) % SIZE;
+					n++;
+				}
+			}
+			return sx / n;
+		};
+		for (const f of [12, 13, 20]) {
+			// Linear keys sampled with the renderer's eases: the pieces track
+			// the animation the whole layer would have followed.
+			expect(
+				Math.abs((await centroid(comp, f)) - (await centroid(whole, f))),
+			).toBeLessThan(1.5);
+		}
+	});
+
+	it("collides along its animation and breaks on what it hits", async () => {
+		const target = slab("slab").animate(
+			LayerAnimation.create().keys("x", [
+				[0, C - 150],
+				[30, C + 150],
+			]),
+		);
+		const ball = Layer3D.sphere({
+			id: "ball",
+			x: C + 40,
+			y: C,
+			radius: 20,
+			color: "#ffffff",
+			material: "unlit",
+		});
+		const world = await Physics.world3d({ fps: FPS, frames: 30, gravity: 0 });
+		const broken = world.fracture(target, { cells: 8 });
+		world.body(ball);
+		world.simulate();
+		// The slab's right face (x + 80) meets the ball's left (C + 20) near frame 9.
+		expect(broken.frame).toBeGreaterThan(6);
+		expect(broken.frame).toBeLessThan(12);
+	});
+
+	it("refuses a layer whose scale is animated", async () => {
+		const target = slab("slab").animate(
+			LayerAnimation.create().keys("scale", [
+				[0, 1],
+				[30, 2],
+			]),
+		);
+		const world = await Physics.world3d({ fps: FPS, frames: 30 });
+		expect(() => world.fracture(target, { cells: 8 })).toThrow(
+			/animates scale/,
+		);
+	});
+
+	it("flies its pieces in the space of a 3D group, like other bodies", async () => {
+		const group = (child: LayoutNode) =>
+			Layer.box({
+				position: "absolute",
+				x: 60,
+				y: 0,
+				width: SIZE,
+				height: SIZE,
+				is3D: true,
+				transformStyle: "preserve-3d",
+				children: [child],
+			});
+		const target = slab("slab");
+		const comp = scene([group(target)]);
+		const world = await Physics.world3d({ fps: FPS, frames: 20, gravity: 0 });
+		world.fracture(target, { cells: 8, fractureFrame: 5 });
+		world.simulate();
+		// Still pieces (no burst, no gravity) stay exactly where the whole layer was.
+		const before = await comp.renderFrame({ frame: 3 });
+		const after = await comp.renderFrame({ frame: 15 });
+		const { pixels: a } = await decodePngPixels(before);
+		const { pixels: b } = await decodePngPixels(after);
+		let diff = 0;
+		let lit = 0;
+		for (let i = 0; i < a.length; i += 4) {
+			if ((a[i] ?? 0) > 128) lit++;
+			if (Math.abs((a[i] ?? 0) - (b[i] ?? 0)) > 60) diff++;
+		}
+		expect(lit).toBeGreaterThan(1000);
+		expect(diff).toBeLessThan(lit * 0.02);
 	});
 });

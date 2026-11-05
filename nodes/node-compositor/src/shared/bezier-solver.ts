@@ -2,6 +2,7 @@
  * Cubic Bezier and Speed Curve Solver for Motion Graphics
  * Provides analytical/Newton-Raphson solvers for unit easing curves and 2D spatial trajectory splines.
  */
+import { solveCubicBezier } from "@framefields/compositions/program";
 
 export interface Point2D {
 	x: number;
@@ -25,74 +26,7 @@ export interface SplineSegment {
 	endFrame: number;
 }
 
-/**
- * Solves a cubic bezier curve defined by control points (x1, y1) and (x2, y2)
- * for a given progress parameter t in [0, 1].
- */
-export function solveCubicBezier(
-	x1: number,
-	y1: number,
-	x2: number,
-	y2: number,
-	t: number,
-): number {
-	if (t <= 0) return 0;
-	if (t >= 1) return 1;
-
-	// Check for linear edge case
-	if (x1 === y1 && x2 === y2) return t;
-
-	// Find u such that x(u) = t
-	// x(u) = 3*(1-u)^2 * u * x1 + 3*(1-u) * u^2 * x2 + u^3
-	// dx/du = 3*(1-u)^2 * x1 + 6*(1-u)*u * (x2 - x1) + 3*u^2 * (1 - x2)
-	let u = t; // initial guess
-	for (let i = 0; i < 8; i++) {
-		const oneMinusU = 1 - u;
-		const oneMinusU2 = oneMinusU * oneMinusU;
-		const u2 = u * u;
-
-		const currentX = 3 * oneMinusU2 * u * x1 + 3 * oneMinusU * u2 * x2 + u2 * u;
-		const diff = currentX - t;
-		if (Math.abs(diff) < 1e-6) break;
-
-		const dx =
-			3 * oneMinusU2 * x1 + 6 * oneMinusU * u * (x2 - x1) + 3 * u2 * (1 - x2);
-
-		if (Math.abs(dx) < 1e-6) break;
-		u -= diff / dx;
-		u = Math.max(0, Math.min(1, u));
-	}
-
-	// Bisection fallback if Newton didn't converge within bounds
-	const oneMinusU = 1 - u;
-	const checkX =
-		3 * oneMinusU * oneMinusU * u * x1 + 3 * oneMinusU * u * u * x2 + u * u * u;
-
-	if (Math.abs(checkX - t) > 1e-3) {
-		let low = 0;
-		let high = 1;
-		u = t;
-		for (let i = 0; i < 16; i++) {
-			const mid = (low + high) * 0.5;
-			const oMid = 1 - mid;
-			const xMid =
-				3 * oMid * oMid * mid * x1 +
-				3 * oMid * mid * mid * x2 +
-				mid * mid * mid;
-			if (Math.abs(xMid - t) < 1e-5) {
-				u = mid;
-				break;
-			}
-			if (xMid < t) low = mid;
-			else high = mid;
-			u = mid;
-		}
-	}
-
-	// Evaluate y(u)
-	const oU = 1 - u;
-	return 3 * oU * oU * u * y1 + 3 * oU * u * u * y2 + u * u * u;
-}
+export { solveCubicBezier };
 
 /**
  * Calculates the instantaneous speed (derivative |dy/dt|) at parameter t in [0, 1].

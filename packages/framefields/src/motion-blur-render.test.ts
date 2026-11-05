@@ -233,4 +233,39 @@ describe("shutter motion blur", () => {
 		}
 		expect(partialB).toBeGreaterThan(partialA * 1.3);
 	});
+
+	it("keeps each composition's motion history its own", async () => {
+		// Still renders reuse render ids across compositions: B must not read
+		// A's frame 20 (same node id, moving the other way) as its own.
+		const backward = () => scene([mover(-24)]);
+		await backward().renderFrame({ frame: 20 });
+		const after = await scene([mover(24)]).renderFrame({ frame: 21 });
+		const fresh = scene([mover(24)]);
+		await fresh.renderFrame({ frame: 20 });
+		expect(after).toEqual(await fresh.renderFrame({ frame: 21 }));
+	});
+
+	it("blurs with an environment floor and bloom", async () => {
+		const comp = scene([
+			Layer.environment({ floor: { y: C + 60 }, bloom: true } as never),
+			Layer3D.sphere({
+				id: "orb",
+				x: C,
+				y: C,
+				radius: 30,
+				color: "#ffffff",
+				emissive: "#ffffff",
+				emissiveIntensity: 4,
+			}).animate(
+				LayerAnimation.create().keys("x", [
+					[0, C - 600],
+					[60, C + 600],
+				]),
+			),
+		]);
+		const { pixels } = await decodePngPixels(
+			await comp.renderFrame({ frame: 30 }),
+		);
+		expect(pixels.some((v, i) => i % 4 === 0 && v > 200)).toBe(true);
+	});
 });

@@ -19,4 +19,5 @@ export * from "./schema.js";
 export * from "./sequence.js";
 export * from "./stagger.js";
 export * from "./to-virtual-media.js";
+export * from "./track-sampler.js";
 export * from "./validate.js";

@@ -12,16 +12,22 @@ import {
 	meshStructsWgsl,
 } from "./mesh3d.js";
 
-export const meshVelocityWgsl = `
-${meshStructsWgsl}
-
+/** The velocity pass's camera: this and the previous frame's view-projection. */
+const velocityCameraWgsl = `
 struct VelocityCamera {
     viewProj     : mat4x4<f32>,
     prevViewProj : mat4x4<f32>,
+    invViewProj  : mat4x4<f32>,
     eye          : vec4<f32>,
     dir          : vec4<f32>,
     viewport     : vec4<f32>, // xy = target size, px
 };
+`;
+
+export const meshVelocityWgsl = `
+${meshStructsWgsl}
+
+${velocityCameraWgsl}
 
 @group(0) @binding(0) var<uniform> vcam : VelocityCamera;
 @group(1) @binding(0) var<uniform> model : ModelUniforms;
@@ -91,13 +97,7 @@ fn fs_velocity(in: VelocityOut) -> @location(0) vec4<f32> {
  * the background's motion.
  */
 export const quadVelocityWgsl = `
-struct VelocityCamera {
-    viewProj     : mat4x4<f32>,
-    prevViewProj : mat4x4<f32>,
-    eye          : vec4<f32>,
-    dir          : vec4<f32>,
-    viewport     : vec4<f32>,
-};
+${velocityCameraWgsl}
 
 struct QuadMotion {
     model     : mat4x4<f32>,
@@ -140,5 +140,58 @@ fn fs_quad_velocity(in: QuadVelocityOut) -> @location(0) vec4<f32> {
     let ndcPrev = in.prev.xy / max(in.prev.w, 1e-6);
     let motion = (ndc - ndcPrev) * 0.5 * vcam.viewport.xy * vec2<f32>(1.0, -1.0);
     return vec4<f32>(motion, in.depth, 1.0);
+}
+`;
+
+/**
+ * Velocity of the environment's floor plane (y = floorY, infinite, drawn by
+ * ray intersection like the color pass): still in the world, it moves only
+ * with the camera.
+ */
+export const floorVelocityWgsl = `
+${velocityCameraWgsl}
+
+struct FloorMotion {
+    params : vec4<f32>, // x = floor y
+};
+
+@group(0) @binding(0) var<uniform> vcam : VelocityCamera;
+@group(1) @binding(0) var<uniform> floorM : FloorMotion;
+
+@vertex
+fn vs_floor_velocity(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+    let p = array<vec2<f32>, 3>(vec2(-1.0, -1.0), vec2(3.0, -1.0), vec2(-1.0, 3.0));
+    return vec4<f32>(p[i], 0.0, 1.0);
+}
+
+struct FloorVelocityOut {
+    @location(0) color : vec4<f32>,
+    @builtin(frag_depth) depth : f32,
+};
+
+@fragment
+fn fs_floor_velocity(@builtin(position) pos: vec4<f32>) -> FloorVelocityOut {
+    let size = vcam.viewport.xy;
+    let ndc = vec2<f32>(pos.x / size.x * 2.0 - 1.0, 1.0 - pos.y / size.y * 2.0);
+    let a = vcam.invViewProj * vec4<f32>(ndc, 0.0, 1.0);
+    let b = vcam.invViewProj * vec4<f32>(ndc, 1.0, 1.0);
+    let p0 = a.xyz / a.w;
+    let ray = b.xyz / b.w - p0;
+    if (abs(ray.y) < 1e-9) {
+        discard;
+    }
+    let t = (floorM.params.x - p0.y) / ray.y;
+    if (t < 0.0) {
+        discard;
+    }
+    let world = vec4<f32>(p0 + ray * t, 1.0);
+    let clip = vcam.viewProj * world;
+    let clipPrev = vcam.prevViewProj * world;
+    let motion = (clip.xy / clip.w - clipPrev.xy / max(clipPrev.w, 1e-6)) *
+        0.5 * size * vec2<f32>(1.0, -1.0);
+    var out: FloorVelocityOut;
+    out.color = vec4<f32>(motion, dot(world.xyz - vcam.eye.xyz, vcam.dir.xyz), 1.0);
+    out.depth = clamp(clip.z / clip.w, 0.0, 1.0);
+    return out;
 }
 `;

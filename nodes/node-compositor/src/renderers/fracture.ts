@@ -65,16 +65,18 @@ function blend(
 }
 
 /**
- * Model-space matrices of the pieces' nodes at `frame`: a piece at scene
- * pose (p, q) has node matrix M⁻¹ · T(p) · R(q) · S, so with its inverse
- * bind T(−centroid) a vertex lands at p + q · S · (v − centroid).
- * Undefined without a track (the rest pose).
+ * Model-space matrices of the pieces' nodes at `frame`. The track is in the
+ * layer's parent space (physics reads the layer's own x/y/z, as for any
+ * body), and `layerProps` is the layer's matrix in that space, L. A piece
+ * at pose (p, q) has node matrix L⁻¹ · T(p) · R(q) · S, so with its inverse
+ * bind T(−centroid) a vertex lands at parent · (p + q · S · (v − centroid)):
+ * pieces fly in their group, like other bodies. Undefined without a track.
  */
 export function fracturePose(
 	model: Model3DData,
 	spec: Fracture3DSpec,
 	frame: number,
-	sceneRoot: Mat4,
+	layerProps: Mat4,
 	scale: Vec3,
 ): Mat4[] | undefined {
 	const track = spec.track;
@@ -86,7 +88,7 @@ export function fracturePose(
 	const f = Math.min(Math.max(frame, 0), frames - 1);
 	const f0 = Math.floor(f);
 	const f1 = Math.min(frames - 1, f0 + 1);
-	const toModel = Matrix4Math.invert(sceneRoot) ?? Matrix4Math.identity();
+	const toModel = Matrix4Math.invert(layerProps) ?? Matrix4Math.identity();
 	const out: Mat4[] = [];
 	for (let i = 0; i < pieces; i++) {
 		const { p, q } = blend(

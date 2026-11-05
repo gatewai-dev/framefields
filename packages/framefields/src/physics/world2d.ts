@@ -362,6 +362,10 @@ export class PhysicsWorld2D extends WorldCore<Vec2, number, PhysicsBody2D> {
 			options,
 			this.newRecording(),
 		);
+		// A kinematic body following drivers starts where they put it, not at
+		// the layer's own pose (else its first step sweeps through the gap).
+		const start = body.kinematicTarget(this.startFrame);
+		if (start) simBody.setPose(start.position, start.rotation);
 		return this.addBody(body);
 	}
 

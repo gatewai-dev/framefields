@@ -17,7 +17,6 @@ export default defineConfig({
 		"src/sam/index.ts",
 		"src/cloud/index.ts",
 		"src/storage/index.ts",
-		"src/forge/index.ts",
 		"src/cli.ts",
 		"src/cli/check-worker.ts",
 		"src/cli/local-worker.ts",

@@ -144,7 +144,14 @@ export type MeshMotionPrev = Pick<
 	| "instanceBuffer"
 	| "wind"
 	| "crowd"
->;
+> & {
+	/**
+	 * The mesh's vertices as the GPU deformed them a frame earlier (morph
+	 * targets, audio deformation), in the vertex buffer's layout. Absent:
+	 * the vertices did not change shape, so this frame's buffer stands in.
+	 */
+	vertexBuffer?: GPUBuffer;
+};
 
 /** Format of the velocity target: motion px (rg), linear depth (b), coverage (a). */
 export const VELOCITY_FORMAT: GPUTextureFormat = "rgba16float";
@@ -777,6 +784,7 @@ export class Mesh3DPipeline {
 		pass.setBindGroup(1, now);
 		pass.setBindGroup(2, before);
 		pass.setBindGroup(3, this.textureGroup(texture, sampler, undefined));
+		pass.setVertexBuffer(4, prev?.vertexBuffer ?? meshBuffers.vertexBuffer);
 		this.issue(
 			pass,
 			meshBuffers,
@@ -807,7 +815,16 @@ export class Mesh3DPipeline {
 			vertex: {
 				module: this.velocityModule,
 				entryPoint: "vs_velocity",
-				buffers: this.vertexBuffers,
+				buffers: [
+					...this.vertexBuffers,
+					// The previous frame's deformed positions (or this frame's).
+					{
+						arrayStride: 64,
+						attributes: [
+							{ shaderLocation: 12, offset: 0, format: "float32x3" },
+						],
+					},
+				],
 			},
 			fragment: {
 				module: this.velocityModule,

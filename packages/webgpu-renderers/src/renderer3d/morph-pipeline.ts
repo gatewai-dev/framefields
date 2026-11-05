@@ -140,7 +140,11 @@ export class MorphPipeline {
 			output = this.device.createBuffer({
 				label: "MeshMorphOutput",
 				size,
-				usage: GPUBufferUsage.STORAGE | GPUBufferUsage.VERTEX,
+				// COPY_SRC: motion blur keeps a copy as the next frame's past.
+				usage:
+					GPUBufferUsage.STORAGE |
+					GPUBufferUsage.VERTEX |
+					GPUBufferUsage.COPY_SRC,
 			});
 			this.outputs[this.outputIndex] = output;
 		}

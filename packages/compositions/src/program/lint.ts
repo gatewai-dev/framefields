@@ -245,7 +245,13 @@ export function lintComposition(
 				`'${id}' scatters onto a surface its slopeRange / elevationRange filters reject entirely, so no instance is placed. Widen the ranges (slope is degrees from level, elevation 0..1 from the surface's lowest to highest point).`,
 				id,
 			);
-		if (node.roughness !== undefined || node.metallic !== undefined)
+		// Physical and layered specular lobes read the environment's light.
+		if (
+			node.roughness !== undefined ||
+			node.metallic !== undefined ||
+			node.clearcoat !== undefined ||
+			node.anisotropy !== undefined
+		)
 			pbrNodes.push(id);
 
 		// Text that vanishes into what is behind it.
@@ -389,7 +395,7 @@ export function lintComposition(
 		push(
 			"info",
 			"pbr_without_environment",
-			`roughness / metallic are set (${pbrNodes.slice(0, 3).join(", ")}${pbrNodes.length > 3 ? ", …" : ""}) but the scene has no Layer.environment(): add one for physically based shading, reflections and tone mapping.`,
+			`roughness / metallic / clearcoat / anisotropy are set (${pbrNodes.slice(0, 3).join(", ")}${pbrNodes.length > 3 ? ", …" : ""}) but the scene has no Layer.environment(): add one for physically based shading, the coat and brushed-metal reflections, and tone mapping.`,
 		);
 	}
 	return out;

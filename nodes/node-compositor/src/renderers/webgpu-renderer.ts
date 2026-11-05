@@ -157,6 +157,11 @@ function textInkOutset(
 	return reach > 0 ? Math.ceil(reach) + 1 : 0;
 }
 
+/** Bytes of a mesh's vertex buffer: 16 floats per vertex. */
+function deformedBytes(mesh: Mesh3DData): number {
+	return (mesh.positions.length / 3) * 64;
+}
+
 function hasVertexAlpha(mesh: Mesh3DData): boolean {
 	const cached = meshHasAlpha.get(mesh);
 	if (cached !== undefined) return cached;
@@ -1675,10 +1680,23 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 							windTime: item.opts.wind?.time,
 							crowdTime: item.opts.crowd?.time,
 						},
-						item.opts.instanceBuffer,
+						{
+							instanceBuffer: item.opts.instanceBuffer,
+							vertices: item.meshBuffers && {
+								buffer: item.meshBuffers.vertexBuffer,
+								bytes: deformedBytes(item.mesh),
+							},
+						},
 					);
 				} else if (item.kind === "quad") {
 					h.recordQuad(key, shiftedFrame, r3d.quadModelMatrix(item.opts));
+				} else {
+					h.recordSlug(
+						key,
+						shiftedFrame,
+						r3d.quadModelMatrix(item.opts),
+						item.batches,
+					);
 				}
 			}
 			h.recordFrame(shiftedFrame, cam);
@@ -1711,6 +1729,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 						? h.previousMesh(key, shiftedFrame, {
 								skinning: item.opts.skinningMatrices,
 								instanceBuffer: item.opts.instanceBuffer,
+								vertexBytes: item.meshBuffers && deformedBytes(item.mesh),
 								wind: item.opts.wind,
 								crowd: item.opts.crowd,
 							})
@@ -1731,6 +1750,15 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 						item.opts,
 						key ? h.previousQuad(key, shiftedFrame) : undefined,
 					);
+				} else {
+					r3d.drawSlugVelocity(
+						vel.pass,
+						vel.cameraBindGroup,
+						item.batches,
+						item.opts,
+						item.stackBase,
+						key ? h.previousSlug(key, shiftedFrame) : undefined,
+					);
 				}
 			}
 			vel.pass.end();
@@ -1749,19 +1777,15 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 			if (pending3DItems.length === 0 || !camera) {
 				return { finalTex: curTex, finalView: curView };
 			}
-			if (historyOnly) {
-				if (history) recordMotion(history, camera);
-				pending3DItems.length = 0;
-				return { finalTex: curTex, finalView: curView };
-			}
-
 			const r3d = getRenderer3D(
 				ctx.device,
 				ctx.renderer.format ?? "rgba8unorm",
 				sampleCount3d,
 			);
 
-			// Morph targets are applied in object space before audio deformation and skinning.
+			// Morph targets are applied in object space before audio deformation
+			// and skinning. A history-only frame deforms too: motion blur keeps
+			// the deformed vertices as the next frame's past.
 			for (const item of pending3DItems) {
 				if (item.kind !== "mesh") continue;
 				if (item.opts.morphWeights?.length) {
@@ -1781,6 +1805,12 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 						item.meshBuffers,
 					);
 				}
+			}
+
+			if (historyOnly) {
+				if (history) recordMotion(history, camera);
+				pending3DItems.length = 0;
+				return { finalTex: curTex, finalView: curView };
 			}
 
 			const itemTextures = pendingTextures();
@@ -2666,12 +2696,17 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					return;
 				}
 			}
+			// A layer in the 3D scene: flagged, or placed off the z = 0 plane.
+			const isTrue3D =
+				Boolean(target?.is3D ?? lop.is3D) ||
+				Boolean(camera && ((target?.z ?? lop.z ?? 0) !== 0 || lop.is3D));
 			// Recording motion needs only the 3D draws: flat leaves (video,
 			// text, effects) skip their work in the history pass.
 			if (
 				historyOnly &&
 				!isContainer &&
 				kind !== "model3d" &&
+				!isTrue3D &&
 				!has3DTransform(target, lop)
 			)
 				return;
@@ -4293,10 +4328,6 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 
 				quad3D = q;
 			}
-
-			const isTrue3D =
-				Boolean(target?.is3D ?? lop.is3D) ||
-				Boolean(camera && ((target?.z ?? lop.z ?? 0) !== 0 || lop.is3D));
 
 			// Container rendering
 			if (isContainer) {

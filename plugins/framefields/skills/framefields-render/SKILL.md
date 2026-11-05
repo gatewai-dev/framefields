@@ -421,8 +421,8 @@ if (!result.qa!.passed) process.exitCode = 1; // fail CI / the agent loop
 | `low_contrast_text` | warning | Text below 3:1 contrast against the solid color behind it (suggests a readable one) |
 | `offscreen_layer` | warning | A static absolute layer entirely outside the canvas |
 | `duplicate_id` | error | Two layers share an id: the renderer keeps one and drops the other |
-| `shadow_unsupported_light` | warning | `castShadow` on a point or ambient light |
-| `pbr_without_environment` | info | `roughness` / `metallic` set but no `Layer.environment()` (no physical shading) |
+| `shadow_unsupported_light` | warning | `castShadow` on a light that casts none (ambient, environment) |
+| `pbr_without_environment` | info | `roughness` / `metallic` / `clearcoat` / `anisotropy` set but no `Layer.environment()` (no physical shading or coat reflections) |
 | `static_track` | info | Every keyframe on a track holds the same value |
 
 The document checks also run on their own, before any render: `comp.lint()` returns the same `{ severity, code, message, layerId }` entries. Run it in Step 1, right after typechecking.

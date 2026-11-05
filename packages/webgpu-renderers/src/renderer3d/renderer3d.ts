@@ -171,6 +171,40 @@ export interface DrawQuad3DOpts extends SurfaceParams {
  */
 const TEXT_STACK_PULL = 5e-4;
 
+/** A text layer's px [0, w] x [0, h] onto its plane's unit quad, in world space. */
+function slugLayerToWorld(quad: Mat4, width: number, height: number): Mat4 {
+	return Matrix4Math.multiply(
+		quad,
+		Matrix4Math.multiply(
+			Matrix4Math.translate(-0.5, -0.5, 0),
+			Matrix4Math.scale(1 / width, 1 / height, 1),
+		),
+	);
+}
+
+/** A glyph batch's paragraph space to world: its 2D affine, then the plane. */
+function slugBatchMatrix(layerToWorld: Mat4, batch: SlugGlyphBatch): Mat4 {
+	const [a, b, c, d, e, f] = batch.transform;
+	return Matrix4Math.multiply(layerToWorld, [
+		a,
+		b,
+		0,
+		0,
+		c,
+		d,
+		0,
+		0,
+		0,
+		0,
+		1,
+		0,
+		e,
+		f,
+		0,
+		1,
+	]);
+}
+
 export interface DrawMesh3DOpts extends SurfaceParams {
 	/** Refractive index for glass materials (default 1.5). */
 	ior?: number;
@@ -1646,36 +1680,10 @@ export class Renderer3D {
 		if (!(width > 0 && height > 0)) return;
 		const quad = this.quadModelMatrix(opts);
 		const normalMatrix = opts.normalMatrix ?? Light3D.computeNormalMatrix(quad);
-		// Layer px [0, w] x [0, h] onto the unit quad.
-		const layerToWorld = Matrix4Math.multiply(
-			quad,
-			Matrix4Math.multiply(
-				Matrix4Math.translate(-0.5, -0.5, 0),
-				Matrix4Math.scale(1 / width, 1 / height, 1),
-			),
-		);
+		const layerToWorld = slugLayerToWorld(quad, width, height);
 
 		for (let i = 0; i < batches.length; i++) {
 			const batch = batches[i];
-			const [a, b, c, d, e, f] = batch.transform;
-			const paragraphToLayer: Mat4 = [
-				a,
-				b,
-				0,
-				0,
-				c,
-				d,
-				0,
-				0,
-				0,
-				0,
-				1,
-				0,
-				e,
-				f,
-				0,
-				1,
-			];
 			this.slug3dPipeline.draw(
 				pass,
 				cameraBindGroup,
@@ -1684,7 +1692,7 @@ export class Renderer3D {
 				batch.instances,
 				batch.instanceCount,
 				{
-					modelMatrix: Matrix4Math.multiply(layerToWorld, paragraphToLayer),
+					modelMatrix: slugBatchMatrix(layerToWorld, batch),
 					normalMatrix,
 					opacity: batch.opacity * (opts.opacity ?? 1),
 					slant: batch.slant,
@@ -2358,6 +2366,55 @@ export class Renderer3D {
 		pass.setBindGroup(0, cameraBindGroup);
 		pass.setBindGroup(1, group);
 		pass.draw(4);
+	}
+
+	/**
+	 * Draws a text layer's glyphs' motion since `prev` (its plane matrix and
+	 * glyph batches a frame earlier) into the velocity pass. A batch whose
+	 * glyphs changed (another font or count) moves with its plane alone.
+	 */
+	drawSlugVelocity(
+		pass: GPURenderPassEncoder,
+		cameraBindGroup: GPUBindGroup,
+		batches: SlugGlyphBatch[],
+		opts: DrawQuad3DOpts,
+		stackBase: number,
+		prev: { modelMatrix: Mat4; batches: SlugGlyphBatch[] } | undefined,
+	): void {
+		const { width, height } = opts;
+		if (!(width > 0 && height > 0)) return;
+		const quad = this.quadModelMatrix(opts);
+		const layerToWorld = slugLayerToWorld(quad, width, height);
+		const prevLayerToWorld = slugLayerToWorld(
+			prev?.modelMatrix ?? quad,
+			width,
+			height,
+		);
+		batches.forEach((batch, i) => {
+			const before = prev?.batches[i];
+			const same =
+				before?.font === batch.font &&
+				before.instanceCount === batch.instanceCount;
+			this.slug3dPipeline.drawVelocity(
+				pass,
+				cameraBindGroup,
+				this.mesh3dPipeline.velocityCameraLayout,
+				batch.font,
+				batch.instances,
+				batch.instanceCount,
+				{
+					modelMatrix: slugBatchMatrix(layerToWorld, batch),
+					prevModelMatrix: slugBatchMatrix(
+						prevLayerToWorld,
+						same ? before : batch,
+					),
+					prevInstances: same ? before.instances : undefined,
+					opacity: batch.opacity * (opts.opacity ?? 1),
+					slant: batch.slant,
+					depthPull: TEXT_STACK_PULL * (stackBase + i + 1),
+				},
+			);
+		});
 	}
 
 	/** Draws the environment floor's motion (camera motion only) into the velocity pass. */

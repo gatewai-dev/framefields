@@ -406,7 +406,7 @@ Where depth jumps (an object's outline) the surface stretches across with the ed
 
 ### Motion blur (3D)
 
-`Layer.camera({ ..., motionBlur: true })` (or `{ shutter: 180, samples: 20, maxBlur: 48 }`) streaks every mesh by its own motion over the shutter, along with the camera's: moving layers, skinned joints, crowds, swarms, wind and fractured pieces. 3D layer planes (cards, video screens) move by their transform. Still things stay sharp, and a frame renders the same in order or after a seek (the frame before is rendered first, recording only). `shutter` is in degrees (180 = film, 360 = the whole frame interval). `maxBlur` caps the streak in px. A layer's own `motionBlurShutter` still streaks a whole flat layer by its position; use the camera's for 3D.
+`Layer.camera({ ..., motionBlur: true })` (or `{ shutter: 180, samples: 20, maxBlur: 48 }`) streaks every mesh by its own motion over the shutter, along with the camera's: moving layers, skinned joints, morph targets, audio-deformed meshes, crowds, swarms, wind and fractured pieces. 3D layer planes (cards, video screens) move by their transform, and text in the 3D scene streaks glyph by glyph. Still things stay sharp, and a frame renders the same in order or after a seek (the frame before is rendered first, recording only). `shutter` is in degrees (180 = film, 360 = the whole frame interval). `maxBlur` caps the streak in px. A layer's own `motionBlurShutter` still streaks a whole flat layer by its position; use the camera's for 3D.
 
 ### Characters: blending, IK, look-at, springs, crowds
 
@@ -431,7 +431,7 @@ const extras = Layer3D.scatter({
 });
 ```
 
-**Joint drivers** (`drive`): `{ joint, from, rotate: { x?, y?, z? } }` turns a joint by a share of another joint's turn from its rest, per local axis, after look-ats and before IK: lids following eyes, twist bones sharing a forearm's roll, correctives. Model files can carry their own (forge's `GltfDocument.addDriver`, stored in the scene's `extras.framefields.drivers`); a layer's `drive` adds to them.
+**Joint drivers** (`drive`): `{ joint, from, rotate: { x?, y?, z? } }` turns a joint by a share of another joint's turn from its rest, per local axis, after look-ats and before IK: lids following eyes, twist bones sharing a forearm's roll, correctives. Model files can carry their own (in the scene's `extras.framefields.drivers`); a layer's `drive` adds to them.
 
 **Posing joints directly** (`pose`, by joint name; namespace prefixes and case are ignored, so `"LeftArm"` finds `"mixamorig:LeftArm"`): local Euler degrees `rotateX/Y/Z` (Z, then Y, then X, like layers) and offsets `x/y/z`, on top of the clips (`mode: "additive"`, default) or of the rest pose (`"rest"`: clips stop moving that joint), with a `weight`. Every value is a track: a number, `[[frame, v]]` keys, `(frame) => v`, or a signal (audio, physics, vision, `Signal.*`), so a head can sway on a sine or flinch at a physics hit:
 
@@ -461,46 +461,10 @@ Order of evaluation: clips, `pose`, `aim`, `lookAt`, `ik` (so IK can still plant
 
 Rules: a crowd mesh keeps its own `rotateX` / `scale` under each instance (y-up glTF: `rotateX: 180`). Spring bones follow the clip's motion and the model's current orientation, not the layer's keyframed travel. Per-instance `clip`, `animOffset`, `animSpeed` in `transforms` / `instanceAt` override the crowd's seeded choices.
 
-**Building characters in code (`framefields/forge`)**: write rigged GLB files from TypeScript, then load them with `Layer.glb`. `humanoidSkeleton({ height, heads, shoulderWidth, hipWidth, armAngle, fingers, toes, prefix })` places Mixamo-named joints (feet on y = 0, facing +z, left at +x, A-pose by default) so `pose`, `aim` and `retarget({ rig: "mixamo" })` work unchanged; `new Skeleton().add(name, { at, parent }).chain(base, points).mirror()` builds any other rig. `GltfDocument` writes meshes (32-bit indices past 65,535 vertices, named morph targets in `extras.targetNames`), PBR materials with Khronos extensions (`clearcoat`, `sheen`, `specular`, `ior`, `transmission`, `volume`, `iridescence`, `anisotropy`, `emissiveStrength`, `unlit`, alpha `mask`) plus `subsurface` for skin, textures, skins and clips, and checks every input where it is given. Colors are display sRGB; the writer stores glTF's linear factors. `boneGizmo(skeleton)` draws the rig as octahedral bones for checking poses before there is a body.
-
-```ts
-import { boneGizmo, GltfDocument, humanoidSkeleton } from "framefields/forge";
-const skeleton = humanoidSkeleton({ height: 186, heads: 8 });
-const doc = new GltfDocument();
-const rig = doc.addSkeleton(skeleton);
-const gold = doc.addMaterial({ color: "#d99a2b", roughness: 0.35, clearcoat: { factor: 1, roughness: 0.05 } });
-doc.addNode({ mesh: doc.addMesh({ primitives: [{ ...boneGizmo(skeleton), material: gold }] }), skin: rig.skin });
-fs.writeFileSync("rig.glb", doc.toGlb());
-Layer.glb("rig.glb", { rotateX: 180, pose: { LeftArm: { rotateZ: 90 } } });
-```
-
-**Morph targets by name** (`morphs` on `Layer.glb`): set any of the file's morph targets by name, matched case-insensitively, each a number, keys or a signal; unnamed targets keep the clip's weights. The writer stores targets that move few vertices sparse, and so does the engine. `subdivide(primitive, { levels, weld })` (Loop) smooths a primitive and carries blend shapes and skin weights exactly. Texture slots take `transform: { scale, offset, rotation }` (KHR_texture_transform), the writer adds tangents to normal-mapped primitives that bring none, and each map samples with its own glTF sampler. `encodePng(rgba, width, height)` writes textures made in code.
+**Morph targets by name** (`morphs` on `Layer.glb`): set any of the file's morph targets by name, matched case-insensitively, each a number, keys or a signal; unnamed targets keep the clip's weights. Sparse morph accessors stay sparse on the GPU, so files with hundreds of corrective shapes fit. Skins take up to eight influences per vertex (`JOINTS_1` / `WEIGHTS_1`). Texture slots honor `KHR_texture_transform`, and each map samples with its own glTF sampler.
 
 ```ts
 Layer.glb("head.glb", { morphs: { jawOpen: [[0, 0], [12, 0.6]], mouthSmileLeft: 0.8, eyeBlinkLeft: blink } });
-```
-
-**Sculpting skinned bodies (`sculpt`)**: a character's body is an ordered list of parts, each an SDF shape (`sphere`, `ellipsoid`, `box`, `cylinder`, `capsule`, `roundCone`, `tube` through points, `torus`, `lathe` profile) with `at`, `rotation`, `op` (`union` / `subtract` / `intersect`), `blend` (smooth join radius), `twist`, `bend`, `displace` (noise detail), `material`, `color`, and the `joint` (or joints) that moves it (default: the nearest bone). `sculpt({ parts, skeleton, cell, triangles })` meshes it closed and manifold at hero resolution, simplifies to the triangle budget, cuts material borders on smooth curves, takes normals and blended colors from the field, and skins every vertex from the parts that reach it (smooth joins share weights, `rigid: true` parts move with one joint), returning one primitive per material plus a report (`openEdges` is 0 for a closed mesh). `limb(skeleton, "LeftForeArm", { radii: [4, 3], blend: 3 })` puts a round cone along a bone; `mirrorParts(leftParts)` adds the right side.
-
-```ts
-import { GltfDocument, humanoidSkeleton, limb, mirrorParts, sculpt } from "framefields/forge";
-const skeleton = humanoidSkeleton({ height: 180 });
-const doc = new GltfDocument();
-const rig = doc.addSkeleton(skeleton);
-const cloth = doc.addMaterial({ color: "#3e5a3c", roughness: 0.8, sheen: { color: "#9fb89a" } });
-const skin = doc.addMaterial({ color: "#d9b99b", roughness: 0.55 });
-const body = sculpt({
-  skeleton, cell: 0.6, triangles: 80000,
-  parts: [
-    { shape: "ellipsoid", at: [0, 126, 0], radii: [17.5, 14, 10.5], joint: ["Spine1", "Spine2"], material: cloth },
-    { shape: "ellipsoid", at: [0, 167, 0.5], radii: [8.6, 11, 10], joint: "Head", blend: 3, material: skin },
-    ...mirrorParts([
-      limb(skeleton, "LeftArm", { radii: [5.4, 4], blend: 3, material: cloth }),
-      limb(skeleton, "LeftForeArm", { radii: [4, 2.8], blend: 2.5, material: skin }),
-    ]),
-  ],
-});
-doc.addNode({ mesh: doc.addMesh({ name: "Body", primitives: body.primitives }), skin: rig.skin });
 ```
 
 ### Procedural worlds: terrain, sculptures, scatter
@@ -600,7 +564,7 @@ Layer3D.cylinder({ ..., height: 400, color: "#111", emissive: "#4da3ff", emissiv
 - **Rect Area Lights (`Layer.rectLight` / `Light.rect`):** studio softbox / LED panel lights with `width`, `height`, `twoSided`, `rotation`, `x/y/z`, `targetX/Y/Z`, `intensity`, `radius`, `decay`, and `castShadow`. Uses solid-angle diffuse irradiance and representative-point GGX specular highlights that stretch across rough and glossy surfaces. Numeric light props accept `Signal`s directly (e.g. `Layer.rectLight({ intensity: bassSignal, width: 300, height: 120 })`).
 - **Volumetric Fog & Light Shafts (`volumetricFog`):** `Layer.environment("night", { volumetricFog: true | { density, anisotropy, heightFalloff, baseHeight, color, lightIntensity, ambientIntensity, maxDistance, steps, noise: { scale, strength, speed, octaves } } })` raymarches participating media at half resolution with depth-aware bilateral upsampling. Any shadow-casting `directional`, `spot`, `rect`, or `point` light automatically carves volumetric light shafts (god rays) through the fog behind occluders. `density`, `anisotropy`, and `noise.strength` accept numbers or live `Signal` objects directly.
 - **Glass refracts the 3D scene:** glass, acrylic and frosted meshes show the 3D objects behind them as well as the layers under the batch (the batch is drawn once without its glass to make that picture). glTF materials with `KHR_materials_transmission` render as glass with their `KHR_materials_ior`; a `KHR_materials_volume` thickness bends by the refracted ray through that depth, so the bend scales with the object on screen (corneas, potions, ice).
-- **Model files bring their own lobes:** glTF materials with `KHR_materials_clearcoat`, `_sheen`, `_anisotropy` or `_iridescence`, and forge's `subsurface` (written to `extras.framefields.subsurface`), render with those lobes; a layer's own lobe props override them. Subsurface scattering conserves energy: each channel's light wraps past the terminator by how far it scatters (`subsurfaceColor`; red farthest for skin, e.g. `"#ff5a3c"`), so form keeps its shading and only shadow edges warm; thin parts glow when back-lit.
+- **Model files bring their own lobes:** glTF materials with `KHR_materials_clearcoat`, `_sheen`, `_anisotropy` or `_iridescence`, and `subsurface` (in the material's `extras.framefields.subsurface`), render with those lobes; a layer's own lobe props override them. Subsurface scattering conserves energy: each channel's light wraps past the terminator by how far it scatters (`subsurfaceColor`; red farthest for skin, e.g. `"#ff5a3c"`), so form keeps its shading and only shadow edges warm; thin parts glow when back-lit.
 - **Substrate lobes (physical shading, needs an environment):** every `Layer3D.*` mesh, `Layer.model` and 3D card accepts `clearcoat` / `clearcoatRoughness` (car paint, lacquer), `anisotropy` (-1..1) / `anisotropyRotation` (deg; brushed metal), `subsurface` / `subsurfaceColor` (wax, jade, skin), `sheen` / `sheenColor` / `sheenRoughness` (velvet, cloth), `iridescence` (0..1 or `{ intensity, thickness, ior }`; soap, oil, beetle shell) with `iridescenceThickness` (nm) / `iridescenceIor`, and `triplanar: true | { scale, sharpness }` for world-space textures on UV-less meshes. Numeric lobes take numbers or live `Signal`s (`clearcoat: bass`). Example: `Layer3D.sphere({ radius: 90, color: "#8a0f1c", metallic: 0.6, roughness: 0.35, clearcoat: 1, clearcoatRoughness: 0.05 })`.
 - **HDRI environments:** pass a `.hdr` or `.exr` path instead of a preset: `Layer.environment("assets/hdri/studio.exr", { intensity: 1.2, rotation: 90 })` (or `{ hdri: path }`). The panorama lights and reflects every physical surface; preset names keep working; relative paths resolve from the working directory. EXR files must use lossless compression (NONE, RLE, ZIPS, ZIP, PIZ or PXR24); re-save B44/DWA files as ZIP.
 - **Screen-space reflections & GI (`ssr`, `gi`):** `Layer.environment("night", { ssr: true, gi: true })`. `ssr` (`{ intensity, maxRoughness, thickness, steps }`) reflects nearby geometry and emissives in glossy surfaces: chrome, wet floors, lacquer, walls. `gi` (`{ intensity, radius, samples }`) adds contact occlusion and color bleeding from visible surfaces, e.g. a neon sign tinting the floor. Each costs a second 3D pass; only what is on screen can be reflected or bounce, so keep key reflected objects in frame. Use `floor` for a planar mirror that also shows off-screen objects.

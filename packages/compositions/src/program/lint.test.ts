@@ -108,6 +108,11 @@ describe("lintComposition", () => {
 		]);
 		expect(c).toContain("shadow_unsupported_light");
 		expect(c).toContain("pbr_without_environment");
+		// Layered lobes alone need the environment too.
+		for (const lobe of [{ clearcoat: 1 }, { anisotropy: 0.6 }])
+			expect(codes([{ id: "c", kind: "model3d", ...lobe }])).toContain(
+				"pbr_without_environment",
+			);
 		expect(
 			codes([
 				{ id: "e", kind: "light", lightType: "environment" },

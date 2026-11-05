@@ -1,19 +1,12 @@
 /**
- * Forge output is standard glTF: the Khronos validator finds no errors or
+ * The fixture writer's output is standard glTF: the Khronos validator finds no errors or
  * warnings, and the engine's own loader reads back exactly what was written
  * (geometry, 32-bit indices, skins, named morph targets, materials, clips).
  */
 import { denseMorphDeltas, parseGLB } from "@framefields/webgpu-renderers";
 import { validateBytes } from "gltf-validator";
 import { describe, expect, it } from "vitest";
-import {
-	boneGizmo,
-	encodePng,
-	GltfDocument,
-	humanoidSkeleton,
-	linearRgba,
-	Skeleton,
-} from "./index.js";
+import { encodePng, GltfDocument, linearRgba, Skeleton } from "./index.js";
 import { readPng } from "./read-png.test-util.js";
 
 async function validate(glb: Uint8Array) {
@@ -367,39 +360,6 @@ describe("Skeleton", () => {
 		expect(s.joint("RightShoulder").parent).toBe("Spine");
 	});
 
-	it("builds a proportioned Mixamo humanoid", () => {
-		const s = humanoidSkeleton({ height: 186, heads: 8 });
-		for (const name of [
-			"Hips",
-			"Spine",
-			"Spine2",
-			"Neck",
-			"Head",
-			"LeftArm",
-			"LeftForeArm",
-			"RightHand",
-			"RightHandIndex4",
-			"LeftHandThumb4",
-			"LeftUpLeg",
-			"RightLeg",
-			"RightToe_End",
-		])
-			expect(s.has(name), name).toBe(true);
-		expect(s.joint("HeadTop_End").at[1]).toBeCloseTo(186);
-		expect(Math.min(...s.joints.map((j) => j.at[1]))).toBeGreaterThanOrEqual(0);
-		// Symmetric, and arm spans scale with the figure.
-		expect(s.joint("RightForeArm").at[0]).toBeCloseTo(
-			-s.joint("LeftForeArm").at[0],
-		);
-		expect(s.length("LeftForeArm")).toBeCloseTo(0.186 * 186, 5);
-		// A T-pose holds the arms level.
-		const t = humanoidSkeleton({ armAngle: 0 });
-		expect(t.joint("LeftHand").at[1]).toBeCloseTo(t.joint("LeftArm").at[1]);
-		expect(
-			humanoidSkeleton({ prefix: "mixamorig:" }).has("mixamorig:LeftArm"),
-		).toBe(true);
-	});
-
 	it("keeps rest orientations: node rotations, inverse bind matrices, mirrored copies", async () => {
 		// A forearm turned 90° about z at rest: its local x points up.
 		const turn: [number, number, number, number] = [
@@ -447,21 +407,5 @@ describe("Skeleton", () => {
 			[0, 0, 0, 1].map((v) => expect.closeTo(v, 9)),
 		);
 		expect(hand.translation?.[0]).toBeCloseTo(8, 6);
-	});
-
-	it("writes a skeleton with its bone gizmo as a valid skinned GLB", async () => {
-		const skeleton = humanoidSkeleton();
-		const doc = new GltfDocument();
-		const rig = doc.addSkeleton(skeleton);
-		const bones = doc.addMesh({
-			name: "Bones",
-			primitives: [boneGizmo(skeleton)],
-		});
-		doc.addNode({ name: "Gizmo", mesh: bones, skin: rig.skin });
-		const glb = doc.toGlb();
-		const report = await validate(glb);
-		expect(report.issues).toEqual([]);
-		const model = parseGLB(glb);
-		expect(model.skins![0]!.joints).toHaveLength(skeleton.joints.length);
 	});
 });

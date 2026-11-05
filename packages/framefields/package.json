@@ -93,12 +93,6 @@
 			"import": "./dist/storage/index.mjs",
 			"default": "./dist/storage/index.mjs"
 		},
-		"./forge": {
-			"types": "./dist/forge/index.d.mts",
-			"development": "./src/forge/index.ts",
-			"import": "./dist/forge/index.mjs",
-			"default": "./dist/forge/index.mjs"
-		},
 		"./sam": {
 			"types": "./dist/sam/index.d.mts",
 			"development": "./src/sam/index.ts",
@@ -156,6 +150,7 @@
 		"@framefields/components": "workspace:*",
 		"@framefields/compositions": "workspace:*",
 		"@framefields/core": "workspace:*",
+		"@framefields/gltf-fixtures": "workspace:*",
 		"@framefields/node-audio-compressor": "workspace:*",
 		"@framefields/node-audio-delay": "workspace:*",
 		"@framefields/node-audio-fade": "workspace:*",
@@ -204,7 +199,6 @@
 		"@framefields/node-vision": "workspace:*",
 		"@framefields/renderer": "workspace:*",
 		"@framefields/renderers": "workspace:*",
-		"@framefields/forge": "workspace:*",
 		"@framefields/storage": "workspace:*",
 		"@framefields/tensor-webgpu": "workspace:*",
 		"@framefields/tsconfig": "workspace:*",

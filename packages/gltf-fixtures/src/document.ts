@@ -7,11 +7,11 @@
  *
  * ```ts
  * const doc = new GltfDocument();
- * const rig = doc.addSkeleton(humanoidSkeleton({ height: 186, heads: 8 }));
+ * const rig = doc.addSkeleton(new Skeleton().add("Hips", { at: [0, 100, 0] }));
  * const skin = doc.addMaterial({ color: "#e8d2b0", roughness: 0.55, sheen: { color: "#ffd9c0" } });
  * const body = doc.addMesh({ name: "Body", primitives: [{ positions, normals, joints, weights, indices, material: skin }] });
- * doc.addNode({ name: "Ithrael", mesh: body, skin: rig.skin });
- * fs.writeFileSync("ithrael.glb", doc.toGlb());
+ * doc.addNode({ name: "Body", mesh: body, skin: rig.skin });
+ * fs.writeFileSync("body.glb", doc.toGlb());
  * ```
  */
 

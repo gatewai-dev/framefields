@@ -30,7 +30,12 @@ export class AudioMeshDeformPipeline {
 	public pipeline: GPUComputePipeline;
 	public bindGroupLayout: GPUBindGroupLayout;
 	private uniformPool: BufferPool;
-	private deformedBuffers = new WeakMap<GPUBuffer, GPUBuffer>();
+	/**
+	 * One output per dispatch this frame: layers sharing a mesh deform it
+	 * differently, and each draw (and motion blur's copy) reads its own.
+	 */
+	private outputs: GPUBuffer[] = [];
+	private outputIndex = 0;
 
 	// 8 floats = 32 bytes for DeformParams uniform
 	private uniformData = new ArrayBuffer(32);
@@ -90,24 +95,25 @@ export class AudioMeshDeformPipeline {
 		});
 	}
 
-	public getOrCreateDeformedBuffer(
-		srcBuffer: GPUBuffer,
-		byteLength: number,
-	): GPUBuffer {
-		let dst = this.deformedBuffers.get(srcBuffer);
+	/** The next output of this frame, at least `byteLength` bytes. */
+	private nextOutput(byteLength: number): GPUBuffer {
+		let dst = this.outputs[this.outputIndex];
 		if (!dst || dst.size < byteLength) {
-			dst?.destroy();
+			if (dst) {
+				const old = dst;
+				this.device.queue.onSubmittedWorkDone().then(() => old.destroy());
+			}
 			dst = this.device.createBuffer({
 				label: "DeformedMeshVertexBuffer",
 				size: Math.max(64, Math.ceil(byteLength / 4) * 4),
 				usage:
 					GPUBufferUsage.VERTEX |
 					GPUBufferUsage.STORAGE |
-					GPUBufferUsage.COPY_DST |
 					GPUBufferUsage.COPY_SRC,
 			});
-			this.deformedBuffers.set(srcBuffer, dst);
+			this.outputs[this.outputIndex] = dst;
 		}
+		this.outputIndex++;
 		return dst;
 	}
 
@@ -124,10 +130,7 @@ export class AudioMeshDeformPipeline {
 			sampleRate = 48000,
 		} = options;
 		const byteLength = vertexCount * 64; // 16 floats * 4 bytes
-		const dstVertexBuffer = this.getOrCreateDeformedBuffer(
-			srcVertexBuffer,
-			byteLength,
-		);
+		const dstVertexBuffer = this.nextOutput(byteLength);
 
 		const modeInt = DEFORM_MODES[config.mode] ?? 0;
 
@@ -193,9 +196,11 @@ export class AudioMeshDeformPipeline {
 
 	public resetPools(): void {
 		this.uniformPool.reset();
+		this.outputIndex = 0;
 	}
 
 	public destroy(): void {
 		this.uniformPool.destroy();
+		for (const output of this.outputs) output.destroy();
 	}
 }

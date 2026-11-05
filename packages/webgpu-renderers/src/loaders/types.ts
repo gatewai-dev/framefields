@@ -34,6 +34,21 @@ export interface Mesh3DData {
 	skin?: number;
 }
 
+/** The maps of a material besides its base color. */
+export type MaterialMapSlot =
+	| "normal"
+	| "metallicRoughness"
+	| "occlusion"
+	| "emissive";
+
+/** Addressing and filtering of one texture. */
+export interface TextureSampling {
+	wrapU: "repeat" | "clamp" | "mirror";
+	wrapV: "repeat" | "clamp" | "mirror";
+	/** Magnification filter. */
+	filter: "linear" | "nearest";
+}
+
 export interface Material3D {
 	name: string;
 	diffuseColor?: [number, number, number, number]; // RGBA, display (sRGB) 0..1
@@ -56,6 +71,11 @@ export interface Material3D {
 	textureWrap?: "repeat" | "clamp" | "mirror";
 	/** Magnification filter (glTF sampler magFilter); "nearest" keeps texels sharp. */
 	textureFilter?: "linear" | "nearest";
+	/**
+	 * How each other map is sampled, when it says (glTF: its own sampler).
+	 * A map without an entry samples like the base color map.
+	 */
+	mapSampling?: Partial<Record<MaterialMapSlot, TextureSampling>>;
 	normalTexture?: string;
 	twoSided?: boolean;
 	/** "mask" discards texels below `alphaCutoff`; "blend" draws after the opaque meshes. */

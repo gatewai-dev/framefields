@@ -9,10 +9,12 @@ import type {
 	AnimationClip3D,
 	LoadModelOptions,
 	Material3D,
+	MaterialMapSlot,
 	MaterialSurface,
 	Model3DData,
 	ModelNode3D,
 	NodeAnimationTrack3D,
+	TextureSampling,
 } from "./types.js";
 
 const COMPONENTS: Record<string, number> = {
@@ -963,33 +965,48 @@ export class GltfLoader {
 		if (base) {
 			material.diffuseTextureBuffer = base.bytes;
 			material.diffuseTextureMime = base.mime;
-			const wrap = base.sampler?.wrapS;
-			material.textureWrap =
-				wrap === 33071 ? "clamp" : wrap === 33648 ? "mirror" : "repeat";
-			if (base.sampler?.magFilter === 9728) material.textureFilter = "nearest";
+			const sampling = textureSampling(base.sampler);
+			material.textureWrap = sampling.wrapU;
+			if (sampling.filter === "nearest") material.textureFilter = "nearest";
 		}
-		const mapBytes = (info: GltfTextureInfo | undefined, slot: string) =>
-			image(info, slot)?.bytes;
-		const normal = mapBytes(mat.normalTexture, "normal");
+		const mapBytes = (
+			info: GltfTextureInfo | undefined,
+			slot: string,
+			key: MaterialMapSlot,
+		) => {
+			const map = image(info, slot);
+			if (!map) return undefined;
+			material.mapSampling = {
+				...material.mapSampling,
+				[key]: textureSampling(map.sampler),
+			};
+			return map.bytes;
+		};
+		const normal = mapBytes(mat.normalTexture, "normal", "normal");
 		if (normal) {
 			material.normalTextureBuffer = normal;
 			material.normalScale = mat.normalTexture?.scale ?? 1;
 		}
-		const mr = mapBytes(pbr?.metallicRoughnessTexture, "metallic-roughness");
+		const mr = mapBytes(
+			pbr?.metallicRoughnessTexture,
+			"metallic-roughness",
+			"metallicRoughness",
+		);
 		if (mr) {
 			material.metallicRoughnessTextureBuffer = mr;
 			// With a map the factors scale it, and glTF's default factor is 1.
 			material.roughness = pbr?.roughnessFactor ?? 1;
 			material.metallic = pbr?.metallicFactor ?? 1;
 		}
-		const occlusion = mapBytes(mat.occlusionTexture, "occlusion");
+		const occlusion = mapBytes(mat.occlusionTexture, "occlusion", "occlusion");
 		if (occlusion) {
 			material.occlusionTextureBuffer = occlusion;
 			material.occlusionStrength = mat.occlusionTexture?.strength ?? 1;
 		}
 		// glTF's emissiveFactor defaults to 0: a map alone does not glow.
 		const emissiveMap =
-			material.emissive && mapBytes(mat.emissiveTexture, "emissive");
+			material.emissive &&
+			mapBytes(mat.emissiveTexture, "emissive", "emissive");
 		if (emissiveMap) material.emissiveTextureBuffer = emissiveMap;
 		return material;
 	}
@@ -1525,4 +1542,18 @@ function applyTextureTransform(
 		uvs[i] = c * u - s * v + offset[0];
 		uvs[i + 1] = s * u + c * v + offset[1];
 	}
+}
+
+const WRAP: Record<number, TextureSampling["wrapU"]> = {
+	33071: "clamp",
+	33648: "mirror",
+};
+
+/** A glTF sampler as addressing and filtering (glTF's defaults: repeat, linear). */
+function textureSampling(sampler: GltfSampler | undefined): TextureSampling {
+	return {
+		wrapU: WRAP[sampler?.wrapS ?? 10497] ?? "repeat",
+		wrapV: WRAP[sampler?.wrapT ?? 10497] ?? "repeat",
+		filter: sampler?.magFilter === 9728 ? "nearest" : "linear",
+	};
 }

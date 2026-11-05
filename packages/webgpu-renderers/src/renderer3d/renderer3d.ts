@@ -23,8 +23,10 @@ import {
 import type {
 	LoadModelOptions,
 	Material3D,
+	MaterialMapSlot,
 	Mesh3DData,
 	Model3DData,
+	TextureSampling,
 } from "../loaders/types.js";
 import {
 	type Environment3DFloor,
@@ -2599,11 +2601,28 @@ export class Renderer3D {
 						occlusionStrength: material.occlusionStrength ?? 1,
 					}),
 					...(emissive && { emissive }),
+					samplers: this.mapSamplers(material),
 				};
 			})();
 			this.materialMapCache.set(material, pending);
 		}
 		return pending;
+	}
+
+	/** A sampler for each map that says how it is sampled. */
+	private mapSamplers(material: Material3D): MeshMaterialMaps["samplers"] {
+		const out: NonNullable<MeshMaterialMaps["samplers"]> = {};
+		for (const [slot, s] of Object.entries(material.mapSampling ?? {}) as [
+			MaterialMapSlot,
+			TextureSampling,
+		][])
+			out[slot] = this.samplerCache.getSampler(this.device, {
+				addressModeU: ADDRESS_MODES[s.wrapU],
+				addressModeV: ADDRESS_MODES[s.wrapV],
+				magFilter: s.filter,
+				...(s.filter === "nearest" && { maxAnisotropy: 1 }),
+			});
+		return out;
 	}
 
 	private uploadMaterialTexture(

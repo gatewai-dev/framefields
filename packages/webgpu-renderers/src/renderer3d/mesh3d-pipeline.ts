@@ -28,6 +28,13 @@ export interface MeshMaterialMaps {
 	occlusionStrength?: number;
 	/** Multiplies the emissive color. */
 	emissive?: GPUTexture;
+	/** Each map's own sampler; a map without one samples like the base color. */
+	samplers?: Partial<
+		Record<
+			"normal" | "metallicRoughness" | "occlusion" | "emissive",
+			GPUSampler
+		>
+	>;
 }
 
 export interface MeshGlass {
@@ -305,6 +312,12 @@ export class Mesh3DPipeline {
 					binding,
 					visibility: GPUShaderStage.FRAGMENT,
 					texture: { sampleType: "float" as const },
+				})),
+				// Their samplers: 6 normal, 7 metallic-roughness, 8 occlusion, 9 emissive
+				...[6, 7, 8, 9].map((binding) => ({
+					binding,
+					visibility: GPUShaderStage.FRAGMENT,
+					sampler: { type: "filtering" as const },
 				})),
 			],
 		});
@@ -818,6 +831,10 @@ export class Mesh3DPipeline {
 				},
 				{ binding: 4, resource: (maps?.occlusion ?? white).createView() },
 				{ binding: 5, resource: (maps?.emissive ?? white).createView() },
+				{ binding: 6, resource: maps?.samplers?.normal ?? sampler },
+				{ binding: 7, resource: maps?.samplers?.metallicRoughness ?? sampler },
+				{ binding: 8, resource: maps?.samplers?.occlusion ?? sampler },
+				{ binding: 9, resource: maps?.samplers?.emissive ?? sampler },
 			],
 		});
 	}

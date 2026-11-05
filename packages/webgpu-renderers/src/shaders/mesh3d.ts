@@ -225,6 +225,10 @@ ${matte3dWgsl(1, 2)}@group(1) @binding(3) var backdropTex : texture_2d<f32>;
 @group(2) @binding(3) var metalRoughTex     : texture_2d<f32>;
 @group(2) @binding(4) var occlusionTex      : texture_2d<f32>;
 @group(2) @binding(5) var emissiveTex       : texture_2d<f32>;
+@group(2) @binding(6) var normalSampler     : sampler;
+@group(2) @binding(7) var metalRoughSampler : sampler;
+@group(2) @binding(8) var occlusionSampler  : sampler;
+@group(2) @binding(9) var emissiveSampler   : sampler;
 ${lightsBindingsWgsl}
 
 struct VertexOutput {
@@ -393,10 +397,10 @@ fn shadeMesh(in: VertexOutput, isFront: bool) -> MeshFragment {
     // Every sample and derivative up front, in uniform control flow.
     measureSpecularFilter(in.worldNormal);
     var texColor = textureSample(mainTex, texSampler, in.uv);
-    var normalSample = textureSample(normalTex, texSampler, in.normalUv).xyz;
-    var mrSample = textureSample(metalRoughTex, texSampler, in.mrUv);
-    var aoSample = textureSample(occlusionTex, texSampler, in.aoUv).r;
-    var emissiveSample = textureSample(emissiveTex, texSampler, in.emissiveUv).rgb;
+    var normalSample = textureSample(normalTex, normalSampler, in.normalUv).xyz;
+    var mrSample = textureSample(metalRoughTex, metalRoughSampler, in.mrUv);
+    var aoSample = textureSample(occlusionTex, occlusionSampler, in.aoUv).r;
+    var emissiveSample = textureSample(emissiveTex, emissiveSampler, in.emissiveUv).rgb;
     let dp1 = dpdx(in.worldPos);
     let dp2 = dpdy(in.worldPos);
     let duv1 = dpdx(in.normalUv);

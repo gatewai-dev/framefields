@@ -4,13 +4,17 @@
  * spring bones (replayed from frame 0 and cached, so frames render the
  * same in any order); and the per-instance records of skinned crowds.
  */
-import type {
-	CrowdConfig,
-	LookAtConstraint,
-	Model3DNode,
-	NumberTrack,
-	TwoBoneIkConstraint,
-	Vec3Track,
+import {
+	type AimConstraint,
+	type CrowdConfig,
+	type JointPose,
+	type LookAtConstraint,
+	type Model3DNode,
+	numberAt,
+	type TrackClock,
+	type TwoBoneIkConstraint,
+	type Vec3Track,
+	vec3At,
 } from "@framefields/compositions/program";
 import {
 	type AnimationClip3D,
@@ -23,48 +27,15 @@ import {
 	Matrix4Math,
 	type Model3DData,
 	poseNodes,
+	type Quat,
 	type RigClipLayer,
 	type RigConstraints,
+	type RigJointPose,
 	type RigPose,
 	resolveClips,
 	SpringBones,
 	type Vec3,
 } from "@framefields/webgpu-renderers";
-
-/** A number track's value at `frame`. */
-export function numberAt(
-	track: NumberTrack | undefined,
-	frame: number,
-	fallback: number,
-): number {
-	if (track === undefined) return fallback;
-	if (typeof track === "number") return track;
-	if (typeof track === "function") return track(frame);
-	return keyed(track, frame, 1)[0] ?? fallback;
-}
-
-/** A point track's value at `frame`. */
-export function vec3At(track: Vec3Track, frame: number): Vec3 {
-	if (typeof track === "function") return track(frame);
-	if (track.length === 3 && typeof track[0] === "number")
-		return track as unknown as Vec3;
-	return keyed(track as number[][], frame, 3) as Vec3;
-}
-
-/** Linear interpolation over `[[frame, …values]]` keys, held past the ends. */
-function keyed(keys: number[][], frame: number, size: number): number[] {
-	const sorted = keys;
-	const first = sorted[0]!;
-	const last = sorted[sorted.length - 1]!;
-	if (frame <= first[0]!) return first.slice(1, 1 + size);
-	if (frame >= last[0]!) return last.slice(1, 1 + size);
-	let k = 0;
-	while (k + 1 < sorted.length && sorted[k + 1]![0]! <= frame) k++;
-	const a = sorted[k]!;
-	const b = sorted[k + 1]!;
-	const u = (frame - a[0]!) / Math.max(1e-9, b[0]! - a[0]!);
-	return a.slice(1, 1 + size).map((v, i) => v + (b[i + 1]! - v) * u);
-}
 
 const transformPoint = (m: Mat4, p: Vec3): Vec3 => [
 	m[0] * p[0] + m[4] * p[1] + m[8] * p[2] + m[12],
@@ -79,7 +50,7 @@ const transformDir = (m: Mat4, v: Vec3): Vec3 => [
 
 type CharacterNode = Pick<
 	Model3DNode,
-	"animationLayers" | "ik" | "lookAt" | "springBones" | "loop"
+	"animationLayers" | "ik" | "lookAt" | "springBones" | "loop" | "pose" | "aim"
 >;
 
 /** Whether a node needs the rig evaluator (anything beyond one plain clip). */
@@ -88,7 +59,44 @@ export function hasRig(n: CharacterNode): boolean {
 		n.animationLayers?.length ||
 			n.ik?.length ||
 			n.lookAt?.length ||
-			n.springBones?.length,
+			n.springBones?.length ||
+			(n.pose && Object.keys(n.pose).length) ||
+			n.aim?.length,
+	);
+}
+
+/** Local rotation for Euler degrees, applied Z, then Y, then X (R = Rz · Ry · Rx), like layers. */
+function eulerQuat(rx: number, ry: number, rz: number): Quat {
+	const h = (d: number) => (d * Math.PI) / 360;
+	const [sx, cx] = [Math.sin(h(rx)), Math.cos(h(rx))];
+	const [sy, cy] = [Math.sin(h(ry)), Math.cos(h(ry))];
+	const [sz, cz] = [Math.sin(h(rz)), Math.cos(h(rz))];
+	// qz · qy · qx
+	return [
+		cz * cy * sx - sz * sy * cx,
+		cz * sy * cx + sz * cy * sx,
+		sz * cy * cx - cz * sy * sx,
+		cz * cy * cx + sz * sy * sx,
+	];
+}
+
+function jointPoses(p: PoseInput, clock: TrackClock): RigJointPose[] {
+	return Object.entries(p.node.pose ?? {}).map(
+		([joint, j]: [string, JointPose]) => ({
+			joint,
+			rotation: eulerQuat(
+				numberAt(j.rotateX, clock, 0),
+				numberAt(j.rotateY, clock, 0),
+				numberAt(j.rotateZ, clock, 0),
+			),
+			offset: [
+				numberAt(j.x, clock, 0),
+				numberAt(j.y, clock, 0),
+				numberAt(j.z, clock, 0),
+			] as Vec3,
+			weight: numberAt(j.weight, clock, 1),
+			mode: j.mode ?? "additive",
+		}),
 	);
 }
 
@@ -126,7 +134,7 @@ function clipLayers(p: PoseInput, frame: number): RigClipLayer[] {
 		out.push({
 			clip,
 			time,
-			weight: numberAt(l.weight, frame, 1),
+			weight: numberAt(l.weight, { frame, fps: p.fps }, 1),
 			mask: l.mask,
 		});
 	}
@@ -138,18 +146,27 @@ function constraintsAt(
 	frame: number,
 	toModel: Mat4,
 ): RigConstraints {
-	const point = (t: Vec3Track) => transformPoint(toModel, vec3At(t, frame));
+	const clock: TrackClock = { frame, fps: p.fps };
+	const point = (t: Vec3Track) => transformPoint(toModel, vec3At(t, clock));
+	const direction = (t: Vec3Track) => transformDir(toModel, vec3At(t, clock));
 	return {
+		pose: jointPoses(p, clock),
+		aim: (p.node.aim ?? []).map((a: AimConstraint) => ({
+			joint: a.joint,
+			direction: direction(a.direction),
+			weight: numberAt(a.weight, clock, 1),
+			...(a.axis && { axis: a.axis }),
+		})),
 		ik: (p.node.ik ?? []).map((c: TwoBoneIkConstraint) => ({
 			chain: c.chain,
 			target: point(c.target),
 			pole: c.poleTarget ? point(c.poleTarget) : undefined,
-			weight: numberAt(c.weight, frame, 1),
+			weight: numberAt(c.weight, clock, 1),
 		})),
 		lookAt: (p.node.lookAt ?? []).map((c: LookAtConstraint) => ({
 			joint: c.joint,
 			target: point(c.target),
-			weight: numberAt(c.weight, frame, 1),
+			weight: numberAt(c.weight, clock, 1),
 			maxAngleDeg: c.maxAngleDeg ?? 70,
 			axis: c.axis ?? [0, 0, 1],
 		})),
@@ -180,7 +197,13 @@ function springsAt(
 ): SpringBones | undefined {
 	const chains = p.node.springBones;
 	if (!chains?.length) return undefined;
-	const config = JSON.stringify([chains, p.node.animationLayers, p.fps]);
+	const config = JSON.stringify([
+		chains,
+		p.node.animationLayers,
+		p.node.pose,
+		p.node.aim,
+		p.fps,
+	]);
 	let s = springStates.get(p.key);
 	const frame = Math.max(0, Math.floor(p.frame));
 	if (!s || s.model !== p.model || s.config !== config || s.frame > frame) {

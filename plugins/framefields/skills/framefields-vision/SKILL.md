@@ -291,6 +291,10 @@ const vision = comp.withVision({ classes: ["person"] });
 layer.blurRegion(vision.objects.byCategory("person"), { strength: 30 });
 ```
 
+### A 3D character copies a performer
+
+`Layer.glb("robot.glb", { aim: person.retarget({ rig: "mixamo" }) })` on a placed person (`comp.vision(src).person.place({ width, height, fit })`) aims the character's spine, neck, arms and legs along the performer's keypoint segments every frame (2D: in the plane facing the camera). Presets `mixamo`, `humanoid` (Unity/VRM), `rigify`, or a `{ leftUpperArm: "…" }` map; `bones` limits it (arms over a walk clip), `mirror` swaps sides, `minVisibility` lets unsure limbs fall back to the clip. Bind the root with `person.signals("leftHip")`. See `framefields-compose` → Characters.
+
 ### Analyse before authoring
 ```typescript
 const report = await comp.analyzeVisionSequence("assets/street.mp4", {

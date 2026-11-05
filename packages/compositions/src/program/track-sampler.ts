@@ -6,6 +6,7 @@
  * with the picture outside a render (physics following a layer) share it.
  */
 import gsapModule from "gsap";
+import type { NumberTrack, Vec3Track } from "./character-schema.js";
 import { evaluateKeyframes, evaluateTrackAtFrame } from "./evaluator.js";
 import type { AnimationTrack, EaseRef } from "./schema.js";
 
@@ -240,4 +241,71 @@ export function sampleLayerProp(
 		if (typeof v === "number" && Number.isFinite(v)) value = v;
 	}
 	return value;
+}
+
+// --- Character tracks (pose, IK and aim targets, weights) -------------------
+
+/** What a track reads: the layer's frame, and the clock signals expect. */
+export interface TrackClock {
+	frame: number;
+	fps: number;
+}
+
+const signalContext = (c: TrackClock) => ({
+	frame: c.frame,
+	fps: c.fps,
+	time: c.frame / c.fps,
+	duration: 0,
+	durationMs: 0,
+	progress: 0,
+	deltaTime: 1 / c.fps,
+});
+
+/** A number track's value: constant, keys, function, or signal. */
+export function numberAt(
+	track: NumberTrack | undefined,
+	clock: TrackClock,
+	fallback: number,
+): number {
+	if (track === undefined) return fallback;
+	if (typeof track === "number") return track;
+	if (typeof track === "function") return track(clock.frame);
+	if (Array.isArray(track)) return keyed(track, clock.frame, 1)[0] ?? fallback;
+	const v = track.get(signalContext(clock));
+	return Number.isFinite(v) ? v : fallback;
+}
+
+/** Whether a point track is `[[frame, x, y, z], …]` keys (not one track per axis). */
+const isPointKeys = (track: unknown[]): track is number[][] =>
+	Array.isArray(track[0]) && (track[0] as unknown[]).length === 4;
+
+/** A point track's value: per-axis tracks, keys, or a function. */
+export function vec3At(
+	track: Vec3Track,
+	clock: TrackClock,
+): [number, number, number] {
+	if (typeof track === "function") return track(clock.frame);
+	if (isPointKeys(track))
+		return keyed(track, clock.frame, 3) as [number, number, number];
+	const axes = track as [NumberTrack, NumberTrack, NumberTrack];
+	return [
+		numberAt(axes[0], clock, 0),
+		numberAt(axes[1], clock, 0),
+		numberAt(axes[2], clock, 0),
+	];
+}
+
+/** Linear interpolation over `[[frame, …values]]` keys, held past the ends. */
+function keyed(keys: number[][], frame: number, size: number): number[] {
+	const sorted = keys;
+	const first = sorted[0]!;
+	const last = sorted[sorted.length - 1]!;
+	if (frame <= first[0]!) return first.slice(1, 1 + size);
+	if (frame >= last[0]!) return last.slice(1, 1 + size);
+	let k = 0;
+	while (k + 1 < sorted.length && sorted[k + 1]![0]! <= frame) k++;
+	const a = sorted[k]!;
+	const b = sorted[k + 1]!;
+	const u = (frame - a[0]!) / Math.max(1e-9, b[0]! - a[0]!);
+	return a.slice(1, 1 + size).map((v, i) => v + (b[i + 1]! - v) * u);
 }

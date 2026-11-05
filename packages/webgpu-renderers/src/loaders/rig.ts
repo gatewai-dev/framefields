@@ -1,6 +1,7 @@
 /**
  * Character rigs on a model's scene graph: layered clip blending with bone
- * masks, analytic two-bone IK with a pole target, clamped look-at, and
+ * masks, per-joint pose overrides, direction aims (retargeting), analytic
+ * two-bone IK with a pole target, clamped look-at, and
  * deterministic spring bones (follow-through simulated frame by frame from
  * frame 0, so any frame renders the same whether reached in order or not).
  *
@@ -69,6 +70,9 @@ function qBetween(a: Vec3, b: Vec3): Quat {
 }
 
 const position = (m: Mat4): Vec3 => [m[12], m[13], m[14]];
+/** A joint name without its namespace (`mixamorig:`) and case. */
+const bare = (name: string) =>
+	name.slice(name.lastIndexOf(":") + 1).toLowerCase();
 
 // --- Pose assembly -------------------------------------------------------
 
@@ -102,7 +106,37 @@ export interface RigLookAt {
 	axis: Vec3;
 }
 
+/**
+ * A joint posed directly: a rotation (and offset) in the joint's local
+ * frame, on top of the animated pose (`additive`) or of its rest pose
+ * (`rest`, ignoring clips for this joint), blended by `weight`.
+ */
+export interface RigJointPose {
+	joint: string;
+	/** Local rotation. */
+	rotation: Quat;
+	/** Local translation offset. */
+	offset: Vec3;
+	weight: number;
+	mode: "additive" | "rest";
+}
+
+/**
+ * Points a bone along a direction (model space): the joint turns so its
+ * `axis` (default: toward its first child, the bone itself) lies along it.
+ * Pose retargeting is a chain of these, parents first.
+ */
+export interface RigAim {
+	joint: string;
+	direction: Vec3;
+	weight: number;
+	axis?: Vec3;
+}
+
 export interface RigConstraints {
+	/** Applied in order: poses, aims, look-ats, then IK. */
+	pose?: RigJointPose[];
+	aim?: RigAim[];
 	ik?: RigTwoBoneIk[];
 	lookAt?: RigLookAt[];
 }
@@ -120,8 +154,29 @@ export class RigPose {
 		this.byName = new Map(nodes.map((n, i) => [n.name, i]));
 	}
 
+	/**
+	 * A joint by name: exact, else ignoring a namespace prefix and case
+	 * (`"LeftArm"` finds `"mixamorig:LeftArm"` and `"mixamorig1:leftarm"`).
+	 */
 	index(name: string): number | undefined {
-		return this.byName.get(name);
+		const exact = this.byName.get(name);
+		if (exact !== undefined) return exact;
+		const want = bare(name);
+		this.byBare ??= new Map(
+			this.nodes.map((n, i) => [bare(n.name), i] as const).reverse(),
+		);
+		return this.byBare.get(want);
+	}
+	private byBare?: Map<string, number>;
+
+	/** Node `i`'s local direction toward its first child (the bone), if it has one. */
+	boneAxis(i: number): Vec3 | undefined {
+		for (let c = 0; c < this.nodes.length; c++) {
+			if (this.nodes[c]!.parent !== i) continue;
+			const t = this.local.t[c]!;
+			if (len(t) > 1e-9) return norm(t);
+		}
+		return undefined;
 	}
 
 	world(): Mat4[] {
@@ -166,7 +221,7 @@ export class RigPose {
 	/** Every node at or below the named joints. */
 	maskSet(names: string[]): Set<number> {
 		const roots = new Set(
-			names.map((n) => this.byName.get(n)).filter((i) => i !== undefined),
+			names.map((n) => this.index(n)).filter((i) => i !== undefined),
 		);
 		const out = new Set<number>();
 		for (let i = 0; i < this.nodes.length; i++) {
@@ -305,8 +360,37 @@ export function solveLookAt(rig: RigPose, c: RigLookAt): void {
 
 /** Look-at first (a head turns), then IK (limbs reach), in the given order. */
 export function applyConstraints(rig: RigPose, c: RigConstraints): void {
+	for (const p of c.pose ?? []) applyJointPose(rig, p);
+	for (const a of c.aim ?? []) solveAim(rig, a);
 	for (const l of c.lookAt ?? []) solveLookAt(rig, l);
 	for (const k of c.ik ?? []) solveTwoBoneIk(rig, k);
+}
+
+/** Poses one joint (see {@link RigJointPose}). */
+export function applyJointPose(rig: RigPose, p: RigJointPose): void {
+	const i = rig.index(p.joint);
+	const w = clamp(p.weight, 0, 1);
+	if (i === undefined || w <= 0) return;
+	const node = rig.nodes[i]!;
+	const baseR = p.mode === "rest" ? node.rotation : rig.local.r[i]!;
+	const baseT = p.mode === "rest" ? node.translation : rig.local.t[i]!;
+	const r = qMul(baseR, p.rotation);
+	const t = add(baseT, p.offset);
+	rig.local.r[i] = w >= 1 ? r : slerp(rig.local.r[i]!, r, w);
+	rig.local.t[i] = add(rig.local.t[i]!, scale(sub(t, rig.local.t[i]!), w));
+	rig.touch();
+}
+
+/** Points a bone along a direction (see {@link RigAim}). */
+export function solveAim(rig: RigPose, a: RigAim): void {
+	const i = rig.index(a.joint);
+	const w = clamp(a.weight, 0, 1);
+	if (i === undefined || w <= 0 || len(a.direction) < 1e-9) return;
+	const axis = a.axis ?? rig.boneAxis(i);
+	if (!axis) return;
+	const g = rig.globalRotation(i);
+	const swing = qBetween(qRotate(g, axis), a.direction);
+	rig.setGlobalRotation(i, qMul(swing, g), w);
 }
 
 // --- Spring bones ------------------------------------------------------------

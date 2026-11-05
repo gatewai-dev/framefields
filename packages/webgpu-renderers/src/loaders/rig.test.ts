@@ -3,6 +3,7 @@ import type { Vec3 } from "../math3d/index.js";
 import { sampleLocalPose } from "./pose.js";
 import {
 	applyConstraints,
+	applyJointPose,
 	blendClipLayers,
 	RigPose,
 	SpringBones,
@@ -207,5 +208,75 @@ describe("rig", () => {
 		const settled = run(400);
 		const end = blendClipLayers(MODEL, [{ clip: SWING, time: 1, weight: 1 }]);
 		expect(dist(settled.position(5), end.position(5))).toBeLessThan(0.5);
+	});
+
+	it("poses joints on the animated pose or the rest pose, by weight", () => {
+		const qz = (deg: number): [number, number, number, number] => [
+			0,
+			0,
+			Math.sin((deg * Math.PI) / 360),
+			Math.cos((deg * Math.PI) / 360),
+		];
+		// The swing clip turns the hip 90°; an additive +90° adds to it.
+		const added = blendClipLayers(MODEL, [{ clip: SWING, time: 1, weight: 1 }]);
+		applyJointPose(added, {
+			joint: "hip",
+			rotation: qz(90),
+			offset: [0, 0, 0],
+			weight: 1,
+			mode: "additive",
+		});
+		expect(added.position(2)[1]).toBeCloseTo(-200, 3);
+		// From rest, the clip's turn is ignored.
+		const fromRest = blendClipLayers(MODEL, [
+			{ clip: SWING, time: 1, weight: 1 },
+		]);
+		applyJointPose(fromRest, {
+			joint: "hip",
+			rotation: qz(90),
+			offset: [0, 0, 0],
+			weight: 1,
+			mode: "rest",
+		});
+		expect(fromRest.position(2)[0]).toBeCloseTo(-200, 3);
+		// Half weight from rest: 45°; offsets move the joint.
+		const half = rest();
+		applyJointPose(half, {
+			joint: "hip",
+			rotation: qz(90),
+			offset: [10, 0, 0],
+			weight: 0.5,
+			mode: "rest",
+		});
+		expect(half.position(0)[0]).toBeCloseTo(5, 6);
+		expect(half.position(2)[0]).toBeCloseTo(5 - 200 * Math.SQRT1_2, 3);
+	});
+
+	it("aims bones along directions, parents first, by their own axis", () => {
+		const rig = rest();
+		applyConstraints(rig, {
+			aim: [
+				{ joint: "hip", direction: [1, 0, 0], weight: 1 },
+				{ joint: "knee", direction: [0, -1, 0], weight: 1 },
+			],
+		});
+		// Thigh points +x, shin then points -y from the knee.
+		const knee = rig.position(1);
+		const foot = rig.position(2);
+		expect(knee[0]).toBeCloseTo(100, 3);
+		expect(knee[1]).toBeCloseTo(0, 3);
+		expect(foot[0]).toBeCloseTo(100, 3);
+		expect(foot[1]).toBeCloseTo(-100, 3);
+		// Bone lengths hold.
+		expect(dist(knee, foot)).toBeCloseTo(100, 4);
+	});
+
+	it("finds joints by name without their namespace or case", () => {
+		const nodes = NODES.map((n) => ({ ...n, name: `mixamorig:${n.name}` }));
+		const rig = new RigPose(nodes, sampleLocalPose(nodes, undefined, 0));
+		expect(rig.index("knee")).toBe(1);
+		expect(rig.index("mixamorig:Foot")).toBe(2);
+		expect(rig.index("Tail2")).toBe(5);
+		expect(rig.index("nothing")).toBeUndefined();
 	});
 });

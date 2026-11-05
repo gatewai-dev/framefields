@@ -28,8 +28,12 @@ import {
 } from "@framefields/core";
 import { ColorSchema } from "@framefields/node-sdk";
 import {
+	type AimConstraint,
+	AimSchema,
 	type CrowdConfig,
 	CrowdSchema,
+	type JointPose,
+	JointPoseSchema,
 	type LookAtConstraint,
 	LookAtSchema,
 	type ModelAnimationLayer,
@@ -1847,6 +1851,10 @@ export interface Model3DNode {
 	lookAt?: LookAtConstraint[];
 	/** Secondary motion simulated from frame 0 (capes, tails, hair). */
 	springBones?: SpringBoneChain[];
+	/** Joints posed directly by name (local Euler degrees, offsets), over the clips. */
+	pose?: Record<string, JointPose>;
+	/** Bones pointed along scene directions, parents first (pose retargeting). */
+	aim?: AimConstraint[];
 	/** Instance nodes: every instance a skinned character on its own clip, phase and speed. */
 	crowd?: CrowdConfig;
 }
@@ -2182,6 +2190,8 @@ export const Model3DNodeSchema: z.ZodType<Model3DNode> = z
 		ik: z.array(TwoBoneIkSchema).optional(),
 		lookAt: z.array(LookAtSchema).optional(),
 		springBones: z.array(SpringBoneChainSchema).optional(),
+		pose: z.record(z.string(), JointPoseSchema).optional(),
+		aim: z.array(AimSchema).optional(),
 		crowd: CrowdSchema.optional(),
 	})
 	.strict() as unknown as z.ZodType<Model3DNode>;

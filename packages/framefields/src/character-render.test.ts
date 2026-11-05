@@ -15,6 +15,9 @@ import {
 	Layer,
 	Layer3D,
 	type LayoutNode,
+	type PoseSource,
+	retargetPose,
+	Signal,
 } from "./index.js";
 import { GlbBuilder } from "./test-utils/glb.js";
 import { decodePngPixels } from "./test-utils/pixels.js";
@@ -311,6 +314,28 @@ describe("character animation", () => {
 				ik: [{ chain: ["root", "knee", "foot"], target: [[0, 1, 2, 3]] }],
 				lookAt: [{ joint: "root", target: [0, 0, 0], maxAngleDeg: 30 }],
 				springBones: [{ joints: ["knee"], gravity: [0, 980, 0] }],
+				pose: {
+					knee: {
+						rotateZ: [
+							[0, 0],
+							[30, 45],
+						],
+						mode: "additive",
+					},
+				},
+				aim: [
+					{
+						joint: "root",
+						direction: [
+							1,
+							[
+								[0, 0],
+								[30, 1],
+							],
+							0,
+						],
+					},
+				],
 			}),
 			Layer3D.instances({
 				mesh: leg(),
@@ -321,5 +346,90 @@ describe("character animation", () => {
 		expect(CompositorProgramSchema.safeParse(comp.toSpec()).success).toBe(true);
 		const bad = scene([leg({ springBones: [{ joints: [] }] })]);
 		expect(CompositorProgramSchema.safeParse(bad.toSpec()).success).toBe(false);
+	});
+
+	it("poses joints directly, from numbers, keys or signals", async () => {
+		// Additive: the knee turns +90° about z over the (still) pose.
+		const folded = await probe(
+			scene([leg({ pose: { knee: { rotateZ: 90 } } })]),
+		);
+		expect(folded(-60, 80)).toBe(true);
+		expect(folded(0, 140)).toBe(false);
+		// A signal drives it, read with the render's clock.
+		const swing = Signal.builder({
+			type: "custom",
+			fn: (ctx) => -3 * ctx.frame,
+		});
+		const comp = scene([leg({ pose: { knee: { rotateZ: swing } } })]);
+		const curled = await probe(comp, 30);
+		expect(curled(60, 80)).toBe(true);
+		// Keyed weight fades the override in.
+		const fading = scene([
+			leg({
+				pose: {
+					knee: {
+						rotateZ: 90,
+						weight: [
+							[0, 0],
+							[30, 1],
+						],
+					},
+				},
+			}),
+		]);
+		expect((await probe(fading, 0))(0, 140)).toBe(true);
+		// (Frame 30: the looping fold clip underneath is back at rest.)
+		expect((await probe(fading, 30))(-60, 80)).toBe(true);
+	});
+
+	it("poses from rest over a clip", async () => {
+		const lit = await probe(
+			scene([
+				leg({
+					animationLayers: [{ clip: "fold", timeOffset: 1, loop: false }],
+					pose: { knee: { mode: "rest" } },
+				}),
+			]),
+		);
+		// The clip folds the knee; the rest pose override straightens it.
+		expect(lit(0, 140)).toBe(true);
+	});
+
+	it("aims bones along scene directions", async () => {
+		const lit = await probe(
+			scene([leg({ aim: [{ joint: "root", direction: [1, 0, 0] }] })]),
+		);
+		expect(lit(150, 0)).toBe(true);
+		expect(lit(0, 150)).toBe(false);
+	});
+
+	it("retargets a performer's 2D pose onto the rig", async () => {
+		// Screen px: hip at the origin, knee to the right, ankle below the knee.
+		const pose = (visibility: number): PoseSource => ({
+			point: (name) =>
+				({
+					leftHip: { x: 0, y: 0, visibility },
+					leftKnee: { x: 100, y: 0, visibility },
+					leftAnkle: { x: 100, y: 100, visibility },
+				})[name as "leftHip"] ?? { x: 0, y: 0, visibility: 0 },
+		});
+		const rig = { leftUpperLeg: "root", leftLowerLeg: "knee" };
+		const lit = await probe(
+			scene([leg({ aim: retargetPose(pose(1), { rig }) })]),
+		);
+		// Thigh along +x to the knee at (80, 0), shin down the screen (model −y).
+		expect(lit(40, 0)).toBe(true);
+		expect(lit(80, -40)).toBe(true);
+		expect(lit(0, 140)).toBe(false);
+		// Unsure keypoints hand the bones back: the leg stands as animated.
+		const unsure = await probe(
+			scene([leg({ aim: retargetPose(pose(0.1), { rig }) })]),
+		);
+		expect(unsure(0, 140)).toBe(true);
+		// Mirrored: the performer's left drives the right side, unmapped here.
+		const mirrored = await probe(
+			scene([leg({ aim: retargetPose(pose(1), { rig, mirror: true }) })]),
+		);
+		expect(mirrored(0, 140)).toBe(true);
 	});
 });

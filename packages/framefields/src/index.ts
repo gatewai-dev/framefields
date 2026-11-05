@@ -993,11 +993,14 @@ export {
 import { scatterCoverage } from "./procedural3d.js";
 
 export type {
+	AimConstraint,
 	CrowdConfig,
+	JointPose,
 	LookAtConstraint,
 	ModelAnimationLayer,
 	NumberTrack,
 	SpringBoneChain,
+	TrackSignal,
 	TwoBoneIkConstraint,
 	Vec3Track,
 	WindConfig,
@@ -1016,6 +1019,14 @@ export type {
 	Terrain3DOptions,
 	TerrainSurface,
 } from "./procedural3d.js";
+export {
+	type PoseSource,
+	type RetargetBone,
+	type RetargetOptions,
+	RIG_PRESETS,
+	type RigMap,
+	retargetPose,
+} from "./retarget.js";
 export { type StyleName, Styles } from "./styles.js";
 export type { Swarm3DOptions } from "./swarm3d.js";
 export {

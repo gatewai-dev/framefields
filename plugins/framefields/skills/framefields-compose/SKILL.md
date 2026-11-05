@@ -431,6 +431,32 @@ const extras = Layer3D.scatter({
 });
 ```
 
+**Posing joints directly** (`pose`, by joint name; namespace prefixes and case are ignored, so `"LeftArm"` finds `"mixamorig:LeftArm"`): local Euler degrees `rotateX/Y/Z` (Z, then Y, then X, like layers) and offsets `x/y/z`, on top of the clips (`mode: "additive"`, default) or of the rest pose (`"rest"`: clips stop moving that joint), with a `weight`. Every value is a track: a number, `[[frame, v]]` keys, `(frame) => v`, or a signal (audio, physics, vision, `Signal.*`), so a head can sway on a sine or flinch at a physics hit:
+
+```ts
+Layer.glb("hero.glb", {
+  pose: {
+    Head: { rotateY: Signal.sine({ min: -20, max: 20, period: 48 }) }, // a signal
+    Neck: { rotateX: 30, weight: ball.impact },                     // flinch by a physics hit
+    "LeftForeArm": { rotateZ: [[0, 0], [24, -70]], weight: 0.8 },   // keys
+    Spine: { rotateY: (f) => 15 * Math.sin(f / 12), mode: "rest" }, // a function, over rest
+  },
+});
+```
+
+**Aiming and retargeting** (`aim`): `{ joint, direction }` turns a bone (toward its first child, or a local `axis`) along a scene direction, parents first; direction axes are tracks too (`[1, signal, 0]`). A performer's 2D pose drives a character with `person.retarget({ rig: "mixamo" | "humanoid" | "rigify" | { leftUpperArm: "…", … }, bones?, mirror?, minVisibility?, weight? })` on a placed vision person (or `retargetPose(source, options)` for any source with `point(name, frame)`):
+
+```ts
+const dancer = comp.vision("dance.mp4").person.place({ width: W, height: H, fit: "cover" });
+Layer.glb("robot.glb", {
+  x: dancer.signals("leftHip").x, y: dancer.signals("leftHip").y,   // root follows (signals)
+  aim: dancer.retarget({ rig: "mixamo", bones: ["leftUpperArm", "leftLowerArm", "rightUpperArm", "rightLowerArm"] }),
+  animationLayers: [{ clip: "Walk" }],                              // legs keep walking
+});
+```
+
+Order of evaluation: clips, `pose`, `aim`, `lookAt`, `ik` (so IK can still plant the feet), then springs. Retargeting is 2D: limbs swing in the plane facing the camera (no depth from one view); unsure keypoints (below `minVisibility`, default 0.3) hand their bone back to the animated pose. Use `mirror: true` for a character seen from behind. Functions and signals are in-process only; JSON keeps numbers and keys.
+
 Rules: a crowd mesh keeps its own `rotateX` / `scale` under each instance (y-up glTF: `rotateX: 180`). Spring bones follow the clip's motion and the model's current orientation, not the layer's keyframed travel. Per-instance `clip`, `animOffset`, `animSpeed` in `transforms` / `instanceAt` override the crowd's seeded choices.
 
 ### Procedural worlds: terrain, sculptures, scatter

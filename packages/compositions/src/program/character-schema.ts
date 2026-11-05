@@ -4,24 +4,43 @@
  *
  * Time-varying values are tracks: a constant, keyframes `[[frame, …value]]`
  * (linear, in the layer's own frames), or, in process, a function of the
- * frame (not serializable; a spec sent as JSON keeps constants and keys).
+ * frame or a signal (anything with `get(ctx)`: audio, physics, vision,
+ * `Signal.*`). Functions and signals are not serializable; a spec sent as
+ * JSON keeps constants and keys.
  */
 import { z } from "zod";
 
 const Vec3Schema = z.tuple([z.number(), z.number(), z.number()]);
 const isFunction = (v: unknown) => typeof v === "function";
 
-/** A number over time: constant, `[[frame, value], …]` keys, or `(frame) => value`. */
+/** A frame signal: anything with `get(ctx)` (`Signal.*`, audio, physics, vision). */
+export interface TrackSignal {
+	get(ctx?: unknown): number;
+}
+const isSignal = (v: unknown): v is TrackSignal =>
+	typeof v === "object" &&
+	v !== null &&
+	typeof (v as { get?: unknown }).get === "function";
+
+/**
+ * A number over time: constant, `[[frame, value], …]` keys, `(frame) =>
+ * value`, or a signal.
+ */
 export const NumberTrackSchema = z.union([
 	z.number(),
 	z.array(z.tuple([z.number(), z.number()])).min(1),
 	z.custom<(frame: number) => number>(isFunction),
+	z.custom<TrackSignal>(isSignal),
 ]);
 export type NumberTrack = z.infer<typeof NumberTrackSchema>;
 
-/** A point over time: `[x, y, z]`, `[[frame, x, y, z], …]` keys, or `(frame) => [x, y, z]`. */
+/**
+ * A point over time: `[x, y, z]` where each axis is a {@link NumberTrack}
+ * (so a constant, keys, a function or a signal per axis), `[[frame, x, y,
+ * z], …]` keys, or `(frame) => [x, y, z]`.
+ */
 export const Vec3TrackSchema = z.union([
-	Vec3Schema,
+	z.tuple([NumberTrackSchema, NumberTrackSchema, NumberTrackSchema]),
 	z.array(z.tuple([z.number(), z.number(), z.number(), z.number()])).min(1),
 	z.custom<(frame: number) => [number, number, number]>(isFunction),
 ]);
@@ -73,6 +92,44 @@ export const LookAtSchema = z
 	})
 	.strict();
 export type LookAtConstraint = z.infer<typeof LookAtSchema>;
+
+/**
+ * A joint posed directly, in its own local frame: Euler degrees (applied
+ * Z, then Y, then X, like layers) and a translation offset in model units,
+ * on top of the animated pose (`"additive"`, default) or of the joint's rest
+ * pose (`"rest"`: clips no longer move it).
+ */
+export const JointPoseSchema = z
+	.object({
+		rotateX: NumberTrackSchema.optional(),
+		rotateY: NumberTrackSchema.optional(),
+		rotateZ: NumberTrackSchema.optional(),
+		x: NumberTrackSchema.optional(),
+		y: NumberTrackSchema.optional(),
+		z: NumberTrackSchema.optional(),
+		/** 0..1. Default 1. */
+		weight: NumberTrackSchema.optional(),
+		mode: z.enum(["additive", "rest"]).optional(),
+	})
+	.strict();
+export type JointPose = z.infer<typeof JointPoseSchema>;
+
+/**
+ * Points a bone along a scene direction (the joint turns so the bone,
+ * toward its first child, or its local `axis` lies along it). Retargeting a
+ * performer's pose is a chain of aims, parents first.
+ */
+export const AimSchema = z
+	.object({
+		joint: z.string(),
+		/** Scene direction (any length); `[0, 0, 0]` holds the pose. */
+		direction: Vec3TrackSchema,
+		weight: NumberTrackSchema.optional(),
+		/** The joint's local axis to aim. Default: toward its first child. */
+		axis: Vec3Schema.optional(),
+	})
+	.strict();
+export type AimConstraint = z.infer<typeof AimSchema>;
 
 export const SpringBoneChainSchema = z
 	.object({

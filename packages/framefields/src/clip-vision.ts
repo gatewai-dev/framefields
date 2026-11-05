@@ -1,3 +1,4 @@
+import type { AimConstraint } from "@framefields/compositions/program";
 import {
 	type FrameSignal,
 	mediaSourceRange,
@@ -25,6 +26,7 @@ import type {
 } from "@framefields/vision-sam";
 import { mediaDecoderCache } from "@framefields/webgpu-renderers";
 import type { VisionProps } from "./effects/index.js";
+import { type RetargetOptions, retargetPose } from "./retarget.js";
 
 export type PoseKeypointName = (typeof COCO17_KEYPOINT_NAMES)[number];
 
@@ -1384,6 +1386,15 @@ export class PersonTrack {
 			y: (a[1] + (b[1] - a[1]) * u) * t.sy + t.oy,
 			visibility: a[2] + (b[2] - a[2]) * u,
 		};
+	}
+
+	/**
+	 * Aim constraints that make a 3D character copy this person's pose, for
+	 * a glTF model's `aim`: `Layer.glb(src, { aim: person.retarget({ rig: "mixamo" }) })`.
+	 * Place the person first (`place()`), so directions read in composition px.
+	 */
+	retarget(options?: RetargetOptions): AimConstraint[] {
+		return retargetPose(this, options);
 	}
 
 	/** Signals for a keypoint, for `.signal("x", …)`; read while rendering. */

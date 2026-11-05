@@ -32,7 +32,9 @@ export type Shape3D =
 	/** Axis along y. */
 	| { kind: "cylinder"; halfHeight: number; radius: number }
 	/** Flat [x0, y0, z0, …] around the body origin. */
-	| { kind: "hull"; points: number[] };
+	| { kind: "hull"; points: number[] }
+	/** Exact triangle mesh (static / kinematic bodies: terrain, sculptures). */
+	| { kind: "trimesh"; vertices: number[]; indices: number[] };
 
 interface BodySpecBase extends MaterialSpec {
 	type: BodyType;
@@ -88,6 +90,10 @@ export interface SimBody<V, R> {
 	mass(): number;
 	setEnabled(enabled: boolean): void;
 	applyImpulse(impulse: V): void;
+	/** Teleports the body (wakes it): position, and rotation. */
+	setPose(position: V, rotation: R): void;
+	/** Sets linear and angular velocity (wakes the body). */
+	setVelocity(linear: V, angular: R extends number ? number : Vec3): void;
 	setKinematicTarget(position: V, rotation: R): void;
 }
 
@@ -225,6 +231,14 @@ class RapierWorld2D implements SimWorld2D {
 			mass: () => body.mass(),
 			setEnabled: (on) => body.setEnabled(on),
 			applyImpulse: ([x, y]) => body.applyImpulse({ x, y }, true),
+			setPose: ([x, y], angle) => {
+				body.setTranslation({ x, y }, true);
+				body.setRotation(angle, true);
+			},
+			setVelocity: ([x, y], w) => {
+				body.setLinvel({ x, y }, true);
+				body.setAngvel(w, true);
+			},
 			setKinematicTarget: ([x, y], angle) => {
 				body.setNextKinematicTranslation({ x, y });
 				body.setNextKinematicRotation(angle);
@@ -359,6 +373,14 @@ class RapierWorld3D implements SimWorld3D {
 			mass: () => body.mass(),
 			setEnabled: (on) => body.setEnabled(on),
 			applyImpulse: (v) => body.applyImpulse(vec3(v), true),
+			setPose: (p, [x, y, z, w]) => {
+				body.setTranslation(vec3(p), true);
+				body.setRotation({ x, y, z, w }, true);
+			},
+			setVelocity: (v, w) => {
+				body.setLinvel(vec3(v), true);
+				body.setAngvel(vec3(w), true);
+			},
 			setKinematicTarget: (p, [x, y, z, w]) => {
 				body.setNextKinematicTranslation(vec3(p));
 				body.setNextKinematicRotation({ x, y, z, w });
@@ -500,5 +522,10 @@ function shapeDesc3D(R: Rapier3D, shape: Shape3D): RAPIER3D.ColliderDesc {
 				);
 			return desc;
 		}
+		case "trimesh":
+			return R.ColliderDesc.trimesh(
+				new Float32Array(shape.vertices),
+				new Uint32Array(shape.indices),
+			);
 	}
 }

@@ -23,6 +23,11 @@ import {
 	unwrapDegrees,
 	WorldCore,
 } from "./core.js";
+import {
+	createFracture,
+	type Fracture3D,
+	type Fracture3DOptions,
+} from "./fracture3d.js";
 
 export interface World3DOptions extends PhysicsWorldOptions {
 	/** px/s², y down. A number pulls straight down. Default 2400. */
@@ -62,10 +67,12 @@ export interface Body3DOptions extends Omit<BodyCommonOptions, "lockRotation"> {
 	lockRotation?: boolean | { x?: boolean; y?: boolean; z?: boolean };
 	/**
 	 * Collider: `"auto"` (default) reads the Layer3D primitive (box, sphere,
-	 * cylinder) and falls back to the mesh's convex hull for models and
-	 * tapered or uneven shapes. Force `"box"`, `"sphere"`, `"cylinder"` or `"hull"`.
+	 * cylinder), uses the exact triangles of `Layer3D.terrain` / `Layer3D.sdf`
+	 * on static bodies, and falls back to the mesh's convex hull for models and
+	 * tapered or uneven shapes. Force `"box"`, `"sphere"`, `"cylinder"`,
+	 * `"hull"` or `"mesh"` (exact triangles; static or kinematic bodies only).
 	 */
-	shape?: "auto" | "box" | "sphere" | "cylinder" | "hull";
+	shape?: "auto" | "box" | "sphere" | "cylinder" | "hull" | "mesh";
 	/** Collider size override `[width, height, depth]`, px (before the layer's scale). */
 	size?: [number, number, number];
 	/** px/s. */
@@ -83,7 +90,8 @@ export interface Body3DOptions extends Omit<BodyCommonOptions, "lockRotation"> {
 	};
 }
 
-type LayerLike = Record<string, unknown> & { kind?: string };
+/** @internal */
+export type LayerLike = Record<string, unknown> & { kind?: string };
 
 const DEG = Math.PI / 180;
 
@@ -96,7 +104,8 @@ export function quatFromEuler(rx: number, ry: number, rz: number): Quat {
 	return quatMul(quatMul(qz, qy), qx);
 }
 
-function quatMul(a: Quat, b: Quat): Quat {
+/** @internal */
+export function quatMul(a: Quat, b: Quat): Quat {
 	const [ax, ay, az, aw] = a;
 	const [bx, by, bz, bw] = b;
 	return [
@@ -173,7 +182,42 @@ export class PhysicsBody3D implements CoreBody<Vec3, Quat> {
 	}
 
 	get startFrame(): number {
-		return Math.max(0, Math.round(this.options.startFrame ?? 0));
+		return this.wokeAt ?? Math.max(0, Math.round(this.options.startFrame ?? 0));
+	}
+	private wokeAt?: number;
+
+	/**
+	 * @internal Starts the body now, mid-simulation (`frame` relative to the
+	 * world's start): it moves from the next frame, at this velocity (px/s,
+	 * degrees per second), from `pose` (px) when given.
+	 */
+	wake(
+		frame: number,
+		velocity: Vec3,
+		angularVelocity: Vec3,
+		pose?: { position: Vec3; rotation: Quat },
+	): void {
+		this.wokeAt = frame;
+		const ppm = this.world.pixelsPerMeter;
+		this.sim.setEnabled(true);
+		if (pose) {
+			this.sim.setPose(
+				[
+					pose.position[0] / ppm,
+					pose.position[1] / ppm,
+					pose.position[2] / ppm,
+				],
+				pose.rotation,
+			);
+		}
+		this.sim.setVelocity(
+			[velocity[0] / ppm, velocity[1] / ppm, velocity[2] / ppm],
+			[
+				angularVelocity[0] * DEG,
+				angularVelocity[1] * DEG,
+				angularVelocity[2] * DEG,
+			],
+		);
 	}
 	get gravityScale(): number {
 		return this.options.gravityScale ?? 1;
@@ -265,7 +309,12 @@ export class PhysicsBody3D implements CoreBody<Vec3, Quat> {
 			previous < 0
 				? this.start.rotation
 				: [rx[previous], ry[previous], rz[previous]];
-		const e = eulerFromQuat(this.sim.rotation(), prev);
+		const q = this.sim.rotation();
+		rec.channel("qx")[index] = q[0];
+		rec.channel("qy")[index] = q[1];
+		rec.channel("qz")[index] = q[2];
+		rec.channel("qw")[index] = q[3];
+		const e = eulerFromQuat(q, prev);
 		rx[index] = e[0];
 		ry[index] = e[1];
 		rz[index] = e[2];
@@ -316,7 +365,8 @@ export class PhysicsBody3D implements CoreBody<Vec3, Quat> {
 	}
 }
 
-function rotateByQuat(v: Vec3, q: Quat): Vec3 {
+/** @internal */
+export function rotateByQuat(v: Vec3, q: Quat): Vec3 {
 	const r = quatMul(quatMul(q, [v[0], v[1], v[2], 0]), [
 		-q[0],
 		-q[1],
@@ -389,6 +439,24 @@ export class PhysicsWorld3D extends WorldCore<Vec3, Quat, PhysicsBody3D> {
 			num(options.rotateY ?? t.rotateY, 0),
 			num(options.rotateZ ?? t.rotateZ, 0),
 		];
+		return this.shapedBody(
+			layer,
+			position,
+			rotation,
+			colliderShape3D(t, options),
+			options,
+		);
+	}
+
+	/** @internal A body with an explicit collider (px), at a pose in px and degrees. */
+	shapedBody(
+		layer: LayerLike | undefined,
+		position: Vec3,
+		rotation: Vec3,
+		shape: Shape3D,
+		options: Body3DOptions,
+	): PhysicsBody3D {
+		this.assertOpen();
 		const ppm = this.pixelsPerMeter;
 		const type = options.type ?? "dynamic";
 		const v = options.velocity ?? [0, 0, 0];
@@ -416,7 +484,7 @@ export class PhysicsWorld3D extends WorldCore<Vec3, Quat, PhysicsBody3D> {
 			density: options.density ?? 1,
 			friction: options.friction ?? 0.6,
 			restitution: options.restitution ?? 0.3,
-			shape: scaleShape(colliderShape3D(t, options), 1 / ppm),
+			shape: scaleShape(shape, 1 / ppm),
 		};
 		const simBody = (this.sim as unknown as SimWorld3D).addBody(spec);
 		const body = new PhysicsBody3D(
@@ -428,7 +496,36 @@ export class PhysicsWorld3D extends WorldCore<Vec3, Quat, PhysicsBody3D> {
 			options,
 			this.newRecording(),
 		);
+		// A kinematic body following drivers starts where they put it, not at
+		// the layer's own pose (else its first step sweeps through the gap).
+		const start = body.kinematicTarget(this.startFrame);
+		if (start) simBody.setPose(start.position, start.rotation);
 		return this.addBody(body);
+	}
+
+	/** @internal Runs after each simulated frame (frame relative to the world's start). */
+	onStep(
+		hook: (frame: number, pairs: Array<[PhysicsBody3D, PhysicsBody3D]>) => void,
+	): void {
+		this.assertOpen();
+		this.stepHooks.push(hook);
+	}
+
+	/** @internal Runs once the simulation has finished. */
+	onSimulated(hook: () => void): void {
+		this.assertOpen();
+		this.simulatedHooks.push(hook);
+	}
+
+	/**
+	 * Breaks a Layer3D primitive, extruded text or loaded model into Voronoi
+	 * pieces that stay together, looking intact, until the fracture frame (or
+	 * until something hits it), then fly apart as rigid bodies. The node is
+	 * changed in place: add it to the composition as usual. All pieces draw
+	 * in one call per material, the cut faces in `interiorColor`.
+	 */
+	fracture(target: LayoutNode, options: Fracture3DOptions = {}): Fracture3D {
+		return createFracture(this, target, options);
 	}
 
 	/** A fixed, very large floor whose top face sits at `y`. */
@@ -734,6 +831,15 @@ function colliderShape3D(t: LayerLike, options: Body3DOptions): Shape3D {
 		return { kind: "hull", points: pts.map((v, i) => v * scale[i % 3]) };
 	};
 
+	const exact =
+		mode === "mesh" ||
+		(mode === "auto" &&
+			(options.type ?? "dynamic") !== "dynamic" &&
+			(prim.type === "terrain" || prim.type === "sdf"));
+	if (exact) {
+		const mesh = meshTriangles(t.modelData, scale);
+		if (mesh) return mesh;
+	}
 	if (options.size || mode === "box") {
 		const [w, h, d] = options.size ?? boxSize(t, prim) ?? [0, 0, 0];
 		if (w > 0 && h > 0 && d > 0) {
@@ -847,6 +953,36 @@ function boxSize(t: LayerLike, prim: PrimitiveSpec): Vec3 | undefined {
 	return undefined;
 }
 
+/** All of a model's triangles, scaled: an exact (non-convex) collider. */
+function meshTriangles(modelData: unknown, scale: Vec3): Shape3D | undefined {
+	const meshes = (
+		modelData as
+			| {
+					meshes?: Array<{
+						positions?: ArrayLike<number>;
+						indices?: ArrayLike<number>;
+						topology?: string;
+					}>;
+			  }
+			| undefined
+	)?.meshes;
+	if (!meshes?.length) return undefined;
+	const vertices: number[] = [];
+	const indices: number[] = [];
+	for (const m of meshes) {
+		if (!m.positions || !m.indices) continue;
+		if (m.topology && m.topology !== "triangle-list") continue;
+		const base = vertices.length / 3;
+		for (let i = 0; i < m.positions.length; i++)
+			vertices.push(m.positions[i]! * scale[i % 3]!);
+		for (let i = 0; i < m.indices.length; i++)
+			indices.push(m.indices[i]! + base);
+	}
+	return indices.length >= 3
+		? { kind: "trimesh", vertices, indices }
+		: undefined;
+}
+
 /** Every vertex of a model, flat xyz, at most ~4k points (the hull needs no more). */
 function meshPoints(modelData: unknown): number[] | undefined {
 	const meshes = (
@@ -891,5 +1027,11 @@ function scaleShape(shape: Shape3D, s: number): Shape3D {
 			};
 		case "hull":
 			return { kind: "hull", points: shape.points.map((v) => v * s) };
+		case "trimesh":
+			return {
+				kind: "trimesh",
+				vertices: shape.vertices.map((v) => v * s),
+				indices: shape.indices,
+			};
 	}
 }

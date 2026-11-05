@@ -569,6 +569,50 @@ importers:
         specifier: 2.0.2
         version: 2.0.2
 
+  examples/34_spatial_styling:
+    dependencies:
+      framefields:
+        specifier: workspace:*
+        version: link:../../packages/framefields
+    devDependencies:
+      '@framefields/tsconfig':
+        specifier: workspace:*
+        version: link:../../packages/tsconfig
+      '@types/node':
+        specifier: ^24.1.0
+        version: 24.10.14
+      tsx:
+        specifier: ^4.20.3
+        version: 4.21.0
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      vitest:
+        specifier: ^4.1.11
+        version: 4.1.11(@opentelemetry/api@1.9.0)(@types/node@24.10.14)(@vitest/coverage-v8@4.1.11)(jsdom@29.1.0(@noble/hashes@2.0.1)(canvas@3.2.3))(vite@8.2.1(@types/node@24.10.14)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.3))
+
+  examples/35_robot_uprising:
+    dependencies:
+      framefields:
+        specifier: workspace:*
+        version: link:../../packages/framefields
+    devDependencies:
+      '@framefields/tsconfig':
+        specifier: workspace:*
+        version: link:../../packages/tsconfig
+      '@types/node':
+        specifier: ^24.1.0
+        version: 24.10.14
+      tsx:
+        specifier: ^4.20.3
+        version: 4.21.0
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      vitest:
+        specifier: ^4.1.11
+        version: 4.1.11(@opentelemetry/api@1.9.0)(@types/node@24.10.14)(@vitest/coverage-v8@4.1.11)(jsdom@29.1.0(@noble/hashes@2.0.1)(canvas@3.2.3))(vite@8.2.1(@types/node@24.10.14)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.3))
+
   nodes/node-apply-lut:
     dependencies:
       '@framefields/core':
@@ -2795,6 +2839,9 @@ importers:
       '@mediabunny/mp3-encoder':
         specifier: ^1.61.6
         version: 1.61.6(mediabunny@1.61.6)
+      gsap:
+        specifier: ^3.15.0
+        version: 3.15.0
       mediabunny:
         specifier: ^1.61.6
         version: 1.61.6
@@ -2954,6 +3001,9 @@ importers:
       '@framefields/core':
         specifier: workspace:*
         version: link:../core
+      '@framefields/gltf-fixtures':
+        specifier: workspace:*
+        version: link:../gltf-fixtures
       '@framefields/node-audio-compressor':
         specifier: workspace:*
         version: link:../../nodes/node-audio-compressor
@@ -3150,6 +3200,33 @@ importers:
       onnxruntime-web:
         specifier: ^1.24.0
         version: 1.30.0
+
+  packages/gltf-fixtures:
+    devDependencies:
+      '@framefields/tsconfig':
+        specifier: workspace:*
+        version: link:../tsconfig
+      '@framefields/webgpu-renderers':
+        specifier: workspace:*
+        version: link:../webgpu-renderers
+      '@types/node':
+        specifier: ^24.1.0
+        version: 24.10.14
+      gltf-validator:
+        specifier: 2.0.0-dev.3.10
+        version: 2.0.0-dev.3.10
+      tsdown:
+        specifier: ^0.19.0
+        version: 0.19.0(oxc-resolver@11.19.1)(typescript@5.9.3)
+      tsx:
+        specifier: ^4.20.3
+        version: 4.21.0
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      vitest:
+        specifier: ^4.1.11
+        version: 4.1.11(@opentelemetry/api@1.9.0)(@types/node@24.10.14)(@vitest/coverage-v8@4.1.11)(jsdom@29.1.0(@noble/hashes@2.0.1)(canvas@3.2.3))(vite@8.2.1(@types/node@24.10.14)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.3))
 
   packages/node-sdk:
     dependencies:
@@ -5838,6 +5915,9 @@ packages:
   globby@11.1.0:
     resolution: {integrity: sha512-jhIXaOzy1sb8IyocaruWSn1TjmnBVs8Ayhcy83rmxNJ8q2uWKCAj3CnJY+KpGSXCueAPc0i05kVvVKtP1t9S3g==}
     engines: {node: '>=10'}
+
+  gltf-validator@2.0.0-dev.3.10:
+    resolution: {integrity: sha512-odJ4k0tRkGXiDGn78yDBg+fBbAIvBnXxh3RwAta0emSxGtyagFE8B4xELB1oYe3S5RD8Ci3uZAsZaascH2LAEQ==}
 
   gopd@1.2.0:
     resolution: {integrity: sha512-ZUKRh6/kUFoAiTAtTYPZJ3hw9wNxx+BIBOijnlG9PnrJsCcSjs1wyyD6vJpaYtgnzDrKYRSqf3OO6Rfa93xsRg==}
@@ -8999,6 +9079,8 @@ snapshots:
       ignore: 5.3.2
       merge2: 1.4.1
       slash: 3.0.0
+
+  gltf-validator@2.0.0-dev.3.10: {}
 
   gopd@1.2.0: {}
 

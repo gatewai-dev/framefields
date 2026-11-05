@@ -13,21 +13,25 @@ ${lighting3dWgsl}
 const RELIEF_NORMAL_CELLS : f32 = 4.0;
 
 struct ModelUniforms {
-    modelMatrix    : mat4x4<f32>,
-    normalMatrix   : mat4x4<f32>,
-    colorTint      : vec4<f32>,
-    borderColor    : vec4<f32>,
-    params         : vec4<f32>, // x = opacity, y = borderRadius, z = twoSided (1.0 = yes), w = borderWidth
-    dimensions     : vec4<f32>, // x = width, y = height, zw = texture extent the layer covers (0 = whole texture)
-    materialParams : vec4<f32>, // x = shininess, y = specularIntensity, z = ambientIntensity, w = materialMode (0=unlit, 1=lit)
-    pbr            : vec4<f32>, // x = roughness (<0 = default), y = metallic
-    emissive       : vec4<f32>, // rgb = sRGB emissive color, w = strength
-    toonShadow     : vec4<f32>, // rgb shadow-side multiplier, w diffuse modelling
-    toonLight      : vec4<f32>, // rgb lit-side multiplier, w terminator threshold
-    toonParams     : vec4<f32>, // x terminator softness, y outline participation
-    relief         : vec4<f32>, // x = amount (px), y = on, w = grid cells per side
-    reliefRect     : vec4<f32>, // xy = where the layer's box starts in reliefTex (0..1), zw = its size
-    reliefEye      : vec4<f32>, // xyz = the eye the surface keeps its look from (the default camera)
+    modelMatrix          : mat4x4<f32>,
+    normalMatrix         : mat4x4<f32>,
+    colorTint            : vec4<f32>,
+    borderColor          : vec4<f32>,
+    params               : vec4<f32>, // x = opacity, y = borderRadius, z = twoSided (1.0 = yes), w = borderWidth
+    dimensions           : vec4<f32>, // x = width, y = height, zw = texture extent the layer covers (0 = whole texture)
+    materialParams       : vec4<f32>, // x = shininess, y = specularIntensity, z = ambientIntensity, w = materialMode (0=unlit, 1=lit)
+    pbr                  : vec4<f32>, // x = roughness (<0 = default), y = metallic
+    emissive             : vec4<f32>, // rgb = sRGB emissive color, w = strength
+    toonShadow           : vec4<f32>, // rgb shadow-side multiplier, w diffuse modelling
+    toonLight            : vec4<f32>, // rgb lit-side multiplier, w terminator threshold
+    toonParams           : vec4<f32>, // x terminator softness, y outline participation, z sheenRoughness, w triplanarSharpness
+    substrateClearcoat   : vec4<f32>, // x = clearcoat, y = clearcoatRoughness, z = anisotropy, w = anisotropyRotationRad
+    substrateSubsurface  : vec4<f32>, // x = subsurface, yzw = subsurfaceColor (sRGB)
+    substrateSheen       : vec4<f32>, // x = sheen, yzw = sheenColor (sRGB)
+    substrateIridescence : vec4<f32>, // x = iridescence, y = thicknessNm, z = filmIor, w = triplanarUvFreq
+    relief               : vec4<f32>, // x = amount (px), y = on, w = grid cells per side
+    reliefRect           : vec4<f32>, // xy = where the layer's box starts in reliefTex (0..1), zw = its size
+    reliefEye            : vec4<f32>, // xyz = the eye the surface keeps its look from (the default camera)
 };
 
 @group(0) @binding(0) var<uniform> cam    : CameraUniforms;
@@ -169,6 +173,7 @@ struct QuadFragment {
 };
 
 fn shadeQuad(in: VertexOutput, isFront: bool) -> QuadFragment {
+    measureSpecularFilter(in.worldNormal);
     // One-sided quads cull against their declared normal, not the hardware
     // winding: the Y-down view basis mirrors winding, so front_facing reads
     // camera-facing quads as back faces.
@@ -219,7 +224,13 @@ fn shadeQuad(in: VertexOutput, isFront: bool) -> QuadFragment {
         discard;
     }
     
-    let shaded = shadeSurfaceFull(in.worldPos, in.worldNormal, baseRgb, model.materialParams, model.pbr, model.emissive, model.toonShadow, model.toonLight, model.toonParams);
+    let substrate = SubstrateParams(
+        model.substrateClearcoat,
+        model.substrateSubsurface,
+        model.substrateSheen,
+        model.substrateIridescence,
+    );
+    let shaded = shadeSurfaceSubstrate(in.worldPos, in.worldNormal, baseRgb, model.materialParams, model.pbr, model.emissive, model.toonShadow, model.toonLight, model.toonParams, substrate);
     var out: QuadFragment;
     out.color = vec4<f32>(shaded.display * alpha, alpha);
     out.hdr = vec4<f32>(shaded.hdr * alpha, alpha);

@@ -9,9 +9,13 @@ import type {
 	AnimationClip3D,
 	LoadModelOptions,
 	Material3D,
+	MaterialMapSlot,
+	MaterialSurface,
 	Model3DData,
 	ModelNode3D,
+	MorphTarget3D,
 	NodeAnimationTrack3D,
+	TextureSampling,
 } from "./types.js";
 
 const COMPONENTS: Record<string, number> = {
@@ -119,6 +123,8 @@ interface GltfPrimitive {
 		COLOR_0?: number;
 		JOINTS_0?: number;
 		WEIGHTS_0?: number;
+		JOINTS_1?: number;
+		WEIGHTS_1?: number;
 	};
 	indices?: number;
 	material?: number;
@@ -140,6 +146,8 @@ interface GltfMesh {
 	name?: string;
 	weights?: number[];
 	primitives: GltfPrimitive[];
+	/** `targetNames`: the de-facto convention for naming morph targets. */
+	extras?: { targetNames?: string[] };
 }
 
 interface GltfTextureTransform {
@@ -176,6 +184,32 @@ interface GltfMaterial {
 		KHR_materials_emissive_strength?: { emissiveStrength?: number };
 		/** VRM 1.0 toon material: the base is lit flat, the shadowed side tinted by shadeColorFactor. */
 		VRMC_materials_mtoon?: { shadeColorFactor?: [number, number, number] };
+		KHR_materials_clearcoat?: {
+			clearcoatFactor?: number;
+			clearcoatRoughnessFactor?: number;
+		};
+		KHR_materials_sheen?: {
+			sheenColorFactor?: [number, number, number];
+			sheenRoughnessFactor?: number;
+		};
+		KHR_materials_anisotropy?: {
+			anisotropyStrength?: number;
+			anisotropyRotation?: number;
+		};
+		KHR_materials_transmission?: { transmissionFactor?: number };
+		KHR_materials_ior?: { ior?: number };
+		KHR_materials_volume?: { thicknessFactor?: number };
+		KHR_materials_iridescence?: {
+			iridescenceFactor?: number;
+			iridescenceIor?: number;
+			iridescenceThicknessMinimum?: number;
+			iridescenceThicknessMaximum?: number;
+		};
+	};
+	extras?: {
+		framefields?: {
+			subsurface?: { factor?: number; color?: [number, number, number] };
+		};
 	};
 }
 
@@ -246,7 +280,11 @@ interface GltfDocument {
 	extensionsUsed?: string[];
 	extensionsRequired?: string[];
 	scene?: number;
-	scenes?: Array<{ name?: string; nodes?: number[] }>;
+	scenes?: Array<{
+		name?: string;
+		nodes?: number[];
+		extras?: { framefields?: { drivers?: Model3DData["drivers"] } };
+	}>;
 	nodes?: GltfNode[];
 	meshes?: GltfMesh[];
 	materials?: GltfMaterial[];
@@ -264,6 +302,13 @@ interface GltfDocument {
 const SUPPORTED_REQUIRED_EXTENSIONS = new Set([
 	"KHR_materials_unlit",
 	"KHR_materials_emissive_strength",
+	"KHR_materials_clearcoat",
+	"KHR_materials_sheen",
+	"KHR_materials_anisotropy",
+	"KHR_materials_iridescence",
+	"KHR_materials_transmission",
+	"KHR_materials_ior",
+	"KHR_materials_volume",
 	"KHR_texture_transform",
 	"KHR_texture_basisu",
 	"EXT_texture_webp",
@@ -715,49 +760,137 @@ export class GltfLoader {
 			}
 		}
 		if (accessor.sparse) {
-			const sparse = accessor.sparse;
-			const indexView = doc.bufferViews?.[sparse.indices.bufferView];
-			const valueView = doc.bufferViews?.[sparse.values.bufferView];
-			if (!indexView || !valueView)
-				throw new Error(
-					`Sparse accessor ${accessorIndex} references a missing buffer view`,
-				);
-			const indexData = binaryBuffers[indexView.buffer];
-			const valueData = binaryBuffers[valueView.buffer];
-			if (!indexData || !valueData)
-				throw new Error(
-					`Sparse accessor ${accessorIndex} references a missing buffer`,
-				);
-			const indexReader = componentReader(sparse.indices.componentType);
-			const indexBytes = COMPONENT_BYTES[sparse.indices.componentType];
-			const indexDv = new DataView(
-				indexData.buffer,
-				indexData.byteOffset,
-				indexData.byteLength,
-			);
-			const valueDv = new DataView(
-				valueData.buffer,
-				valueData.byteOffset,
-				valueData.byteLength,
-			);
-			const indexBase =
-				(indexView.byteOffset ?? 0) + (sparse.indices.byteOffset ?? 0);
-			const valueBase =
-				(valueView.byteOffset ?? 0) + (sparse.values.byteOffset ?? 0);
-			for (let i = 0; i < sparse.count; i++) {
-				const index = indexReader(indexDv, indexBase + i * indexBytes);
-				if (index >= accessor.count)
-					throw new Error(
-						`Sparse accessor ${accessorIndex} index ${index} is out of range`,
-					);
+			const sparse = GltfLoader.readSparse(doc, binaryBuffers, accessorIndex);
+			for (let i = 0; i < sparse.indices.length; i++)
 				for (let c = 0; c < itemSize; c++)
-					out[index * itemSize + c] = read(
-						valueDv,
-						valueBase + (i * itemSize + c) * bytes,
-					);
-			}
+					out[(sparse.indices[i] as number) * itemSize + c] = sparse.values[
+						i * itemSize + c
+					] as number;
 		}
 		return { data: out, itemSize, count: accessor.count };
+	}
+
+	/** A sparse accessor's indices and their values (`itemSize` per index). */
+	private static readSparse(
+		doc: GltfDocument,
+		binaryBuffers: Uint8Array[],
+		accessorIndex: number,
+	): { indices: Uint32Array; values: Float32Array } {
+		const accessor = doc.accessors?.[accessorIndex];
+		const sparse = accessor?.sparse;
+		if (!accessor || !sparse)
+			throw new Error(`Accessor ${accessorIndex} is not sparse`);
+		const itemSize = COMPONENTS[accessor.type] ?? 1;
+		const indexView = doc.bufferViews?.[sparse.indices.bufferView];
+		const valueView = doc.bufferViews?.[sparse.values.bufferView];
+		if (!indexView || !valueView)
+			throw new Error(
+				`Sparse accessor ${accessorIndex} references a missing buffer view`,
+			);
+		const indexData = binaryBuffers[indexView.buffer];
+		const valueData = binaryBuffers[valueView.buffer];
+		if (!indexData || !valueData)
+			throw new Error(
+				`Sparse accessor ${accessorIndex} references a missing buffer`,
+			);
+		const indexReader = componentReader(sparse.indices.componentType);
+		const indexBytes = COMPONENT_BYTES[sparse.indices.componentType] ?? 4;
+		const read = componentReader(accessor.componentType, accessor.normalized);
+		const bytes = COMPONENT_BYTES[accessor.componentType] ?? 4;
+		const indexDv = new DataView(
+			indexData.buffer,
+			indexData.byteOffset,
+			indexData.byteLength,
+		);
+		const valueDv = new DataView(
+			valueData.buffer,
+			valueData.byteOffset,
+			valueData.byteLength,
+		);
+		const indexBase =
+			(indexView.byteOffset ?? 0) + (sparse.indices.byteOffset ?? 0);
+		const valueBase =
+			(valueView.byteOffset ?? 0) + (sparse.values.byteOffset ?? 0);
+		const indices = new Uint32Array(sparse.count);
+		const values = new Float32Array(sparse.count * itemSize);
+		for (let i = 0; i < sparse.count; i++) {
+			const index = indexReader(indexDv, indexBase + i * indexBytes);
+			if (index >= accessor.count)
+				throw new Error(
+					`Sparse accessor ${accessorIndex} index ${index} is out of range`,
+				);
+			indices[i] = index;
+			for (let c = 0; c < itemSize; c++)
+				values[i * itemSize + c] = read(
+					valueDv,
+					valueBase + (i * itemSize + c) * bytes,
+				);
+		}
+		return { indices, values };
+	}
+
+	/**
+	 * A morph target, kept sparse when its accessors are sparse over zeros
+	 * (only the moved vertices, `indices`): a face with hundreds of
+	 * corrective shapes stays small. Otherwise dense.
+	 */
+	private static readMorphTarget(
+		doc: GltfDocument,
+		binaryBuffers: Uint8Array[],
+		target: Record<string, number | undefined>,
+		numVerts: number,
+		label: string,
+	): MorphTarget3D {
+		const sparseOnly = (acc: number | undefined) => {
+			const a = acc === undefined ? undefined : doc.accessors?.[acc];
+			return !a || (a.sparse !== undefined && a.bufferView === undefined);
+		};
+		const check = (acc: number | undefined) => {
+			const a = acc === undefined ? undefined : doc.accessors?.[acc];
+			if (a && (a.count !== numVerts || (COMPONENTS[a.type] ?? 1) !== 3))
+				throw new Error(`Invalid morph target on ${label}`);
+		};
+		check(target.POSITION);
+		check(target.NORMAL);
+		if (!sparseOnly(target.POSITION) || !sparseOnly(target.NORMAL)) {
+			const read = (acc: number | undefined) =>
+				acc === undefined
+					? undefined
+					: GltfLoader.readFloats(doc, binaryBuffers, acc).data;
+			return {
+				positions: read(target.POSITION),
+				normals: read(target.NORMAL),
+			};
+		}
+		const parts = [target.POSITION, target.NORMAL].map((acc) =>
+			acc === undefined
+				? undefined
+				: GltfLoader.readSparse(doc, binaryBuffers, acc),
+		);
+		// One index list for both: the union, in order.
+		const union = new Set<number>();
+		for (const p of parts) if (p) for (const i of p.indices) union.add(i);
+		const indices = Uint32Array.from([...union].sort((x, y) => x - y));
+		const slot = new Map<number, number>();
+		indices.forEach((v, i) => {
+			slot.set(v, i);
+		});
+		const gather = (p: (typeof parts)[number]) => {
+			if (!p) return undefined;
+			const out = new Float32Array(indices.length * 3);
+			p.indices.forEach((v, i) => {
+				out.set(
+					p.values.subarray(i * 3, i * 3 + 3),
+					(slot.get(v) as number) * 3,
+				);
+			});
+			return out;
+		};
+		return {
+			indices,
+			positions: gather(parts[0]),
+			normals: gather(parts[1]),
+		};
 	}
 
 	private static readIndices(
@@ -868,10 +1001,11 @@ export class GltfLoader {
 		basePath?: string,
 	): Material3D {
 		const pbr = mat.pbrMetallicRoughness;
-		const baseColor = pbr?.baseColorFactor ?? [1, 1, 1, 1];
+		const [r, g, b, a] = pbr?.baseColorFactor ?? [1, 1, 1, 1];
 		const material: Material3D = {
 			name,
-			diffuseColor: baseColor,
+			// baseColorFactor is linear; Material3D colors are display (sRGB), like COLOR_0 below.
+			diffuseColor: [linearToSrgb(r), linearToSrgb(g), linearToSrgb(b), a],
 			roughness: pbr?.roughnessFactor ?? 0.5,
 			metallic: pbr?.metallicFactor ?? 0.0,
 			shininess: 32.0 * (1.0 - (pbr?.roughnessFactor ?? 0.5)),
@@ -890,12 +1024,23 @@ export class GltfLoader {
 			material.emissiveStrength =
 				mat.extensions?.KHR_materials_emissive_strength?.emissiveStrength ?? 1;
 		}
+		const surface = materialSurface(mat);
+		if (surface) material.surface = surface;
 		const mtoon = mat.extensions?.VRMC_materials_mtoon;
 		if (mtoon) {
 			material.shading = "toon";
 			material.shadeColor = mtoon.shadeColorFactor ?? [1, 1, 1];
 		} else if (mat.extensions?.KHR_materials_unlit) {
 			material.shading = "unlit";
+		} else if (
+			(mat.extensions?.KHR_materials_transmission?.transmissionFactor ?? 0) > 0
+		) {
+			// Transmissive surfaces (corneas, windows, potions) render as glass
+			// that refracts the scene behind them.
+			material.shading = "glass";
+			material.ior = mat.extensions?.KHR_materials_ior?.ior ?? 1.5;
+			const t = mat.extensions?.KHR_materials_volume?.thicknessFactor;
+			if (t !== undefined) material.thickness = t;
 		}
 		const image = (info: GltfTextureInfo | undefined, slot: string) => {
 			if (!info) return undefined;
@@ -911,33 +1056,48 @@ export class GltfLoader {
 		if (base) {
 			material.diffuseTextureBuffer = base.bytes;
 			material.diffuseTextureMime = base.mime;
-			const wrap = base.sampler?.wrapS;
-			material.textureWrap =
-				wrap === 33071 ? "clamp" : wrap === 33648 ? "mirror" : "repeat";
-			if (base.sampler?.magFilter === 9728) material.textureFilter = "nearest";
+			const sampling = textureSampling(base.sampler);
+			material.textureWrap = sampling.wrapU;
+			if (sampling.filter === "nearest") material.textureFilter = "nearest";
 		}
-		const mapBytes = (info: GltfTextureInfo | undefined, slot: string) =>
-			image(info, slot)?.bytes;
-		const normal = mapBytes(mat.normalTexture, "normal");
+		const mapBytes = (
+			info: GltfTextureInfo | undefined,
+			slot: string,
+			key: MaterialMapSlot,
+		) => {
+			const map = image(info, slot);
+			if (!map) return undefined;
+			material.mapSampling = {
+				...material.mapSampling,
+				[key]: textureSampling(map.sampler),
+			};
+			return map.bytes;
+		};
+		const normal = mapBytes(mat.normalTexture, "normal", "normal");
 		if (normal) {
 			material.normalTextureBuffer = normal;
 			material.normalScale = mat.normalTexture?.scale ?? 1;
 		}
-		const mr = mapBytes(pbr?.metallicRoughnessTexture, "metallic-roughness");
+		const mr = mapBytes(
+			pbr?.metallicRoughnessTexture,
+			"metallic-roughness",
+			"metallicRoughness",
+		);
 		if (mr) {
 			material.metallicRoughnessTextureBuffer = mr;
 			// With a map the factors scale it, and glTF's default factor is 1.
 			material.roughness = pbr?.roughnessFactor ?? 1;
 			material.metallic = pbr?.metallicFactor ?? 1;
 		}
-		const occlusion = mapBytes(mat.occlusionTexture, "occlusion");
+		const occlusion = mapBytes(mat.occlusionTexture, "occlusion", "occlusion");
 		if (occlusion) {
 			material.occlusionTextureBuffer = occlusion;
 			material.occlusionStrength = mat.occlusionTexture?.strength ?? 1;
 		}
 		// glTF's emissiveFactor defaults to 0: a map alone does not glow.
 		const emissiveMap =
-			material.emissive && mapBytes(mat.emissiveTexture, "emissive");
+			material.emissive &&
+			mapBytes(mat.emissiveTexture, "emissive", "emissive");
 		if (emissiveMap) material.emissiveTextureBuffer = emissiveMap;
 		return material;
 	}
@@ -1072,6 +1232,8 @@ export class GltfLoader {
 				boundingSphereRadius: 0,
 			},
 		};
+		const drivers = doc.scenes?.[doc.scene ?? 0]?.extras?.framefields?.drivers;
+		if (drivers?.length) model.drivers = drivers;
 		const rest = poseNodes(model, undefined, 0);
 
 		let minX = Infinity,
@@ -1199,20 +1361,15 @@ export class GltfLoader {
 					} else grow(x, y, z);
 				}
 
-				const morphTargets = prim.targets?.map((target) => {
-					const positions = read(target.POSITION);
-					const normals = read(target.NORMAL);
-					if (
-						(positions &&
-							(positions.count !== numVerts || positions.itemSize !== 3)) ||
-						(normals && (normals.count !== numVerts || normals.itemSize !== 3))
-					) {
-						throw new Error(
-							`Invalid morph target on glTF mesh ${inst.mesh} primitive ${primIdx}`,
-						);
-					}
-					return { positions: positions?.data, normals: normals?.data };
-				});
+				const morphTargets = prim.targets?.map((target) =>
+					GltfLoader.readMorphTarget(
+						doc,
+						binaryBuffers,
+						target,
+						numVerts,
+						`glTF mesh ${inst.mesh} primitive ${primIdx}`,
+					),
+				);
 				const defaultWeights =
 					(inst.node === undefined
 						? undefined
@@ -1231,6 +1388,10 @@ export class GltfLoader {
 					mapUvs,
 					morphTargets,
 					morphWeights,
+					...(morphTargets &&
+					meshDef.extras?.targetNames?.length === morphTargets.length
+						? { morphTargetNames: meshDef.extras.targetNames }
+						: {}),
 					colors: rgba,
 					jointIndices: skinned
 						? read(prim.attributes.JOINTS_0)?.data
@@ -1238,6 +1399,12 @@ export class GltfLoader {
 					jointWeights: skinned
 						? read(prim.attributes.WEIGHTS_0)?.data
 						: undefined,
+					...(skinned &&
+						prim.attributes.JOINTS_1 !== undefined &&
+						prim.attributes.WEIGHTS_1 !== undefined && {
+							jointIndices1: read(prim.attributes.JOINTS_1)?.data,
+							jointWeights1: read(prim.attributes.WEIGHTS_1)?.data,
+						}),
 					indices,
 					topology: primitive.topology,
 					materialName:
@@ -1391,6 +1558,50 @@ export function loadGLB(
 	return GltfLoader.load(srcOrData, options);
 }
 
+/** The layered lobes a glTF material's extensions describe (display colors, degrees). */
+function materialSurface(mat: GltfMaterial): MaterialSurface | undefined {
+	const ext = mat.extensions;
+	const out: MaterialSurface = {};
+	const display = (c: [number, number, number]): [number, number, number] => [
+		linearToSrgb(c[0]),
+		linearToSrgb(c[1]),
+		linearToSrgb(c[2]),
+	];
+	const cc = ext?.KHR_materials_clearcoat;
+	if (cc && (cc.clearcoatFactor ?? 0) > 0) {
+		out.clearcoat = cc.clearcoatFactor;
+		out.clearcoatRoughness = cc.clearcoatRoughnessFactor ?? 0;
+	}
+	const sh = ext?.KHR_materials_sheen;
+	if (sh) {
+		const c = sh.sheenColorFactor ?? [0, 0, 0];
+		const peak = Math.max(c[0], c[1], c[2]);
+		if (peak > 0) {
+			// The lobe takes a strength and a tint; glTF folds both into one color.
+			out.sheen = Math.min(1, peak);
+			out.sheenColor = display([c[0] / peak, c[1] / peak, c[2] / peak]);
+			out.sheenRoughness = sh.sheenRoughnessFactor ?? 0;
+		}
+	}
+	const an = ext?.KHR_materials_anisotropy;
+	if (an && (an.anisotropyStrength ?? 0) > 0) {
+		out.anisotropy = an.anisotropyStrength;
+		out.anisotropyRotation = ((an.anisotropyRotation ?? 0) * 180) / Math.PI;
+	}
+	const ir = ext?.KHR_materials_iridescence;
+	if (ir && (ir.iridescenceFactor ?? 0) > 0) {
+		out.iridescence = ir.iridescenceFactor;
+		out.iridescenceIor = ir.iridescenceIor ?? 1.3;
+		out.iridescenceThickness = ir.iridescenceThicknessMaximum ?? 400;
+	}
+	const ss = mat.extras?.framefields?.subsurface;
+	if (ss && (ss.factor ?? 0) > 0) {
+		out.subsurface = ss.factor;
+		out.subsurfaceColor = display(ss.color ?? [1, 0.2, 0.1]);
+	}
+	return Object.keys(out).length ? out : undefined;
+}
+
 function linearToSrgb(c: number): number {
 	const x = Math.min(Math.max(c, 0), 1);
 	return x <= 0.0031308 ? x * 12.92 : 1.055 * x ** (1 / 2.4) - 0.055;
@@ -1423,4 +1634,18 @@ function applyTextureTransform(
 		uvs[i] = c * u - s * v + offset[0];
 		uvs[i + 1] = s * u + c * v + offset[1];
 	}
+}
+
+const WRAP: Record<number, TextureSampling["wrapU"]> = {
+	33071: "clamp",
+	33648: "mirror",
+};
+
+/** A glTF sampler as addressing and filtering (glTF's defaults: repeat, linear). */
+function textureSampling(sampler: GltfSampler | undefined): TextureSampling {
+	return {
+		wrapU: WRAP[sampler?.wrapS ?? 10497] ?? "repeat",
+		wrapV: WRAP[sampler?.wrapT ?? 10497] ?? "repeat",
+		filter: sampler?.magFilter === 9728 ? "nearest" : "linear",
+	};
 }

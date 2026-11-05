@@ -13,15 +13,19 @@ export const slug3dWgsl = `
 ${lighting3dWgsl}
 
 struct TextModelUniforms {
-	modelMatrix    : mat4x4<f32>, // paragraph px -> world
-	normalMatrix   : mat4x4<f32>,
-	params         : vec4<f32>, // x = opacity, y = slant, z = twoSided (1.0 = yes), w = pull toward the eye
-	materialParams : vec4<f32>, // x = shininess, y = specularIntensity, z = ambientIntensity, w = materialMode (0=unlit, 1=lit)
-	pbr            : vec4<f32>, // x = roughness (<0 = default), y = metallic
-	emissive       : vec4<f32>, // rgb = sRGB emissive color, w = strength
-    toonShadow     : vec4<f32>, // rgb shadow-side multiplier, w diffuse modelling
-    toonLight      : vec4<f32>, // rgb lit-side multiplier, w terminator threshold
-    toonParams     : vec4<f32>, // x terminator softness, y outline participation
+	modelMatrix          : mat4x4<f32>, // paragraph px -> world
+	normalMatrix         : mat4x4<f32>,
+	params               : vec4<f32>, // x = opacity, y = slant, z = twoSided (1.0 = yes), w = pull toward the eye
+	materialParams       : vec4<f32>, // x = shininess, y = specularIntensity, z = ambientIntensity, w = materialMode (0=unlit, 1=lit)
+	pbr                  : vec4<f32>, // x = roughness (<0 = default), y = metallic
+	emissive             : vec4<f32>, // rgb = sRGB emissive color, w = strength
+	toonShadow           : vec4<f32>, // rgb shadow-side multiplier, w diffuse modelling
+	toonLight            : vec4<f32>, // rgb lit-side multiplier, w terminator threshold
+	toonParams           : vec4<f32>, // x terminator softness, y outline participation, z sheenRoughness, w triplanarSharpness
+	substrateClearcoat   : vec4<f32>, // x = clearcoat, y = clearcoatRoughness, z = anisotropy, w = anisotropyRotationRad
+	substrateSubsurface  : vec4<f32>, // x = subsurface, yzw = subsurfaceColor (sRGB)
+	substrateSheen       : vec4<f32>, // x = sheen, yzw = sheenColor (sRGB)
+	substrateIridescence : vec4<f32>, // x = iridescence, y = thicknessNm, z = filmIor, w = triplanarUvFreq
 };
 
 @group(0) @binding(0) var<uniform> cam    : CameraUniforms;
@@ -154,7 +158,13 @@ fn shadeText(in : VSOut, fw : vec2<f32>) -> TextFragment {
 	if (shaded.a < 0.0001) {
 		return out;
 	}
-	let lit = shadeSurfaceFull(in.worldPos, in.worldNormal, shaded.rgb / shaded.a, model.materialParams, model.pbr, model.emissive, model.toonShadow, model.toonLight, model.toonParams);
+	let substrate = SubstrateParams(
+		model.substrateClearcoat,
+		model.substrateSubsurface,
+		model.substrateSheen,
+		model.substrateIridescence,
+	);
+	let lit = shadeSurfaceSubstrate(in.worldPos, in.worldNormal, shaded.rgb / shaded.a, model.materialParams, model.pbr, model.emissive, model.toonShadow, model.toonLight, model.toonParams, substrate);
 	out.color = vec4<f32>(lit.display * shaded.a, shaded.a);
 	out.hdr = vec4<f32>(lit.hdr * shaded.a, shaded.a);
 	return out;

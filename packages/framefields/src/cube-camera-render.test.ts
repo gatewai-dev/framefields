@@ -233,4 +233,98 @@ describe("cube cameras", () => {
 		// Right, at 90°, is halfway out.
 		expect(near(getPixel(img, 450, 300), "#00ff00")).toBe(true);
 	});
+
+	it("draws volumetric fog on every face", async () => {
+		const foggy = (fog: boolean) => {
+			const comp = scene(
+				800,
+				400,
+				{ lens: { projection: "equirectangular" } },
+				[],
+			);
+			comp.add([
+				// Something to draw, off every sampled direction: an empty batch has no 3D pass.
+				Layer3D.sphere({
+					radius: 20,
+					x: EYE.x + 500,
+					y: EYE.y + 500,
+					z: EYE.z + 500,
+					color: "#ffffff",
+				}),
+				Layer.environment("neutral", {
+					...(fog && {
+						volumetricFog: {
+							density: 0.05,
+							ambientIntensity: 0.6,
+							maxDistance: 3000,
+						},
+					}),
+				}),
+				Layer.directionalLight({
+					x: 0,
+					y: -2000,
+					z: -1000,
+					targetX: EYE.x,
+					targetY: EYE.y,
+					targetZ: EYE.z,
+				}),
+			]);
+			return comp;
+		};
+		const clear = await decodePngPixels(
+			await foggy(false).renderFrame({ frame: 0 }),
+		);
+		const fogged = await decodePngPixels(
+			await foggy(true).renderFrame({ frame: 0 }),
+		);
+		const lum = (img: typeof clear, x: number, y: number) => {
+			const p = getPixel(img, x, y);
+			return p.r + p.g + p.b;
+		};
+		// Ahead, behind, left, right, above and below: each face is in the fog.
+		for (const [x, y] of [
+			[400, 200],
+			[10, 200],
+			[200, 200],
+			[600, 200],
+			[400, 20],
+			[400, 380],
+		] as const) {
+			expect(lum(clear, x, y), `${x},${y}`).toBeLessThan(10);
+			expect(lum(fogged, x, y), `${x},${y}`).toBeGreaterThan(30);
+		}
+	});
+
+	it("refuses motion blur, which needs one perspective view", async () => {
+		await expect(
+			scene(400, 200, {
+				lens: { projection: "equirectangular" },
+				motionBlur: true,
+			}).renderFrame({ frame: 3 }),
+		).rejects.toThrow(/motion blur/);
+	});
+
+	it("draws glass on its faces, refracting the 3D scene", async () => {
+		const withGlass = (glass: boolean) => {
+			const comp = scene(800, 400, { lens: { projection: "equirectangular" } });
+			if (glass)
+				comp.add(
+					Layer3D.sphere({
+						radius: 160,
+						x: EYE.x,
+						y: EYE.y,
+						z: EYE.z + 400,
+						material: "glass",
+					}),
+				);
+			return comp;
+		};
+		const plain = await decodePngPixels(
+			await withGlass(false).renderFrame({ frame: 0 }),
+		);
+		const glassy = await decodePngPixels(
+			await withGlass(true).renderFrame({ frame: 0 }),
+		);
+		expect(computeMse(plain.pixels, glassy.pixels)).toBeGreaterThan(5);
+	});
 });

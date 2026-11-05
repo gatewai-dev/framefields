@@ -1,7 +1,8 @@
 /**
- * Track mattes and reliefs: a node's `matte` or `relief` is hoisted out into
- * its own layer right after it, so layout places it like any sibling and the
- * renderer can draw owner and companion separately and combine them.
+ * Track mattes, reliefs and texture layers: a node's `matte`, `relief` or
+ * `textureLayer` is hoisted out into its own layer right after it, so layout
+ * places it like any sibling and the renderer can draw owner and companion
+ * separately and combine them.
  */
 import type { LayoutNode, MatteMode } from "./schema.js";
 
@@ -38,13 +39,45 @@ function companion(
 	return node;
 }
 
-function hoistOne(owner: AnyNode): AnyNode[] {
+/** The picture a mesh's UVs read: the frame's size from the top-left corner unless placed. */
+export interface HoistOptions {
+	width?: number;
+	height?: number;
+}
+
+function textureCompanion(
+	owner: AnyNode,
+	src: AnyNode,
+	size: HoistOptions,
+): AnyNode {
+	const node = companion(owner, src, "texture", {
+		textureOf: String(owner.id),
+		is3D: false,
+		z: 0,
+	});
+	// A model has no box to cover: the texture's own geometry, else the frame.
+	if (GEOMETRY.every((k) => src[k] === undefined)) {
+		node.x = 0;
+		node.y = 0;
+		if (size.width !== undefined) node.width = size.width;
+		if (size.height !== undefined) node.height = size.height;
+	}
+	return node;
+}
+
+function hoistOne(owner: AnyNode, size: HoistOptions): AnyNode[] {
 	const matte = owner.matte as { node: AnyNode; mode?: MatteMode } | undefined;
 	const relief = owner.relief as { node: AnyNode; amount?: number } | undefined;
-	const { matte: _matte, relief: _relief, ...rest } = owner;
+	const texture = owner.textureLayer as { node: AnyNode } | undefined;
+	const {
+		matte: _matte,
+		relief: _relief,
+		textureLayer: _texture,
+		...rest
+	} = owner;
 	const self = { ...rest } as AnyNode;
 	if (Array.isArray(self.children)) {
-		self.children = hoistMattes(self.children as AnyNode[]) as never;
+		self.children = hoistMattes(self.children as AnyNode[], size) as never;
 	}
 	const out = [self];
 	if (matte?.node) {
@@ -66,10 +99,18 @@ function hoistOne(owner: AnyNode): AnyNode[] {
 		self.reliefAmount = relief.amount ?? 0;
 		out.push(node);
 	}
+	if (texture?.node) {
+		const node = textureCompanion(owner, texture.node, size);
+		self.textureLayerId = node.id as string;
+		out.push(node);
+	}
 	return out;
 }
 
-/** Returns the tree with every `matte` and `relief` turned into a sibling companion layer. */
-export function hoistMattes<T extends LayoutNode>(nodes: readonly T[]): T[] {
-	return nodes.flatMap((n) => hoistOne(n as AnyNode)) as unknown as T[];
+/** Returns the tree with every `matte`, `relief` and `textureLayer` turned into a sibling companion layer. */
+export function hoistMattes<T extends LayoutNode>(
+	nodes: readonly T[],
+	size: HoistOptions = {},
+): T[] {
+	return nodes.flatMap((n) => hoistOne(n as AnyNode, size)) as unknown as T[];
 }

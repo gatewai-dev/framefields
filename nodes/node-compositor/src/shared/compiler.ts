@@ -2,10 +2,10 @@ import { resolveLayerDuration } from "@framefields/compositions";
 import {
 	type AnimationTrack,
 	collectNodeOps,
-	type EaseRef,
-	evaluateKeyframes,
 	evaluateTrackAtFrame,
 	type LayerAnimationSpec,
+	mappedEase,
+	sampleTrack,
 } from "@framefields/compositions/program";
 import {
 	DEFAULT_DURATION_MS,
@@ -14,7 +14,6 @@ import {
 	type VirtualMediaData,
 } from "@framefields/core";
 import gsapModule from "gsap";
-import { solveCubicBezier } from "./bezier-solver.js";
 
 const gsap = (gsapModule as any).timeline
 	? gsapModule
@@ -60,6 +59,23 @@ export interface LayerStub {
 	specularIntensity?: number;
 	ambientIntensity?: number;
 	metallic?: number;
+	emissive?: string;
+	emissiveIntensity?: number;
+	clearcoat?: number;
+	clearcoatRoughness?: number;
+	anisotropy?: number;
+	anisotropyRotation?: number;
+	subsurface?: number;
+	subsurfaceColor?: string;
+	sheen?: number;
+	sheenColor?: string;
+	sheenRoughness?: number;
+	iridescence?: number | Record<string, unknown>;
+	iridescenceThickness?: number;
+	iridescenceIor?: number;
+	triplanar?: boolean | Record<string, unknown>;
+	triplanarScale?: number;
+	triplanarSharpness?: number;
 	// 3D Camera Props
 	cameraX?: number;
 	cameraY?: number;
@@ -91,11 +107,16 @@ export interface LayerStub {
 	scaleY?: number;
 	// 3D Light Props
 	lightType?: string;
+	color?: string;
 	intensity?: number;
 	radius?: number;
 	angle?: number;
 	penumbra?: number;
 	decay?: number;
+	exposure?: number;
+	volumetricFogDensity?: number;
+	volumetricFogAnisotropy?: number;
+	volumetricFogNoiseStrength?: number;
 	[key: string]: unknown;
 }
 
@@ -109,6 +130,8 @@ export type CompilerVirtualMedia = {
 export type CompilerNodeVM = CompilerVirtualMedia;
 
 export interface CompileResult {
+	/** Render id plus a hash of the compiled nodes: one composition's identity across frames. */
+	key: string;
 	tl: gsap.core.Timeline;
 	targetsById: Record<string, LayerStub>;
 	/** Node ops the timeline was compiled from (tree order). */
@@ -131,38 +154,6 @@ interface LiveTrack {
 	step?: number;
 }
 
-/** GSAP's shaping for a keyframe segment, so draw-time tracks ease like baked ones. */
-function gsapEase(
-	fps: number,
-): (ease: EaseRef | undefined, deltaFrames: number, t: number) => number {
-	return (ease, deltaFrames, t) => {
-		const e = mappedEase(ease, deltaFrames, fps);
-		const fn = typeof e === "function" ? e : gsap.parseEase(e);
-		return fn ? fn(t) : t;
-	};
-}
-
-function evaluateLive(
-	live: LiveTrack,
-	frame: number,
-	fps: number,
-	signals: Record<string, any> | undefined,
-) {
-	const source = live.track.source ?? { type: "keyframe" };
-	if (source.type === "keyframe") {
-		return evaluateKeyframes(
-			live.track,
-			frame - live.startFrame,
-			gsapEase(fps),
-		);
-	}
-	return evaluateTrackAtFrame(live.track, frame, fps, {
-		startFrame: live.startFrame,
-		baseValues: live.stub,
-		signals,
-	});
-}
-
 /** Seeks the compiled timeline to a frame and applies its live signal tracks. */
 export function seekTimeline(
 	result: CompileResult,
@@ -177,7 +168,11 @@ export function seekTimeline(
 				live.startFrame +
 				Math.floor((f - live.startFrame) / live.step) * live.step;
 		}
-		live.stub[live.track.prop] = evaluateLive(live, f, fps, result.signals);
+		live.stub[live.track.prop] = sampleTrack(live.track, f, fps, {
+			startFrame: live.startFrame,
+			base: live.stub,
+			signals: result.signals,
+		});
 	}
 }
 
@@ -322,85 +317,6 @@ export function setCachedTimeline(cacheKey: string, value: CompileResult) {
 	cache.set(cacheKey, { cacheTime: Date.now(), value });
 }
 
-export function mappedEase(
-	ease?: EaseRef,
-	durationFrames?: number,
-	fps = 24,
-): string | ((p: number) => number) {
-	if (!ease) return "none";
-	const { name, dir, params } = ease;
-	if (name === "none") return "none";
-
-	// Custom closed-form Spring ease solver
-	if ((name as string) === "spring") {
-		const damping = Math.max(0.001, params?.[0] ?? 10);
-		const stiffness = Math.max(0.001, params?.[1] ?? 100);
-		const mass = Math.max(0.001, params?.[2] ?? 1);
-
-		return (p: number) => {
-			const safeFps = fps > 0 ? fps : 24;
-			const durSec =
-				durationFrames && durationFrames > 0 ? durationFrames / safeFps : 1.0;
-			const t = p * durSec;
-
-			const m = mass;
-			const k = stiffness;
-			const c = damping;
-
-			const w0 = Math.sqrt(k / m);
-			const zeta = c / (2 * Math.sqrt(k * m));
-
-			let x = 0;
-			if (zeta < 1) {
-				const wd = w0 * Math.sqrt(1 - zeta * zeta);
-				const A = -1;
-				const B = (-zeta * w0) / wd;
-				x =
-					Math.exp(-zeta * w0 * t) *
-					(A * Math.cos(wd * t) + B * Math.sin(wd * t));
-			} else if (zeta === 1) {
-				const A = -1;
-				const B = -w0;
-				x = Math.exp(-w0 * t) * (A + B * t);
-			} else {
-				const r1 = -w0 * (zeta - Math.sqrt(zeta * zeta - 1));
-				const r2 = -w0 * (zeta + Math.sqrt(zeta * zeta - 1));
-				const C1 = -1 / (1 - r1 / r2);
-				const C2 = -1 - C1;
-				x = C1 * Math.exp(r1 * t) + C2 * Math.exp(r2 * t);
-			}
-			return 1 + x;
-		};
-	}
-
-	if ((name as string) === "cubic") {
-		const x1 = params?.[0] ?? 0.25;
-		const y1 = params?.[1] ?? 0.1;
-		const x2 = params?.[2] ?? 0.25;
-		const y2 = params?.[3] ?? 1.0;
-		return (p: number) => solveCubicBezier(x1, y1, x2, y2, p);
-	}
-
-	if ((name as string) === "hold") {
-		// GSAP rounds time to 1e-7 s, so on its own end frame a short segment's
-		// progress can land ~1e-5 under 1; 1e-4 of a segment is safe slack for the
-		// jump (it would only fire a frame early on segments over 10,000 frames).
-		return (p: number) => (p >= 1 - 1e-4 ? 1 : 0);
-	}
-
-	const easeName = name as string;
-	let suffix = "";
-	if (params && params.length > 0) {
-		suffix = `(${params.join(", ")})`;
-	} else if (name === "back") {
-		suffix = "(1.7)";
-	} else if (name === "elastic") {
-		suffix = "(1, 0.3)";
-	}
-
-	return `${easeName}.${dir}${suffix}`;
-}
-
 /** Props that switch rather than tween: each key is a set from its frame on. */
 const DISCRETE_PROPS: ReadonlySet<string> = new Set(["hidden", "muted"]);
 
@@ -437,7 +353,11 @@ function compileTrackToTimeline(
 			endFrame: startFrame + endF,
 			...(stepped && { step }),
 		};
-		stub[prop] = evaluateLive(entry, startFrame, fps, signals);
+		stub[prop] = sampleTrack(track, startFrame, fps, {
+			startFrame,
+			base: stub,
+			signals,
+		});
 		live.push(entry);
 		return { dropped: 0, maxAuthoredFrame: 0 };
 	}
@@ -633,6 +553,30 @@ export interface TruncationInfo {
 	maxAuthoredFrame: number;
 }
 
+/** A camera's `x` / `y` / `z` are its eye, the same as `cameraX` / `cameraY` / `cameraZ`. */
+const CAMERA_EYE: Readonly<Record<string, AnimationTrack["prop"]>> = {
+	x: "cameraX",
+	y: "cameraY",
+	z: "cameraZ",
+};
+
+/**
+ * A layer's tracks, with a camera's `x` / `y` / `z` tracks driving its eye:
+ * the eye is read from `cameraX` / `cameraY` / `cameraZ`, which the static
+ * `x` / `y` / `z` seed, so a track left on `x` would never move it.
+ */
+function layerTracks(lop: {
+	kind?: string;
+	animation?: { tracks?: AnimationTrack[] };
+}): AnimationTrack[] {
+	const tracks = lop.animation?.tracks ?? [];
+	if (lop.kind !== "camera") return tracks;
+	return tracks.map((t) => {
+		const eye = CAMERA_EYE[t.prop];
+		return eye ? { ...t, prop: eye } : t;
+	});
+}
+
 /**
  * Dedupe per compiled cache key — a fresh render of the same broken doc SHOULD
  * re-warn. Single-frame renders are the exception: each `renderFrame` call has
@@ -730,12 +674,36 @@ function hashNodes(
 				specularIntensity: lop.specularIntensity,
 				ambientIntensity: lop.ambientIntensity,
 				metallic: lop.metallic,
+				emissive: lop.emissive,
+				emissiveIntensity: lop.emissiveIntensity,
+				clearcoat: lop.clearcoat,
+				clearcoatRoughness: lop.clearcoatRoughness,
+				anisotropy: lop.anisotropy,
+				anisotropyRotation: lop.anisotropyRotation,
+				subsurface: lop.subsurface,
+				subsurfaceColor: lop.subsurfaceColor,
+				sheen: lop.sheen,
+				sheenColor: lop.sheenColor,
+				sheenRoughness: lop.sheenRoughness,
+				iridescence: lop.iridescence,
+				iridescenceThickness: lop.iridescenceThickness,
+				iridescenceIor: lop.iridescenceIor,
+				triplanar: lop.triplanar,
+				triplanarScale: lop.triplanarScale,
+				triplanarSharpness: lop.triplanarSharpness,
 				// 3D Light Props
 				lightType: lop.lightType,
+				color: lop.color,
 				intensity: lop.intensity,
 				radius: lop.radius,
 				angle: lop.angle,
 				penumbra: lop.penumbra,
+				exposure: lop.exposure,
+				hdri: typeof lop.hdri === "string" ? lop.hdri : Boolean(lop.hdri),
+				volumetricFog: lop.volumetricFog,
+				volumetricFogDensity: lop.volumetricFogDensity,
+				volumetricFogAnisotropy: lop.volumetricFogAnisotropy,
+				volumetricFogNoiseStrength: lop.volumetricFogNoiseStrength,
 				// 3D Model Props
 				animationProgress: lop.animationProgress,
 				animationTime: lop.animationTime,
@@ -871,7 +839,7 @@ export function compileTimeline(
 					: false),
 			z: lop.z ?? (lop.kind === "camera" ? (lop.z ?? -1500) : 0),
 			scaleZ: lop.scaleZ ?? 1,
-			twoSided: lop.twoSided ?? true,
+			twoSided: lop.twoSided ?? lop.kind !== "light",
 			// 3D Material Props
 			material: lop.material,
 			shininess: lop.shininess,
@@ -879,6 +847,23 @@ export function compileTimeline(
 			specularIntensity: lop.specularIntensity,
 			ambientIntensity: lop.ambientIntensity,
 			metallic: lop.metallic,
+			emissive: lop.emissive,
+			emissiveIntensity: lop.emissiveIntensity,
+			clearcoat: lop.clearcoat,
+			clearcoatRoughness: lop.clearcoatRoughness,
+			anisotropy: lop.anisotropy,
+			anisotropyRotation: lop.anisotropyRotation,
+			subsurface: lop.subsurface,
+			subsurfaceColor: lop.subsurfaceColor,
+			sheen: lop.sheen,
+			sheenColor: lop.sheenColor,
+			sheenRoughness: lop.sheenRoughness,
+			iridescence: lop.iridescence,
+			iridescenceThickness: lop.iridescenceThickness,
+			iridescenceIor: lop.iridescenceIor,
+			triplanar: lop.triplanar,
+			triplanarScale: lop.triplanarScale,
+			triplanarSharpness: lop.triplanarSharpness,
 			// 3D Model Props
 			animationProgress: lop.animationProgress ?? 0,
 			animationTime: lop.animationTime ?? 0,
@@ -914,14 +899,19 @@ export function compileTimeline(
 			orbitElevation: lop.orbitElevation,
 			// 3D Light Props
 			lightType: lop.lightType,
+			color: lop.color,
 			intensity: lop.intensity ?? (lop.kind === "light" ? 1 : undefined),
 			radius: lop.radius,
 			angle: lop.angle,
 			penumbra: lop.penumbra,
 			decay: lop.decay,
+			exposure: lop.exposure,
+			volumetricFogDensity: lop.volumetricFogDensity,
+			volumetricFogAnisotropy: lop.volumetricFogAnisotropy,
+			volumetricFogNoiseStrength: lop.volumetricFogNoiseStrength,
 		};
 
-		for (const track of lop.animation?.tracks ?? []) {
+		for (const track of layerTracks(lop)) {
 			const source = track.source ?? { type: "keyframe" };
 			if (source.type !== "keyframe") {
 				(stub as Record<string, unknown>)[track.prop] = evaluateTrackAtFrame(
@@ -989,7 +979,7 @@ export function compileTimeline(
 			durationFrames = Math.max(1, Math.round((durationMs / 1000) * fps));
 		}
 
-		for (const track of lop.animation?.tracks ?? []) {
+		for (const track of layerTracks(lop)) {
 			const { dropped, maxAuthoredFrame } = compileTrackToTimeline(
 				tl,
 				stub,
@@ -1032,6 +1022,7 @@ export function compileTimeline(
 	tl.seek(0);
 
 	const compileResult: CompileResult = {
+		key: cacheKey,
 		tl,
 		targetsById,
 		nodes: nodeOps,

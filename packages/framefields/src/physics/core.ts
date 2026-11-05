@@ -281,6 +281,12 @@ export abstract class WorldCore<
 		targets?: Set<B>;
 		accel: (body: B, frame: number) => V | null | undefined;
 	}> = [];
+	/** Run after each simulated frame with the pairs that started touching in it. */
+	protected readonly stepHooks: Array<
+		(frame: number, pairs: Array<[B, B]>) => void
+	> = [];
+	/** Run once the whole simulation has finished (not in live worlds). */
+	protected readonly simulatedHooks: Array<() => void> = [];
 	private readonly worldRecording: Recording;
 	private readonly allCollisions: Array<PhysicsCollision<B> & { body: B }> = [];
 	/** No more bodies, joints or forces: the world has started (or finished). */
@@ -359,6 +365,11 @@ export abstract class WorldCore<
 		if (this.locked) {
 			throw new Error(
 				"Physics: live() must come before simulate() or reading any body signal.",
+			);
+		}
+		if (this.simulatedHooks.length) {
+			throw new Error(
+				"Physics: fracture() needs the whole run up front; use simulate() instead of live().",
 			);
 		}
 		this.locked = true;
@@ -457,6 +468,7 @@ export abstract class WorldCore<
 		st.freed = true;
 		this.sim.free();
 		for (const body of this.bodies) this.bind(body);
+		for (const hook of this.simulatedHooks) hook();
 	}
 
 	/** Records frame 0 and sets every channel to it, so frames not simulated yet hold the start pose. */
@@ -619,6 +631,7 @@ export abstract class WorldCore<
 			if (level > loudest) loudest = level;
 		}
 		this.worldRecording.channel("impact")[frame] = loudest;
+		for (const hook of this.stepHooks) hook(f, pairs);
 		st.current = f;
 	}
 

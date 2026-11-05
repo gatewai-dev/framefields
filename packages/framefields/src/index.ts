@@ -164,9 +164,12 @@ import {
 	collectNodeOps,
 	compositorToProgram,
 	type EnvironmentPreset,
+	type EnvironmentVolumetricFog,
+	type EnvironmentVolumetricFogNoise,
 	type FlexNode,
 	LayerAnimation,
 	type LayoutNode,
+	type LightAnimatableProp,
 	type LightNode,
 	lintComposition,
 	type MatteMode,
@@ -536,8 +539,16 @@ export {
 	EnvironmentFloorSchema,
 	type EnvironmentFog,
 	EnvironmentFogSchema,
+	type EnvironmentGi,
+	EnvironmentGiSchema,
 	type EnvironmentPreset,
 	EnvironmentPresetSchema,
+	type EnvironmentSsr,
+	EnvironmentSsrSchema,
+	type EnvironmentVolumetricFog,
+	type EnvironmentVolumetricFogNoise,
+	EnvironmentVolumetricFogNoiseSchema,
+	EnvironmentVolumetricFogSchema,
 	type ExpressionEvaluationContext,
 	type ExpressionSelector,
 	ExpressionSelectorSchema,
@@ -681,6 +692,7 @@ export * from "@framefields/core";
 export * from "@framefields/renderers";
 export type {
 	AnimatablePropsFor,
+	LightAnimatableProp,
 	TextAnimatableProp,
 	ShapeAnimatableProp,
 	MediaAnimatableProp,
@@ -727,6 +739,7 @@ export {
 	SSAOPipeline,
 	shaderStore,
 	textureCache,
+	VolumetricFogPipeline,
 } from "@framefields/webgpu-renderers";
 export {
 	type ChartAnimationOptions,
@@ -921,6 +934,8 @@ export {
 	type BodyCommonOptions,
 	type FieldSample2D,
 	type FieldSample3D,
+	Fracture3D,
+	type Fracture3DOptions,
 	Physics,
 	type PhysicsBakeOptions,
 	PhysicsBody2D,
@@ -974,6 +989,44 @@ export {
 	type Torus3DOptions,
 	type Tube3DOptions,
 } from "./shapes3d.js";
+
+import { scatterCoverage } from "./procedural3d.js";
+
+export type {
+	AimConstraint,
+	CrowdConfig,
+	JointPose,
+	LookAtConstraint,
+	ModelAnimationLayer,
+	NumberTrack,
+	SpringBoneChain,
+	TrackSignal,
+	TwoBoneIkConstraint,
+	Vec3Track,
+	WindConfig,
+} from "@framefields/compositions/program";
+export type {
+	ScatterPoint,
+	SdfPrimitive,
+	TerrainColorByElevation,
+	TerrainNoiseOptions,
+} from "@framefields/webgpu-renderers";
+export type {
+	Scatter3DNode,
+	Scatter3DOptions,
+	Sdf3DOptions,
+	Terrain3DNode,
+	Terrain3DOptions,
+	TerrainSurface,
+} from "./procedural3d.js";
+export {
+	type PoseSource,
+	type RetargetBone,
+	type RetargetOptions,
+	RIG_PRESETS,
+	type RigMap,
+	retargetPose,
+} from "./retarget.js";
 export { type StyleName, Styles } from "./styles.js";
 export type { Swarm3DOptions } from "./swarm3d.js";
 export {
@@ -1079,7 +1132,7 @@ export class Media {
 	}
 
 	/**
-	 * Renders a single frame from this media pipeline to a PNG Buffer.
+	 * Renders a single frame from this media pipeline to an image or raw RGBA Buffer.
 	 * Can render either by timestamp in milliseconds (`atMs`) or by frame index (`frame`).
 	 */
 	public async renderFrame(
@@ -1087,6 +1140,8 @@ export class Media {
 			atMs?: number;
 			frame?: number;
 			fps?: number;
+			renderId?: string;
+			format?: "png" | "rgba" | "raw" | "jpeg" | "jpg" | "webp";
 			renderer?: HeadlessMediaRenderer;
 		} = {},
 	): Promise<Buffer> {
@@ -2300,17 +2355,25 @@ export class Composition {
 	}
 
 	/**
-	 * Renders a single frame from the composition to a PNG Buffer.
+	 * Renders a single frame from the composition to an image or raw RGBA Buffer.
 	 * Can render either by timestamp in milliseconds (`atMs`) or by frame index (`frame`).
 	 */
 	public async renderFrame(
-		options: {
-			atMs?: number;
-			fps?: number;
-			frame?: number;
-			renderer?: HeadlessMediaRenderer;
-		} = {},
+		frameOrOptions:
+			| number
+			| {
+					atMs?: number;
+					fps?: number;
+					frame?: number;
+					renderId?: string;
+					format?: "png" | "rgba" | "raw" | "jpeg" | "jpg" | "webp";
+					renderer?: HeadlessMediaRenderer;
+			  } = {},
 	): Promise<Buffer> {
+		const options =
+			typeof frameOrOptions === "number"
+				? { frame: frameOrOptions }
+				: frameOrOptions;
 		const { frame } = resolveFrameRequest(options, this.fps);
 		if (options.fps !== undefined && options.fps !== this.fps)
 			throw new Error(
@@ -2344,6 +2407,8 @@ export class Composition {
 		return renderer.renderFrame(vm, {
 			fps: this.fps,
 			frame,
+			renderId: options.renderId,
+			format: options.format,
 		});
 	}
 
@@ -2402,6 +2467,7 @@ export class Composition {
 	public lint(): RenderDiagnostic[] {
 		return lintComposition(this.toSpec(), {
 			emojiFont: FontManager.hasEmojiFont(),
+			scatterCoverage,
 		});
 	}
 }
@@ -2543,6 +2609,19 @@ function withAnimation<
 	TCap extends NodeCapability = "visual",
 >(node: T): AnimatableNode<T, TCap> {
 	const target = node as AnimatableNode<T, TCap>;
+	const raw = target as unknown as Record<string, unknown>;
+	if (raw.rotationX !== undefined) {
+		if (raw.rotateX === undefined) raw.rotateX = raw.rotationX;
+		delete raw.rotationX;
+	}
+	if (raw.rotationY !== undefined) {
+		if (raw.rotateY === undefined) raw.rotateY = raw.rotationY;
+		delete raw.rotationY;
+	}
+	if (raw.rotationZ !== undefined) {
+		if (raw.rotateZ === undefined) raw.rotateZ = raw.rotationZ;
+		delete raw.rotationZ;
+	}
 	// Animation builders are structurally valid inputs, but carry enumerable
 	// authoring defaults that are not fields of the strict program schema.
 	if (target.animation instanceof LayerAnimation)
@@ -2838,7 +2917,50 @@ function withAnimation<
 		configurable: true,
 	});
 
+	bindMaterialSignals(target);
 	return target;
+}
+
+/**
+ * Numeric surface props a live `Signal` may drive directly (`clearcoat: sig`):
+ * the value written to the node is the static fallback, the signal becomes a
+ * draw-time signal track. `iridescence` counts only when it is the number form.
+ */
+const MATERIAL_SIGNAL_PROPS: ReadonlyArray<{
+	prop: AnimatableProp;
+	fallback: number;
+}> = [
+	{ prop: "roughness", fallback: 0.5 },
+	{ prop: "metallic", fallback: 0 },
+	{ prop: "emissiveIntensity", fallback: 1 },
+	{ prop: "clearcoat", fallback: 0 },
+	{ prop: "clearcoatRoughness", fallback: 0.08 },
+	{ prop: "anisotropy", fallback: 0 },
+	{ prop: "anisotropyRotation", fallback: 0 },
+	{ prop: "subsurface", fallback: 0 },
+	{ prop: "sheen", fallback: 0 },
+	{ prop: "sheenRoughness", fallback: 0.5 },
+	{ prop: "iridescence", fallback: 0 },
+	{ prop: "iridescenceThickness", fallback: 400 },
+	{ prop: "iridescenceIor", fallback: 1.3 },
+	{ prop: "triplanarScale", fallback: 1 },
+	{ prop: "triplanarSharpness", fallback: 4 },
+];
+
+/** Moves signal-valued material props of a node onto signal tracks. */
+function bindMaterialSignals<T extends LayoutNode, TCap extends NodeCapability>(
+	target: AnimatableNode<T, TCap>,
+): void {
+	const raw = target as unknown as Record<string, unknown>;
+	let anim: LayerAnimation<AnimatableProp> | undefined;
+	for (const { prop, fallback } of MATERIAL_SIGNAL_PROPS) {
+		const val = raw[prop];
+		if (!isSignalLike(val)) continue;
+		anim ??= LayerAnimation.create<AnimatableProp>();
+		anim.signal(prop, val);
+		raw[prop] = fallback;
+	}
+	if (anim) target.animate(anim);
 }
 
 export const Layer = {
@@ -3336,29 +3458,62 @@ export const Layer = {
 		props: Partial<BoxNode> = {},
 	): AnimatableNode<BoxNode> =>
 		buildChart(options, props, FontManager.getAll()[0]?.family ?? "Inter"),
-	camera: (options: Partial<CameraNode> = {}): AnimatableNode<CameraNode> =>
-		withAnimation<CameraNode>({
-			id: options.id ?? autoId("camera"),
+	camera: (options: CameraOptions = {}): AnimatableNode<CameraNode> => {
+		const {
+			fov,
+			focalLength,
+			sensorWidth,
+			near,
+			far,
+			zoom,
+			lens: existingLens,
+			...rest
+		} = options;
+		const hasTopLens =
+			fov !== undefined ||
+			focalLength !== undefined ||
+			sensorWidth !== undefined ||
+			near !== undefined ||
+			far !== undefined ||
+			zoom !== undefined;
+		const mergedLens =
+			hasTopLens || existingLens !== undefined
+				? {
+						...existingLens,
+						...(fov !== undefined && { fov }),
+						...(focalLength !== undefined && { focalLength }),
+						...(sensorWidth !== undefined && { sensorWidth }),
+						...(near !== undefined && { near }),
+						...(far !== undefined && { far }),
+						...(zoom !== undefined && { zoom }),
+					}
+				: undefined;
+		return withAnimation<CameraNode>({
+			id: rest.id ?? autoId("camera"),
 			kind: "camera",
-			mode: options.mode ?? "lookAt",
-			pitch: options.pitch ?? 0,
-			yaw: options.yaw ?? 0,
-			roll: options.roll ?? 0,
-			...options,
-		}),
-	light: (options: Partial<LightNode> = {}): AnimatableNode<LightNode> =>
-		withAnimation<LightNode>({
-			id: options.id ?? autoId("light"),
-			kind: "light",
-			lightType: options.lightType ?? "point",
-			color: options.color ?? "#ffffff",
-			intensity: options.intensity ?? 1.0,
-			...options,
-		}),
+			mode: rest.mode ?? "lookAt",
+			pitch: rest.pitch ?? 0,
+			yaw: rest.yaw ?? 0,
+			roll: rest.roll ?? 0,
+			...rest,
+			...(mergedLens !== undefined && { lens: mergedLens }),
+		});
+	},
+	light: (options: LightOptions = {}): AnimatableNode<LightNode> =>
+		buildLightNode(
+			{
+				id: options.id ?? autoId("light"),
+				kind: "light",
+				lightType: options.lightType ?? "point",
+				color: options.color ?? "#ffffff",
+				intensity: 1.0,
+			},
+			options as Record<string, unknown>,
+		),
 	ambientLight: (
-		color: string | Partial<LightNode> = "#ffffff",
-		intensity: number = 0.5,
-		options: Partial<LightNode> = {},
+		color: string | LightOptions = "#ffffff",
+		intensity: SignalOrNumber = 0.5,
+		options: LightOptions = {},
 	): AnimatableNode<LightNode> => Light.ambient(color, intensity, options),
 	/**
 	 * Scenes back to back with transitions between them; see `Transition`.
@@ -3370,18 +3525,22 @@ export const Layer = {
 		entries: SequenceEntry[],
 		options?: SceneSequenceOptions,
 	): SequenceNode => sequence(entries, options),
-	/** See {@link Light.environment}: `Layer.environment("studio", { exposure: 0.3 })`. */
+	/** See {@link Light.environment}: `Layer.environment("studio", { exposure: 0.3 })` or `Layer.environment("sky.hdr")`. */
 	environment: (
-		presetOrOptions: EnvironmentPreset | EnvironmentOptions = "studio",
+		presetOrOptions:
+			| EnvironmentPreset
+			| HdriPath
+			| EnvironmentOptions = "studio",
 		options: EnvironmentOptions = {},
 	): AnimatableNode<LightNode> => Light.environment(presetOrOptions, options),
-	directionalLight: (
-		options: Partial<LightNode> = {},
-	): AnimatableNode<LightNode> => Light.directional(options),
-	pointLight: (options: Partial<LightNode> = {}): AnimatableNode<LightNode> =>
+	directionalLight: (options: LightOptions = {}): AnimatableNode<LightNode> =>
+		Light.directional(options),
+	pointLight: (options: LightOptions = {}): AnimatableNode<LightNode> =>
 		Light.point(options),
-	spotLight: (options: Partial<LightNode> = {}): AnimatableNode<LightNode> =>
+	spotLight: (options: LightOptions = {}): AnimatableNode<LightNode> =>
 		Light.spot(options),
+	rectLight: (options: LightOptions = {}): AnimatableNode<LightNode> =>
+		Light.rect(options),
 	cube: (options: Cube3DOptions): AnimatableNode<BoxNode> =>
 		Layer3D.cube(options),
 	carousel3d: (options: Carousel3DOptions): AnimatableNode<BoxNode> =>
@@ -3390,7 +3549,7 @@ export const Layer = {
 		Layer3D.plane(options),
 	prism3d: (options: Prism3DOptions = {}): SolidShape3DNode =>
 		Layer3D.prism(options),
-	model: (options: Partial<Model3DNode> = {}): AnimatableNode<Model3DNode> =>
+	model: (options: Model3DOptions = {}): AnimatableNode<Model3DNode> =>
 		withAnimation({
 			id: options.id ?? autoId("model3d"),
 			kind: "model3d",
@@ -3408,7 +3567,7 @@ export const Layer = {
 		}),
 	obj: (
 		src: string,
-		options: Partial<Model3DNode> = {},
+		options: Model3DOptions = {},
 	): AnimatableNode<Model3DNode> =>
 		Layer.model({
 			src,
@@ -3417,7 +3576,7 @@ export const Layer = {
 		}),
 	fbx: (
 		src: string,
-		options: Partial<Model3DNode> = {},
+		options: Model3DOptions = {},
 	): AnimatableNode<Model3DNode> =>
 		Layer.model({
 			src,
@@ -3426,7 +3585,7 @@ export const Layer = {
 		}),
 	gltf: (
 		src: string,
-		options: Partial<Model3DNode> = {},
+		options: Model3DOptions = {},
 	): AnimatableNode<Model3DNode> =>
 		Layer.model({
 			src,
@@ -3435,7 +3594,7 @@ export const Layer = {
 		}),
 	glb: (
 		src: string,
-		options: Partial<Model3DNode> = {},
+		options: Model3DOptions = {},
 	): AnimatableNode<Model3DNode> =>
 		Layer.model({
 			src,
@@ -3444,7 +3603,7 @@ export const Layer = {
 		}),
 	stl: (
 		src: string,
-		options: Partial<Model3DNode> = {},
+		options: Model3DOptions = {},
 	): AnimatableNode<Model3DNode> =>
 		Layer.model({
 			src,
@@ -3453,7 +3612,7 @@ export const Layer = {
 		}),
 	ply: (
 		src: string,
-		options: Partial<Model3DNode> = {},
+		options: Model3DOptions = {},
 	): AnimatableNode<Model3DNode> =>
 		Layer.model({
 			src,
@@ -3462,7 +3621,7 @@ export const Layer = {
 		}),
 	vox: (
 		src: string,
-		options: Partial<Model3DNode> = {},
+		options: Model3DOptions = {},
 	): AnimatableNode<Model3DNode> =>
 		Layer.model({
 			src,
@@ -3471,7 +3630,7 @@ export const Layer = {
 		}),
 	threeDS: (
 		src: string,
-		options: Partial<Model3DNode> = {},
+		options: Model3DOptions = {},
 	): AnimatableNode<Model3DNode> =>
 		Layer.model({
 			src,
@@ -3480,7 +3639,7 @@ export const Layer = {
 		}),
 	off: (
 		src: string,
-		options: Partial<Model3DNode> = {},
+		options: Model3DOptions = {},
 	): AnimatableNode<Model3DNode> =>
 		Layer.model({
 			src,
@@ -3489,115 +3648,366 @@ export const Layer = {
 		}),
 };
 
+export interface CameraOptions extends Partial<CameraNode> {
+	/** Top-level shorthand for `lens.fov` (vertical field of view in degrees). */
+	fov?: number;
+	/** Top-level shorthand for `lens.focalLength` (mm). */
+	focalLength?: number;
+	/** Top-level shorthand for `lens.sensorWidth` (mm). */
+	sensorWidth?: number;
+	/** Top-level shorthand for `lens.near` clipping plane. */
+	near?: number;
+	/** Top-level shorthand for `lens.far` clipping plane. */
+	far?: number;
+	/** Top-level shorthand for `lens.zoom` multiplier. */
+	zoom?: number;
+}
+
+export interface Model3DOptions extends Partial<Model3DNode> {
+	/** Alias for `rotateX`. */
+	rotationX?: number;
+	/** Alias for `rotateY`. */
+	rotationY?: number;
+	/** Alias for `rotateZ`. */
+	rotationZ?: number;
+}
+
+export type SignalOrNumber =
+	| number
+	| ProgrammaticSignal
+	| Signal<number>
+	| { get: (ctx: FrameContext) => number };
+
+export interface VolumetricFogNoiseOptions
+	extends Omit<EnvironmentVolumetricFogNoise, "strength"> {
+	strength?: SignalOrNumber;
+}
+
+export interface VolumetricFogOptions
+	extends Omit<EnvironmentVolumetricFog, "density" | "anisotropy" | "noise"> {
+	density?: SignalOrNumber;
+	anisotropy?: SignalOrNumber;
+	noise?: boolean | VolumetricFogNoiseOptions;
+}
+
+/** An equirectangular panorama path (Radiance `.hdr` or OpenEXR `.exr`), usable in place of a preset name. */
+export type HdriPath =
+	| `${string}.hdr`
+	| `${string}.HDR`
+	| `${string}.exr`
+	| `${string}.EXR`;
+
+function isHdriPath(value: string): value is HdriPath {
+	return /\.(hdr|exr)$/i.test(value);
+}
+
 /** World settings for `Layer.environment` (see `LightNode` for every field). */
-export type EnvironmentOptions = Partial<
-	Pick<
-		LightNode,
-		| "id"
-		| "preset"
-		| "top"
-		| "horizon"
-		| "bottom"
+export interface EnvironmentOptions
+	extends Partial<
+		Pick<
+			LightNode,
+			| "id"
+			| "preset"
+			| "hdri"
+			| "color"
+			| "top"
+			| "horizon"
+			| "bottom"
+			| "softboxes"
+			| "toneMapping"
+			| "fog"
+			| "floor"
+			| "outlines"
+			| "ssr"
+			| "gi"
+			| "bloom"
+			| "startFrame"
+			| "durationFrames"
+		>
+	> {
+	intensity?: SignalOrNumber;
+	rotation?: SignalOrNumber;
+	exposure?: SignalOrNumber;
+	volumetricFog?: boolean | VolumetricFogOptions;
+	volumetricFogDensity?: SignalOrNumber;
+	volumetricFogAnisotropy?: SignalOrNumber;
+	volumetricFogNoiseStrength?: SignalOrNumber;
+}
+
+/** Options for `Light.*` and `Layer.*Light` (numeric fields also accept live `Signal`s). */
+export interface LightOptions
+	extends Omit<
+		Partial<LightNode>,
 		| "intensity"
-		| "softboxes"
+		| "x"
+		| "y"
+		| "z"
+		| "targetX"
+		| "targetY"
+		| "targetZ"
+		| "radius"
+		| "angle"
+		| "penumbra"
+		| "decay"
+		| "width"
+		| "height"
 		| "rotation"
 		| "exposure"
-		| "toneMapping"
-		| "fog"
-		| "floor"
-		| "outlines"
-		| "bloom"
-		| "startFrame"
-		| "durationFrames"
-	>
->;
+		| "volumetricFog"
+		| "volumetricFogDensity"
+		| "volumetricFogAnisotropy"
+		| "volumetricFogNoiseStrength"
+	> {
+	intensity?: SignalOrNumber;
+	x?: SignalOrNumber;
+	y?: SignalOrNumber;
+	z?: SignalOrNumber;
+	targetX?: SignalOrNumber;
+	targetY?: SignalOrNumber;
+	targetZ?: SignalOrNumber;
+	radius?: SignalOrNumber;
+	angle?: SignalOrNumber;
+	penumbra?: SignalOrNumber;
+	decay?: SignalOrNumber;
+	width?: SignalOrNumber;
+	height?: SignalOrNumber;
+	rotation?: SignalOrNumber;
+	exposure?: SignalOrNumber;
+	volumetricFog?: boolean | VolumetricFogOptions;
+	volumetricFogDensity?: SignalOrNumber;
+	volumetricFogAnisotropy?: SignalOrNumber;
+	volumetricFogNoiseStrength?: SignalOrNumber;
+}
+
+const LIGHT_SIGNAL_PROPS: ReadonlyArray<{
+	prop: LightAnimatableProp;
+	fallback: number;
+}> = [
+	{ prop: "intensity", fallback: 1.0 },
+	{ prop: "x", fallback: 0 },
+	{ prop: "y", fallback: 0 },
+	{ prop: "z", fallback: 0 },
+	{ prop: "targetX", fallback: 0 },
+	{ prop: "targetY", fallback: 0 },
+	{ prop: "targetZ", fallback: 0 },
+	{ prop: "radius", fallback: 1000 },
+	{ prop: "angle", fallback: 45 },
+	{ prop: "penumbra", fallback: 0.2 },
+	{ prop: "decay", fallback: 1.0 },
+	{ prop: "width", fallback: 240 },
+	{ prop: "height", fallback: 140 },
+	{ prop: "rotation", fallback: 0 },
+	{ prop: "exposure", fallback: 0 },
+	{ prop: "volumetricFogDensity", fallback: 0.02 },
+	{ prop: "volumetricFogAnisotropy", fallback: 0.55 },
+	{ prop: "volumetricFogNoiseStrength", fallback: 0.45 },
+];
+
+function isSignalLike(val: unknown): boolean {
+	if (!val || typeof val !== "object") return false;
+	const obj = val as {
+		get?: unknown;
+		inputHandleId?: unknown;
+		gpuBinding?: unknown;
+	};
+	return (
+		typeof obj.get === "function" ||
+		typeof obj.inputHandleId === "string" ||
+		typeof obj.gpuBinding === "object"
+	);
+}
+
+function buildLightNode(
+	defaults: LightNode,
+	rawOpts: Record<string, unknown>,
+): AnimatableNode<LightNode> {
+	const cleaned: Record<string, unknown> = { ...defaults, ...rawOpts };
+	const signalBindings: Array<[LightAnimatableProp, unknown]> = [];
+
+	for (const { prop, fallback } of LIGHT_SIGNAL_PROPS) {
+		const val = cleaned[prop];
+		if (isSignalLike(val)) {
+			signalBindings.push([prop, val]);
+			const defVal = (defaults as unknown as Record<string, unknown>)[prop];
+			cleaned[prop] = typeof defVal === "number" ? defVal : fallback;
+		}
+	}
+
+	const rawVf = cleaned.volumetricFog;
+	if (rawVf && typeof rawVf === "object") {
+		const vfCopy: Record<string, unknown> = {
+			...(rawVf as Record<string, unknown>),
+		};
+		if (isSignalLike(vfCopy.density)) {
+			signalBindings.push(["volumetricFogDensity", vfCopy.density]);
+			vfCopy.density = 0.02;
+		}
+		if (isSignalLike(vfCopy.anisotropy)) {
+			signalBindings.push(["volumetricFogAnisotropy", vfCopy.anisotropy]);
+			vfCopy.anisotropy = 0.55;
+		}
+		if (vfCopy.noise && typeof vfCopy.noise === "object") {
+			const noiseCopy: Record<string, unknown> = {
+				...(vfCopy.noise as Record<string, unknown>),
+			};
+			if (isSignalLike(noiseCopy.strength)) {
+				signalBindings.push(["volumetricFogNoiseStrength", noiseCopy.strength]);
+				noiseCopy.strength = 0.45;
+			}
+			vfCopy.noise = noiseCopy;
+		}
+		cleaned.volumetricFog = vfCopy;
+	}
+
+	let node = withAnimation(cleaned as unknown as LightNode);
+	if (signalBindings.length > 0) {
+		const anim = LayerAnimation.create<LightAnimatableProp>();
+		for (const [prop, sig] of signalBindings) {
+			anim.signal(prop, sig as never);
+		}
+		node = node.animate(anim);
+	}
+	return node;
+}
 
 export const Light = {
 	/**
 	 * The scene's world: a procedural studio environment that lights and
-	 * reflects off every surface, plus exposure, tone mapping and fog. Adding
-	 * one switches the scene to physically based shading (GGX, real
-	 * `roughness` / `metallic`, `emissive` that blooms past white).
+	 * reflects off every surface, plus exposure, tone mapping, fog and
+	 * volumetric light shafts. Adding one switches the scene to physically
+	 * based shading (GGX, real `roughness` / `metallic`, `emissive` that
+	 * blooms past white). Pass a `.hdr` or `.exr` path instead of a preset name to light
+	 * and reflect from a captured equirectangular panorama:
+	 * `Light.environment("assets/hdri/studio.hdr", { intensity: 1.5 })`.
 	 */
 	environment: (
-		presetOrOptions: EnvironmentPreset | EnvironmentOptions = "studio",
+		presetOrOptions:
+			| EnvironmentPreset
+			| HdriPath
+			| EnvironmentOptions = "studio",
 		options: EnvironmentOptions = {},
 	): AnimatableNode<LightNode> => {
-		const opts =
-			typeof presetOrOptions === "string"
-				? { preset: presetOrOptions, ...options }
-				: { ...presetOrOptions, ...options };
-		return withAnimation({
-			kind: "light",
-			lightType: "environment",
-			preset: "studio",
-			intensity: 1,
-			...opts,
-			id: opts.id ?? autoId("environment"),
-		});
+		const first: EnvironmentOptions =
+			typeof presetOrOptions !== "string"
+				? presetOrOptions
+				: isHdriPath(presetOrOptions)
+					? { hdri: presetOrOptions }
+					: { preset: presetOrOptions };
+		const opts = { ...first, ...options };
+		return buildLightNode(
+			{
+				id: opts.id ?? autoId("environment"),
+				kind: "light",
+				lightType: "environment",
+				preset: "studio",
+				intensity: 1,
+			},
+			opts as Record<string, unknown>,
+		);
 	},
 	ambient: (
-		color: string | Partial<LightNode> = "#ffffff",
-		intensity: number = 0.5,
-		options: Partial<LightNode> = {},
-	): AnimatableNode<LightNode> =>
-		withAnimation({
-			id: options.id ?? autoId("light-ambient"),
-			kind: "light",
-			lightType: "ambient",
+		color: string | LightOptions = "#ffffff",
+		intensity: SignalOrNumber = 0.5,
+		options: LightOptions = {},
+	): AnimatableNode<LightNode> => {
+		const merged: LightOptions = {
 			color: typeof color === "string" ? color : (color.color ?? "#ffffff"),
 			intensity,
 			...(typeof color === "object" && color),
 			...options,
-		}),
-	directional: (options: Partial<LightNode> = {}): AnimatableNode<LightNode> =>
-		withAnimation({
-			id: options.id ?? autoId("light-directional"),
-			kind: "light",
-			lightType: "directional",
-			color: options.color ?? "#ffffff",
-			intensity: options.intensity ?? 1.0,
-			x: options.x ?? 0,
-			y: options.y ?? -1000,
-			z: options.z ?? -1000,
-			targetX: options.targetX ?? 0,
-			targetY: options.targetY ?? 0,
-			targetZ: options.targetZ ?? 0,
-			...options,
-		}),
-	point: (options: Partial<LightNode> = {}): AnimatableNode<LightNode> =>
-		withAnimation({
-			id: options.id ?? autoId("light-point"),
-			kind: "light",
-			lightType: "point",
-			color: options.color ?? "#ffffff",
-			intensity: options.intensity ?? 1.0,
-			x: options.x ?? 0,
-			y: options.y ?? 0,
-			z: options.z ?? -500,
-			radius: options.radius ?? 1000,
-			decay: options.decay ?? 1.0,
-			...options,
-		}),
-	spot: (options: Partial<LightNode> = {}): AnimatableNode<LightNode> =>
-		withAnimation({
-			id: options.id ?? autoId("light-spot"),
-			kind: "light",
-			lightType: "spot",
-			color: options.color ?? "#ffffff",
-			intensity: options.intensity ?? 1.0,
-			x: options.x ?? 0,
-			y: options.y ?? -500,
-			z: options.z ?? -1000,
-			targetX: options.targetX ?? 0,
-			targetY: options.targetY ?? 0,
-			targetZ: options.targetZ ?? 0,
-			angle: options.angle ?? 45,
-			penumbra: options.penumbra ?? 0.2,
-			radius: options.radius ?? 2000,
-			decay: options.decay ?? 1.0,
-			...options,
-		}),
+		};
+		return buildLightNode(
+			{
+				id: merged.id ?? autoId("light-ambient"),
+				kind: "light",
+				lightType: "ambient",
+				color: "#ffffff",
+				intensity: 0.5,
+			},
+			merged as Record<string, unknown>,
+		);
+	},
+	directional: (options: LightOptions = {}): AnimatableNode<LightNode> =>
+		buildLightNode(
+			{
+				id: options.id ?? autoId("light-directional"),
+				kind: "light",
+				lightType: "directional",
+				color: options.color ?? "#ffffff",
+				intensity: 1.0,
+				x: 0,
+				y: -1000,
+				z: -1000,
+				targetX: 0,
+				targetY: 0,
+				targetZ: 0,
+			},
+			options as Record<string, unknown>,
+		),
+	point: (options: LightOptions = {}): AnimatableNode<LightNode> =>
+		buildLightNode(
+			{
+				id: options.id ?? autoId("light-point"),
+				kind: "light",
+				lightType: "point",
+				color: options.color ?? "#ffffff",
+				intensity: 1.0,
+				x: 0,
+				y: 0,
+				z: -500,
+				radius: 1000,
+				decay: 1.0,
+			},
+			options as Record<string, unknown>,
+		),
+	spot: (options: LightOptions = {}): AnimatableNode<LightNode> =>
+		buildLightNode(
+			{
+				id: options.id ?? autoId("light-spot"),
+				kind: "light",
+				lightType: "spot",
+				color: options.color ?? "#ffffff",
+				intensity: 1.0,
+				x: 0,
+				y: -500,
+				z: -1000,
+				targetX: 0,
+				targetY: 0,
+				targetZ: 0,
+				angle: 45,
+				penumbra: 0.2,
+				radius: 2000,
+				decay: 1.0,
+			},
+			options as Record<string, unknown>,
+		),
+	/**
+	 * A rectangular area light (studio softbox / LED panel / neon window)
+	 * with solid-angle diffuse illumination and representative-point GGX
+	 * specular reflections.
+	 */
+	rect: (options: LightOptions = {}): AnimatableNode<LightNode> =>
+		buildLightNode(
+			{
+				id: options.id ?? autoId("light-rect"),
+				kind: "light",
+				lightType: "rect",
+				color: options.color ?? "#ffffff",
+				intensity: 1.0,
+				x: 0,
+				y: -300,
+				z: -800,
+				targetX: 0,
+				targetY: 0,
+				targetZ: 0,
+				width: 240,
+				height: 140,
+				twoSided: false,
+				radius: 2000,
+				decay: 1.5,
+			},
+			options as Record<string, unknown>,
+		),
 };
 
 export {

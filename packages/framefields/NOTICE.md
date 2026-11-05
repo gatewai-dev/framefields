@@ -1,6 +1,6 @@
 # Notice: framefields
 
-framefields is licensed under Apache-2.0. It contains no model weights: every vision model downloads on first use from a pinned revision into the local model cache (`~/.cache/framefields/models`) and is verified by size and SHA-256. The licenses below apply to those downloaded weights, not to framefields' code.
+framefields is licensed under Apache-2.0. It contains no model weights or human base assets: every vision model downloads on first use from a pinned revision into the local model cache (`~/.cache/framefields/models`) and is verified by size and SHA-256. The licenses below apply to those downloaded weights, not to framefields' code.
 
 ## Prompted tracking (SAM)
 

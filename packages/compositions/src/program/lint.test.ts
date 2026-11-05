@@ -103,14 +103,21 @@ describe("lintComposition", () => {
 
 	it("flags lights and materials that do nothing", () => {
 		const c = codes([
-			{ id: "p", kind: "light", lightType: "point", castShadow: true },
+			{ id: "a", kind: "light", lightType: "ambient", castShadow: true },
 			{ id: "m", kind: "model3d", metallic: 1 },
 		]);
 		expect(c).toContain("shadow_unsupported_light");
 		expect(c).toContain("pbr_without_environment");
+		// Layered lobes alone need the environment too.
+		for (const lobe of [{ clearcoat: 1 }, { anisotropy: 0.6 }])
+			expect(codes([{ id: "c", kind: "model3d", ...lobe }])).toContain(
+				"pbr_without_environment",
+			);
 		expect(
 			codes([
 				{ id: "e", kind: "light", lightType: "environment" },
+				{ id: "p", kind: "light", lightType: "point", castShadow: true },
+				{ id: "r", kind: "light", lightType: "rect", castShadow: true },
 				{ id: "m", kind: "model3d", metallic: 1 },
 			]),
 		).toEqual([]);
@@ -239,5 +246,37 @@ describe("lintComposition", () => {
 		expect(lint(true).map((d) => d.code)).not.toContain("missing_emoji_font");
 		// Callers that don't know about fonts aren't told.
 		expect(lint().map((d) => d.code)).not.toContain("missing_emoji_font");
+	});
+
+	it("flags cube cameras combined with single-view effects", () => {
+		const cube = {
+			id: "cam",
+			kind: "camera",
+			lens: { projection: "equirectangular" },
+		};
+		expect(codes([{ ...cube, dof: { enabled: true } }])).toContain(
+			"camera_cube_dof",
+		);
+		expect(codes([{ ...cube, motionBlur: true }])).toContain(
+			"camera_cube_motion_blur",
+		);
+		expect(
+			codes([
+				cube,
+				{ id: "env", kind: "light", lightType: "environment", ssr: true },
+			]),
+		).toContain("camera_cube_screen_space");
+		// A perspective camera takes all of them.
+		const plain = codes([
+			{ id: "cam", kind: "camera", motionBlur: true, dof: { enabled: true } },
+			{
+				id: "env",
+				kind: "light",
+				lightType: "environment",
+				ssr: true,
+				gi: true,
+			},
+		]);
+		expect(plain.filter((c) => c.startsWith("camera_cube"))).toEqual([]);
 	});
 });

@@ -150,6 +150,7 @@
 		"@framefields/components": "workspace:*",
 		"@framefields/compositions": "workspace:*",
 		"@framefields/core": "workspace:*",
+		"@framefields/gltf-fixtures": "workspace:*",
 		"@framefields/node-audio-compressor": "workspace:*",
 		"@framefields/node-audio-delay": "workspace:*",
 		"@framefields/node-audio-fade": "workspace:*",

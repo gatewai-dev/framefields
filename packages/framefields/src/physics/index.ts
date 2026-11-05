@@ -34,6 +34,7 @@ export type {
 	PhysicsDriver,
 	PhysicsWorldOptions,
 } from "./core.js";
+export { Fracture3D, type Fracture3DOptions } from "./fracture3d.js";
 export {
 	type Body2DOptions,
 	type FieldSample2D,

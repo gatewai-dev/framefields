@@ -114,6 +114,37 @@ describe("glTF texture features", () => {
 		expect(mat.textureWrap).toBe("clamp");
 	});
 
+	it("reads each map's own sampler, so a detail map can tile under a clamped base color", () => {
+		const doc = quadGltf({
+			pbrMetallicRoughness: { baseColorTexture: { index: 0 } },
+			normalTexture: { index: 1 },
+			occlusionTexture: { index: 2 },
+		});
+		doc.textures = [
+			{ source: 0, sampler: 0 },
+			{ source: 0, sampler: 1 },
+			{ source: 0 },
+		];
+		doc.samplers = [
+			{ wrapS: 33071, wrapT: 33071 },
+			{ wrapS: 10497, wrapT: 33648, magFilter: 9728 },
+		];
+		const mat = parse(doc).materials.M!;
+		expect(mat.textureWrap).toBe("clamp");
+		expect(mat.mapSampling?.normal).toEqual({
+			wrapU: "repeat",
+			wrapV: "mirror",
+			filter: "nearest",
+		});
+		// No sampler: glTF's default, repeat and linear.
+		expect(mat.mapSampling?.occlusion).toEqual({
+			wrapU: "repeat",
+			wrapV: "repeat",
+			filter: "linear",
+		});
+		expect(mat.mapSampling?.metallicRoughness).toBeUndefined();
+	});
+
 	it("prefers WebP and Basis extension sources", () => {
 		const doc = quadGltf({
 			pbrMetallicRoughness: { baseColorTexture: { index: 0 } },
@@ -323,7 +354,7 @@ describe("glTF texture features", () => {
 	});
 
 	it("rejects unknown required extensions", () => {
-		for (const ext of ["VENDOR_unknown", "KHR_materials_transmission"]) {
+		for (const ext of ["VENDOR_unknown", "KHR_materials_dispersion"]) {
 			expect(() => parse(quadGltf({}, { extensionsRequired: [ext] }))).toThrow(
 				ext,
 			);

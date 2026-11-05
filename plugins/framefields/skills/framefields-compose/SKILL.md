@@ -106,6 +106,9 @@ All `Layer.*` builders return `AnimatableNode<T>` instances with chainable `.ani
 | `Layer3D.extrude / lathe / tube / line / points(options)` | `"model3d"` | Custom & path-driven 3D geometry. `extrude`: extrude a 2D SVG path `d` (with holes) or `contour`/`holes` (`depth`, `bevelThickness`, `bevelSize`, `bevelSegments`, `bevelColor`). `lathe`: revolve a 2D `points` profile `[r, y][]` around the Y axis (`segments`, `phiStart`, `phiLength`, `closed`, `flatShaded`). `tube`: sweep a solid or thick-walled hollow pipe (`radius`, `innerRadius`, `radiusTaper`, `closed`, `capped`) along a `Path3D` or 3D control `points` using rotation-minimizing frames. `line`: 3D polyline (`points` or `Path3D`, `dashSize`, `gapSize`, per-vertex `colors`). `points`: 3D point cloud (`points`, `pointSize` for lit sphere dots or `0` for `point-list`, per-point `colors`). |
 | `Layer3D.instances(options)` | `"model3d"` | Hardware-instanced single or multi-variant mesh rendering in 1 GPU draw call. Options: `count`, `mesh` / `meshes` (array of Layer3D primitives or meshes), `instanceAt(index, frame): { position, rotation, scale, color, emissive }`, or bind directly to Rapier `Physics.world3d` bodies via `bodies: Body3D[]` with `emissiveBySpeed` and `colorRamp`. |
 | `Layer3D.swarm(options)` | `"model3d"` | Continuous 3D GPU particle swarm with compute-driven physics, 3D curl turbulence, vortex/cyclone field (`swirl`, `pull`, `axial`), ground plane collisions with Coulomb sliding friction and rotational roll torque, kinetic heat accumulation/cooling, and zero-copy packing directly into GPU instance buffers. |
+| `Layer3D.terrain(options)` | `"model3d"` | Procedural landscape, closed underneath. `width`, `depth`, `height` (relief px above the node's y, the valley floor), `segments`, `noise: { seed, scale, octaves, persistence, lacunarity, ridgeMode: "fbm" \| "ridged" \| "terrace", terraceSteps }`, or `heightFn(u, v) => 0..1` / `heights`, `overhangWarp`, `colorByElevation: { lowColor, midColor, highColor, cliffColor, cliffThreshold, bands }`, `flatShaded`. Returns a node with `heightAt(x, z)`, `normalAt(x, z)`, `elevationAt(x, z)` to stand cameras, lights, video screens and models on the ground. Static `Physics.world3d` bodies collide with its exact triangles. |
+| `Layer3D.sdf(options)` | `"model3d"` | Boolean sculpture: `primitives: [{ shape: "sphere" \| "box" \| "cylinder" \| "capsule" \| "torus" \| "gyroid", op: "union" \| "subtract" \| "intersect", smoothness (px blend), center, rotation, color, …size }]` meshed watertight inside `bounds: [w, h, d]` at `resolution` (16..160). Colors blend across smooth joins; a colored cutter paints its cut. |
+| `Layer3D.scatter(options)` | `"model3d"` | Scatter `mesh` (one or an array of variants, any Layer3D mesh or `Layer.model`) over `surface` (terrain, sdf, primitive or model file): `count`, `minDistance` (Poisson spacing), `seed`, `slopeRange` (deg from level), `elevationRange` (0..1), `alignToNormal`, `scaleRange`, `randomYaw`, `exclude: [{ x, z, radius, falloff }]`, `sink`, `wind`. Deterministic, one draw call per variant; `.points()` returns where they stand. |
 
 ---
 
@@ -252,7 +255,7 @@ Layer.camera({
 });
 ```
 
-Cube cameras draw outlines, shadows, floor reflections and bloom, but not depth of field (`comp.lint()` reports `camera_cube_dof`), and glass refracts only the 3D scene, not the 2D layers below.
+Cube cameras draw outlines, shadows, floor reflections, volumetric fog and bloom, but not depth of field, motion blur or screen-space reflections and GI, which need one perspective view (`comp.lint()` reports `camera_cube_dof`, `camera_cube_motion_blur`, `camera_cube_screen_space`; rendering throws). Glass refracts only the 3D scene, not the 2D layers below.
 
 ### 4. Procedural & Audio-Reactive Drivers
 Properties can be bound to Perlin wiggles, harmonic springs, or audio-extracted signals:
@@ -415,6 +418,90 @@ Where depth jumps (an object's outline) the surface stretches across with the ed
 
 ---
 
+### Motion blur (3D)
+
+`Layer.camera({ ..., motionBlur: true })` (or `{ shutter: 180, samples: 20, maxBlur: 48 }`) streaks every mesh by its own motion over the shutter, along with the camera's: moving layers, skinned joints, morph targets, audio-deformed meshes, crowds, swarms, wind and fractured pieces. 3D layer planes (cards, video screens) move by their transform, and text in the 3D scene streaks glyph by glyph. Still things stay sharp, and a frame renders the same in order or after a seek (the frame before is rendered first, recording only). `shutter` is in degrees (180 = film, 360 = the whole frame interval). `maxBlur` caps the streak in px. A layer's own `motionBlurShutter` still streaks a whole flat layer by its position; use the camera's for 3D.
+
+### Characters: blending, IK, look-at, springs, crowds
+
+glTF characters (`Layer.glb` / `Layer.gltf`) take layered clips and procedural constraints. Joint names come from the file. Targets are scene coordinates: a point, keys `[[frame, x, y, z]]`, or `(frame) => [x, y, z]`.
+
+```ts
+const hero = Layer.glb("hero.glb", {
+  x: 960, y: 900, z: 0, rotateX: 180, scale: 3,
+  animationLayers: [
+    { clip: "Walk" },
+    { clip: "Run", weight: [[0, 0], [48, 1]] },             // crossfade walk → run
+    { clip: "Wave", mask: ["Spine2"], weight: 0.8 },        // upper body only
+  ],
+  lookAt: [{ joint: "Head", target: (f) => [700 + f * 4, 600, -200], maxAngleDeg: 60 }],
+  ik: [{ chain: ["UpperArm.R", "LowerArm.R", "Hand.R"], target: [1100, 650, -80], poleTarget: [1200, 800, 200] }],
+  springBones: [{ joints: ["Tail1", "Cape"], stiffness: 4, damping: 0.6, gravity: [0, 980, 0] }],
+});
+// 3,000 walkers in one draw call per mesh, each at its own phase and speed:
+const extras = Layer3D.scatter({
+  surface: land, mesh: Layer.glb("walker.glb", { rotateX: 180, scale: 2 }), count: 3000, minDistance: 40,
+  crowd: { clips: ["Walk", "Idle"], speedRange: [0.8, 1.2] },
+});
+```
+
+**Joint drivers** (`drive`): `{ joint, from, rotate: { x?, y?, z? } }` turns a joint by a share of another joint's turn from its rest, per local axis, after look-ats and before IK: lids following eyes, twist bones sharing a forearm's roll, correctives. Model files can carry their own (in the scene's `extras.framefields.drivers`); a layer's `drive` adds to them.
+
+**Posing joints directly** (`pose`, by joint name; namespace prefixes and case are ignored, so `"LeftArm"` finds `"mixamorig:LeftArm"`): local Euler degrees `rotateX/Y/Z` (Z, then Y, then X, like layers) and offsets `x/y/z`, on top of the clips (`mode: "additive"`, default) or of the rest pose (`"rest"`: clips stop moving that joint), with a `weight`. Every value is a track: a number, `[[frame, v]]` keys, `(frame) => v`, or a signal (audio, physics, vision, `Signal.*`), so a head can sway on a sine or flinch at a physics hit:
+
+```ts
+Layer.glb("hero.glb", {
+  pose: {
+    Head: { rotateY: Signal.sine({ min: -20, max: 20, period: 48 }) }, // a signal
+    Neck: { rotateX: 30, weight: ball.impact },                     // flinch by a physics hit
+    "LeftForeArm": { rotateZ: [[0, 0], [24, -70]], weight: 0.8 },   // keys
+    Spine: { rotateY: (f) => 15 * Math.sin(f / 12), mode: "rest" }, // a function, over rest
+  },
+});
+```
+
+**Aiming and retargeting** (`aim`): `{ joint, direction }` turns a bone (toward its first child, or a local `axis`) along a scene direction, parents first; direction axes are tracks too (`[1, signal, 0]`). A performer's 2D pose drives a character with `person.retarget({ rig: "mixamo" | "humanoid" | "rigify" | { leftUpperArm: "…", … }, bones?, mirror?, minVisibility?, weight? })` on a placed vision person (or `retargetPose(source, options)` for any source with `point(name, frame)`):
+
+```ts
+const dancer = comp.vision("dance.mp4").person.place({ width: W, height: H, fit: "cover" });
+Layer.glb("robot.glb", {
+  x: dancer.signals("leftHip").x, y: dancer.signals("leftHip").y,   // root follows (signals)
+  aim: dancer.retarget({ rig: "mixamo", bones: ["leftUpperArm", "leftLowerArm", "rightUpperArm", "rightLowerArm"] }),
+  animationLayers: [{ clip: "Walk" }],                              // legs keep walking
+});
+```
+
+Order of evaluation: clips, `pose`, `aim`, `lookAt`, `ik` (so IK can still plant the feet), then springs. Retargeting is 2D: limbs swing in the plane facing the camera (no depth from one view); unsure keypoints (below `minVisibility`, default 0.3) hand their bone back to the animated pose. Use `mirror: true` for a character seen from behind. Functions and signals are in-process only; JSON keeps numbers and keys.
+
+Rules: a crowd mesh keeps its own `rotateX` / `scale` under each instance (y-up glTF: `rotateX: 180`). Spring bones follow the clip's motion and the model's current orientation, not the layer's keyframed travel. Per-instance `clip`, `animOffset`, `animSpeed` in `transforms` / `instanceAt` override the crowd's seeded choices.
+
+**Morph targets by name** (`morphs` on `Layer.glb`): set any of the file's morph targets by name, matched case-insensitively, each a number, keys or a signal; unnamed targets keep the clip's weights. Sparse morph accessors stay sparse on the GPU, so files with hundreds of corrective shapes fit. Skins take up to eight influences per vertex (`JOINTS_1` / `WEIGHTS_1`). Texture slots honor `KHR_texture_transform`, and each map samples with its own glTF sampler.
+
+```ts
+Layer.glb("head.glb", { morphs: { jawOpen: [[0, 0], [12, 0.6]], mouthSmileLeft: 0.8, eyeBlinkLeft: blink } });
+```
+
+### Procedural worlds: terrain, sculptures, scatter
+
+Terrain, SDF sculptures and scatters are ordinary model nodes: they take materials, lights, shadows, SSR/GI, physics, keyframes and a `texture` that can be any layer (an image path, `Layer.video`, a layout tree) drawn fresh each frame.
+
+```ts
+const land = Layer3D.terrain({
+  x: 960, y: 900, z: 0, width: 4000, depth: 4000, height: 600,
+  noise: { seed: 3, ridgeMode: "ridged" },
+  colorByElevation: { lowColor: "#3d6b2a", midColor: "#7a6a4f", highColor: "#f4f4f4", cliffColor: "#5a5048" },
+});
+const pines = Layer3D.scatter({
+  surface: land, mesh: [Layer.gltf("pine.glb"), Layer3D.capsule({ radius: 8, length: 60, color: "#2f5d2a" })],
+  count: 800, minDistance: 60, slopeRange: [0, 30], elevationRange: [0.05, 0.6],
+  exclude: [{ x: 960, z: 0, radius: 300, falloff: 120 }], wind: { amplitudeDeg: 6 },
+});
+// Stand any layer on the ground: a video screen in the clearing.
+const screen = Layer3D.plane({ x: 960, y: land.heightAt(960, 0) - 160, z: 0, width: 480, height: 270, children: [Layer.video("clip.mp4", { width: 480, height: 270 })] });
+```
+
+Rules: the terrain's y is its valley floor, peaks rise `height` px above it (up is -y); `heightAt` follows the node's position and scale but not its rotation. Scatter reads the surface's static transform, so don't keyframe the surface. Make a terrain or sculpture `type: "fixed"` in `Physics.world3d` for exact-triangle collisions. `lint()` warns when `slopeRange` / `elevationRange` reject the whole surface.
+
 ## Scenes & Transitions
 
 `Layer.sequence` places full-frame scenes end to end, overlapping each pair by its transition, and writes the scenes' `startFrame` / `durationFrames` for you (each scene keys from its own frame 0). Transitions are ordinary keyframes and mattes merged into the scenes.
@@ -470,10 +557,14 @@ comp.add([
     toneMapping: "neutral",            // default; "agx" filmic, "aces" punchy, "none"
     rotation: 30,                      // turn the reflections
     fog: { color: BG, start: 2000, end: 5000 },   // surfaces fade into the background color
+    volumetricFog: { density: 0.025, anisotropy: 0.6, noise: { strength: 0.4, speed: [18, -6, 10] } }, // participating medium + god rays
     bloom: true,                       // or { intensity: 0.3, threshold: 1.6, radius: 6 }
     floor: { y: 200, color: "#111115", reflectivity: 0.8, roughness: 0.25, fadeDistance: 800 }, // glossy floor reflection
+    ssr: true,                         // screen-space reflections on glossy surfaces
+    gi: { intensity: 1.2 },            // contact occlusion + one bounce of visible light
   }),
   Layer.directionalLight({ x: 400, y: -1200, z: -600, targetX: 960, targetY: 540, castShadow: true }),
+  Layer.rectLight({ x: 960, y: -300, z: -400, targetX: 960, targetY: 540, width: 320, height: 140, intensity: 2, castShadow: true }),
 ]);
 
 Layer3D.sphere({ radius: 90, color: "#e8e8e8", metallic: 1, roughness: 0.15 });  // chrome
@@ -483,12 +574,19 @@ Layer3D.cylinder({ ..., height: 400, color: "#111", emissive: "#4da3ff", emissiv
 
 - **Tone mapping `"neutral"` (default) keeps brand colors as authored**: orange stays orange. Use `"agx"` for a filmic roll-off.
 - **Bloom only takes light well past white** (emissive ≳ 3, hot speculars), so ordinary bright surfaces don't glow. Raise `emissiveIntensity` to make something glow.
-- **Shadows:** directional and spot lights can each cast shadows, subject to device texture-array limits. Meshes cast by default (`castShadow: false` opts out); flat layers (planes, cards) cast only with `castShadow: true`. Everything receives.
+- **Shadows:** `directional`, `spot`, `rect` (`Layer.rectLight` / `Light.rect`), and omnidirectional `point` (`Layer.pointLight` / `Light.point`, 6-face cube shadow map) lights can each cast shadows, subject to device texture-array limits. Meshes cast by default (`castShadow: false` opts out); flat layers (planes, cards) cast only with `castShadow: true`. Everything receives.
+- **Rect Area Lights (`Layer.rectLight` / `Light.rect`):** studio softbox / LED panel lights with `width`, `height`, `twoSided`, `rotation`, `x/y/z`, `targetX/Y/Z`, `intensity`, `radius`, `decay`, and `castShadow`. Uses solid-angle diffuse irradiance and representative-point GGX specular highlights that stretch across rough and glossy surfaces. Numeric light props accept `Signal`s directly (e.g. `Layer.rectLight({ intensity: bassSignal, width: 300, height: 120 })`).
+- **Volumetric Fog & Light Shafts (`volumetricFog`):** `Layer.environment("night", { volumetricFog: true | { density, anisotropy, heightFalloff, baseHeight, color, lightIntensity, ambientIntensity, maxDistance, steps, noise: { scale, strength, speed, octaves } } })` raymarches participating media at half resolution with depth-aware bilateral upsampling. Any shadow-casting `directional`, `spot`, `rect`, or `point` light automatically carves volumetric light shafts (god rays) through the fog behind occluders. `density`, `anisotropy`, and `noise.strength` accept numbers or live `Signal` objects directly.
+- **Glass refracts the 3D scene:** glass, acrylic and frosted meshes show the 3D objects behind them as well as the layers under the batch (the batch is drawn once without its glass to make that picture). glTF materials with `KHR_materials_transmission` render as glass with their `KHR_materials_ior`; a `KHR_materials_volume` thickness bends by the refracted ray through that depth, so the bend scales with the object on screen (corneas, potions, ice).
+- **Model files bring their own lobes:** glTF materials with `KHR_materials_clearcoat`, `_sheen`, `_anisotropy` or `_iridescence`, and `subsurface` (in the material's `extras.framefields.subsurface`), render with those lobes; a layer's own lobe props override them. Subsurface scattering conserves energy: each channel's light wraps past the terminator by how far it scatters (`subsurfaceColor`; red farthest for skin, e.g. `"#ff5a3c"`), so form keeps its shading and only shadow edges warm; thin parts glow when back-lit.
+- **Substrate lobes (physical shading, needs an environment):** every `Layer3D.*` mesh, `Layer.model` and 3D card accepts `clearcoat` / `clearcoatRoughness` (car paint, lacquer), `anisotropy` (-1..1) / `anisotropyRotation` (deg; brushed metal), `subsurface` / `subsurfaceColor` (wax, jade, skin), `sheen` / `sheenColor` / `sheenRoughness` (velvet, cloth), `iridescence` (0..1 or `{ intensity, thickness, ior }`; soap, oil, beetle shell) with `iridescenceThickness` (nm) / `iridescenceIor`, and `triplanar: true | { scale, sharpness }` for world-space textures on UV-less meshes. Numeric lobes take numbers or live `Signal`s (`clearcoat: bass`). Example: `Layer3D.sphere({ radius: 90, color: "#8a0f1c", metallic: 0.6, roughness: 0.35, clearcoat: 1, clearcoatRoughness: 0.05 })`.
+- **HDRI environments:** pass a `.hdr` or `.exr` path instead of a preset: `Layer.environment("assets/hdri/studio.exr", { intensity: 1.2, rotation: 90 })` (or `{ hdri: path }`). The panorama lights and reflects every physical surface; preset names keep working; relative paths resolve from the working directory. EXR files must use lossless compression (NONE, RLE, ZIPS, ZIP, PIZ or PXR24); re-save B44/DWA files as ZIP.
+- **Screen-space reflections & GI (`ssr`, `gi`):** `Layer.environment("night", { ssr: true, gi: true })`. `ssr` (`{ intensity, maxRoughness, thickness, steps }`) reflects nearby geometry and emissives in glossy surfaces: chrome, wet floors, lacquer, walls. `gi` (`{ intensity, radius, samples }`) adds contact occlusion and color bleeding from visible surfaces, e.g. a neon sign tinting the floor. Each costs a second 3D pass; only what is on screen can be reflected or bounce, so keep key reflected objects in frame. Use `floor` for a planar mirror that also shows off-screen objects.
 - **Art-directed materials:** `material: "toon"` works on meshes, flat 3D cards and native 3D text. Its `toon` options are `shadowColor` (shadow-side albedo multiplier; model shade color or `#80808c`), `lightColor` (lit-side multiplier; white), `threshold` (terminator cosine; 0.075), `softness` (transition width; 0.25) and `diffuse` (0 flat through 1 Lambert; 0). Toon surfaces use all scene lights, their colors, point/spot attenuation and real cast shadows; environment exposure, tone mapping, fog and emissive bloom still apply. Lower `threshold` to wrap light around a surface, or raise `shadowColor` for a bright shadow floor on illustrated cards. Physical and unlit materials are independent of these options.
 - **Geometry outlines (ink):** `Layer.environment("neutral", { outlines: true })`, or `outlines: { color: "#191721", width: 2, referenceHeight: 1080, creaseAngle: 45, depthThreshold: 0.01, opacity: 1 }`. `width` is px at `referenceHeight`, scaled with the output height; start near 1 px at export height. Ink comes from depth and normals, so textures, shadows and coplanar seams get none; `creaseAngle: 180` keeps only silhouettes. `outline: false` on a layer/model excludes it but keeps it occluding ink behind it (for already-inked artwork). Ink follows fog and runs before depth blur and bloom; heavy lens blur spreads it into wide bands. Separate from the image-space `Toon` effect. `Layer3D.cube({ faces: { front: Layer.box(...) } })` faces inherit the cube's `toon`, `outline`, emissive and shadow settings unless set per face. Example: `examples/34_spatial_styling` in the engine repo.
 - **3D pivots:** `anchorX/Y` choose the point held fixed during scale/rotation; changing an anchor at identity transform leaves the layer in place. Use `anchorY: 1` to keep a character's feet planted while scaling.
 - **Fog** fades to `fog.color` exactly, so set it to the composition background for a seamless horizon.
-- **Models:** glTF materials bring base color, normal, metallic-roughness, occlusion and emissive maps; OBJ (`map_Kd`, `norm` in the `.mtl`) and FBX bring diffuse and normal maps, looked up next to the model. Textures can be PNG, JPEG, WebP, GIF, TIFF, AVIF or Basis KTX2 (ETC1S/UASTC, transcoded offline to RGBA8); TGA, PSD and DDS are skipped with a warning. Draco and meshopt-compressed glTF geometry is decoded by the asynchronous compositor loader; individual maps retain their own UV sets and texture transforms. glTF morph weights animate on the GPU before skinning. Unknown required glTF extensions fail clearly. Vertex colors (VOX, PLY, OFF, glTF `COLOR_0`) multiply the base color.
+- **Models:** glTF materials bring base color, normal, metallic-roughness, occlusion and emissive maps; OBJ (`map_Kd`, `norm` in the `.mtl`) and FBX bring diffuse and normal maps, looked up next to the model. Textures can be PNG, JPEG, WebP, GIF, TIFF, AVIF or Basis KTX2 (ETC1S/UASTC, transcoded offline to RGBA8); TGA, PSD and DDS are skipped with a warning. Draco and meshopt-compressed glTF geometry is decoded by the asynchronous compositor loader; individual maps retain their own UV sets and texture transforms. glTF morph weights animate on the GPU before skinning; sparse morph targets stay sparse from the file to the GPU (memory follows the deltas that exist, so faces with hundreds of correctives fit), and skins take up to eight influences per vertex (`JOINTS_1` / `WEIGHTS_1`). Unknown required glTF extensions fail clearly. Vertex colors (VOX, PLY, OFF, glTF `COLOR_0`) multiply the base color.
 - **Model orientation:** the world is y-down, so a y-up model (most glTF, OBJ and FBX files) needs `rotateX: 180` to stand upright.
 - **Reflective floor:** `floor: { y, color, reflectivity, roughness, fadeDistance, opacity }` mirrors the scene; `roughness` blurs the reflection, which also fades with distance and strengthens at grazing angles.
 - `emissive` / `emissiveIntensity` / `exposure` animate like any prop (`.keys("emissiveIntensity", …)`).
@@ -537,7 +635,8 @@ stage.animate(LayerAnimation.create().signal("y", world.impact, { multiplier: 14
 - **Particles:** for clouds, dust, sparks, fluids and flow fields use `Layer.particles` (GPU, below), not hundreds of physics bodies. Keep physics bodies for a few dozen things that must collide and stack (cards, letters, products).
 - **Keyframes instead of signals:** `world.bakeKeyframes({ tolerance: 0.25 })` in place of `simulate()` writes plain, simplified linear keyframes (editable, plain JSON).
 - **3D:** `Physics.world3d` takes `Layer3D` solids (`roundedBox`, `sphere`, `cylinder`, `capsule`, `torus`, `ring`, `prism`, `pyramid`, `polyhedron`, `icosahedron`, `icosphere`, `shard`) and models (convex hull of the mesh); same options with 3-vectors, `world.hinge(a, b, at, axis)`, `world.walls({ width, height, depth })`. Use `Layer3D.instances({ count: bodies.length, mesh: Layer3D.shard({ radius: 24 }), bodies, emissiveBySpeed: { speedThreshold: 200, maxSpeed: 1200, color: "#ff5511", intensity: 4 } })` to render hundreds of physics bodies in a single GPU draw call.
-- **Timing:** signals are on the composition clock. In a scene that starts at frame `S`, pass `startFrame: S` to the world. Before it and after `frames` the signals hold their first/last value. Add every body, joint and force before `simulate()` (or before reading any signal): the world then locks.
+- **Destruction:** `const broken = world.fracture(statue, { cells: 48, impactPoint: [x, y, z], fractureFrame: "onImpact" | frame, explosionSpeed: 300, interiorColor: "#e9dcc0" })` cuts a `Layer3D` solid, extruded text or model (with `modelData`) into Voronoi pieces. It looks whole (a fixed collider of its own shape) until the frame or the first body that hits it, which carries on through, then the pieces fall as rigid bodies (`broken.pieces`, `broken.frame` after simulating). The node changes in place: add it as usual. One draw call per material; pieces crowd around `impactPoint`. An animated layer (position, rotation) collides along its path while whole and breaks where it is, its pieces carrying its motion; inside a 3D group the pieces fly in the group's space, like other bodies. Its scale must not animate (rigid pieces). Needs `simulate()` (not `live()`).
+- **Timing:** signals are on the clock of the composition that reads them. In a flat scene that starts at frame `S`, pass `startFrame: S` to the world. A 3D scene box (a box holding its own `Layer.camera`) renders on its own clock, so a world for its bodies starts at the scene's frame 0 (no `startFrame`). Before it and after `frames` the signals hold their first/last value. Add every body, joint and force before `simulate()` (or before reading any signal): the world then locks.
 - **Feel:** gravity 2400 px/s² reads snappy on a 1080p canvas; `pixelsPerMeter` (100) scales how heavy things feel. Raise `substeps` (4) for tall stacks or thin, fast bodies.
 - Install note: physics uses the optional dependency `@dimforge/rapier2d-deterministic-compat` / `rapier3d-deterministic-compat` (installed by default with framefields).
 

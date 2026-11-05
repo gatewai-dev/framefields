@@ -1,4 +1,5 @@
 import { BufferPool } from "../renderer2d/buffer-pool.js";
+import { meshVelocityWgsl } from "../shaders/mesh-velocity.js";
 import { mesh3dWgsl } from "../shaders/mesh3d.js";
 import { fullCoverageView, matteLayoutEntry } from "./matte3d.js";
 import {
@@ -27,6 +28,13 @@ export interface MeshMaterialMaps {
 	occlusionStrength?: number;
 	/** Multiplies the emissive color. */
 	emissive?: GPUTexture;
+	/** Each map's own sampler; a map without one samples like the base color. */
+	samplers?: Partial<
+		Record<
+			"normal" | "metallicRoughness" | "occlusion" | "emissive",
+			GPUSampler
+		>
+	>;
 }
 
 export interface MeshGlass {
@@ -40,6 +48,41 @@ export interface MeshGlass {
 	frost: number;
 }
 
+/**
+ * Procedural wind: vertices bend downwind by how far they sit above the
+ * mesh's base, swaying in a traveling wave (instances sway out of phase).
+ */
+export interface MeshWind {
+	/** Peak lean, degrees. */
+	amplitudeDeg: number;
+	/** Sways per second. */
+	frequency: number;
+	/** Downwind direction on the ground plane [x, z]. */
+	direction: [number, number];
+	/** Gust wavelength across the field, px. */
+	waveScale: number;
+	/** Seconds. */
+	time: number;
+	/** The mesh's base (its largest local y: up is -y) and height, px. */
+	baseY: number;
+	height: number;
+}
+
+/** Floats in the mesh `ModelUniforms` struct. */
+export const MESH_MODEL_FLOATS = 52 + SURFACE_PARAMS_FLOATS + 16;
+
+/**
+ * Skinned crowd (vertex animation): every instance skins from a baked
+ * joint palette at its own clip, phase and speed (`bakeCrowdPalette`).
+ */
+export interface MeshCrowd {
+	/** `palette` uploaded once: `frames × jointCount` model-space joint matrices. */
+	palette: GPUBuffer;
+	jointCount: number;
+	/** Seconds. */
+	time: number;
+}
+
 export interface MeshUniformData extends SurfaceParams {
 	modelMatrix: Float32Array | number[];
 	normalMatrix?: Float32Array | number[];
@@ -51,6 +94,8 @@ export interface MeshUniformData extends SurfaceParams {
 	transparent?: boolean;
 	/** Extra per-map UV vertex attributes are present. */
 	hasMapUvs?: boolean;
+	/** The mesh binds a second set of four skin influences. */
+	hasSkin1?: boolean;
 	isSkinned?: boolean;
 	skinningMatrices?: Float32Array; // 16 floats per joint
 	/** Hardware-instanced draw path. */
@@ -80,7 +125,38 @@ export interface MeshUniformData extends SurfaceParams {
 	specularIntensity?: number;
 	ambientIntensity?: number;
 	metallic?: number;
+	/** Base-color UV window [x, y, width, height]: uv' = xy + uv · wh. */
+	uvRect?: [number, number, number, number];
+	wind?: MeshWind;
+	/** Instances carry a second record each and skin from a baked palette. */
+	crowd?: MeshCrowd;
 }
+
+/**
+ * A mesh's state one frame earlier, for the velocity pass; unset fields
+ * repeat this frame's (no motion from them).
+ */
+export type MeshMotionPrev = Pick<
+	MeshUniformData,
+	| "modelMatrix"
+	| "normalMatrix"
+	| "skinningMatrices"
+	| "instanceBuffer"
+	| "wind"
+	| "crowd"
+> & {
+	/**
+	 * The mesh's vertices as the GPU deformed them a frame earlier (morph
+	 * targets, audio deformation), in the vertex buffer's layout. Absent:
+	 * the vertices did not change shape, so this frame's buffer stands in.
+	 */
+	vertexBuffer?: GPUBuffer;
+};
+
+/** Format of the velocity target: motion px (rg), linear depth (b), coverage (a). */
+export const VELOCITY_FORMAT: GPUTextureFormat = "rgba16float";
+/** Depth format of the velocity pass. */
+export const VELOCITY_DEPTH_FORMAT: GPUTextureFormat = "depth24plus";
 
 export interface GPUMeshBuffers {
 	vertexBuffer: GPUBuffer;
@@ -91,8 +167,30 @@ export interface GPUMeshBuffers {
 	/** Per-vertex RGBA (display / sRGB), 4 floats each; absent = white. */
 	colorBuffer?: GPUBuffer;
 	mapUvBuffer?: GPUBuffer;
+	/** Second skin influence set: 4 joints then 4 weights per vertex. */
+	skin1Buffer?: GPUBuffer;
 	wireIndexBuffer?: GPUBuffer;
 	wireIndexCount?: number;
+}
+
+/** uvRect, then wind (amplitude rad, angular frequency, wave scale, time), then (dir x, dir z, baseY, 1 / height). */
+function packUvAndWind(out: Float32Array, at: number, data: MeshUniformData) {
+	const uv = data.uvRect ?? [0, 0, 1, 1];
+	out.set(uv, at);
+	const w = data.wind;
+	if (!w || w.amplitudeDeg === 0 || w.height <= 0) {
+		out.fill(0, at + 4, at + 12);
+		return;
+	}
+	const len = Math.hypot(w.direction[0], w.direction[1]) || 1;
+	out[at + 4] = (w.amplitudeDeg * Math.PI) / 180;
+	out[at + 5] = w.frequency * Math.PI * 2;
+	out[at + 6] = (Math.PI * 2) / Math.max(1, w.waveScale);
+	out[at + 7] = w.time;
+	out[at + 8] = w.direction[0] / len;
+	out[at + 9] = w.direction[1] / len;
+	out[at + 10] = w.baseY;
+	out[at + 11] = 1 / w.height;
 }
 
 export class Mesh3DPipeline {
@@ -145,7 +243,12 @@ export class Mesh3DPipeline {
 	private retiredColorBuffers: GPUBuffer[] = [];
 
 	// Transform, tint, draw/material params, shade, shared surface block, maps.
-	private modelData = new Float32Array(52 + SURFACE_PARAMS_FLOATS);
+	private modelData = new Float32Array(MESH_MODEL_FLOATS);
+	private readonly vertexBuffers: GPUVertexBufferLayout[];
+	/** Velocity-pass camera: this and the previous view-projection. */
+	public readonly velocityCameraLayout: GPUBindGroupLayout;
+	private velocityModule?: GPUShaderModule;
+	private readonly velocityPipelines = new Map<string, GPURenderPipeline>();
 
 	constructor(
 		device: GPUDevice,
@@ -158,7 +261,7 @@ export class Mesh3DPipeline {
 	) {
 		this.device = device;
 		this.modelPool = new BufferPool(
-			(52 + SURFACE_PARAMS_FLOATS) * 4,
+			MESH_MODEL_FLOATS * 4,
 			GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
 		);
 		this.skinningPool = new BufferPool(
@@ -221,6 +324,12 @@ export class Mesh3DPipeline {
 					visibility: GPUShaderStage.FRAGMENT,
 					texture: { sampleType: "float" as const },
 				})),
+				// Their samplers: 6 normal, 7 metallic-roughness, 8 occlusion, 9 emissive
+				...[6, 7, 8, 9].map((binding) => ({
+					binding,
+					visibility: GPUShaderStage.FRAGMENT,
+					sampler: { type: "filtering" as const },
+				})),
 			],
 		});
 
@@ -263,8 +372,28 @@ export class Mesh3DPipeline {
 						{ shaderLocation: 9, offset: 24, format: "float32x2" },
 					],
 				},
+				{
+					// Second skin influence set (read only when flagged).
+					arrayStride: 32,
+					attributes: [
+						{ shaderLocation: 10, offset: 0, format: "float32x4" },
+						{ shaderLocation: 11, offset: 16, format: "float32x4" },
+					],
+				},
 			],
 		};
+
+		this.vertexBuffers = [...(vertexState.buffers as GPUVertexBufferLayout[])];
+		this.velocityCameraLayout = device.createBindGroupLayout({
+			label: "Mesh3DVelocityCameraLayout",
+			entries: [
+				{
+					binding: 0,
+					visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+					buffer: { type: "uniform" },
+				},
+			],
+		});
 
 		const base: PipelineVariantBase = {
 			label: "Mesh3DPipeline",
@@ -451,12 +580,14 @@ export class Mesh3DPipeline {
 
 		this.modelData[36] = data.opacity ?? 1.0;
 		this.modelData[37] = data.twoSided ? 1.0 : 0.0;
-		this.modelData[38] = data.isSkinned ? 1.0 : 0.0;
-		// Bit 0 selects instance data; bit 1 selects the extra map UVs.
+		this.modelData[38] = data.isSkinned || data.crowd ? 1.0 : 0.0;
+		// Bit 0 selects instance data; bit 1 the extra map UVs; bit 4 the second skin set.
 		this.modelData[39] =
 			(data.isInstanced || data.instanceBuffer ? 1 : 0) +
 			(data.hasMapUvs ? 2 : 0) +
-			(data.matrixInstances ? 4 : 0);
+			(data.matrixInstances ? 4 : 0) +
+			(data.crowd ? 8 : 0) +
+			(data.hasSkin1 ? 16 : 0);
 
 		const shininess =
 			data.roughness !== undefined
@@ -489,6 +620,12 @@ export class Mesh3DPipeline {
 			: 0;
 		this.modelData[mapsOffset + 2] = maps?.metallicRoughness ? 1 : 0;
 		this.modelData[mapsOffset + 3] = maps?.emissive ? 1 : 0;
+		packUvAndWind(this.modelData, mapsOffset + 4, data);
+		const crowd = data.crowd;
+		this.modelData.set(
+			crowd ? [crowd.time, 0, crowd.jointCount, 1] : [0, 0, 0, 0],
+			mapsOffset + 16,
+		);
 		const glass = data.glass;
 		if (glass) {
 			// shade.rgb and pbr.zw are unused outside toon: glass parameters.
@@ -510,8 +647,9 @@ export class Mesh3DPipeline {
 				`Skinning data requires ${data.skinningMatrices.byteLength} bytes, exceeding the device storage binding limit of ${this.device.limits.maxStorageBufferBindingSize} bytes`,
 			);
 		}
-		const skinningBuffer =
-			data.isSkinned && data.skinningMatrices
+		const skinningBuffer = data.crowd
+			? data.crowd.palette
+			: data.isSkinned && data.skinningMatrices
 				? this.skinningPool.getBuffer(this.device, data.skinningMatrices)
 				: this.defaultSkinningBuffer;
 
@@ -556,26 +694,9 @@ export class Mesh3DPipeline {
 		const modelBindGroup = this.packModel({
 			...data,
 			hasMapUvs: Boolean(meshBuffers.mapUvBuffer),
+			hasSkin1: Boolean(meshBuffers.skin1Buffer),
 		});
-		const white = this.defaultWhiteTexture;
-		const maps = data.maps;
-		const textureBindGroup = this.device.createBindGroup({
-			layout: this.textureLayout,
-			entries: [
-				{ binding: 0, resource: sampler },
-				{ binding: 1, resource: (texture ?? white).createView() },
-				{
-					binding: 2,
-					resource: (maps?.normal ?? this.flatNormalTexture).createView(),
-				},
-				{
-					binding: 3,
-					resource: (maps?.metallicRoughness ?? white).createView(),
-				},
-				{ binding: 4, resource: (maps?.occlusion ?? white).createView() },
-				{ binding: 5, resource: (maps?.emissive ?? white).createView() },
-			],
-		});
+		const textureBindGroup = this.textureGroup(texture, sampler, data.maps);
 
 		const wireframe =
 			data.wireframe === true &&
@@ -615,28 +736,173 @@ export class Mesh3DPipeline {
 		pass.setBindGroup(1, modelBindGroup);
 		pass.setBindGroup(2, textureBindGroup);
 		pass.setBindGroup(3, lightsBindGroup);
+		this.issue(
+			pass,
+			meshBuffers,
+			wireframe,
+			data,
+			instanceCount,
+			firstInstance,
+		);
+	}
+
+	/**
+	 * Draws the mesh's screen motion since `prev` into a velocity pass
+	 * (`VELOCITY_FORMAT`): the vertex runs this frame's and the previous
+	 * frame's deformation, so skinning, instances, wind and crowds move it
+	 * too.
+	 */
+	drawVelocity(
+		pass: GPURenderPassEncoder,
+		velocityCameraBindGroup: GPUBindGroup,
+		meshBuffers: GPUMeshBuffers,
+		texture: GPUTexture | undefined,
+		sampler: GPUSampler,
+		data: MeshUniformData,
+		prev: MeshMotionPrev | undefined,
+		instanceCount = 1,
+		firstInstance = 0,
+	): void {
+		const hasMapUvs = Boolean(meshBuffers.mapUvBuffer);
+		const hasSkin1 = Boolean(meshBuffers.skin1Buffer);
+		const now = this.packModel({ ...data, hasMapUvs, hasSkin1 });
+		const before = this.packModel({ ...data, ...prev, hasMapUvs, hasSkin1 });
+		const wireframe =
+			data.wireframe === true &&
+			(!meshBuffers.topology || meshBuffers.topology === "triangle-list");
+		if (wireframe && !meshBuffers.wireIndexBuffer) {
+			throw new Error("Wireframe requires mesh buffers with edge indices");
+		}
+		const topology: GPUPrimitiveTopology =
+			meshBuffers.topology === "point-list"
+				? "point-list"
+				: wireframe || meshBuffers.topology === "line-list"
+					? "line-list"
+					: "triangle-list";
+		pass.setPipeline(this.velocityPipeline(topology));
+		pass.setBindGroup(0, velocityCameraBindGroup);
+		pass.setBindGroup(1, now);
+		pass.setBindGroup(2, before);
+		pass.setBindGroup(3, this.textureGroup(texture, sampler, undefined));
+		pass.setVertexBuffer(4, prev?.vertexBuffer ?? meshBuffers.vertexBuffer);
+		this.issue(
+			pass,
+			meshBuffers,
+			wireframe,
+			data,
+			instanceCount,
+			firstInstance,
+		);
+	}
+
+	private velocityPipeline(topology: GPUPrimitiveTopology): GPURenderPipeline {
+		let pipeline = this.velocityPipelines.get(topology);
+		if (pipeline) return pipeline;
+		this.velocityModule ??= this.device.createShaderModule({
+			label: "mesh-velocity.wgsl",
+			code: meshVelocityWgsl,
+		});
+		pipeline = this.device.createRenderPipeline({
+			label: `Mesh3DVelocity-${topology}`,
+			layout: this.device.createPipelineLayout({
+				bindGroupLayouts: [
+					this.velocityCameraLayout,
+					this.modelLayout,
+					this.modelLayout,
+					this.textureLayout,
+				],
+			}),
+			vertex: {
+				module: this.velocityModule,
+				entryPoint: "vs_velocity",
+				buffers: [
+					...this.vertexBuffers,
+					// The previous frame's deformed positions (or this frame's).
+					{
+						arrayStride: 64,
+						attributes: [
+							{ shaderLocation: 12, offset: 0, format: "float32x3" },
+						],
+					},
+				],
+			},
+			fragment: {
+				module: this.velocityModule,
+				entryPoint: "fs_velocity",
+				targets: [{ format: VELOCITY_FORMAT }],
+			},
+			depthStencil: {
+				format: VELOCITY_DEPTH_FORMAT,
+				depthWriteEnabled: true,
+				depthCompare: "less-equal",
+			},
+			primitive: { topology, cullMode: "none" },
+		});
+		this.velocityPipelines.set(topology, pipeline);
+		return pipeline;
+	}
+
+	private textureGroup(
+		texture: GPUTexture | undefined,
+		sampler: GPUSampler,
+		maps: MeshMaterialMaps | undefined,
+	): GPUBindGroup {
+		const white = this.defaultWhiteTexture;
+		return this.device.createBindGroup({
+			layout: this.textureLayout,
+			entries: [
+				{ binding: 0, resource: sampler },
+				{ binding: 1, resource: (texture ?? white).createView() },
+				{
+					binding: 2,
+					resource: (maps?.normal ?? this.flatNormalTexture).createView(),
+				},
+				{
+					binding: 3,
+					resource: (maps?.metallicRoughness ?? white).createView(),
+				},
+				{ binding: 4, resource: (maps?.occlusion ?? white).createView() },
+				{ binding: 5, resource: (maps?.emissive ?? white).createView() },
+				{ binding: 6, resource: maps?.samplers?.normal ?? sampler },
+				{ binding: 7, resource: maps?.samplers?.metallicRoughness ?? sampler },
+				{ binding: 8, resource: maps?.samplers?.occlusion ?? sampler },
+				{ binding: 9, resource: maps?.samplers?.emissive ?? sampler },
+			],
+		});
+	}
+
+	/** Binds the vertex and index buffers and draws (instanced when asked). */
+	private issue(
+		pass: GPURenderPassEncoder,
+		meshBuffers: GPUMeshBuffers,
+		wireframe: boolean,
+		data: MeshUniformData,
+		instanceCount: number,
+		firstInstance: number,
+	): void {
 		pass.setVertexBuffer(0, meshBuffers.vertexBuffer);
 		pass.setVertexBuffer(1, this.colorsFor(meshBuffers));
 		pass.setVertexBuffer(
 			2,
 			meshBuffers.mapUvBuffer ?? meshBuffers.vertexBuffer,
 		);
+		// Without a second skin set the slot reads the vertex buffer, unflagged.
+		pass.setVertexBuffer(
+			3,
+			meshBuffers.skin1Buffer ?? meshBuffers.vertexBuffer,
+		);
+		const wire = wireframe && meshBuffers.wireIndexBuffer;
 		pass.setIndexBuffer(
-			wireframe ? meshBuffers.wireIndexBuffer! : meshBuffers.indexBuffer,
+			wire || meshBuffers.indexBuffer,
 			meshBuffers.indexFormat,
 		);
+		const count = wire
+			? (meshBuffers.wireIndexCount ?? 0)
+			: meshBuffers.indexCount;
 		if (instanceCount > 1 || data.isInstanced) {
-			pass.drawIndexed(
-				wireframe ? meshBuffers.wireIndexCount! : meshBuffers.indexCount,
-				instanceCount,
-				0,
-				0,
-				firstInstance,
-			);
+			pass.drawIndexed(count, instanceCount, 0, 0, firstInstance);
 		} else {
-			pass.drawIndexed(
-				wireframe ? meshBuffers.wireIndexCount! : meshBuffers.indexCount,
-			);
+			pass.drawIndexed(count);
 		}
 	}
 
@@ -664,29 +930,14 @@ export class Mesh3DPipeline {
 		);
 		pass.setBindGroup(0, lightCameraBindGroup);
 		pass.setBindGroup(1, this.packModel(data));
-		pass.setVertexBuffer(0, meshBuffers.vertexBuffer);
-		pass.setVertexBuffer(1, this.colorsFor(meshBuffers));
-		pass.setVertexBuffer(
-			2,
-			meshBuffers.mapUvBuffer ?? meshBuffers.vertexBuffer,
+		this.issue(
+			pass,
+			meshBuffers,
+			wireframe,
+			data,
+			instanceCount,
+			firstInstance,
 		);
-		pass.setIndexBuffer(
-			wireframe ? meshBuffers.wireIndexBuffer! : meshBuffers.indexBuffer,
-			meshBuffers.indexFormat,
-		);
-		if (instanceCount > 1 || data.isInstanced) {
-			pass.drawIndexed(
-				wireframe ? meshBuffers.wireIndexCount! : meshBuffers.indexCount,
-				instanceCount,
-				0,
-				0,
-				firstInstance,
-			);
-		} else {
-			pass.drawIndexed(
-				wireframe ? meshBuffers.wireIndexCount! : meshBuffers.indexCount,
-			);
-		}
 	}
 
 	private colorsFor(meshBuffers: GPUMeshBuffers): GPUBuffer {

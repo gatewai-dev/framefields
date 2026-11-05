@@ -48,6 +48,11 @@ export interface NodeRenderProps<
 	isVideoMode?: boolean;
 	isPlaying?: boolean;
 	excludeTextures?: GPUTexture[];
+	/**
+	 * Render only to record the 3D scene's motion (shutter motion blur reads
+	 * every draw one frame earlier); nothing drawn is shown.
+	 */
+	motionHistoryOnly?: boolean;
 	/** Signal values that override the node's own (text animators read them). */
 	signals?: Record<string, unknown>;
 	renderChild?: (

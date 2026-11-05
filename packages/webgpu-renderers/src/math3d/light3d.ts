@@ -13,7 +13,7 @@ import {
 import { type Mat4, Matrix4Math } from "./matrix4.js";
 import { type Vec3, Vector3Math } from "./vector3.js";
 
-export type LightKind = "ambient" | "directional" | "point" | "spot";
+export type LightKind = "ambient" | "directional" | "point" | "spot" | "rect";
 
 export interface Light3DOptions {
 	id?: string;
@@ -39,7 +39,15 @@ export interface Light3DOptions {
 	decay?: number; // Attenuation exponent (default 2.0)
 	angle?: number; // Outer cone half-angle in degrees (default 45)
 	penumbra?: number; // Softness fraction [0, 1] (default 0.2)
-	/** Directional or spot: render a shadow map (the first such light wins). */
+	/** Area light width in world px (default 240, rect lights only). */
+	width?: number;
+	/** Area light height in world px (default 140, rect lights only). */
+	height?: number;
+	/** Emit from both faces of a rect light (default false). */
+	twoSided?: boolean;
+	/** In-plane roll angle in degrees around the light's forward axis (default 0). */
+	rotation?: number;
+	/** Directional, spot, point, or rect: render a shadow map. */
 	castShadow?: boolean;
 	/** Shadow edge blur in shadow-map texels (default 2). */
 	shadowSoftness?: number;
@@ -48,23 +56,43 @@ export interface Light3DOptions {
 }
 
 export interface GPULightData {
-	/** xyz = position, w = type (0=ambient, 1=directional, 2=point, 3=spot) */
+	/** xyz = position, w = type (0=ambient, 1=directional, 2=point, 3=spot, 4=rect) */
 	posType: [number, number, number, number];
 	/** xyz = normalized direction, w = radius */
 	dirRadius: [number, number, number, number];
 	/** rgb = linear color, w = intensity */
 	colorIntensity: [number, number, number, number];
-	/** x = cos(outer), y = cos(inner), z = decay, w = 0 */
+	/** x = cos(outer), y = cos(inner), z = decay, w = twoSided (rect) */
 	spotParams: [number, number, number, number];
+	/** xyz = normalized right axis of rect area light, w = halfWidth */
+	rectRight: [number, number, number, number];
+	/** xyz = normalized up axis of rect area light, w = halfHeight */
+	rectUp: [number, number, number, number];
 }
 
 /** Slots retained in the legacy uniform prefix; actual direct lights use storage. */
 export const MAX_LIGHTS = 8;
 /**
  * 16 (ambient) + 16 (params) + 8 * 64 (lights), then the physical-shading
- * block appended after them: 8 vec4 (128) + shadow matrix (64) + floorParams (16).
+ * block appended after them: 8 vec4 (128) + shadow matrix (64) +
+ * floorParams (16) + HDRI irradiance SH (9 vec4, 144) + screen indirect (16).
  */
-export const LIGHT_UNIFORM_SIZE_BYTES = 544 + 128 + 64 + 32;
+export const LIGHT_UNIFORM_SIZE_BYTES = 544 + 128 + 64 + 16 + 144 + 16;
+
+/**
+ * Which half of a screen-space indirect (SSR / GI) frame a pass draws:
+ * `radiance` writes the unfogged scene radiance the traces read; `apply`
+ * shades with the traced reflections and bounce light.
+ */
+export type ScreenIndirectPass = "radiance" | "apply";
+
+/** A prefiltered HDRI as the lights uniform describes it. */
+export interface HdriUniforms {
+	/** Highest mip of the radiance cubemap (roughness 1). */
+	maxMip: number;
+	/** 9 L2 irradiance SH coefficients, one vec4 (rgb + pad) each. */
+	sh: Float32Array;
+}
 
 export interface LightsUniformData {
 	ambientColor: [number, number, number, number];
@@ -158,6 +186,8 @@ function hslToRgb(h: number, s: number, l: number): [number, number, number] {
 	return [hue2rgb(p, q, h + 1 / 3), hue2rgb(p, q, h), hue2rgb(p, q, h - 1 / 3)];
 }
 
+export const DIRECT_LIGHT_FLOATS = 48;
+
 export const Light3D = {
 	/**
 	 * Computes the 3x3 normal matrix (stored in 4x4 layout) from a 4x4 Model matrix.
@@ -206,6 +236,7 @@ export const Light3D = {
 		else if (kind === "directional") typeVal = 1.0;
 		else if (kind === "point") typeVal = 2.0;
 		else if (kind === "spot") typeVal = 3.0;
+		else if (kind === "rect") typeVal = 4.0;
 
 		let dir: Vec3 = [0, 0, -1];
 		if (opt.direction) {
@@ -237,11 +268,33 @@ export const Light3D = {
 		const cosOuter = Math.cos(outerRad);
 		const cosInner = Math.cos(innerRad);
 
+		const worldUp: Vec3 = Math.abs(dir[1]) > 0.999 ? [0, 0, 1] : [0, 1, 0];
+		const baseRight = Vector3Math.normalize(Vector3Math.cross(worldUp, dir));
+		const baseUp = Vector3Math.normalize(Vector3Math.cross(dir, baseRight));
+		const rollRad = ((opt.rotation ?? 0) * Math.PI) / 180;
+		const cosR = Math.cos(rollRad);
+		const sinR = Math.sin(rollRad);
+		const right: Vec3 = [
+			baseRight[0] * cosR + baseUp[0] * sinR,
+			baseRight[1] * cosR + baseUp[1] * sinR,
+			baseRight[2] * cosR + baseUp[2] * sinR,
+		];
+		const up: Vec3 = [
+			-baseRight[0] * sinR + baseUp[0] * cosR,
+			-baseRight[1] * sinR + baseUp[1] * cosR,
+			-baseRight[2] * sinR + baseUp[2] * cosR,
+		];
+		const halfWidth = Math.max(0.5, (opt.width ?? 240) * 0.5);
+		const halfHeight = Math.max(0.5, (opt.height ?? 140) * 0.5);
+		const twoSidedFlag = opt.twoSided ? 1.0 : 0.0;
+
 		return {
 			posType: [posX, posY, posZ, typeVal],
 			dirRadius: [dir[0], dir[1], dir[2], radius],
 			colorIntensity: [color[0], color[1], color[2], intensity],
-			spotParams: [cosOuter, cosInner, decay, 0.0],
+			spotParams: [cosOuter, cosInner, decay, twoSidedFlag],
+			rectRight: [right[0], right[1], right[2], halfWidth],
+			rectUp: [up[0], up[1], up[2], halfHeight],
 		};
 	},
 
@@ -253,6 +306,8 @@ export const Light3D = {
 		environment?: Environment3DOptions | null,
 		shadow?: ShadowUniformInfo | null,
 		isReflectionPass = false,
+		hdri?: HdriUniforms,
+		screenIndirect?: ScreenIndirectPass,
 	): Float32Array {
 		const buffer = new Float32Array(LIGHT_UNIFORM_SIZE_BYTES / 4);
 		Light3D.packPhysicalBlock(
@@ -261,6 +316,8 @@ export const Light3D = {
 			environment,
 			shadow,
 			isReflectionPass,
+			hdri,
+			screenIndirect,
 		);
 
 		if ((!lights || lights.length === 0) && !environment) {
@@ -345,28 +402,40 @@ export const Light3D = {
 		const direct = lights.filter(
 			(light) => (light.lightType ?? light.type) !== "ambient",
 		);
-		const data = new Float32Array(Math.max(1, direct.length) * 40);
-		const shadowLayers = new Map(
-			shadows.map((shadow, layer) => [shadow.lightIndex, layer]),
+		const data = new Float32Array(
+			Math.max(1, direct.length) * DIRECT_LIGHT_FLOATS,
+		);
+		const shadowByLightIndex = new Map(
+			shadows.map((shadow, idx) => [shadow.lightIndex, { shadow, idx }]),
 		);
 		for (const [i, light] of direct.entries()) {
 			const packed = Light3D.processLight(light);
-			const offset = i * 40;
+			const offset = i * DIRECT_LIGHT_FLOATS;
 			data.set(packed.posType, offset);
 			data.set(packed.dirRadius, offset + 4);
 			data.set(packed.colorIntensity, offset + 8);
 			data.set(packed.spotParams, offset + 12);
-			const layer = shadowLayers.get(i);
-			const shadow = layer === undefined ? undefined : shadows[layer];
-			if (shadow && layer !== undefined) {
+			const entry = shadowByLightIndex.get(i);
+			if (entry) {
+				const { shadow, idx } = entry;
 				for (let j = 0; j < 16; j++)
 					data[offset + 16 + j] = shadow.matrix[j] ?? 0;
-				data.set([shadow.softness, shadow.mapSize, layer, 1], offset + 32);
+				const mode = shadow.mode ?? 1;
+				if (mode === 2) {
+					data[offset + 16] = shadow.far ?? packed.dirRadius[3];
+				}
+				const baseLayer = shadow.baseLayer ?? idx;
 				data.set(
-					[shadow.bias, shadow.normalOffset, shadow.darkness, 0],
+					[shadow.softness, shadow.mapSize, baseLayer, mode],
+					offset + 32,
+				);
+				data.set(
+					[shadow.bias, shadow.normalOffset, shadow.darkness, shadow.near ?? 8],
 					offset + 36,
 				);
 			}
+			data.set(packed.rectRight, offset + 40);
+			data.set(packed.rectUp, offset + 44);
 		}
 		return data;
 	},
@@ -377,7 +446,13 @@ export const Light3D = {
 		for (const l of lights) {
 			const kind = l.lightType ?? l.type;
 			if (kind === "ambient") continue;
-			if (l.castShadow && (kind === "directional" || kind === "spot")) {
+			if (
+				l.castShadow &&
+				(kind === "directional" ||
+					kind === "spot" ||
+					kind === "point" ||
+					kind === "rect")
+			) {
 				return index;
 			}
 			index++;
@@ -392,6 +467,8 @@ export const Light3D = {
 		environment?: Environment3DOptions | null,
 		shadow?: ShadowUniformInfo | null,
 		isReflectionPass = false,
+		hdri?: HdriUniforms,
+		screenIndirect?: ScreenIndirectPass,
 	): void {
 		const base = 8 + MAX_LIGHTS * 16; // first float after the lights array
 		let ambR = 0;
@@ -412,14 +489,32 @@ export const Light3D = {
 		buffer[base + 2] = ambB;
 		buffer[base + 3] = 1; // exposure multiplier
 
+		let envIntensity = 1.0;
+		// x = 0 off, 1 radiance pass, 2 apply; y / z = SSR / GI strength (-1 off); w = SSR max roughness.
+		buffer.set([0, -1, -1, 0], base + 88);
 		if (environment) {
 			const env = resolveEnvironment(environment);
+			envIntensity = env.intensity;
+			if (screenIndirect && !isReflectionPass && (env.ssr || env.gi)) {
+				buffer.set(
+					[
+						screenIndirect === "radiance" ? 1 : 2,
+						env.ssr?.intensity ?? -1,
+						env.gi?.intensity ?? -1,
+						env.ssr?.maxRoughness ?? 0,
+					],
+					base + 88,
+				);
+			}
+			// 1 procedural; 2 + max mip with a prefiltered HDRI cubemap bound.
+			const envMode = hdri ? 2 + hdri.maxMip : 1;
+			if (hdri) buffer.set(hdri.sh.subarray(0, 36), base + 52);
 			buffer[6] = 1; // physical shading
 			buffer[7] = env.toneMapping;
 			buffer[base + 3] = env.exposureMultiplier;
 			buffer.set([...env.top, env.rotationRad], base + 4);
 			buffer.set([...env.horizon, env.softboxes], base + 8);
-			buffer.set([...env.bottom, 1], base + 12);
+			buffer.set([...env.bottom, envMode], base + 12);
 			if (env.fog) {
 				buffer.set([...env.fog.color, 1], base + 16);
 				buffer.set([env.fog.start, env.fog.end, env.fog.opacity, 0], base + 20);
@@ -443,12 +538,12 @@ export const Light3D = {
 			buffer[base + 48] = environment.floor.y;
 			buffer[base + 49] = environment.floor.fadeDistance ?? 900;
 			buffer[base + 50] = isReflectionPass ? 1.0 : 0.0;
-			buffer[base + 51] = 0.0;
+			buffer[base + 51] = envIntensity;
 		} else {
 			buffer[base + 48] = 0.0;
 			buffer[base + 49] = 0.0;
 			buffer[base + 50] = 0.0;
-			buffer[base + 51] = 0.0;
+			buffer[base + 51] = envIntensity;
 		}
 	},
 };

@@ -1,5 +1,32 @@
 import type { Mat4, Vec3 } from "../math3d/index.js";
 
+/**
+ * One morph target's deltas. Dense: 3 floats per vertex. Sparse (with
+ * `indices`): 3 floats per listed vertex, every other vertex unmoved.
+ */
+export interface MorphTarget3D {
+	positions?: Float32Array;
+	normals?: Float32Array;
+	/** The moved vertices, ascending; absent for dense deltas. */
+	indices?: Uint32Array;
+}
+
+/** A morph target's position (or normal) deltas as a dense array. */
+export function denseMorphDeltas(
+	target: MorphTarget3D,
+	vertexCount: number,
+	kind: "positions" | "normals" = "positions",
+): Float32Array {
+	const data = target[kind];
+	if (!target.indices) return data ?? new Float32Array(vertexCount * 3);
+	const out = new Float32Array(vertexCount * 3);
+	if (data)
+		target.indices.forEach((v, i) => {
+			out.set(data.subarray(i * 3, i * 3 + 3), v * 3);
+		});
+	return out;
+}
+
 export interface Mesh3DData {
 	id?: string;
 	name?: string;
@@ -7,9 +34,11 @@ export interface Mesh3DData {
 	normals: Float32Array; // 3 floats per vertex (nx, ny, nz)
 	uvs: Float32Array; // 2 floats per vertex (u, v), for the base color map
 	/** Object-space morph deltas, applied before skinning. */
-	morphTargets?: { positions?: Float32Array; normals?: Float32Array }[];
+	morphTargets?: MorphTarget3D[];
 	/** Default morph weights for this mesh instance. */
 	morphWeights?: number[];
+	/** Morph target names (glTF mesh `extras.targetNames`), one per target. */
+	morphTargetNames?: string[];
 	/** Per-map UVs, with the map's own texture transform already applied. */
 	mapUvs?: {
 		normal?: Float32Array;
@@ -25,6 +54,9 @@ export interface Mesh3DData {
 	// Skinned Mesh / Skeletal Animation attributes
 	jointIndices?: Float32Array; // 4 bone indices per vertex
 	jointWeights?: Float32Array; // 4 normalized weights per vertex (sum = 1.0)
+	/** A second set of 4 influences per vertex (glTF JOINTS_1 / WEIGHTS_1): up to 8 in all, the weights of both sets summing to 1. */
+	jointIndices1?: Float32Array;
+	jointWeights1?: Float32Array;
 	materialName?: string;
 	/** Scene node that places this mesh (Model3DData.nodes); its world matrix applies unless the mesh is skinned. */
 	node?: number;
@@ -32,9 +64,24 @@ export interface Mesh3DData {
 	skin?: number;
 }
 
+/** The maps of a material besides its base color. */
+export type MaterialMapSlot =
+	| "normal"
+	| "metallicRoughness"
+	| "occlusion"
+	| "emissive";
+
+/** Addressing and filtering of one texture. */
+export interface TextureSampling {
+	wrapU: "repeat" | "clamp" | "mirror";
+	wrapV: "repeat" | "clamp" | "mirror";
+	/** Magnification filter. */
+	filter: "linear" | "nearest";
+}
+
 export interface Material3D {
 	name: string;
-	diffuseColor?: [number, number, number, number]; // RGBA
+	diffuseColor?: [number, number, number, number]; // RGBA, display (sRGB) 0..1
 	specularColor?: [number, number, number];
 	ambientColor?: [number, number, number];
 	shininess?: number;
@@ -54,13 +101,22 @@ export interface Material3D {
 	textureWrap?: "repeat" | "clamp" | "mirror";
 	/** Magnification filter (glTF sampler magFilter); "nearest" keeps texels sharp. */
 	textureFilter?: "linear" | "nearest";
+	/**
+	 * How each other map is sampled, when it says (glTF: its own sampler).
+	 * A map without an entry samples like the base color map.
+	 */
+	mapSampling?: Partial<Record<MaterialMapSlot, TextureSampling>>;
 	normalTexture?: string;
 	twoSided?: boolean;
 	/** "mask" discards texels below `alphaCutoff`; "blend" draws after the opaque meshes. */
 	alphaMode?: "opaque" | "mask" | "blend";
 	alphaCutoff?: number;
 	/** How the material wants to be lit when the layer leaves `material` unset. */
-	shading?: "lit" | "unlit" | "toon";
+	shading?: "lit" | "unlit" | "toon" | "glass";
+	/** Glass (KHR_materials_transmission): index of refraction (KHR_materials_ior). */
+	ior?: number;
+	/** Glass: thickness in model units (KHR_materials_volume thicknessFactor). */
+	thickness?: number;
 	/** Toon shading: the color multiplier of the shadowed side. */
 	shadeColor?: [number, number, number];
 	/** Linear-ish emissive color 0..1 (glTF emissiveFactor). */
@@ -77,6 +133,30 @@ export interface Material3D {
 	occlusionStrength?: number;
 	/** Encoded emissive color map (multiplies `emissive`). */
 	emissiveTextureBuffer?: Uint8Array;
+	/** Layered shading lobes from the file's material extensions (display colors, degrees). */
+	surface?: MaterialSurface;
+}
+
+/**
+ * Physical lobes a model file's material asks for, in the units layers use:
+ * KHR_materials_clearcoat / _sheen / _anisotropy / _iridescence, and
+ * subsurface from `extras.framefields.subsurface` (glTF has no skin lobe).
+ */
+export interface MaterialSurface {
+	clearcoat?: number;
+	clearcoatRoughness?: number;
+	sheen?: number;
+	sheenColor?: [number, number, number];
+	sheenRoughness?: number;
+	anisotropy?: number;
+	/** Degrees. */
+	anisotropyRotation?: number;
+	iridescence?: number;
+	iridescenceIor?: number;
+	/** Film thickness, nm. */
+	iridescenceThickness?: number;
+	subsurface?: number;
+	subsurfaceColor?: [number, number, number];
 }
 
 /** A scene-graph node: its rest transform and parent (glTF node semantics). */
@@ -144,6 +224,15 @@ export interface Model3DData {
 	skins?: Skin3D[];
 	/** Centering and size normalization, applied above the scene graph instead of baked into vertices. */
 	rootTransform?: Mat4;
+	/**
+	 * Joints the file drives from other joints (scene `extras.framefields.drivers`):
+	 * eyelids following the eyes, twist bones, correctives.
+	 */
+	drivers?: {
+		joint: string;
+		from: string;
+		rotate: { x?: number; y?: number; z?: number };
+	}[];
 	animations: AnimationClip3D[];
 	bounds: {
 		min: Vec3;

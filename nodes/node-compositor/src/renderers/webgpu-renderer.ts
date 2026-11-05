@@ -3,12 +3,16 @@
 import { resolveMediaSourceUrl } from "@framefields/client-utils";
 import { decodeAudioSource } from "@framefields/compositions";
 import {
+	type CameraMotionBlur,
+	type CameraNode,
 	type CompositionNodeBase,
+	type CrowdConfig,
 	collectNodeOps,
 	computeLayout,
 	initLayout,
 	type LayoutNode,
 	type Rect,
+	type Scatter3DSpec,
 } from "@framefields/compositions/program";
 import type { MeshAudioDeformConfig, TextSpan } from "@framefields/core";
 import {
@@ -41,11 +45,14 @@ import {
 	Camera3D,
 	type Camera3DPose,
 	type Color,
+	type CrowdBake,
 	cubeFaceCameras,
 	type DrawMesh3DOpts,
 	type DrawQuad3DOpts,
+	type Environment3DFloor,
 	type Environment3DOptions,
 	type ExtrudedTextGeometryOptions,
+	FRACTURE_INTERIOR_MATERIAL,
 	fitSpansToText,
 	type GPUMeshBuffers,
 	generateExtrudedTextGeometry,
@@ -54,14 +61,15 @@ import {
 	Light3D,
 	type Light3DOptions,
 	type Mat4,
+	type MaterialSurface,
 	Matrix4Math,
 	type Mesh3DData,
+	type MeshCrowd,
 	type Model3DData,
 	measureMaxCaptionHeight,
 	type PrimitiveGeometryOptions,
 	parseColor,
 	parseDashArray,
-	poseNodes,
 	type RenderContextValue,
 	Renderer3D,
 	resolveTextSpans,
@@ -82,9 +90,29 @@ import {
 } from "@framefields/webgpu-renderers";
 import { compileTimeline, seekTimeline } from "../shared/compiler.js";
 import type { CompositorOperation } from "../shared/config.js";
+import {
+	type CrowdInstanceAnim,
+	crowdBake,
+	crowdRecord,
+	namedMorphWeights,
+	paletteBuffer,
+	poseCharacter,
+} from "./character.js";
 import { shouldPaintContainerBackground } from "./container-bg.js";
 import { type CubeCamera, resolveCubeCamera } from "./cube-camera.js";
+import { fracturedModel, fracturePose, fractureWhole } from "./fracture.js";
 import { compatibleMeshDraws } from "./mesh-instancing.js";
+import { type MotionHistory, motionHistory } from "./motion-history.js";
+import {
+	composeQuat,
+	meshWind,
+	NO_PRE,
+	type SurfaceNodeSpec,
+	scatterTransforms,
+	surfaceModel,
+	type VariantPre,
+	variantBottom,
+} from "./procedural3d.js";
 import {
 	buildLayerMatrix,
 	layerRasterScale,
@@ -129,6 +157,11 @@ function textInkOutset(
 			);
 	const reach = stroke + shadow;
 	return reach > 0 ? Math.ceil(reach) + 1 : 0;
+}
+
+/** Bytes of a mesh's vertex buffer: 16 floats per vertex. */
+function deformedBytes(mesh: Mesh3DData): number {
+	return (mesh.positions.length / 3) * 64;
 }
 
 function hasVertexAlpha(mesh: Mesh3DData): boolean {
@@ -563,13 +596,32 @@ function drawProjectedQuad(
 function surfaceProps(
 	target: Partial<CompositionNodeBase> | undefined,
 	lop: Partial<CompositionNodeBase>,
-	mat?: { emissive?: [number, number, number]; emissiveStrength?: number },
+	mat?: {
+		emissive?: [number, number, number];
+		emissiveStrength?: number;
+		surface?: MaterialSurface;
+	},
 ): {
 	emissive?: string | [number, number, number];
 	emissiveIntensity?: number;
 	castShadow?: boolean;
 	toon?: CompositionNodeBase["toon"];
 	outline?: boolean;
+	clearcoat?: number;
+	clearcoatRoughness?: number;
+	anisotropy?: number;
+	anisotropyRotation?: number;
+	subsurface?: number;
+	subsurfaceColor?: string | [number, number, number];
+	sheen?: number;
+	sheenColor?: string | [number, number, number];
+	sheenRoughness?: number;
+	iridescence?: CompositionNodeBase["iridescence"];
+	iridescenceThickness?: number;
+	iridescenceIor?: number;
+	triplanar?: CompositionNodeBase["triplanar"];
+	triplanarScale?: number;
+	triplanarSharpness?: number;
 } {
 	// glTF emissiveFactor is linear; draws take display (sRGB) colors.
 	const toSrgb = (v: number) =>
@@ -596,7 +648,55 @@ function surfaceProps(
 	if (lop.castShadow !== undefined) out.castShadow = lop.castShadow;
 	out.toon = target?.toon ?? lop.toon;
 	out.outline = target?.outline ?? lop.outline;
+	// Layer settings win; the model file's own material extensions fill in.
+	const file = mat?.surface;
+	const lobes = {
+		clearcoat: target?.clearcoat ?? lop.clearcoat ?? file?.clearcoat,
+		clearcoatRoughness:
+			target?.clearcoatRoughness ??
+			lop.clearcoatRoughness ??
+			file?.clearcoatRoughness,
+		anisotropy: target?.anisotropy ?? lop.anisotropy ?? file?.anisotropy,
+		anisotropyRotation:
+			target?.anisotropyRotation ??
+			lop.anisotropyRotation ??
+			file?.anisotropyRotation,
+		subsurface: target?.subsurface ?? lop.subsurface ?? file?.subsurface,
+		subsurfaceColor:
+			target?.subsurfaceColor ?? lop.subsurfaceColor ?? file?.subsurfaceColor,
+		sheen: target?.sheen ?? lop.sheen ?? file?.sheen,
+		sheenColor: target?.sheenColor ?? lop.sheenColor ?? file?.sheenColor,
+		sheenRoughness:
+			target?.sheenRoughness ?? lop.sheenRoughness ?? file?.sheenRoughness,
+		iridescence: target?.iridescence ?? lop.iridescence ?? file?.iridescence,
+		iridescenceThickness:
+			target?.iridescenceThickness ??
+			lop.iridescenceThickness ??
+			file?.iridescenceThickness,
+		iridescenceIor:
+			target?.iridescenceIor ?? lop.iridescenceIor ?? file?.iridescenceIor,
+	};
+	for (const [key, value] of Object.entries(lobes) as [
+		keyof typeof lobes,
+		never,
+	][])
+		if (value !== undefined) out[key] = value;
+	const triplanar = target?.triplanar ?? lop.triplanar;
+	if (triplanar !== undefined) out.triplanar = triplanar;
+	const triplanarScale = target?.triplanarScale ?? lop.triplanarScale;
+	if (triplanarScale !== undefined) out.triplanarScale = triplanarScale;
+	const triplanarSharpness =
+		target?.triplanarSharpness ?? lop.triplanarSharpness;
+	if (triplanarSharpness !== undefined)
+		out.triplanarSharpness = triplanarSharpness;
 	return out;
+}
+
+/** A transform's mean scale: the average length of its basis columns. */
+function matrixScale(m: Mat4): number {
+	const c = (i: number) =>
+		Math.hypot(m[i] as number, m[i + 1] as number, m[i + 2] as number);
+	return (c(0) + c(4) + c(8)) / 3;
 }
 
 function computeContainerScissor(
@@ -1011,6 +1111,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				: (frame ?? 0),
 		);
 		const compositionFrame = props.compositionFrame ?? shiftedFrame;
+		const historyOnly = props.motionHistoryOnly === true;
 
 		// 1. Create a temporary texture at native resolution
 		const compTex = ctx.renderer.getTemporaryTexture(
@@ -1028,6 +1129,18 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 			durationSec,
 		});
 		const { targetsById } = compiled;
+		// Shutter motion blur reads every 3D draw one frame earlier: after a
+		// seek, render the frame before first, recording only. The history is
+		// this composition's (render id and content), not the render id's: still
+		// renders reuse ids across compositions.
+		if (
+			!historyOnly &&
+			frame != null &&
+			sceneMotionBlur(virtualMedia) &&
+			motionHistory(ctx.device, compiled.key).needsPrevious(shiftedFrame)
+		) {
+			await renderMotionHistory(args, frame - 1);
+		}
 		seekTimeline(compiled, shiftedFrame, fps ?? 24);
 
 		const r3d = getRenderer3D(
@@ -1242,6 +1355,9 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 		/** Where a relief keeps its look from: the default camera at the scene's field of view. */
 		let reliefEye: [number, number, number] = [0, 0, 0];
 		let dofEnabled = false;
+		/** Shutter motion blur of the 3D scene, and what its draws looked like a frame ago. */
+		let motionBlur: CameraMotionBlur | null = null;
+		let history: MotionHistory | null = null;
 		/** Set when the camera draws a cube map and remaps it through its lens. */
 		let cubeCamera: CubeCamera | null = null;
 		const sceneLights: Light3DOptions[] = [];
@@ -1348,6 +1464,12 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					camStub?.maxBlurRadius ?? camOp?.dof?.maxBlurRadius ?? 24;
 			}
 
+			const blur = (camOp as CameraNode | undefined)?.motionBlur;
+			if (blur && fps) {
+				motionBlur = blur === true ? {} : blur;
+				history = motionHistory(ctx.device, compiled.key);
+			}
+
 			cubeCamera = resolveCubeCamera(
 				camOp,
 				camera,
@@ -1386,12 +1508,41 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					| "directional"
 					| "point"
 					| "spot"
+					| "rect"
 					| "environment";
 				if (lightType === "environment") {
 					// The scene's world: the last visible one wins.
 					const intensity = target?.intensity ?? lop.intensity;
+					const vfDensity =
+						target?.volumetricFogDensity ?? lop.volumetricFogDensity;
+					const vfAnisotropy =
+						target?.volumetricFogAnisotropy ?? lop.volumetricFogAnisotropy;
+					const vfNoiseStrength =
+						target?.volumetricFogNoiseStrength ??
+						lop.volumetricFogNoiseStrength;
+					const rawVf = lop.volumetricFog;
+					const baseVf =
+						rawVf === true
+							? {}
+							: rawVf && typeof rawVf === "object"
+								? { ...rawVf }
+								: undefined;
+					const volumetricFog = baseVf
+						? {
+								...baseVf,
+								...(vfDensity !== undefined && { density: vfDensity }),
+								...(vfAnisotropy !== undefined && { anisotropy: vfAnisotropy }),
+								...(vfNoiseStrength !== undefined && {
+									noise: {
+										...(typeof baseVf.noise === "object" ? baseVf.noise : {}),
+										strength: vfNoiseStrength,
+									},
+								}),
+							}
+						: undefined;
 					sceneEnvironment = {
 						preset: lop.preset,
+						hdri: lop.hdri,
 						top: lop.top,
 						horizon: lop.horizon,
 						bottom: lop.bottom,
@@ -1402,6 +1553,9 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 						fog: lop.fog,
 						floor: lop.floor,
 						outlines: lop.outlines,
+						ssr: lop.ssr,
+						gi: lop.gi,
+						...(volumetricFog && { volumetricFog }),
 						...(intensity !== undefined && { intensity }),
 					};
 					sceneBloom =
@@ -1425,6 +1579,16 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				const angle = target?.angle ?? lop.angle ?? 45;
 				const penumbra = target?.penumbra ?? lop.penumbra ?? 0.2;
 				const decay = target?.decay ?? lop.decay ?? 1;
+				const width =
+					typeof (target?.width ?? lop.width) === "number"
+						? ((target?.width ?? lop.width) as number)
+						: undefined;
+				const height =
+					typeof (target?.height ?? lop.height) === "number"
+						? ((target?.height ?? lop.height) as number)
+						: undefined;
+				const twoSided = Boolean(target?.twoSided ?? lop.twoSided);
+				const rotation = target?.rotation ?? lop.rotation ?? 0;
 
 				sceneLights.push({
 					type: lightType,
@@ -1432,10 +1596,15 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					intensity,
 					position: [x, y, z],
 					target: [targetX, targetY, targetZ],
+					...(Array.isArray(lop.direction) && { direction: lop.direction }),
 					radius,
 					angle,
 					penumbra,
 					decay,
+					...(width !== undefined && { width }),
+					...(height !== undefined && { height }),
+					twoSided,
+					rotation,
 					castShadow: Boolean(lop.castShadow),
 					shadowSoftness: target?.shadowSoftness ?? lop.shadowSoftness,
 					shadowDarkness: target?.shadowDarkness ?? lop.shadowDarkness,
@@ -1446,7 +1615,8 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 			}
 		}
 
-		type Pending3DItem =
+		/** `owner`: the node id, so motion blur finds the item a frame earlier. */
+		type Pending3DItem = (
 			| { kind: "quad"; texture: GPUTexture; opts: DrawQuad3DOpts }
 			| {
 					// A text layer's glyphs, drawn natively on its plane.
@@ -1463,7 +1633,8 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					texture?: GPUTexture;
 					opts: DrawMesh3DOpts;
 					meshBuffers?: GPUMeshBuffers;
-			  };
+			  }
+		) & { owner?: string };
 		const pending3DItems: Pending3DItem[] = [];
 		/** Textures the queued 3D items still read: their layers, mattes and reliefs. */
 		const pendingTextures = (): GPUTexture[] =>
@@ -1497,6 +1668,125 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 			};
 		};
 
+		/** Each queued item with its motion key: owner id and its index among the owner's items. */
+		const motionItems = (): Array<[Pending3DItem, string | undefined]> => {
+			const seen = new Map<string, number>();
+			return pending3DItems.map((item) => {
+				if (item.owner === undefined) return [item, undefined];
+				const n = seen.get(item.owner) ?? 0;
+				seen.set(item.owner, n + 1);
+				return [item, `${item.owner}#${n}`];
+			});
+		};
+		/** Writes this frame's draws (and camera) into the motion history. */
+		const recordMotion = (h: MotionHistory, cam: Camera3DPose) => {
+			const r3d = getRenderer3D(
+				ctx.device,
+				ctx.renderer.format ?? "rgba8unorm",
+				sampleCount3d,
+			);
+			for (const [item, key] of motionItems()) {
+				if (!key) continue;
+				if (item.kind === "mesh") {
+					h.recordMesh(
+						encoder,
+						key,
+						shiftedFrame,
+						{
+							modelMatrix: r3d.meshModelMatrix(item.opts),
+							skinning: item.opts.skinningMatrices,
+							windTime: item.opts.wind?.time,
+							crowdTime: item.opts.crowd?.time,
+						},
+						{
+							instanceBuffer: item.opts.instanceBuffer,
+							vertices: item.meshBuffers && {
+								buffer: item.meshBuffers.vertexBuffer,
+								bytes: deformedBytes(item.mesh),
+							},
+						},
+					);
+				} else if (item.kind === "quad") {
+					h.recordQuad(key, shiftedFrame, r3d.quadModelMatrix(item.opts));
+				} else {
+					h.recordSlug(
+						key,
+						shiftedFrame,
+						r3d.quadModelMatrix(item.opts),
+						item.batches,
+					);
+				}
+			}
+			h.recordFrame(shiftedFrame, cam);
+		};
+		/** Draws the queued items' screen motion since the last frame, then blurs `color` by it into `into`. */
+		const blurScene = (
+			h: MotionHistory,
+			cam: Camera3DPose,
+			color: GPUTexture,
+			into: GPUTexture,
+			blur: CameraMotionBlur,
+			floor: Environment3DFloor | undefined,
+		) => {
+			const r3d = getRenderer3D(
+				ctx.device,
+				ctx.renderer.format ?? "rgba8unorm",
+				sampleCount3d,
+			);
+			const vel = r3d.beginVelocityPass(
+				encoder,
+				nativeWidth,
+				nativeHeight,
+				cam,
+				h.previousCamera(shiftedFrame) ?? cam,
+			);
+			if (floor) r3d.drawFloorVelocity(vel.pass, vel.cameraBindGroup, floor);
+			for (const [item, key] of motionItems()) {
+				if (item.kind === "mesh") {
+					const prev = key
+						? h.previousMesh(key, shiftedFrame, {
+								skinning: item.opts.skinningMatrices,
+								instanceBuffer: item.opts.instanceBuffer,
+								vertexBytes: item.meshBuffers && deformedBytes(item.mesh),
+								wind: item.opts.wind,
+								crowd: item.opts.crowd,
+							})
+						: undefined;
+					r3d.drawMeshVelocity(
+						vel.pass,
+						vel.cameraBindGroup,
+						item.meshBuffers ?? item.mesh,
+						item.texture,
+						item.opts,
+						prev,
+					);
+				} else if (item.kind === "quad") {
+					r3d.drawQuadVelocity(
+						vel.pass,
+						vel.cameraBindGroup,
+						item.texture,
+						item.opts,
+						key ? h.previousQuad(key, shiftedFrame) : undefined,
+					);
+				} else {
+					r3d.drawSlugVelocity(
+						vel.pass,
+						vel.cameraBindGroup,
+						item.batches,
+						item.opts,
+						item.stackBase,
+						key ? h.previousSlug(key, shiftedFrame) : undefined,
+					);
+				}
+			}
+			vel.pass.end();
+			r3d.applyMotionBlur(encoder, color, vel.velocity, into.createView(), {
+				shutterAngle: blur.shutter,
+				sampleCount: blur.samples,
+				maxBlur: blur.maxBlur,
+			});
+		};
+
 		const flush3DPass = (
 			curTex: GPUTexture,
 			curView: GPUTextureView,
@@ -1505,14 +1795,15 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 			if (pending3DItems.length === 0 || !camera) {
 				return { finalTex: curTex, finalView: curView };
 			}
-
 			const r3d = getRenderer3D(
 				ctx.device,
 				ctx.renderer.format ?? "rgba8unorm",
 				sampleCount3d,
 			);
 
-			// Morph targets are applied in object space before audio deformation and skinning.
+			// Morph targets are applied in object space before audio deformation
+			// and skinning. A history-only frame deforms too: motion blur keeps
+			// the deformed vertices as the next frame's past.
 			for (const item of pending3DItems) {
 				if (item.kind !== "mesh") continue;
 				if (item.opts.morphWeights?.length) {
@@ -1534,6 +1825,12 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				}
 			}
 
+			if (historyOnly) {
+				if (history) recordMotion(history, camera);
+				pending3DItems.length = 0;
+				return { finalTex: curTex, finalView: curView };
+			}
+
 			const itemTextures = pendingTextures();
 
 			const scene3dTex = ctx.renderer.getTemporaryTexture(
@@ -1545,7 +1842,15 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 
 			const outlineSetting = sceneEnvironment?.outlines;
 			const outlines = outlineSetting === true ? {} : outlineSetting || null;
-			const geometryEnabled = dofEnabled || Boolean(outlines);
+			const volumetricFogEnabled = Boolean(sceneEnvironment?.volumetricFog);
+			const screenIndirectEnabled = Boolean(
+				sceneEnvironment?.ssr || sceneEnvironment?.gi,
+			);
+			const geometryEnabled =
+				dofEnabled ||
+				Boolean(outlines) ||
+				volumetricFogEnabled ||
+				screenIndirectEnabled;
 			let linearDepthTex: GPUTexture | undefined;
 			let linearDepthView: GPUTextureView | undefined;
 			if (geometryEnabled) {
@@ -1563,12 +1868,16 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 			const shadowLights = sceneLights
 				.filter((light) => (light.lightType ?? light.type) !== "ambient")
 				.map((light, index) => ({ light, index }))
-				.filter(
-					({ light }) =>
+				.filter(({ light }) => {
+					const k = light.lightType ?? light.type;
+					return (
 						light.castShadow &&
-						((light.lightType ?? light.type) === "directional" ||
-							(light.lightType ?? light.type) === "spot"),
-				);
+						(k === "directional" ||
+							k === "spot" ||
+							k === "rect" ||
+							k === "point")
+					);
+				});
 			if (shadowLights.length > 0) {
 				const casters: ShadowCaster3D[] = [];
 				const receivers: ReturnType<typeof r3d.worldBounds>[] = [];
@@ -1598,7 +1907,19 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					}
 				}
 				if (casters.length > 0) {
+					const totalShadowLayers = shadowLights.reduce(
+						(sum, { light }) =>
+							sum + ((light.lightType ?? light.type) === "point" ? 6 : 1),
+						0,
+					);
+					const allPointShadows = shadowLights.every(
+						({ light }) => (light.lightType ?? light.type) === "point",
+					);
+					const resolvedShadowMapSize =
+						shadowMapSize ?? (allPointShadows ? 1024 : 2048);
+					let currentLayer = 0;
 					for (const { light, index } of shadowLights) {
+						const needed = (light.lightType ?? light.type) === "point" ? 6 : 1;
 						const result = r3d.renderShadowMap(
 							encoder,
 							light,
@@ -1606,12 +1927,15 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 							casters,
 							receivers,
 							{
-								mapSize: shadowMapSize,
-								layer: shadow.length,
-								layerCount: shadowLights.length,
+								mapSize: resolvedShadowMapSize,
+								layer: currentLayer,
+								layerCount: totalShadowLayers,
 							},
 						);
-						if (result) shadow.push(result);
+						if (result) {
+							shadow.push(result);
+							currentLayer += result.layerCount ?? needed;
+						}
 					}
 				}
 			}
@@ -1698,125 +2022,156 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				...glass,
 			];
 
-			// One view of the scene: its floor reflection, then every item.
+			// Screen-space light, motion blur and depth of field need one
+			// perspective picture; a cube camera draws six faces and remaps them.
+			if (cubeCamera) {
+				const single = [
+					screenIndirectEnabled && "screen-space reflections and GI (ssr, gi)",
+					motionBlur && "motion blur",
+				].filter(Boolean);
+				if (single.length) {
+					throw new Error(
+						`A cube camera (${cubeCamera.remap.projection ?? "lens"}) cannot draw ${single.join(" or ")}: they need a single perspective view.`,
+					);
+				}
+			}
+
 			const floorSpec = sceneEnvironment?.floor;
-			const drawView = (
+			const sceneShadow = shadow.length ? shadow : null;
+			/** The floor's mirror image from `view`, blurred by its roughness, when the eye is above it. */
+			const floorReflection = (
 				view: Camera3DPose,
 				width: number,
 				height: number,
-				colorView: GPUTextureView,
-				geometryView: GPUTextureView | undefined,
-				hdrTargetView: GPUTextureView | undefined,
-				/** The 2D picture glass refracts; a cube face has none. */
-				backdrop: GPUTexture | undefined,
-			): GPUBuffer => {
-				let blurredReflectionTex: GPUTexture | null = null;
+			): GPUTexture | null => {
 				if (
-					floorSpec &&
-					typeof floorSpec.y === "number" &&
-					view.eye[1] < floorSpec.y
+					!floorSpec ||
+					typeof floorSpec.y !== "number" ||
+					view.eye[1] >= floorSpec.y
 				) {
-					const reflectedCamera: Camera3DPose = {
-						...view,
-						eye: [view.eye[0], 2 * floorSpec.y - view.eye[1], view.eye[2]],
-						target: [
-							view.target[0],
-							2 * floorSpec.y - view.target[1],
-							view.target[2],
-						],
-						up: [view.up[0], view.up[1], view.up[2]],
-					};
-					const {
-						pass: reflPass,
-						cameraBindGroup: reflCamBind,
-						lightsBindGroup: reflLightsBind,
-						reflectionTexture: reflTex,
-					} = r3d.beginReflectionPass(
-						encoder,
-						width,
-						height,
-						reflectedCamera,
-						sceneLights,
-						{ environment: sceneEnvironment, shadow: null },
-					);
-					for (const item of ordered) {
-						if (item.kind === "quad") {
-							r3d.drawTextureQuad(
-								reflPass,
-								reflCamBind,
-								reflLightsBind,
-								item.texture,
-								item.opts,
-								false,
-							);
-						} else if (item.kind === "slug") {
-							r3d.drawSlugText(
-								reflPass,
-								reflCamBind,
-								reflLightsBind,
-								item.batches,
-								item.opts,
-								item.stackBase,
-								false,
-							);
-						} else if (item.kind === "mesh") {
-							r3d.drawMesh3D(
-								reflPass,
-								reflCamBind,
-								reflLightsBind,
-								item.meshBuffers ?? item.mesh,
-								item.texture,
-								item.opts,
-								false,
-							);
-						}
-					}
-					reflPass.end();
-					blurredReflectionTex = r3d.blurReflection(
-						encoder,
-						reflTex,
-						floorSpec.roughness ?? 0.35,
-					);
+					return null;
 				}
-
+				const reflectedCamera: Camera3DPose = {
+					...view,
+					eye: [view.eye[0], 2 * floorSpec.y - view.eye[1], view.eye[2]],
+					target: [
+						view.target[0],
+						2 * floorSpec.y - view.target[1],
+						view.target[2],
+					],
+					up: [view.up[0], view.up[1], view.up[2]],
+				};
 				const {
-					pass: pass3d,
-					cameraBindGroup,
-					cameraBuffer,
-					lightsBindGroup,
-				} = r3d.beginPass(
+					pass: reflPass,
+					cameraBindGroup: reflCamBind,
+					lightsBindGroup: reflLightsBind,
+					reflectionTexture: reflTex,
+				} = r3d.beginReflectionPass(
 					encoder,
-					colorView,
 					width,
 					height,
-					view,
-					"clear",
-					{ r: 0, g: 0, b: 0, a: 0 },
-					geometryView,
+					reflectedCamera,
 					sceneLights,
-					{
-						environment: sceneEnvironment,
-						shadow: shadow.length ? shadow : null,
-					},
-					Boolean(sceneBloom),
-					hdrTargetView,
+					{ environment: sceneEnvironment, shadow: null },
 				);
-
-				if (floorSpec && blurredReflectionTex) {
-					r3d.drawFloor(
-						pass3d,
-						cameraBindGroup,
-						lightsBindGroup,
-						blurredReflectionTex,
-						floorSpec,
-						geometryEnabled,
-						Boolean(sceneBloom),
-					);
-				}
 				for (const item of ordered) {
 					if (item.kind === "quad") {
 						r3d.drawTextureQuad(
-							pass3d,
+							reflPass,
+							reflCamBind,
+							reflLightsBind,
+							item.texture,
+							item.opts,
+							false,
+						);
+					} else if (item.kind === "slug") {
+						r3d.drawSlugText(
+							reflPass,
+							reflCamBind,
+							reflLightsBind,
+							item.batches,
+							item.opts,
+							item.stackBase,
+							false,
+						);
+					} else if (item.kind === "mesh") {
+						r3d.drawMesh3D(
+							reflPass,
+							reflCamBind,
+							reflLightsBind,
+							item.meshBuffers ?? item.mesh,
+							item.texture,
+							item.opts,
+							false,
+						);
+					}
+				}
+				reflPass.end();
+				return r3d.blurReflection(
+					encoder,
+					reflTex,
+					floorSpec.roughness ?? 0.35,
+				);
+			};
+
+			/** Where one draw of the batch goes, and how. */
+			interface ViewTarget {
+				view: Camera3DPose;
+				width: number;
+				height: number;
+				color: GPUTextureView;
+				geometry: GPUTextureView | undefined;
+				/** Where the radiance resolves instead of `hdrSource()` (a cube face). */
+				hdr?: GPUTextureView;
+				reflection: GPUTexture | null;
+			}
+			/**
+			 * One forward pass over the batch: floor, then the sorted draws.
+			 * `glassBackdrop` is the 2D picture glass refracts: undefined draws
+			 * glass over the 3D scene alone (a cube face), null leaves the glass
+			 * out (the pre-pass that makes that picture).
+			 */
+			const drawView = (
+				target: ViewTarget,
+				screenIndirect: "radiance" | "apply" | undefined,
+				writeHdr: boolean,
+				glassBackdrop: GPUTexture | null | undefined,
+			) => {
+				const begun = r3d.beginPass(
+					encoder,
+					target.color,
+					target.width,
+					target.height,
+					target.view,
+					"clear",
+					{ r: 0, g: 0, b: 0, a: 0 },
+					target.geometry,
+					sceneLights,
+					{
+						environment: sceneEnvironment,
+						shadow: sceneShadow,
+						screenIndirect,
+					},
+					writeHdr,
+					target.hdr,
+				);
+				const { pass, cameraBindGroup, lightsBindGroup } = begun;
+				if (floorSpec && target.reflection) {
+					r3d.drawFloor(
+						pass,
+						cameraBindGroup,
+						lightsBindGroup,
+						target.reflection,
+						floorSpec,
+						geometryEnabled,
+						writeHdr,
+					);
+				}
+				for (const item of ordered) {
+					if (glassBackdrop === null && isGlass(item)) continue;
+					if (item.kind === "quad") {
+						r3d.drawTextureQuad(
+							pass,
 							cameraBindGroup,
 							lightsBindGroup,
 							item.texture,
@@ -1825,7 +2180,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 						);
 					} else if (item.kind === "slug") {
 						r3d.drawSlugText(
-							pass3d,
+							pass,
 							cameraBindGroup,
 							lightsBindGroup,
 							item.batches,
@@ -1835,22 +2190,26 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 						);
 					} else if (item.kind === "mesh") {
 						r3d.drawMesh3D(
-							pass3d,
+							pass,
 							cameraBindGroup,
 							lightsBindGroup,
 							item.meshBuffers ?? item.mesh,
 							item.texture,
-							isGlass(item) ? { ...item.opts, backdrop } : item.opts,
+							isGlass(item)
+								? { ...item.opts, backdrop: glassBackdrop ?? undefined }
+								: item.opts,
 							geometryEnabled,
 						);
 					}
 				}
-
-				pass3d.end();
-				return cameraBuffer;
+				pass.end();
+				return begun;
 			};
 
+			const sceneSeconds = shiftedFrame / Math.max(1, fps ?? 24);
 			let final3dTex = scene3dTex;
+			let mainReflection: GPUTexture | null = null;
+			let mainPass: ReturnType<typeof drawView> | null = null;
 			if (cubeCamera) {
 				// Six 90° faces around the eye, then the lens's picture of them.
 				const size = cubeCamera.faceSize;
@@ -1868,39 +2227,76 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 							cubeCamera.centerDensity) /
 						nativeHeight,
 				};
-				const faceTex = faceOutlines
-					? ctx.renderer.getTemporaryTexture(size, size, [
-							curTex,
-							targetTexture,
-							scene3dTex,
-							...curExcludes,
-							...itemTextures,
-						])
+				// A face is drawn into its own texture when a post pass (ink,
+				// fog) reads it and writes the cube face.
+				const post = Boolean(faceOutlines) || volumetricFogEnabled;
+				const faceExcludes = [
+					curTex,
+					targetTexture,
+					scene3dTex,
+					...curExcludes,
+					...itemTextures,
+				];
+				const faceTex = post
+					? ctx.renderer.getTemporaryTexture(size, size, faceExcludes)
 					: null;
-				const faceGeometry = faceOutlines
+				const fogTex =
+					faceOutlines && volumetricFogEnabled
+						? ctx.renderer.getTemporaryTexture(size, size, [
+								...faceExcludes,
+								...(faceTex ? [faceTex] : []),
+							])
+						: null;
+				const faceGeometry = geometryEnabled
 					? r3d.getOrCreateLinearDepthTexture(size, size)
 					: null;
 				cubeFaceCameras(camera.eye, camera.near, camera.far).forEach(
 					(face, i) => {
 						const faceView = r3d.cubeFaceView(cube, i);
-						drawView(
-							face,
-							size,
-							size,
-							faceTex ? faceTex.createView() : faceView,
-							faceGeometry?.createView(),
-							hdrCube ? r3d.cubeFaceView(hdrCube, i) : undefined,
+						const { cameraBindGroup, lightsBindGroup } = drawView(
+							{
+								view: face,
+								width: size,
+								height: size,
+								color: faceTex ? faceTex.createView() : faceView,
+								geometry: faceGeometry?.createView(),
+								hdr: hdrCube ? r3d.cubeFaceView(hdrCube, i) : undefined,
+								reflection: floorReflection(face, size, size),
+							},
+							undefined,
+							Boolean(sceneBloom),
+							// A face has no 2D picture behind it: glass refracts the 3D scene.
 							undefined,
 						);
-						if (faceTex && faceGeometry && faceOutlines) {
+						if (!faceTex || !faceGeometry) return;
+						if (volumetricFogEnabled)
+							r3d.resolveGeometry(encoder, faceGeometry);
+						let source = faceTex;
+						if (faceOutlines) {
+							const inked = fogTex ?? null;
 							r3d.applyOutlines(
 								encoder,
 								faceTex,
 								faceGeometry,
-								faceView,
+								inked ? inked.createView() : faceView,
 								face,
 								faceOutlines,
 								sceneEnvironment?.fog,
+							);
+							if (!inked) return;
+							source = inked;
+						}
+						if (volumetricFogEnabled && sceneEnvironment) {
+							r3d.applyVolumetricFog(
+								encoder,
+								source,
+								faceGeometry,
+								faceView,
+								cameraBindGroup,
+								lightsBindGroup,
+								sceneEnvironment,
+								sceneSeconds,
+								shiftedFrame,
 							);
 						}
 					},
@@ -1914,20 +2310,57 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					nativeHeight,
 					cubeCamera.remap,
 				);
-			}
-			const cameraBuffer = cubeCamera
-				? null
-				: drawView(
-						camera,
-						nativeWidth,
-						nativeHeight,
-						scene3dView,
-						linearDepthView,
-						undefined,
+			} else {
+				mainReflection = floorReflection(camera, nativeWidth, nativeHeight);
+				const target: ViewTarget = {
+					view: camera,
+					width: nativeWidth,
+					height: nativeHeight,
+					color: scene3dView,
+					geometry: linearDepthView,
+					reflection: mainReflection,
+				};
+				// Screen-space reflections and GI read the scene's own light: draw
+				// its radiance once, trace it, then shade with what was found.
+				if (screenIndirectEnabled && sceneEnvironment) {
+					const { cameraBuffer: radianceCamera } = drawView(
+						target,
+						"radiance",
+						true,
 						curTex,
 					);
-			if (!cubeCamera && outlines && linearDepthTex) {
-				if (dofEnabled) r3d.resolveGeometry(encoder, linearDepthTex);
+					r3d.traceScreenIndirect(encoder, radianceCamera, sceneEnvironment);
+				}
+				// Glass refracts the scene behind it, not just the layers under
+				// the batch: draw everything else first and lay it over them.
+				let glassBackdrop = curTex;
+				if (glass.length) {
+					drawView(
+						target,
+						screenIndirectEnabled ? "apply" : undefined,
+						false,
+						null,
+					);
+					glassBackdrop = ctx.renderer.composite(
+						encoder,
+						curTex,
+						scene3dTex,
+						"normal",
+						[targetTexture, scene3dTex, ...curExcludes],
+					);
+				}
+				mainPass = drawView(
+					target,
+					screenIndirectEnabled ? "apply" : undefined,
+					Boolean(sceneBloom),
+					glassBackdrop,
+				);
+			}
+
+			if (mainPass && outlines && linearDepthTex) {
+				if (dofEnabled || volumetricFogEnabled) {
+					r3d.resolveGeometry(encoder, linearDepthTex);
+				}
 				const outlinedTex = ctx.renderer.getTemporaryTexture(
 					nativeWidth,
 					nativeHeight,
@@ -1944,7 +2377,38 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				);
 				final3dTex = outlinedTex;
 			}
-			if (dofEnabled && linearDepthTex && cameraBuffer) {
+			if (
+				mainPass &&
+				volumetricFogEnabled &&
+				sceneEnvironment &&
+				linearDepthTex
+			) {
+				const vfogTex = ctx.renderer.getTemporaryTexture(
+					nativeWidth,
+					nativeHeight,
+					[
+						curTex,
+						targetTexture,
+						scene3dTex,
+						final3dTex,
+						linearDepthTex,
+						...curExcludes,
+					],
+				);
+				r3d.applyVolumetricFog(
+					encoder,
+					final3dTex,
+					linearDepthTex,
+					vfogTex.createView(),
+					mainPass.cameraBindGroup,
+					mainPass.lightsBindGroup,
+					sceneEnvironment,
+					sceneSeconds,
+					shiftedFrame,
+				);
+				final3dTex = vfogTex;
+			}
+			if (mainPass && dofEnabled && linearDepthTex) {
 				const dofResultTex = ctx.renderer.getTemporaryTexture(
 					nativeWidth,
 					nativeHeight,
@@ -1955,10 +2419,28 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					final3dTex,
 					linearDepthTex,
 					dofResultTex.createView(),
-					cameraBuffer,
+					mainPass.cameraBuffer,
 				);
 				final3dTex = dofResultTex;
 			}
+
+			if (motionBlur && history) {
+				const blurredTex = ctx.renderer.getTemporaryTexture(
+					nativeWidth,
+					nativeHeight,
+					[curTex, targetTexture, scene3dTex, final3dTex, ...curExcludes],
+				);
+				blurScene(
+					history,
+					camera,
+					final3dTex,
+					blurredTex,
+					motionBlur,
+					floorSpec && mainReflection ? floorSpec : undefined,
+				);
+				final3dTex = blurredTex;
+			}
+			if (history) recordMotion(history, camera);
 
 			if (sceneBloom) {
 				const bloomTex = ctx.renderer.getTemporaryTexture(
@@ -2080,15 +2562,17 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 			// Matte and relief layers are not drawn on their own: their owner draws them.
 			const mattesByOwner = new Map<string, VirtualMediaData>();
 			const reliefsByOwner = new Map<string, VirtualMediaData>();
+			const texturesByOwner = new Map<string, VirtualMediaData>();
 			for (const vm of vms) {
 				const op = vm.operation as any;
 				if (op?.matteOf) mattesByOwner.set(op.matteOf, vm);
 				if (op?.reliefOf) reliefsByOwner.set(op.reliefOf, vm);
+				if (op?.textureOf) texturesByOwner.set(op.textureOf, vm);
 			}
 			for (const child of sorted) {
 				const lop = child.operation as any;
 				if (lop.kind === "camera" || lop.kind === "light") continue;
-				if (lop.matteOf || lop.reliefOf) continue;
+				if (lop.matteOf || lop.reliefOf || lop.textureOf) continue;
 				const targetId = lop.id || lop.inputHandleId;
 				const target = targetId ? targetsById[targetId] : undefined;
 				const isChild3D =
@@ -2183,6 +2667,34 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 						amount: lop.reliefAmount ?? 0,
 					});
 				}
+				// A model's texture layer is drawn flat first; the meshes the
+				// model queues then read it through its place in that picture.
+				const textureVM = lop.textureLayerId
+					? texturesByOwner.get(lop.id)
+					: undefined;
+				let wrapTexture: (() => void) | undefined;
+				if (textureVM) {
+					const texture = await isolate(textureVM, nodeIndex);
+					activeExcludes = [...activeExcludes, texture];
+					nodeIndex += 1;
+					const r = rects[lop.textureLayerId];
+					const uvRect: [number, number, number, number] = r
+						? [
+								r.x / targetW,
+								r.y / targetH,
+								r.width / targetW,
+								r.height / targetH,
+							]
+						: [0, 0, 1, 1];
+					const from = pending3DItems.length;
+					wrapTexture = () => {
+						for (const item of pending3DItems.slice(from)) {
+							if (item.kind !== "mesh") continue;
+							item.texture = texture;
+							item.opts.uvRect = uvRect;
+						}
+					};
+				}
 				const matteVM = lop.matteId ? mattesByOwner.get(lop.id) : undefined;
 				if (matteVM) {
 					const mode: string = (matteVM.operation as any).matteMode ?? "alpha";
@@ -2253,6 +2765,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 						for (const item of pending3DItems.slice(before)) {
 							item.opts.matte = coverage;
 						}
+						wrapTexture?.();
 						if (res) {
 							if (res.finalTex !== activeTex) {
 								activeExcludes = [...activeExcludes, res.finalTex];
@@ -2302,6 +2815,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					parent3DMatrix,
 					isRootScene,
 				);
+				wrapTexture?.();
 				if (res) {
 					if (res.finalTex !== activeTex) {
 						activeExcludes = [...activeExcludes, res.finalTex];
@@ -2364,6 +2878,20 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					return;
 				}
 			}
+			// A layer in the 3D scene: flagged, or placed off the z = 0 plane.
+			const isTrue3D =
+				Boolean(target?.is3D ?? lop.is3D) ||
+				Boolean(camera && ((target?.z ?? lop.z ?? 0) !== 0 || lop.is3D));
+			// Recording motion needs only the 3D draws: flat leaves (video,
+			// text, effects) skip their work in the history pass.
+			if (
+				historyOnly &&
+				!isContainer &&
+				kind !== "model3d" &&
+				!isTrue3D &&
+				!has3DTransform(target, lop)
+			)
+				return;
 			if (kind === "model3d") {
 				const r3d = getRenderer3D(
 					ctx.device,
@@ -2422,6 +2950,9 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 						{ cause: err },
 					);
 				}
+				// Voronoi destruction draws the model's pieces, posed by physics below.
+				if (model && lop.fracture3d)
+					model = fracturedModel(model, lop.fracture3d);
 
 				if (!model || model.meshes.length === 0) return;
 
@@ -2519,6 +3050,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 									: [];
 
 					const variants: Model3DData[] = [];
+					const variantPres: VariantPre[] = [];
 					for (const m of rawMeshes) {
 						let vModel: Model3DData | undefined;
 						if (typeof m === "object" && m !== null) {
@@ -2541,10 +3073,44 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 						}
 						if (vModel && vModel.meshes && vModel.meshes.length > 0) {
 							variants.push(vModel);
+							const isNode = !("meshes" in m);
+							variantPres.push(
+								isNode
+									? {
+											q: quatFromEulerAngles(
+												m.rotateX ?? 0,
+												m.rotateY ?? 0,
+												m.rotateZ ?? 0,
+											),
+											s: m.scale ?? 1,
+										}
+									: NO_PRE,
+							);
 						}
 					}
 					if (variants.length === 0 && model) {
 						variants.push(model);
+						variantPres.push(NO_PRE);
+					}
+					if (lop.scatter3d && variants.length > 0) {
+						// Layer3D.scatter: transforms from the surface, seated per variant.
+						const scatter = lop.scatter3d as Scatter3DSpec;
+						const surface = await surfaceModel(
+							scatter.surface as SurfaceNodeSpec,
+							(src, n) =>
+								r3d.loadModelAsync(src, (n.modelFormat ?? "auto") as never, {
+									center: n.center,
+									normalizeSize: n.normalizeSize,
+								}),
+						);
+						instOpt.transforms = surface
+							? scatterTransforms(
+									scatter,
+									surface,
+									variants.map((v, k) => variantBottom(v, variantPres[k]!)),
+								)
+							: [];
+						instOpt.count = instOpt.transforms.length;
 					}
 					if (variants.length > 0) {
 						const count =
@@ -2563,13 +3129,33 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 							for (let i = 0; i < count; i++) {
 								bucketCounts[i % numVariants]++;
 							}
+							// Skinned crowds: each instance takes a second record (clip, phase, speed).
+							const crowdCfg = lop.crowd as CrowdConfig | undefined;
+							const crowdBakes = variants.map((v) =>
+								crowdCfg ? crowdBake(v, crowdCfg) : undefined,
+							);
+							const strides = crowdBakes.map((b) => (b ? 32 : 16));
+							const crowdOpts = (
+								bake: CrowdBake | undefined,
+								mesh: Mesh3DData,
+							): MeshCrowd | undefined => {
+								const baked = bake?.meshes.get(mesh);
+								if (!bake || !baked) return undefined;
+								return {
+									palette: paletteBuffer(ctx.device, baked.palette),
+									jointCount: baked.jointCount,
+									time: (shiftedFrame ?? 0) / (fps || 30),
+								};
+							};
 							const bucketItems: Float32Array[] = [];
 							const bucketBounds: Array<{
 								min: [number, number, number];
 								max: [number, number, number];
 							}> = [];
 							for (let k = 0; k < numVariants; k++) {
-								bucketItems.push(new Float32Array(bucketCounts[k] * 16));
+								bucketItems.push(
+									new Float32Array(bucketCounts[k] * strides[k]),
+								);
 								bucketBounds.push({
 									min: [Infinity, Infinity, Infinity],
 									max: [-Infinity, -Infinity, -Infinity],
@@ -2592,7 +3178,8 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 								const cursor = bucketCursors[k];
 								const bData = bucketItems[k];
 								const bBox = bucketBounds[k];
-								const off = cursor * 16;
+								const off = cursor * strides[k];
+								let ianim: CrowdInstanceAnim = {};
 
 								let ix = 0;
 								let iy = 0;
@@ -2682,6 +3269,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 								} else if (typeof instOpt.instanceAt === "function") {
 									const t = instOpt.instanceAt(i, shiftedFrame ?? 0, fps || 30);
 									if (!t) continue;
+									ianim = t;
 									ix = t.x ?? 0;
 									iy = t.y ?? 0;
 									iz = t.z ?? 0;
@@ -2743,6 +3331,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 									instOpt.transforms[i]
 								) {
 									const t = instOpt.transforms[i];
+									ianim = t;
 									ix = t.x ?? 0;
 									iy = t.y ?? 0;
 									iz = t.z ?? 0;
@@ -2804,6 +3393,15 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 								}
 
 								bucketCursors[k]++;
+								// The variant's own rotation and scale, under the instance's.
+								const pre = variantPres[k]!;
+								if (pre !== NO_PRE) {
+									[iqx, iqy, iqz, iqw] = composeQuat(
+										[iqx, iqy, iqz, iqw],
+										pre.q,
+									);
+									iscale *= pre.s;
+								}
 								bData[off + 0] = ix;
 								bData[off + 1] = iy;
 								bData[off + 2] = iz;
@@ -2820,8 +3418,16 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 								bData[off + 13] = ieg;
 								bData[off + 14] = ieb;
 								bData[off + 15] = iew;
+								const bake = crowdBakes[k];
+								if (bake && crowdCfg) {
+									bData.set(crowdRecord(bake, crowdCfg, i, ianim), off + 16);
+								}
 
-								const rad = 50 * iscale;
+								const vb = variants[k].bounds;
+								const rad =
+									(vb
+										? vb.boundingSphereRadius + Math.hypot(...vb.center)
+										: 50) * iscale;
 								bBox.min[0] = Math.min(bBox.min[0], ix - rad);
 								bBox.min[1] = Math.min(bBox.min[1], iy - rad);
 								bBox.min[2] = Math.min(bBox.min[2], iz - rad);
@@ -2837,7 +3443,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 								const activeSlice =
 									bCount === bucketCounts[k]
 										? bucketItems[k]
-										: bucketItems[k].subarray(0, bCount * 16);
+										: bucketItems[k].subarray(0, bCount * strides[k]);
 								const instanceBuffer = r3d.uploadInstanceData(activeSlice);
 								const bounds = Number.isFinite(bucketBounds[k].min[0])
 									? bucketBounds[k]
@@ -2847,10 +3453,17 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 									const mat = mesh.materialName
 										? v.materials[mesh.materialName]
 										: undefined;
+									// The variant's own material color, under the node's tint.
+									const diffuse = mat?.diffuseColor ?? [1, 1, 1, 1];
 									const meshOpts: DrawMesh3DOpts = {
 										modelMatrix: finalModelMatrix,
 										opacity: modelOpacity * (mat?.opacity ?? 1.0),
-										colorTint,
+										colorTint: [
+											colorTint[0] * diffuse[0],
+											colorTint[1] * diffuse[1],
+											colorTint[2] * diffuse[2],
+											colorTint[3] * (diffuse[3] ?? 1),
+										],
 										transparent: false,
 										twoSided: target?.twoSided ?? lop.twoSided ?? true,
 										wireframe: Boolean(target?.wireframe ?? lop.wireframe),
@@ -2884,8 +3497,15 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 										instanceBuffer,
 										instanceCount: bCount,
 										bounds,
+										wind: meshWind(
+											lop.wind,
+											v,
+											(shiftedFrame ?? 0) / (fps || 30),
+										),
+										crowd: crowdOpts(crowdBakes[k], mesh),
 									};
 									pending3DItems.push({
+										owner: lop.id,
 										kind: "mesh",
 										mesh,
 										texture: mat ? await r3d.materialTexture(mat) : undefined,
@@ -3265,6 +3885,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 									firstInstance,
 								};
 								pending3DItems.push({
+									owner: lop.id,
 									kind: "mesh",
 									mesh,
 									texture: mat ? await r3d.materialTexture(mat) : undefined,
@@ -3298,6 +3919,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 									firstInstance: sparkFirst,
 								};
 								pending3DItems.push({
+									owner: lop.id,
 									kind: "mesh",
 									mesh,
 									texture: mat ? await r3d.materialTexture(mat) : undefined,
@@ -3334,7 +3956,38 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					finalModelMatrix,
 					model.rootTransform ?? Matrix4Math.identity(),
 				);
-				const posed = model.nodes ? poseNodes(model, clip, clipSec) : undefined;
+				// The layer's own props as a matrix (before any parent maps them):
+				// physics works in that space, the parent's, like every body.
+				const layerProps = Matrix4Math.multiply(
+					Matrix4Math.translate(sampledX - posX, sampledY - posY, 0),
+					localM,
+				);
+				// A whole fracture rests exactly (identity joints): pieces stay sealed.
+				const wholeFracture = Boolean(
+					lop.fracture3d &&
+						fractureWhole(model, lop.fracture3d, shiftedFrame ?? 0),
+				);
+				const posed =
+					(lop.fracture3d &&
+						!wholeFracture &&
+						fracturePose(model, lop.fracture3d, shiftedFrame ?? 0, layerProps, [
+							scX,
+							scY,
+							scZ,
+						])) ||
+					(model.nodes
+						? poseCharacter({
+								model,
+								node: lop,
+								frame: shiftedFrame ?? 0,
+								fps: fps || 30,
+								clip,
+								clipSec,
+								sceneRoot,
+								// Per composition: node ids repeat across compositions.
+								key: `${compiled.key}:${lop.id}`,
+							})
+						: undefined);
 				const skinCache = new Map<number, Float32Array>();
 				const placeMesh = (
 					mesh: Mesh3DData,
@@ -3406,6 +4059,8 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				}
 
 				for (const mesh of model.meshes) {
+					if (wholeFracture && mesh.materialName === FRACTURE_INTERIOR_MATERIAL)
+						continue;
 					const mat = mesh.materialName
 						? model.materials[mesh.materialName]
 						: undefined;
@@ -3594,7 +4249,12 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 
 					const meshOpts: DrawMesh3DOpts = {
 						modelMatrix: placed.matrix,
-						morphWeights: sampleMorphWeights(mesh, clip, clipSec),
+						morphWeights: namedMorphWeights(
+							mesh.morphTargetNames,
+							sampleMorphWeights(mesh, clip, clipSec),
+							target?.morphs ?? lop.morphs,
+							{ frame: shiftedFrame ?? 0, fps: fps || 30 },
+						),
 						opacity: modelOpacity * (mat?.opacity ?? 1.0),
 						colorTint: meshColorTint,
 						transparent:
@@ -3622,14 +4282,20 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 							target?.ambientIntensity ?? lop.ambientIntensity ?? 1.0,
 						metallic: target?.metallic ?? lop.metallic ?? mat?.metallic,
 						...surfaceProps(target, lop, mat),
-						ior: target?.ior ?? lop.ior,
+						ior: target?.ior ?? lop.ior ?? mat?.ior,
 						dispersion: target?.dispersion ?? lop.dispersion,
 						thickness: target?.thickness ?? lop.thickness,
+						// The file's thickness is in model units; the draw wants world units.
+						...(mat?.thickness !== undefined
+							? { worldThickness: mat.thickness * matrixScale(placed.matrix) }
+							: {}),
 						audioDeform: meshAudioDeform,
+						wind: meshWind(lop.wind, model, (shiftedFrame ?? 0) / (fps || 30)),
 					};
 
 					if (mat) meshOpts.maps = await r3d.materialMaps(mat);
 					pending3DItems.push({
+						owner: lop.id,
 						kind: "mesh",
 						mesh,
 						texture: mat ? await r3d.materialTexture(mat) : undefined,
@@ -3844,10 +4510,6 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 
 				quad3D = q;
 			}
-
-			const isTrue3D =
-				Boolean(target?.is3D ?? lop.is3D) ||
-				Boolean(camera && ((target?.z ?? lop.z ?? 0) !== 0 || lop.is3D));
 
 			// Container rendering
 			if (isContainer) {
@@ -4094,6 +4756,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					}
 
 					pending3DItems.push({
+						owner: lop.id,
 						kind: "quad",
 						texture: activeGroupTex,
 						opts: quadOpts,
@@ -5807,6 +6470,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					);
 				if (!glyphBatches || quadHasContent) {
 					pending3DItems.push({
+						owner: lop.id,
 						kind: "quad",
 						texture: renderedTex,
 						opts: quadOpts,
@@ -5814,6 +6478,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				}
 				if (glyphBatches && glyphBatches.length > 0) {
 					pending3DItems.push({
+						owner: lop.id,
 						kind: "slug",
 						batches: glyphBatches,
 						opts: quadOpts,
@@ -6037,6 +6702,9 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 			true,
 		);
 		currentCompTex = renderResult.finalTex;
+		// The frame is recorded even when nothing 3D drew (hidden, not started),
+		// so the next frame needs no history pass and the camera's motion is known.
+		if (history && camera) history.recordFrame(shiftedFrame, camera);
 
 		ctx.renderer.popTransform();
 		ctx.renderer.popScissor();
@@ -6066,6 +6734,59 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 		args.pass = finalPass;
 	}
 };
+
+/** Whether a composition's camera asks for shutter motion blur. */
+function sceneMotionBlur(virtualMedia: VirtualMediaData): boolean {
+	return collectNodeOps(virtualMedia.children).some((vm) => {
+		const op = vm.operation as
+			| { kind?: string; motionBlur?: unknown }
+			| undefined;
+		return op?.kind === "camera" && Boolean(op.motionBlur);
+	});
+}
+
+/**
+ * Renders `frame` of the composition into a scratch target only to record
+ * its 3D motion history (the frame after it reads it).
+ */
+async function renderMotionHistory(
+	args: Parameters<WebGPUNodeRenderer>[0],
+	frame: number,
+): Promise<void> {
+	const { ctx, encoder, props, targetTexture, targetWidth, targetHeight } =
+		args;
+	const excludeTextures = [...(props.excludeTextures ?? []), targetTexture];
+	const scratch = ctx.renderer.getTemporaryTexture(
+		targetWidth,
+		targetHeight,
+		excludeTextures,
+	);
+	const view = scratch.createView();
+	const sub = {
+		...args,
+		targetView: view,
+		targetTexture: scratch,
+		pass: ctx.renderer.beginFrame(
+			encoder,
+			view,
+			{ r: 0, g: 0, b: 0, a: 0 },
+			targetWidth,
+			targetHeight,
+			"clear",
+		),
+		props: {
+			...props,
+			frame,
+			...(props.compositionFrame !== undefined && {
+				compositionFrame: props.compositionFrame - 1,
+			}),
+			motionHistoryOnly: true,
+			excludeTextures,
+		},
+	};
+	await CompositorWebGPURenderer(sub);
+	sub.pass.end();
+}
 
 /** Pixels of room around a border texture for its anti-aliased edge. */
 const BORDER_AA_MARGIN = 2;

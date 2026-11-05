@@ -108,7 +108,7 @@ async function downloadOnce(
 				return done(
 					new AssetError(
 						"ASSET_HASH_MISMATCH",
-						`${shown} is larger than the ${expected.size} bytes framefields.json pins`,
+						`${shown} is larger than its pinned ${expected.size} bytes`,
 					),
 				);
 			hash.update(chunk);
@@ -133,7 +133,7 @@ async function downloadOnce(
 		if (size !== expected.size || sha256 !== expected.sha256)
 			throw new AssetError(
 				"ASSET_HASH_MISMATCH",
-				`${shown} is not the file framefields.json pins (got ${size} bytes, sha256 ${sha256.slice(0, 12)}…; expected ${expected.size} bytes, ${expected.sha256.slice(0, 12)}…)`,
+				`${shown} is not the pinned file (got ${size} bytes, sha256 ${sha256.slice(0, 12)}…; expected ${expected.size} bytes, ${expected.sha256.slice(0, 12)}…)`,
 			);
 		await rename(temp, dest);
 	} finally {

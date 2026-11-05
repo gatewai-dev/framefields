@@ -14,6 +14,7 @@
  * fs.writeFileSync("ithrael.glb", doc.toGlb());
  * ```
  */
+
 import { GlbBuilder } from "./glb-builder.js";
 import {
 	type MaterialSpec,
@@ -21,6 +22,7 @@ import {
 	type TextureRef,
 } from "./material.js";
 import type { Skeleton } from "./skeleton.js";
+import { computeTangents } from "./tangents.js";
 
 type Numbers = ArrayLike<number>;
 
@@ -287,9 +289,10 @@ export class GltfDocument {
 				floats(`${label} normals`, p.normals, 3, count),
 				"VEC3",
 			);
-		if (p.tangents)
+		const tangents = p.tangents ?? this.generatedTangents(p);
+		if (tangents)
 			attributes.TANGENT = vertex(
-				floats(`${label} tangents`, p.tangents, 4, count),
+				floats(`${label} tangents`, tangents, 4, count),
 				"VEC4",
 			);
 		if (p.uvs)
@@ -365,6 +368,24 @@ export class GltfDocument {
 			});
 		}
 		return { json, maxJoint };
+	}
+
+	/**
+	 * Tangents for a normal-mapped triangle primitive that brings none, from
+	 * the UV set its normal map reads (glTF viewers otherwise each make
+	 * their own, and normal maps shade differently between them).
+	 */
+	private generatedTangents(p: PrimitiveSpec): Float32Array | undefined {
+		if (!p.material || !p.normals || (p.mode ?? "triangles") !== "triangles")
+			return undefined;
+		const normal = this.materials[p.material.material]?.normalTexture as
+			| { texCoord?: number }
+			| undefined;
+		if (!normal) return undefined;
+		const uvs = normal.texCoord === 1 ? p.uvs1 : p.uvs;
+		return uvs
+			? computeTangents(p.positions, p.normals, uvs, p.indices)
+			: undefined;
 	}
 
 	/** A morph target's deltas, sparse when they move under half the vertices. */

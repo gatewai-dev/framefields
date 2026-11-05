@@ -552,6 +552,30 @@ export interface TruncationInfo {
 	maxAuthoredFrame: number;
 }
 
+/** A camera's `x` / `y` / `z` are its eye, the same as `cameraX` / `cameraY` / `cameraZ`. */
+const CAMERA_EYE: Readonly<Record<string, AnimationTrack["prop"]>> = {
+	x: "cameraX",
+	y: "cameraY",
+	z: "cameraZ",
+};
+
+/**
+ * A layer's tracks, with a camera's `x` / `y` / `z` tracks driving its eye:
+ * the eye is read from `cameraX` / `cameraY` / `cameraZ`, which the static
+ * `x` / `y` / `z` seed, so a track left on `x` would never move it.
+ */
+function layerTracks(lop: {
+	kind?: string;
+	animation?: { tracks?: AnimationTrack[] };
+}): AnimationTrack[] {
+	const tracks = lop.animation?.tracks ?? [];
+	if (lop.kind !== "camera") return tracks;
+	return tracks.map((t) => {
+		const eye = CAMERA_EYE[t.prop];
+		return eye ? { ...t, prop: eye } : t;
+	});
+}
+
 /**
  * Dedupe per compiled cache key — a fresh render of the same broken doc SHOULD
  * re-warn. Single-frame renders are the exception: each `renderFrame` call has
@@ -884,7 +908,7 @@ export function compileTimeline(
 			volumetricFogNoiseStrength: lop.volumetricFogNoiseStrength,
 		};
 
-		for (const track of lop.animation?.tracks ?? []) {
+		for (const track of layerTracks(lop)) {
 			const source = track.source ?? { type: "keyframe" };
 			if (source.type !== "keyframe") {
 				(stub as Record<string, unknown>)[track.prop] = evaluateTrackAtFrame(
@@ -952,7 +976,7 @@ export function compileTimeline(
 			durationFrames = Math.max(1, Math.round((durationMs / 1000) * fps));
 		}
 
-		for (const track of lop.animation?.tracks ?? []) {
+		for (const track of layerTracks(lop)) {
 			const { dropped, maxAuthoredFrame } = compileTrackToTimeline(
 				tl,
 				stub,

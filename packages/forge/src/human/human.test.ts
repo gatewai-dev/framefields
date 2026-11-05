@@ -17,7 +17,9 @@ import {
 	HumanAssetStore,
 	human,
 	humanCacheDir,
+	skinTextures,
 } from "../index.js";
+import { readPng } from "../read-png.test-util.js";
 import { macroTargets } from "./human.js";
 
 const sha = (b: Uint8Array) => createHash("sha256").update(b).digest("hex");
@@ -241,6 +243,56 @@ describe.skipIf(!cached)("human (cached MakeHuman assets)", () => {
 			Array.from(mouth.get("jawOpen")!).some((d) => Math.abs(d) > 0.1),
 		).toBe(true);
 		expect(mouth.has("eyeBlinkLeft")).toBe(false);
+	});
+
+	it("bakes skin textures with red lips and a tiling pore map", async () => {
+		const h = await human({});
+		const maps = skinTextures(h, { size: 512 });
+		const color = readPng(maps.color);
+		expect(color.width).toBe(512);
+		// Sample the map at a vertex's UV.
+		const at = (v: number) => {
+			const x = Math.min(511, Math.floor((h.body.uvs[v * 2] as number) * 512));
+			const y = Math.min(
+				511,
+				Math.floor((h.body.uvs[v * 2 + 1] as number) * 512),
+			);
+			const i = (y * 512 + x) * 4;
+			return [color.rgba[i], color.rgba[i + 1], color.rgba[i + 2]] as [
+				number,
+				number,
+				number,
+			];
+		};
+		// The front-most vertex of the lips (at the mouth corners' height) and of the forehead.
+		const p = h.body.positions;
+		const n = p.length / 3;
+		const frontMost = (y0: number, y1: number) => {
+			let best = 0;
+			for (let v = 0; v < n; v++) {
+				const y = (p[v * 3 + 1] as number) / h.height;
+				if (
+					y > y0 &&
+					y < y1 &&
+					Math.abs(p[v * 3] as number) < 0.5 &&
+					(p[v * 3 + 2] as number) > (p[best * 3 + 2] as number)
+				)
+					best = v;
+			}
+			return best;
+		};
+		const lip = at(frontMost(0.891, 0.895));
+		const brow = at(frontMost(0.96, 0.97));
+		expect(lip[1] / lip[0]).toBeLessThan((brow[1] / brow[0]) * 0.85);
+		const rough = readPng(maps.roughness);
+		expect(rough.rgba[2]).toBe(0); // no metal
+		const detail = readPng(maps.detail);
+		// Tangent-space normals point out of the surface on average.
+		let z = 0;
+		for (let i = 2; i < detail.rgba.length; i += 4)
+			z += detail.rgba[i] as number;
+		expect(z / (detail.rgba.length / 4)).toBeGreaterThan(240);
+		expect(maps.detailRepeat).toBeGreaterThan(5);
 	});
 
 	it("adds named targets on top of the macro shape", async () => {

@@ -11,12 +11,23 @@ import type {
 } from "../document.js";
 import type { MaterialSpec } from "../material.js";
 import type { HumanModel, HumanPart } from "./human.js";
+import { type SkinOptions, skinTextures } from "./skin.js";
 
 export interface AddHumanOptions {
 	/** Node name. Default "Human". */
 	name?: string;
-	/** Skin material. Default: a warm skin with subsurface scattering. */
+	/**
+	 * Skin material. Default: a warm skin with subsurface scattering. Its
+	 * `color` and `roughness` seed the baked skin textures; maps it sets
+	 * itself win over the baked ones.
+	 */
 	skin?: MaterialSpec;
+	/**
+	 * Baked skin textures (`skinTextures`): color with blush, lips and
+	 * mottling, roughness, and tiling pores. `false` leaves the skin a flat
+	 * color. Default: baked with the skin's color.
+	 */
+	skinTextures?: SkinOptions | false;
 	/** Eyeball material; its color texture defaults to the model's eye texture. */
 	eyes?: MaterialSpec;
 	/** Cornea material. Default: clear glass (IOR 1.376, 3 mm deep). */
@@ -43,13 +54,16 @@ export function addHuman(
 ): AddedHuman {
 	const name = options.name ?? "Human";
 	const rig = doc.addSkeleton(h.skeleton);
+	const skinSpec: MaterialSpec = options.skin ?? {
+		name: `${name}Skin`,
+		color: "#d9b29a",
+		roughness: 0.5,
+		subsurface: { factor: 0.7, color: "#ff6a4a" },
+	};
 	const skin = doc.addMaterial(
-		options.skin ?? {
-			name: `${name}Skin`,
-			color: "#d9b29a",
-			roughness: 0.5,
-			subsurface: { factor: 0.7, color: "#ff6a4a" },
-		},
+		options.skinTextures === false
+			? skinSpec
+			: texturedSkin(doc, h, skinSpec, options.skinTextures ?? {}),
 	);
 	const eyes = doc.addMaterial({
 		name: `${name}Eyes`,
@@ -95,4 +109,36 @@ export function addHuman(
 	};
 	for (const d of h.drivers) doc.addDriver(d);
 	return { rig, nodes, materials: { skin, eyes, cornea, mouth } };
+}
+
+/** The skin spec with baked maps in the slots it leaves empty. */
+function texturedSkin(
+	doc: GltfDocument,
+	h: HumanModel,
+	spec: MaterialSpec,
+	options: SkinOptions,
+): MaterialSpec {
+	const maps = skinTextures(h, {
+		color: spec.color ?? "#d9b29a",
+		roughness: spec.roughness ?? 0.5,
+		...options,
+	});
+	const png = (image: Uint8Array) =>
+		doc.addTexture({ image, mimeType: "image/png" });
+	const repeat = maps.detailRepeat;
+	return {
+		...spec,
+		// The maps carry the color and roughness; the factors pass them through.
+		color: spec.colorTexture ? spec.color : "#ffffff",
+		roughness: spec.metallicRoughnessTexture ? spec.roughness : 1,
+		metallic: 0,
+		colorTexture: spec.colorTexture ?? png(maps.color),
+		metallicRoughnessTexture:
+			spec.metallicRoughnessTexture ?? png(maps.roughness),
+		normalTexture: spec.normalTexture ?? {
+			texture: png(maps.detail),
+			scale: 0.45,
+			transform: { scale: [repeat, repeat] },
+		},
+	};
 }

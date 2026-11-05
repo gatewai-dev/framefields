@@ -44,6 +44,12 @@ export {
 	type HumanPart,
 	human,
 } from "./human/human.js";
+export {
+	poreNormalMap,
+	type SkinOptions,
+	type SkinTextures,
+	skinTextures,
+} from "./human/skin.js";
 export { MAKEHUMAN_SOURCE } from "./human/source.js";
 export {
 	HumanAssetStore,
@@ -57,6 +63,7 @@ export {
 	type TextureRef,
 	type TextureSlot,
 } from "./material.js";
+export { encodePng } from "./png.js";
 export {
 	type Displacement,
 	type Part,
@@ -96,3 +103,4 @@ export {
 	smoothNormals,
 	subdivide,
 } from "./subdivide.js";
+export { computeTangents } from "./tangents.js";

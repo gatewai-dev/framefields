@@ -288,3 +288,55 @@ describe("GSAP Timeline 3D Compilation Continuity", () => {
 		expect(cardStub.rotateX).toBe(25);
 	});
 });
+
+describe("Camera eye tracks", () => {
+	it("moves the eye from x / y / z tracks as from cameraX / cameraY / cameraZ", () => {
+		const keys = (id: string, prop: string, from: number, to: number) => ({
+			id,
+			prop,
+			keyframes: [
+				{ id: `${id}0`, frame: 0, value: from },
+				{ id: `${id}1`, frame: 24, value: to },
+			],
+		});
+		const virtualMedia = {
+			metadata: { width: 1920, height: 1080, durationMs: 2000 },
+			operation: { op: "Compositor" },
+			children: [
+				{
+					operation: {
+						op: "CompositorLayer",
+						id: "cam",
+						kind: "camera",
+						x: 960,
+						y: 540,
+						z: -1500,
+						targetX: 960,
+						targetY: 540,
+						targetZ: 0,
+						animation: {
+							tracks: [
+								keys("z", "z", -1500, -300),
+								keys("x", "x", 960, 760),
+								keys("ty", "targetY", 540, 200),
+							],
+						},
+					},
+					children: [],
+				},
+			],
+		};
+		const { tl, targetsById } = compileTimeline(
+			"camera-eye-tracks",
+			virtualMedia as CompilerVirtualMedia,
+			{ fps: 24, durationSec: 2 },
+		);
+		const cam = targetsById.cam;
+		tl.seek(0);
+		expect([cam.cameraX, cam.cameraZ, cam.targetY]).toEqual([960, -1500, 540]);
+		tl.seek(1);
+		expect([cam.cameraX, cam.cameraZ, cam.targetY]).toEqual([760, -300, 200]);
+		// The camera's own y, untouched by any track, stays where it was put.
+		expect(cam.cameraY).toBe(540);
+	});
+});

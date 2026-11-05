@@ -15,6 +15,16 @@ export interface TextureSlot {
 	texture: TextureRef;
 	/** UV set. Default 0. */
 	texCoord?: number;
+	/**
+	 * Placement of the image on the UVs (KHR_texture_transform): `scale`
+	 * repeats it (a tiling detail map), `offset` shifts it, `rotation` turns
+	 * it (degrees, counterclockwise).
+	 */
+	transform?: {
+		scale?: [number, number];
+		offset?: [number, number];
+		rotation?: number;
+	};
 }
 
 export interface MaterialSpec {
@@ -88,14 +98,27 @@ const slot = (t: TextureRef | TextureSlot): TextureSlot =>
 
 function textureInfo(
 	t: TextureRef | TextureSlot,
+	used: Set<string>,
 	extra: Record<string, number> = {},
-): Record<string, number> {
+): Record<string, unknown> {
 	const s = slot(t);
-	return {
+	const info: Record<string, unknown> = {
 		index: s.texture.texture,
 		...(s.texCoord ? { texCoord: s.texCoord } : {}),
 		...extra,
 	};
+	const tr = s.transform;
+	if (tr && (tr.scale || tr.offset || tr.rotation)) {
+		used.add("KHR_texture_transform");
+		info.extensions = {
+			KHR_texture_transform: {
+				...(tr.offset ? { offset: tr.offset } : {}),
+				...(tr.rotation ? { rotation: (tr.rotation * Math.PI) / 180 } : {}),
+				...(tr.scale ? { scale: tr.scale } : {}),
+			},
+		};
+	}
+	return info;
 }
 
 function check(name: string, v: number | undefined, lo = 0, hi = 1) {
@@ -113,21 +136,24 @@ export function materialJson(m: MaterialSpec): MaterialJson {
 	check("ior", m.ior, 1, 4);
 	check("emissiveStrength", m.emissiveStrength, 0, 1e6);
 
+	const used = new Set<string>();
+	const info = (t: TextureRef | TextureSlot, extra?: Record<string, number>) =>
+		textureInfo(t, used, extra);
 	const pbr: Record<string, unknown> = {
 		baseColorFactor: linearRgba(m.color ?? "#ffffff"),
 		metallicFactor: m.metallic ?? 0,
 		roughnessFactor: m.roughness ?? 0.5,
 	};
-	if (m.colorTexture) pbr.baseColorTexture = textureInfo(m.colorTexture);
+	if (m.colorTexture) pbr.baseColorTexture = info(m.colorTexture);
 	if (m.metallicRoughnessTexture)
-		pbr.metallicRoughnessTexture = textureInfo(m.metallicRoughnessTexture);
+		pbr.metallicRoughnessTexture = info(m.metallicRoughnessTexture);
 
 	const json: Record<string, unknown> = { pbrMetallicRoughness: pbr };
 	if (m.name) json.name = m.name;
 	if (m.normalTexture) {
 		const scale =
 			"scale" in m.normalTexture ? m.normalTexture.scale : undefined;
-		json.normalTexture = textureInfo(
+		json.normalTexture = info(
 			m.normalTexture,
 			scale === undefined ? {} : { scale },
 		);
@@ -137,14 +163,14 @@ export function materialJson(m: MaterialSpec): MaterialJson {
 			"strength" in m.occlusionTexture
 				? m.occlusionTexture.strength
 				: undefined;
-		json.occlusionTexture = textureInfo(
+		json.occlusionTexture = info(
 			m.occlusionTexture,
 			strength === undefined ? {} : { strength },
 		);
 	}
 	if (m.emissive) json.emissiveFactor = linearRgb(m.emissive);
 	if (m.emissiveTexture) {
-		json.emissiveTexture = textureInfo(m.emissiveTexture);
+		json.emissiveTexture = info(m.emissiveTexture);
 		json.emissiveFactor ??= [1, 1, 1];
 	}
 	if (m.alphaMode && m.alphaMode !== "opaque") {
@@ -249,5 +275,5 @@ export function materialJson(m: MaterialSpec): MaterialJson {
 		};
 	}
 	if (Object.keys(ext).length) json.extensions = ext;
-	return { json, extensions: Object.keys(ext) };
+	return { json, extensions: [...Object.keys(ext), ...used] };
 }

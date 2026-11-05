@@ -8,11 +8,13 @@ import { validateBytes } from "gltf-validator";
 import { describe, expect, it } from "vitest";
 import {
 	boneGizmo,
+	encodePng,
 	GltfDocument,
 	humanoidSkeleton,
 	linearRgba,
 	Skeleton,
 } from "./index.js";
+import { readPng } from "./read-png.test-util.js";
 
 async function validate(glb: Uint8Array) {
 	const report = await validateBytes(glb, { maxIssues: 50 });
@@ -204,6 +206,47 @@ describe("GltfDocument", () => {
 		const m = parseGLB(glb).meshes[0]!;
 		expect(Array.from(m.morphTargets![0]!.positions!)).toEqual(poke);
 		expect(m.morphTargetNames).toEqual(["poke"]);
+	});
+
+	it("encodes PNGs that decode to the same pixels", () => {
+		const w = 7;
+		const h = 5;
+		const rgba = Uint8Array.from(
+			{ length: w * h * 4 },
+			(_, i) => (i * 37 + (i >> 3) * 11) & 0xff,
+		);
+		const png = encodePng(rgba, w, h);
+		expect(Array.from(png.subarray(1, 4))).toEqual([0x50, 0x4e, 0x47]);
+		const back = readPng(png);
+		expect([back.width, back.height]).toEqual([w, h]);
+		expect(Array.from(back.rgba)).toEqual(Array.from(rgba));
+	});
+
+	it("writes texture transforms that tile a map, and the loader applies them to that map alone", async () => {
+		const s = strip(1, 10);
+		const uvs = [0, 1, 1, 1, 0, 0, 1, 0];
+		const doc = new GltfDocument();
+		const png = encodePng(new Uint8Array(4 * 4 * 4).fill(200), 4, 4);
+		const material = doc.addMaterial({
+			colorTexture: doc.addTexture({ image: png, mimeType: "image/png" }),
+			normalTexture: {
+				texture: doc.addTexture({ image: png, mimeType: "image/png" }),
+				scale: 0.5,
+				transform: { scale: [8, 8] },
+			},
+		});
+		doc.addNode({
+			mesh: doc.addMesh({ primitives: [{ ...s, uvs, material }] }),
+		});
+		const glb = doc.toGlb();
+		const report = await validate(glb);
+		expect(report.issues).toEqual([]);
+		expect(
+			(doc.json() as { extensionsUsed: string[] }).extensionsUsed,
+		).toContain("KHR_texture_transform");
+		const m = parseGLB(glb).meshes[0]!;
+		expect(Array.from(m.uvs ?? [])).toEqual(uvs);
+		expect(Array.from(m.mapUvs?.normal ?? [])).toEqual(uvs.map((x) => x * 8));
 	});
 
 	it("writes every material extension in a valid form", async () => {

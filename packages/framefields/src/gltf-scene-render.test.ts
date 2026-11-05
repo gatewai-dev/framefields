@@ -7,10 +7,10 @@ import fs from "node:fs/promises";
 import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
+import { GlbBuilder } from "@framefields/forge";
 import { Canvas, loadImage } from "skia-canvas";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Composition, Layer } from "./index.js";
-import { GlbBuilder } from "./test-utils/glb.js";
 
 const SIZE = 400;
 const BG = "#000000";

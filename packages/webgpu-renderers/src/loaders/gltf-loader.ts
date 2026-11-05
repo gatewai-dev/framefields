@@ -868,10 +868,11 @@ export class GltfLoader {
 		basePath?: string,
 	): Material3D {
 		const pbr = mat.pbrMetallicRoughness;
-		const baseColor = pbr?.baseColorFactor ?? [1, 1, 1, 1];
+		const [r, g, b, a] = pbr?.baseColorFactor ?? [1, 1, 1, 1];
 		const material: Material3D = {
 			name,
-			diffuseColor: baseColor,
+			// baseColorFactor is linear; Material3D colors are display (sRGB), like COLOR_0 below.
+			diffuseColor: [linearToSrgb(r), linearToSrgb(g), linearToSrgb(b), a],
 			roughness: pbr?.roughnessFactor ?? 0.5,
 			metallic: pbr?.metallicFactor ?? 0.0,
 			shininess: 32.0 * (1.0 - (pbr?.roughnessFactor ?? 0.5)),

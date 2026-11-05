@@ -8,6 +8,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { GlbBuilder } from "@framefields/forge";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
 	Composition,
@@ -19,7 +20,6 @@ import {
 	retargetPose,
 	Signal,
 } from "./index.js";
-import { GlbBuilder } from "./test-utils/glb.js";
 import { decodePngPixels } from "./test-utils/pixels.js";
 
 const SIZE = 400;

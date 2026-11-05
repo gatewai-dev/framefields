@@ -459,6 +459,19 @@ Order of evaluation: clips, `pose`, `aim`, `lookAt`, `ik` (so IK can still plant
 
 Rules: a crowd mesh keeps its own `rotateX` / `scale` under each instance (y-up glTF: `rotateX: 180`). Spring bones follow the clip's motion and the model's current orientation, not the layer's keyframed travel. Per-instance `clip`, `animOffset`, `animSpeed` in `transforms` / `instanceAt` override the crowd's seeded choices.
 
+**Building characters in code (`framefields/forge`)**: write rigged GLB files from TypeScript, then load them with `Layer.glb`. `humanoidSkeleton({ height, heads, shoulderWidth, hipWidth, armAngle, fingers, toes, prefix })` places Mixamo-named joints (feet on y = 0, facing +z, left at +x, A-pose by default) so `pose`, `aim` and `retarget({ rig: "mixamo" })` work unchanged; `new Skeleton().add(name, { at, parent }).chain(base, points).mirror()` builds any other rig. `GltfDocument` writes meshes (32-bit indices past 65,535 vertices, named morph targets in `extras.targetNames`), PBR materials with Khronos extensions (`clearcoat`, `sheen`, `specular`, `ior`, `transmission`, `volume`, `iridescence`, `anisotropy`, `emissiveStrength`, `unlit`, alpha `mask`), textures, skins and clips, and checks every input where it is given. Colors are display sRGB; the writer stores glTF's linear factors. `boneGizmo(skeleton)` draws the rig as octahedral bones for checking poses before there is a body.
+
+```ts
+import { boneGizmo, GltfDocument, humanoidSkeleton } from "framefields/forge";
+const skeleton = humanoidSkeleton({ height: 186, heads: 8 });
+const doc = new GltfDocument();
+const rig = doc.addSkeleton(skeleton);
+const gold = doc.addMaterial({ color: "#d99a2b", roughness: 0.35, clearcoat: { factor: 1, roughness: 0.05 } });
+doc.addNode({ mesh: doc.addMesh({ primitives: [{ ...boneGizmo(skeleton), material: gold }] }), skin: rig.skin });
+fs.writeFileSync("rig.glb", doc.toGlb());
+Layer.glb("rig.glb", { rotateX: 180, pose: { LeftArm: { rotateZ: 90 } } });
+```
+
 ### Procedural worlds: terrain, sculptures, scatter
 
 Terrain, SDF sculptures and scatters are ordinary model nodes: they take materials, lights, shadows, SSR/GI, physics, keyframes and a `texture` that can be any layer (an image path, `Layer.video`, a layout tree) drawn fresh each frame.

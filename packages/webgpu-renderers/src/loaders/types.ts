@@ -34,7 +34,7 @@ export interface Mesh3DData {
 
 export interface Material3D {
 	name: string;
-	diffuseColor?: [number, number, number, number]; // RGBA
+	diffuseColor?: [number, number, number, number]; // RGBA, display (sRGB) 0..1
 	specularColor?: [number, number, number];
 	ambientColor?: [number, number, number];
 	shininess?: number;

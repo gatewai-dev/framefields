@@ -99,6 +99,39 @@ function solidColor(value: unknown): string | null {
 	return c && c[3] > 0.99 ? value : null;
 }
 
+type Push = (
+	severity: RenderDiagnostic["severity"],
+	code: string,
+	message: string,
+	nodeId?: string,
+) => void;
+
+/** Cube cameras (panoramic lenses, relativity) and what they cannot combine with. */
+function lintCamera(node: AnyNode, id: string, push: Push): void {
+	const lens = node.lens as { projection?: string; fov?: number } | undefined;
+	const projection = lens?.projection ?? "perspective";
+	if (projection === "perspective" && (lens?.fov ?? 0) > 160)
+		push(
+			"error",
+			"camera_fov_range",
+			`'${id}' has a ${lens?.fov}° perspective lens: perspective goes up to 160°. Use projection "fisheye" for wider views.`,
+			id,
+		);
+	const relativity = node.relativity as { speed?: number } | undefined;
+	const cube =
+		projection !== "perspective" ||
+		(relativity?.speed ?? 0) > 0 ||
+		animates(node, ["relativitySpeed"]);
+	const dof = node.dof as { enabled?: boolean } | undefined;
+	if (cube && (dof?.enabled || animates(node, ["focusDistance"])))
+		push(
+			"error",
+			"camera_cube_dof",
+			`'${id}' is a cube camera (${relativity ? "relativity" : projection}) with depth of field: depth of field needs a single perspective view.`,
+			id,
+		);
+}
+
 export function lintComposition(
 	config: Pick<CompositorProgramConfig, "width" | "height" | "layout"> & {
 		backgroundColor?: string;
@@ -178,7 +211,10 @@ export function lintComposition(
 			}
 			return;
 		}
-		if (node.kind === "camera") return;
+		if (node.kind === "camera") {
+			lintCamera(node, id, push);
+			return;
+		}
 
 		if (node.kind === "media") {
 			const src = node.inputHandleId;

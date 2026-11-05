@@ -240,6 +240,20 @@ const camAnim = CameraAnimation.camera()
   });
 ```
 
+**Cube cameras.** `lens.projection` picks the picture: `"perspective"` (default), `"equirectangular"` (the whole sphere around the eye, 360 × 180, for VR/360 video; `fov` is ignored), or `"fisheye"` (equidistant; `fov` is the full angle across the frame's height, up to 360°, so it can see behind the camera). Anything but perspective draws the scene as six 90° cube faces around the eye and remaps them, with mipmaps, so it costs about six renders. `lens.cubeSize` overrides the face size (default: matches the output's sharpness at the centre of the view, up to 4096).
+
+**Relativity.** `relativity: { speed, direction?, doppler?, beaming?, exposure? }` films the scene as seen by a camera moving at `speed` × c (0 to 0.9999) along `direction` (world space, default where the camera looks). It is physics, not grading: rays crowd towards the direction of motion (aberration; objects at the side swing forward and look turned, not squashed), colours shift blue ahead and red behind (spectral Doppler, each colour modelled as a reflectance lit by daylight) and ahead brightens with beaming. `exposure: "auto"` (default) meters the centre of the view so what the camera looks at keeps its brightness; a number is fixed stops, where `0` is the true, often blinding, light. Animate the speed with the `relativitySpeed` prop, e.g. `CameraAnimation.camera().fromTo("relativitySpeed", 0, 0.99, { start: 0, end: 90, ease: "expo.in" })`. A camera with `relativity` is always a cube camera, even at speed 0, and at rest matches the ordinary camera. Works with every projection.
+
+```typescript
+Layer.camera({
+  x: 0, y: -170, z: 0, targetX: 0, targetY: -170, targetZ: 1000,
+  lens: { fov: 90 },
+  relativity: { speed: 0.9 },
+});
+```
+
+Cube cameras draw outlines, shadows, floor reflections and bloom, but not depth of field (`comp.lint()` reports `camera_cube_dof`), and glass refracts only the 3D scene, not the 2D layers below.
+
 ### 4. Procedural & Audio-Reactive Drivers
 Properties can be bound to Perlin wiggles, harmonic springs, or audio-extracted signals:
 ```typescript

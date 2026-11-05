@@ -472,6 +472,40 @@ fs.writeFileSync("rig.glb", doc.toGlb());
 Layer.glb("rig.glb", { rotateX: 180, pose: { LeftArm: { rotateZ: 90 } } });
 ```
 
+**Realistic humans (`human`)**: `await human({ sex, age, muscle, weight, proportions, ethnicity, height, targets })` builds a rigged, skinned body from MakeHuman's CC0 base mesh: `sex` 0 female … 1 male, `age` 0 baby / 0.1875 child / 0.5 adult / 1 old, `muscle` and `weight` 0 … 1 (0.5 average), `height` in cm (exact), and any MakeHuman target by path with a weight (`targets: { "nose/nose-base-up": 0.6, "ears/l-ear-shape-pointed": 1 }`). Its skeleton is placed from the shaped body with Mixamo names on the main bones (twist, extra spine and face bones keep MakeHuman names), so `pose`, `aim` and `retarget({ rig: "mixamo" })` work; weights are MakeHuman's painted weights; UVs come with the mesh. Assets download on first use (about 2 MB base plus only the targets a body needs; 131 MB if every target is used) into `~/.cache/framefields/makehuman`, verified by SHA-256 (`FRAMEFIELDS_CACHE_DIR`, `FRAMEFIELDS_HUMAN_BASE_URL` for a mirror). Use `sculpt` for costume, armor and non-human characters.
+
+```ts
+import { GltfDocument, human } from "framefields/forge";
+const elf = await human({ sex: 0, age: 0.6, muscle: 0.55, weight: 0.35, height: 184 });
+const doc = new GltfDocument();
+const rig = doc.addSkeleton(elf.skeleton);
+const skin = doc.addMaterial({ color: "#e9d2b4", roughness: 0.5 });
+doc.addNode({ mesh: doc.addMesh({ name: "Body", primitives: [{ ...elf.body, material: skin }] }), skin: rig.skin });
+```
+
+**Sculpting skinned bodies (`sculpt`)**: a character's body is an ordered list of parts, each an SDF shape (`sphere`, `ellipsoid`, `box`, `cylinder`, `capsule`, `roundCone`, `tube` through points, `torus`, `lathe` profile) with `at`, `rotation`, `op` (`union` / `subtract` / `intersect`), `blend` (smooth join radius), `twist`, `bend`, `displace` (noise detail), `material`, `color`, and the `joint` (or joints) that moves it (default: the nearest bone). `sculpt({ parts, skeleton, cell, triangles })` meshes it closed and manifold at hero resolution, simplifies to the triangle budget, cuts material borders on smooth curves, takes normals and blended colors from the field, and skins every vertex from the parts that reach it (smooth joins share weights, `rigid: true` parts move with one joint), returning one primitive per material plus a report (`openEdges` is 0 for a closed mesh). `limb(skeleton, "LeftForeArm", { radii: [4, 3], blend: 3 })` puts a round cone along a bone; `mirrorParts(leftParts)` adds the right side.
+
+```ts
+import { GltfDocument, humanoidSkeleton, limb, mirrorParts, sculpt } from "framefields/forge";
+const skeleton = humanoidSkeleton({ height: 180 });
+const doc = new GltfDocument();
+const rig = doc.addSkeleton(skeleton);
+const cloth = doc.addMaterial({ color: "#3e5a3c", roughness: 0.8, sheen: { color: "#9fb89a" } });
+const skin = doc.addMaterial({ color: "#d9b99b", roughness: 0.55 });
+const body = sculpt({
+  skeleton, cell: 0.6, triangles: 80000,
+  parts: [
+    { shape: "ellipsoid", at: [0, 126, 0], radii: [17.5, 14, 10.5], joint: ["Spine1", "Spine2"], material: cloth },
+    { shape: "ellipsoid", at: [0, 167, 0.5], radii: [8.6, 11, 10], joint: "Head", blend: 3, material: skin },
+    ...mirrorParts([
+      limb(skeleton, "LeftArm", { radii: [5.4, 4], blend: 3, material: cloth }),
+      limb(skeleton, "LeftForeArm", { radii: [4, 2.8], blend: 2.5, material: skin }),
+    ]),
+  ],
+});
+doc.addNode({ mesh: doc.addMesh({ name: "Body", primitives: body.primitives }), skin: rig.skin });
+```
+
 ### Procedural worlds: terrain, sculptures, scatter
 
 Terrain, SDF sculptures and scatters are ordinary model nodes: they take materials, lights, shadows, SSR/GI, physics, keyframes and a `texture` that can be any layer (an image path, `Layer.video`, a layout tree) drawn fresh each frame.

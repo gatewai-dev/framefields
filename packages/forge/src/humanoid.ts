@@ -110,23 +110,25 @@ export function humanoidSkeleton(options: HumanoidOptions = {}): Skeleton {
 		s.chain(n("LeftHandThumb"), thumb, { parent: n("LeftHand") });
 	}
 
-	const hipX = k(0.09) * hw;
+	// Hip joints sit about 9 cm from the midline on a 180 cm figure; knees
+	// come in under them and the feet stand about hip-width apart.
+	const hipX = k(0.051) * hw;
 	s.add(n("LeftUpLeg"), { at: [hipX, k(0.5), 0], parent: n("Hips") });
 	s.add(n("LeftLeg"), {
-		at: [hipX * 0.95, k(0.282), k(0.008)],
+		at: [hipX * 0.92, k(0.282), k(0.008)],
 		parent: n("LeftUpLeg"),
 	});
 	s.add(n("LeftFoot"), {
-		at: [hipX * 0.92, k(0.045), -k(0.01)],
+		at: [hipX * 0.98, k(0.045), -k(0.01)],
 		parent: n("LeftLeg"),
 	});
 	if (options.toes ?? true) {
 		s.add(n("LeftToeBase"), {
-			at: [hipX, k(0.012), k(0.095)],
+			at: [hipX * 1.08, k(0.012), k(0.095)],
 			parent: n("LeftFoot"),
 		});
 		s.add(n("LeftToe_End"), {
-			at: [hipX, k(0.012), k(0.145)],
+			at: [hipX * 1.12, k(0.012), k(0.145)],
 			parent: n("LeftToeBase"),
 		});
 	}

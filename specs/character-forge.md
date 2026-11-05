@@ -1,6 +1,6 @@
 # Character Forge: rigged characters built in code
 
-Status: Phase 1 done (GLB writer, skeleton, humanoid preset, bone gizmo; `packages/forge`, exposed as `framefields/forge`). Phase 2 next. First character: **Ithrael Sunmourn** (`examples/36_emberwake/CHARACTERS.md`), an original hooded elven ranger with a long cloak, long hair, a sculpted face, real eyes, and a full set of expressions.
+Status: Phases 1–2 done (GLB writer, skeleton, humanoid preset, bone gizmo; bound sculpting, manifold narrow-band meshing, simplification, smooth material borders, skin weights from the field; `packages/forge`, exposed as `framefields/forge`). Sharp-edge preservation for hard surfaces moves to Phase 7's hard-surface work. Human bodies and faces now start from MakeHuman's CC0 base (`human()`): realistic anatomy, edge loops and UVs, macro and feature targets, painted weights. `sculpt` stays for stylization, costume, armor and non-humans. The face rig (Phase 4) builds on MakeHuman's expression units and the ARKit 52 names. Phase 3 next. First character: **Ithrael Sunmourn** (`examples/36_emberwake/CHARACTERS.md`), an original hooded elven ranger with a long cloak, long hair, a sculpted face, real eyes, and a full set of expressions.
 
 ## Goal
 

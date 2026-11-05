@@ -7,7 +7,14 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { boneGizmo, GltfDocument, humanoidSkeleton } from "./forge/index.js";
+import {
+	boneGizmo,
+	GltfDocument,
+	humanoidSkeleton,
+	limb,
+	Skeleton,
+	sculpt,
+} from "./forge/index.js";
 import {
 	Composition,
 	Layer,
@@ -23,6 +30,7 @@ const FEET = C + 150;
 
 let dir = "";
 let file = "";
+let arm = "";
 
 beforeAll(async () => {
 	dir = await fs.mkdtemp(path.join(os.tmpdir(), "framefields-forge-"));
@@ -37,12 +45,36 @@ beforeAll(async () => {
 	});
 	doc.addNode({ name: "Gizmo", mesh: bones, skin: rig.skin });
 	await fs.writeFile(file, doc.toGlb());
+
+	// A sculpted arm standing up from y = 0: elbow at 120, wrist at 220.
+	const armRig = new Skeleton()
+		.add("Arm", { at: [0, 0, 0] })
+		.add("ForeArm", { at: [0, 120, 0], parent: "Arm" })
+		.add("Hand", { at: [0, 220, 0], parent: "ForeArm" });
+	const armDoc = new GltfDocument();
+	const armSkin = armDoc.addSkeleton(armRig);
+	const flat = armDoc.addMaterial({ color: "#ffffff", unlit: true });
+	const body = sculpt({
+		skeleton: armRig,
+		parts: [
+			limb(armRig, "Arm", { radii: [22, 17], material: flat }),
+			limb(armRig, "ForeArm", { radii: [17, 13], blend: 14, material: flat }),
+		],
+		cell: 2,
+		triangles: 6000,
+	});
+	armDoc.addNode({
+		mesh: armDoc.addMesh({ primitives: body.primitives }),
+		skin: armSkin.skin,
+	});
+	arm = path.join(dir, "arm.glb");
+	await fs.writeFile(arm, armDoc.toGlb());
 });
 afterAll(async () => {
 	await fs.rm(dir, { recursive: true, force: true });
 });
 
-async function render(options: Record<string, unknown>) {
+async function render(options: Record<string, unknown>, model = file) {
 	const comp = new Composition({
 		width: SIZE,
 		height: SIZE,
@@ -59,7 +91,7 @@ async function render(options: Record<string, unknown>) {
 			targetY: C,
 			targetZ: 0,
 		}),
-		Layer.glb(file, {
+		Layer.glb(model, {
 			x: C,
 			y: FEET,
 			z: 0,
@@ -123,5 +155,21 @@ describe("forge characters", () => {
 		});
 		expect(lit(...above)).toBeGreaterThan(80);
 		expect(lit(...below)).toBe(0);
+	});
+
+	it("bends a sculpted, auto-skinned elbow without a gap", async () => {
+		// Feet of the arm at FEET; the elbow 120 px up the screen.
+		const straight = await render({}, arm);
+		const bent = await render({ pose: { ForeArm: { rotateZ: 90 } } }, arm);
+		const elbowY = FEET - 120;
+		// Straight: the forearm stands above the elbow.
+		expect(straight(C - 5, elbowY - 90, C + 5, elbowY - 60)).toBeGreaterThan(
+			200,
+		);
+		// Bent: the forearm points to the screen left of the elbow instead…
+		expect(bent(C - 5, elbowY - 90, C + 5, elbowY - 60)).toBe(0);
+		expect(bent(C - 90, elbowY - 5, C - 60, elbowY + 5)).toBeGreaterThan(200);
+		// …and the elbow's inside corner stays filled: no crack between the bones.
+		expect(bent(C - 22, elbowY - 4, C + 4, elbowY + 4)).toBe(26 * 8);
 	});
 });

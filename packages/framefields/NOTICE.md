@@ -1,6 +1,6 @@
 # Notice: framefields
 
-framefields is licensed under Apache-2.0. It contains no model weights: every vision model downloads on first use from a pinned revision into the local model cache (`~/.cache/framefields/models`) and is verified by size and SHA-256. The licenses below apply to those downloaded weights, not to framefields' code.
+framefields is licensed under Apache-2.0. It contains no model weights or human base assets: every vision model downloads on first use from a pinned revision into the local model cache (`~/.cache/framefields/models`) and is verified by size and SHA-256. The licenses below apply to those downloaded weights, not to framefields' code.
 
 ## Prompted tracking (SAM)
 
@@ -16,3 +16,7 @@ Before SAM 3 weights are downloaded or run, you must accept Meta's SAM License (
 ## Depth
 
 `comp.vision(clip, { depth: true })` and `withVision({ mode: "depth" })` estimate depth with Depth Anything V2 **Small** (onnx-community export of `depth-anything/Depth-Anything-V2-Small`), whose weights are Apache-2.0. The larger Depth Anything V2 checkpoints are licensed CC-BY-NC-4.0 and are not used.
+
+## Human base (`framefields/forge`)
+
+`human()` shapes bodies from MakeHuman's base mesh, shape targets, skeleton and skin weights (https://github.com/makehumancommunity/makehuman, pinned to commit `a8bc2d54ff0ac92e78ff71431b1023eda42bf482`). MakeHuman's bundled assets are released under CC0 1.0 Universal; its program code is AGPL-3.0 and is not used or distributed. The files download on first use into `~/.cache/framefields/makehuman` and are verified by size and SHA-256 (`packages/forge/src/human/makehuman-pins.ts`). Bodies made from them carry no license restriction.

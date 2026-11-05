@@ -480,20 +480,6 @@ Layer.glb("rig.glb", { rotateX: 180, pose: { LeftArm: { rotateZ: 90 } } });
 Layer.glb("head.glb", { morphs: { jawOpen: [[0, 0], [12, 0.6]], mouthSmileLeft: 0.8, eyeBlinkLeft: blink } });
 ```
 
-**DNA characters (`framefields/dna`)**: `readDna(bytes, { geometry?, behavior? })` reads a DNA file, the rig format MetaHuman characters export to (Export > DCC Export writes one for the head and one for the body). It returns the descriptor (units, axes, LOD count), the definition (controls, joints and their neutral pose, blend shape channels, meshes per LOD), the rig behavior, and the meshes. File versions 2.1 to 2.8 are read. `dnaToGlb(dna, { lod, units, blendShapes, materials })` writes it as a GLB:
-- joints at their neutral pose, with rest orientations;
-- the LOD's meshes, skinned, with blend shapes as named morph targets;
-- axes and units converted to glTF and centimeters.
-
-Skins keep up to eight influences per vertex (glTF's `JOINTS_1` / `WEIGHTS_1`, written only where a vertex has more than four; `influences: 4` caps them). Each mesh gets the material of its role, found from its name (skin, teeth, saliva, eye, the clear eye shell, eye edge, lashes, cartilage). `await dnaMaterials(doc, folder)` adds the export's textures by the role and map words in their file names (`head_color…`, `…normal…`, `…roughness…`, `…cavity…`) and returns `{ found, unused, materials }`; pass `materials` to `addDna`. The export's real file names are unconfirmed, so check `found`. `addDna(doc, dna, options)` writes into your own `GltfDocument`. Load the result with `Layer.glb`; `pose`, `aim`, `lookAt`, IK and `morphs` by channel name work on it. `new RigEvaluator(dna, { lod })` evaluates the rig: set `setGuiControls({ CTRL_expressions_jawOpen: 0.6 })` then `mapGuiToRaw()`, or `setRawControls(…)`; `calculate()` fills `jointOutputs` (per joint: translation, Euler rotation and scale deltas from the neutral pose, `JOINT_ATTRIBUTES` = 9 each), `blendShapeOutputs` (per channel) and `animatedMapOutputs` (wrinkle masks, 0 … 1). Body correctives run too: put each driving joint's rotation (a unit quaternion, in the file's axes) into its four raw controls after any GUI mapping, and RBF solvers turn them into pose controls (`rbfControlNames`, at the end of `inputs`) while twist/swing writes helper joints' rotations. It matches Epic's RigLogic (to float32 rounding) and keeps no state between frames. Quaternion joint groups and machine-learned behavior are not evaluated yet (a file that needs quaternion groups is refused). Layers do not run the evaluator yet. No DNA files ship with framefields; the reader is based on OpenRigLogic (MIT, Epic Games). Joints with rest orientations also work in forge: `skeleton.add(name, { at, parent, orient })`.
-
-```ts
-import { readFile, writeFile } from "node:fs/promises";
-import { dnaToGlb, readDna } from "framefields/dna";
-const head = readDna(await readFile("head.dna"));
-await writeFile("head.glb", dnaToGlb(head, { lod: 0, materials: { head_lod0_mesh: { color: "#c99a82", roughness: 0.5, subsurface: 0.7 } } }));
-```
-
 **Sculpting skinned bodies (`sculpt`)**: a character's body is an ordered list of parts, each an SDF shape (`sphere`, `ellipsoid`, `box`, `cylinder`, `capsule`, `roundCone`, `tube` through points, `torus`, `lathe` profile) with `at`, `rotation`, `op` (`union` / `subtract` / `intersect`), `blend` (smooth join radius), `twist`, `bend`, `displace` (noise detail), `material`, `color`, and the `joint` (or joints) that moves it (default: the nearest bone). `sculpt({ parts, skeleton, cell, triangles })` meshes it closed and manifold at hero resolution, simplifies to the triangle budget, cuts material borders on smooth curves, takes normals and blended colors from the field, and skins every vertex from the parts that reach it (smooth joins share weights, `rigid: true` parts move with one joint), returning one primitive per material plus a report (`openEdges` is 0 for a closed mesh). `limb(skeleton, "LeftForeArm", { radii: [4, 3], blend: 3 })` puts a round cone along a bone; `mirrorParts(leftParts)` adds the right side.
 
 ```ts

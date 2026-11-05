@@ -1,0 +1,166 @@
+{
+	"version": [2, 1],
+	"name": "Oracle",
+	"archetype": 5,
+	"gender": 1,
+	"age": 42,
+	"metadata": [["made by", "oracle"], ["purpose", "parity"]],
+	"translationUnit": 0,
+	"rotationUnit": 0,
+	"coordinateSystem": [1, 2, 4],
+	"rotationSequence": 0,
+	"rotationSign": [1, 1, 1],
+	"faceWindingOrder": 0,
+	"lodCount": 2,
+	"maxLOD": 0,
+	"complexity": "Oracle",
+	"dbName": "OracleDB",
+	"guiControlNames": ["CTRL_jaw", "CTRL_smile"],
+	"rawControlNames": [
+		"jawOpen",
+		"smileL",
+		"smileR",
+		"arm.qx",
+		"arm.qy",
+		"arm.qz",
+		"arm.qw",
+		"forearm.qx",
+		"forearm.qy",
+		"forearm.qz",
+		"forearm.qw"
+	],
+	"jointNames": ["root", "neck", "head", "jaw", "eyeL"],
+	"blendShapeChannelNames": ["jawOpen", "smile_corrective"],
+	"animatedMapNames": ["head_wm1_forehead", "head_wm2_cheek"],
+	"meshNames": ["head_lod0_mesh", "head_lod1_mesh"],
+	"jointsPerLod": [[0, 1, 2, 3, 4], [0, 1, 2]],
+	"blendShapesPerLod": [[0, 1], [0]],
+	"animatedMapsPerLod": [[0, 1], [0, 1]],
+	"meshesPerLod": [[0], [1]],
+	"meshBlendShapeChannelMapping": [[0, 0], [0, 1], [1, 0]],
+	"parents": [0, 0, 1, 2, 2],
+	"neutralTranslations": [
+		[0, 0, 0, 0, 3.20000005],
+		[0, 150, 12.5, -3, 4],
+		[0, -2, 1, 4.5, 8]
+	],
+	"neutralRotations": [
+		[0, -10, 12, 0, 1.5],
+		[0, 0, 5, 90, -2.5],
+		[0, 0, -3, 25, 3.5]
+	],
+	"guiToRawInput": [0, 1, 1, 1],
+	"guiToRawOutput": [0, 1, 1, 2],
+	"guiToRawFrom": [0, 0, 0.400000006, 0],
+	"guiToRawTo": [1, 0.600000024, 1, 1],
+	"guiToRawSlope": [1, 1, -1, 0.5],
+	"guiToRawCut": [0, 0, 1, 0.25],
+	"psdCount": 1,
+	"psdRows": [11, 11],
+	"psdColumns": [1, 2],
+	"psdValues": [1.5, 1],
+	"jointRowCount": 45,
+	"jointColumnCount": 4,
+	"jointGroups": [
+		{
+			"lods": [4, 2],
+			"inputs": [0, 11],
+			"outputs": [33, 34, 35, 29],
+			"values": [-0.5, 0, 12, 0, 0, 0.100000001, 0.75, -0.25],
+			"joints": [3]
+		},
+		{
+			"lods": [3, 1],
+			"inputs": [1, 2, 11],
+			"outputs": [12, 13, 9],
+			"values": [20, -5, 3, 0, 7.5, -2, 0.5, 0.5, 0],
+			"joints": [1]
+		},
+		{
+			"lods": [2, 1],
+			"inputs": [12, 13, 14, 15],
+			"outputs": [36, 37],
+			"values": [2, -1, 0.5, 3, 0, 1.5, -2.5, 0.25],
+			"joints": [4]
+		}
+	],
+	"blendShapeLods": [2, 1],
+	"blendShapeInputs": [0, 11],
+	"blendShapeOutputs": [0, 1],
+	"animatedMapLods": [3, 2],
+	"animatedMapInputs": [0, 1, 1],
+	"animatedMapOutputs": [0, 1, 1],
+	"animatedMapFrom": [0, 0, 0.5],
+	"animatedMapTo": [1, 0.699999988, 1],
+	"animatedMapSlope": [1, 0.800000012, -0.5],
+	"animatedMapCut": [0, 0.100000001, 0.899999976],
+	"mlControlCount": 0,
+	"rbfSolversPerLod": [[], []],
+	"rbfSolvers": [],
+	"rbfPoses": [],
+	"rbfPoseControlNames": [],
+	"twists": [],
+	"swings": [],
+	"rotationRepresentations": [0, 0, 0, 0, 0],
+	"meshes": [
+		{
+			"positions": [
+				[-5, 5, 5, -5, 0],
+				[150, 150, 165, 165, 170],
+				[9, 9, 8, 8, 7.5]
+			],
+			"uvs": [
+				[0.100000001, 0.899999976, 0.899999976, 0.100000001, 0.5, 0.550000012],
+				[
+					0.200000003, 0.200000003, 0.800000012, 0.800000012, 0.949999988,
+					0.949999988
+				]
+			],
+			"normals": [[0, 0], [0, 0.600000024], [1, 0.800000012]],
+			"layouts": [[0, 1, 2, 3, 4, 4], [0, 1, 2, 3, 4, 5], [0, 0, 0, 0, 1, 1]],
+			"faces": [[0, 1, 2, 3], [3, 2, 4]],
+			"maxInfluence": 6,
+			"skin": [
+				[[1], [1]],
+				[[0.5, 0.5], [1, 2]],
+				[
+					[
+						0.300000012, 0.200000003, 0.150000006, 0.150000006, 0.100000001,
+						0.100000001
+					],
+					[2, 3, 4, 1, 0, 3]
+				],
+				[[1], [1]],
+				[[0.5, 0.5], [1, 2]]
+			],
+			"targets": [
+				{
+					"channel": 0,
+					"deltas": [[0, 0], [-1.5, -1.5], [0.200000003, 0.200000003]],
+					"vertices": [0, 1]
+				},
+				{
+					"channel": 1,
+					"deltas": [[0.300000012], [0.400000006], [-0.100000001]],
+					"vertices": [2]
+				}
+			]
+		},
+		{
+			"positions": [[-5, 5, 0], [150, 150, 170], [9, 9, 7.5]],
+			"uvs": [[0, 1, 0.5], [0, 0, 1]],
+			"normals": [[0], [0], [1]],
+			"layouts": [[0, 1, 2], [0, 1, 2], [0, 0, 0]],
+			"faces": [[0, 1, 2]],
+			"maxInfluence": 1,
+			"skin": [[[1], [1]], [[1], [1]], [[1], [1]]],
+			"targets": [
+				{
+					"channel": 0,
+					"deltas": [[0], [-1], [0]],
+					"vertices": [0]
+				}
+			]
+		}
+	]
+}

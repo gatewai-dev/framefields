@@ -1,0 +1,386 @@
+{
+	"version": [2, 8],
+	"name": "Oracle",
+	"archetype": 5,
+	"gender": 1,
+	"age": 42,
+	"metadata": [["made by", "oracle"], ["purpose", "parity"]],
+	"translationUnit": 0,
+	"rotationUnit": 0,
+	"coordinateSystem": [1, 2, 4],
+	"rotationSequence": 5,
+	"rotationSign": [1, -1, 1],
+	"faceWindingOrder": 0,
+	"lodCount": 2,
+	"maxLOD": 0,
+	"complexity": "Oracle",
+	"dbName": "OracleDB",
+	"guiControlNames": ["CTRL_jaw", "CTRL_smile"],
+	"rawControlNames": [
+		"jawOpen",
+		"smileL",
+		"smileR",
+		"arm.qx",
+		"arm.qy",
+		"arm.qz",
+		"arm.qw",
+		"forearm.qx",
+		"forearm.qy",
+		"forearm.qz",
+		"forearm.qw"
+	],
+	"jointNames": ["root", "neck", "head", "jaw", "eyeL"],
+	"blendShapeChannelNames": ["jawOpen", "smile_corrective"],
+	"animatedMapNames": ["head_wm1_forehead", "head_wm2_cheek"],
+	"meshNames": ["head_lod0_mesh", "head_lod1_mesh"],
+	"jointsPerLod": [[0, 1, 2, 3, 4], [0, 1, 2]],
+	"blendShapesPerLod": [[0, 1], [0]],
+	"animatedMapsPerLod": [[0, 1], [0, 1]],
+	"meshesPerLod": [[0], [1]],
+	"meshBlendShapeChannelMapping": [[0, 0], [0, 1], [1, 0]],
+	"parents": [0, 0, 1, 2, 2],
+	"neutralTranslations": [
+		[0, 0, 0, 0, 3.20000005],
+		[0, 150, 12.5, -3, 4],
+		[0, -2, 1, 4.5, 8]
+	],
+	"neutralRotations": [
+		[0, -10, 12, 0, 1.5],
+		[0, 0, 5, 90, -2.5],
+		[0, 0, -3, 25, 3.5]
+	],
+	"guiToRawInput": [0, 1, 1, 1],
+	"guiToRawOutput": [0, 1, 1, 2],
+	"guiToRawFrom": [0, 0, 0.400000006, 0],
+	"guiToRawTo": [1, 0.600000024, 1, 1],
+	"guiToRawSlope": [1, 1, -1, 0.5],
+	"guiToRawCut": [0, 0, 1, 0.25],
+	"psdCount": 1,
+	"psdRows": [11, 11],
+	"psdColumns": [1, 2],
+	"psdValues": [1.5, 1],
+	"jointRowCount": 45,
+	"jointColumnCount": 4,
+	"jointGroups": [
+		{
+			"lods": [4, 2],
+			"inputs": [0, 11],
+			"outputs": [33, 34, 35, 29],
+			"values": [-0.5, 0, 12, 0, 0, 0.100000001, 0.75, -0.25],
+			"joints": [3]
+		},
+		{
+			"lods": [3, 1],
+			"inputs": [1, 2, 11],
+			"outputs": [12, 13, 9],
+			"values": [20, -5, 3, 0, 7.5, -2, 0.5, 0.5, 0],
+			"joints": [1]
+		},
+		{
+			"lods": [2, 1],
+			"inputs": [12, 13, 14, 15],
+			"outputs": [36, 37],
+			"values": [2, -1, 0.5, 3, 0, 1.5, -2.5, 0.25],
+			"joints": [4]
+		}
+	],
+	"blendShapeLods": [2, 1],
+	"blendShapeInputs": [0, 11],
+	"blendShapeOutputs": [0, 1],
+	"animatedMapLods": [3, 2],
+	"animatedMapInputs": [0, 1, 1],
+	"animatedMapOutputs": [0, 1, 1],
+	"animatedMapFrom": [0, 0, 0.5],
+	"animatedMapTo": [1, 0.699999988, 1],
+	"animatedMapSlope": [1, 0.800000012, -0.5],
+	"animatedMapCut": [0, 0.100000001, 0.899999976],
+	"mlControlCount": 0,
+	"rbfSolversPerLod": [[0, 1, 2, 3, 4], [0, 2]],
+	"rbfSolvers": [
+		{
+			"name": "arm_rbf",
+			"rawControlIndices": [3, 4, 5, 6],
+			"poseIndices": [0, 1, 2, 6],
+			"rawControlValues": [
+				0, 0, 0, 1, 0, 0, 0.382683426, 0.923879504, 0, 0.382683426, 0,
+				0.923879504, 0, 0, 0.5, 0.866025388
+			],
+			"radius": 50,
+			"weightThreshold": 0.00100000005,
+			"solverType": 1,
+			"automaticRadius": 1,
+			"distanceMethod": 1,
+			"normalizeMethod": 0,
+			"functionType": 0,
+			"twistAxis": 0
+		},
+		{
+			"name": "forearm_twist",
+			"rawControlIndices": [7, 8, 9, 10],
+			"poseIndices": [3, 4, 5, 7],
+			"rawControlValues": [
+				0, 0, 0, 1, 0.382683426, 0, 0, 0.923879504, 0.707106769, 0, 0,
+				0.707106769, 0.923879504, 0, 0, 0.382683426
+			],
+			"radius": 0,
+			"weightThreshold": 0,
+			"solverType": 0,
+			"automaticRadius": 0,
+			"distanceMethod": 3,
+			"normalizeMethod": 1,
+			"functionType": 2,
+			"twistAxis": 0
+		},
+		{
+			"name": "arm_swing",
+			"rawControlIndices": [3, 4, 5, 6],
+			"poseIndices": [8, 9, 10],
+			"rawControlValues": [
+				0, 0, 0, 1, 0.382683426, 0, 0, 0.923879504, 0, 0.382683426, 0,
+				0.923879504
+			],
+			"radius": 60,
+			"weightThreshold": 0,
+			"solverType": 0,
+			"automaticRadius": 1,
+			"distanceMethod": 2,
+			"normalizeMethod": 0,
+			"functionType": 3,
+			"twistAxis": 2
+		},
+		{
+			"name": "smiles",
+			"rawControlIndices": [1, 2],
+			"poseIndices": [11, 12, 13, 14],
+			"rawControlValues": [0, 0, 1, 0, 0, 1, 1, 1],
+			"radius": 0,
+			"weightThreshold": 0.00999999978,
+			"solverType": 1,
+			"automaticRadius": 0,
+			"distanceMethod": 0,
+			"normalizeMethod": 0,
+			"functionType": 4,
+			"twistAxis": 0
+		},
+		{
+			"name": "jaw",
+			"rawControlIndices": [0],
+			"poseIndices": [15, 16],
+			"rawControlValues": [0, 1],
+			"radius": 40,
+			"weightThreshold": 0,
+			"solverType": 0,
+			"automaticRadius": 1,
+			"distanceMethod": 0,
+			"normalizeMethod": 1,
+			"functionType": 1,
+			"twistAxis": 0
+		}
+	],
+	"rbfPoses": [
+		{
+			"name": "arm_rest",
+			"scale": 1,
+			"inputs": [],
+			"outputs": [],
+			"weights": []
+		},
+		{
+			"name": "arm_up",
+			"scale": 1,
+			"inputs": [],
+			"outputs": [12, 16],
+			"weights": [1, 0.5]
+		},
+		{
+			"name": "arm_forward",
+			"scale": 0.800000012,
+			"inputs": [0],
+			"outputs": [13],
+			"weights": [1]
+		},
+		{
+			"name": "forearm_rest",
+			"scale": 1,
+			"inputs": [],
+			"outputs": [],
+			"weights": []
+		},
+		{
+			"name": "forearm_twist45",
+			"scale": 1,
+			"inputs": [],
+			"outputs": [14],
+			"weights": [1]
+		},
+		{
+			"name": "forearm_twist90",
+			"scale": 1.20000005,
+			"inputs": [],
+			"outputs": [15],
+			"weights": [1]
+		},
+		{
+			"name": "arm_up30",
+			"scale": 0.899999976,
+			"inputs": [],
+			"outputs": [12],
+			"weights": [0.699999988]
+		},
+		{
+			"name": "forearm_twist135",
+			"scale": 1,
+			"inputs": [],
+			"outputs": [15],
+			"weights": [1]
+		},
+		{
+			"name": "swing_rest",
+			"scale": 1,
+			"inputs": [],
+			"outputs": [],
+			"weights": []
+		},
+		{
+			"name": "swing_x",
+			"scale": 1,
+			"inputs": [],
+			"outputs": [16],
+			"weights": [0.300000012]
+		},
+		{
+			"name": "swing_y",
+			"scale": 1,
+			"inputs": [],
+			"outputs": [14],
+			"weights": [0.400000006]
+		},
+		{
+			"name": "smiles_none",
+			"scale": 1,
+			"inputs": [],
+			"outputs": [],
+			"weights": []
+		},
+		{
+			"name": "smiles_left",
+			"scale": 1,
+			"inputs": [],
+			"outputs": [16],
+			"weights": [0.600000024]
+		},
+		{
+			"name": "smiles_right",
+			"scale": 1,
+			"inputs": [],
+			"outputs": [],
+			"weights": []
+		},
+		{
+			"name": "smiles_both",
+			"scale": 1.10000002,
+			"inputs": [],
+			"outputs": [13],
+			"weights": [0.5]
+		},
+		{
+			"name": "jaw_closed",
+			"scale": 1,
+			"inputs": [],
+			"outputs": [],
+			"weights": []
+		},
+		{
+			"name": "jaw_open",
+			"scale": 1,
+			"inputs": [],
+			"outputs": [15],
+			"weights": [0.200000003]
+		}
+	],
+	"rbfPoseControlNames": [
+		"arm_up_pc",
+		"arm_forward_pc",
+		"forearm_twist45_pc",
+		"forearm_twist90_pc",
+		"arm_up_half_pc"
+	],
+	"twists": [
+		{
+			"twistAxis": 0,
+			"inputs": [7, 8, 9, 10],
+			"outputs": [3, 4],
+			"weights": [0.5, 0.25]
+		}
+	],
+	"swings": [
+		{
+			"twistAxis": 1,
+			"inputs": [3, 4, 5, 6],
+			"outputs": [2],
+			"weights": [0.300000012]
+		}
+	],
+	"rotationRepresentations": [0, 0, 0, 0, 0],
+	"meshes": [
+		{
+			"positions": [
+				[-5, 5, 5, -5, 0],
+				[150, 150, 165, 165, 170],
+				[9, 9, 8, 8, 7.5]
+			],
+			"uvs": [
+				[0.100000001, 0.899999976, 0.899999976, 0.100000001, 0.5, 0.550000012],
+				[
+					0.200000003, 0.200000003, 0.800000012, 0.800000012, 0.949999988,
+					0.949999988
+				]
+			],
+			"normals": [[0, 0], [0, 0.600000024], [1, 0.800000012]],
+			"layouts": [[0, 1, 2, 3, 4, 4], [0, 1, 2, 3, 4, 5], [0, 0, 0, 0, 1, 1]],
+			"faces": [[0, 1, 2, 3], [3, 2, 4]],
+			"maxInfluence": 6,
+			"skin": [
+				[[1], [1]],
+				[[0.5, 0.5], [1, 2]],
+				[
+					[
+						0.300000012, 0.200000003, 0.150000006, 0.150000006, 0.100000001,
+						0.100000001
+					],
+					[2, 3, 4, 1, 0, 3]
+				],
+				[[1], [1]],
+				[[0.5, 0.5], [1, 2]]
+			],
+			"targets": [
+				{
+					"channel": 0,
+					"deltas": [[0, 0], [-1.5, -1.5], [0.200000003, 0.200000003]],
+					"vertices": [0, 1]
+				},
+				{
+					"channel": 1,
+					"deltas": [[0.300000012], [0.400000006], [-0.100000001]],
+					"vertices": [2]
+				}
+			]
+		},
+		{
+			"positions": [[-5, 5, 0], [150, 150, 170], [9, 9, 7.5]],
+			"uvs": [[0, 1, 0.5], [0, 0, 1]],
+			"normals": [[0], [0], [1]],
+			"layouts": [[0, 1, 2], [0, 1, 2], [0, 0, 0]],
+			"faces": [[0, 1, 2]],
+			"maxInfluence": 1,
+			"skin": [[[1], [1]], [[1], [1]], [[1], [1]]],
+			"targets": [
+				{
+					"channel": 0,
+					"deltas": [[0], [-1], [0]],
+					"vertices": [0]
+				}
+			]
+		}
+	]
+}

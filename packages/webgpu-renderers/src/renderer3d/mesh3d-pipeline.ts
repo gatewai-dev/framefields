@@ -94,6 +94,8 @@ export interface MeshUniformData extends SurfaceParams {
 	transparent?: boolean;
 	/** Extra per-map UV vertex attributes are present. */
 	hasMapUvs?: boolean;
+	/** The mesh binds a second set of four skin influences. */
+	hasSkin1?: boolean;
 	isSkinned?: boolean;
 	skinningMatrices?: Float32Array; // 16 floats per joint
 	/** Hardware-instanced draw path. */
@@ -158,6 +160,8 @@ export interface GPUMeshBuffers {
 	/** Per-vertex RGBA (display / sRGB), 4 floats each; absent = white. */
 	colorBuffer?: GPUBuffer;
 	mapUvBuffer?: GPUBuffer;
+	/** Second skin influence set: 4 joints then 4 weights per vertex. */
+	skin1Buffer?: GPUBuffer;
 	wireIndexBuffer?: GPUBuffer;
 	wireIndexCount?: number;
 }
@@ -361,6 +365,14 @@ export class Mesh3DPipeline {
 						{ shaderLocation: 9, offset: 24, format: "float32x2" },
 					],
 				},
+				{
+					// Second skin influence set (read only when flagged).
+					arrayStride: 32,
+					attributes: [
+						{ shaderLocation: 10, offset: 0, format: "float32x4" },
+						{ shaderLocation: 11, offset: 16, format: "float32x4" },
+					],
+				},
 			],
 		};
 
@@ -562,12 +574,13 @@ export class Mesh3DPipeline {
 		this.modelData[36] = data.opacity ?? 1.0;
 		this.modelData[37] = data.twoSided ? 1.0 : 0.0;
 		this.modelData[38] = data.isSkinned || data.crowd ? 1.0 : 0.0;
-		// Bit 0 selects instance data; bit 1 selects the extra map UVs.
+		// Bit 0 selects instance data; bit 1 the extra map UVs; bit 4 the second skin set.
 		this.modelData[39] =
 			(data.isInstanced || data.instanceBuffer ? 1 : 0) +
 			(data.hasMapUvs ? 2 : 0) +
 			(data.matrixInstances ? 4 : 0) +
-			(data.crowd ? 8 : 0);
+			(data.crowd ? 8 : 0) +
+			(data.hasSkin1 ? 16 : 0);
 
 		const shininess =
 			data.roughness !== undefined
@@ -674,6 +687,7 @@ export class Mesh3DPipeline {
 		const modelBindGroup = this.packModel({
 			...data,
 			hasMapUvs: Boolean(meshBuffers.mapUvBuffer),
+			hasSkin1: Boolean(meshBuffers.skin1Buffer),
 		});
 		const textureBindGroup = this.textureGroup(texture, sampler, data.maps);
 
@@ -743,8 +757,9 @@ export class Mesh3DPipeline {
 		firstInstance = 0,
 	): void {
 		const hasMapUvs = Boolean(meshBuffers.mapUvBuffer);
-		const now = this.packModel({ ...data, hasMapUvs });
-		const before = this.packModel({ ...data, ...prev, hasMapUvs });
+		const hasSkin1 = Boolean(meshBuffers.skin1Buffer);
+		const now = this.packModel({ ...data, hasMapUvs, hasSkin1 });
+		const before = this.packModel({ ...data, ...prev, hasMapUvs, hasSkin1 });
 		const wireframe =
 			data.wireframe === true &&
 			(!meshBuffers.topology || meshBuffers.topology === "triangle-list");
@@ -853,6 +868,11 @@ export class Mesh3DPipeline {
 		pass.setVertexBuffer(
 			2,
 			meshBuffers.mapUvBuffer ?? meshBuffers.vertexBuffer,
+		);
+		// Without a second skin set the slot reads the vertex buffer, unflagged.
+		pass.setVertexBuffer(
+			3,
+			meshBuffers.skin1Buffer ?? meshBuffers.vertexBuffer,
 		);
 		const wire = wireframe && meshBuffers.wireIndexBuffer;
 		pass.setIndexBuffer(

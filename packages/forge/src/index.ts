@@ -32,30 +32,6 @@ export {
 	type AccessorType,
 	GlbBuilder,
 } from "./glb-builder.js";
-export {
-	type AddedHuman,
-	type AddHumanOptions,
-	addHuman,
-} from "./human/add-human.js";
-export { FACE_SHAPES } from "./human/expressions.js";
-export {
-	type HumanModel,
-	type HumanOptions,
-	type HumanPart,
-	human,
-} from "./human/human.js";
-export {
-	poreNormalMap,
-	type SkinOptions,
-	type SkinTextures,
-	skinTextures,
-} from "./human/skin.js";
-export { MAKEHUMAN_SOURCE } from "./human/source.js";
-export {
-	HumanAssetStore,
-	type HumanAssetStoreOptions,
-	humanCacheDir,
-} from "./human/store.js";
 export { type HumanoidOptions, humanoidSkeleton } from "./humanoid.js";
 export {
 	type MaterialSpec,
@@ -95,6 +71,10 @@ export {
 	type Joint,
 	type JointSpec,
 	type MirrorOptions,
+	type Quat,
+	quatConjugate,
+	quatMultiply,
+	quatRotate,
 	Skeleton,
 	type Vec3,
 } from "./skeleton.js";

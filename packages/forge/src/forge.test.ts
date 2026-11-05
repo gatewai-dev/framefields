@@ -3,7 +3,7 @@
  * warnings, and the engine's own loader reads back exactly what was written
  * (geometry, 32-bit indices, skins, named morph targets, materials, clips).
  */
-import { parseGLB } from "@framefields/webgpu-renderers";
+import { denseMorphDeltas, parseGLB } from "@framefields/webgpu-renderers";
 import { validateBytes } from "gltf-validator";
 import { describe, expect, it } from "vitest";
 import {
@@ -204,7 +204,9 @@ describe("GltfDocument", () => {
 		expect(acc.sparse?.count).toBe(1);
 		expect(acc.max).toEqual([0, 0, 4]);
 		const m = parseGLB(glb).meshes[0]!;
-		expect(Array.from(m.morphTargets![0]!.positions!)).toEqual(poke);
+		expect(Array.from(denseMorphDeltas(m.morphTargets![0]!, n))).toEqual(poke);
+		// Kept sparse in memory: only the moved vertex.
+		expect(Array.from(m.morphTargets![0]!.indices!)).toEqual([7]);
 		expect(m.morphTargetNames).toEqual(["poke"]);
 	});
 
@@ -396,6 +398,55 @@ describe("Skeleton", () => {
 		expect(
 			humanoidSkeleton({ prefix: "mixamorig:" }).has("mixamorig:LeftArm"),
 		).toBe(true);
+	});
+
+	it("keeps rest orientations: node rotations, inverse bind matrices, mirrored copies", async () => {
+		// A forearm turned 90° about z at rest: its local x points up.
+		const turn: [number, number, number, number] = [
+			0,
+			0,
+			Math.SQRT1_2,
+			Math.SQRT1_2,
+		];
+		const s = new Skeleton()
+			.add("Root", { at: [0, 0, 0] })
+			.add("LeftArm", { at: [10, 0, 0], parent: "Root", orient: turn })
+			.add("LeftHand", { at: [10, 8, 0], parent: "LeftArm", orient: turn })
+			.mirror();
+		expect(s.local("LeftHand")).toEqual([
+			expect.closeTo(8, 9),
+			expect.closeTo(0, 9),
+			expect.closeTo(0, 9),
+		]);
+		const r = s.joint("RightArm").orient!;
+		expect(
+			[r[0], r[1], r[2], r[3]].map((x) => Math.round(x * 1e6) / 1e6 + 0),
+		).toEqual([0, 0, -0.707107, 0.707107]);
+		const doc = new GltfDocument();
+		doc.addSkeleton(s);
+		const glb = doc.toGlb();
+		expect((await validate(glb)).issues).toEqual([]);
+		const model = parseGLB(glb);
+		const skin = model.skins![0]!;
+		const names = skin.joints.map((j) => model.nodes![j]!.name);
+		// Each inverse bind matrix takes its joint's rest position to the origin.
+		names.forEach((n, i) => {
+			const at = s.joint(n).at;
+			const m = skin.inverseBindMatrices;
+			for (let r = 0; r < 3; r++)
+				expect(
+					m[i * 16 + r]! * at[0] +
+						m[i * 16 + 4 + r]! * at[1] +
+						m[i * 16 + 8 + r]! * at[2] +
+						m[i * 16 + 12 + r]!,
+				).toBeCloseTo(0, 5);
+		});
+		// The hand's node holds no extra turn: it rests as its parent does.
+		const hand = model.nodes![skin.joints[names.indexOf("LeftHand")]!]!;
+		expect(hand.rotation ?? [0, 0, 0, 1]).toEqual(
+			[0, 0, 0, 1].map((v) => expect.closeTo(v, 9)),
+		);
+		expect(hand.translation?.[0]).toBeCloseTo(8, 6);
 	});
 
 	it("writes a skeleton with its bone gizmo as a valid skinned GLB", async () => {

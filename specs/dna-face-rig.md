@@ -1,12 +1,23 @@
 # DNA characters: MetaHuman-compatible faces and bodies
 
-Status: Phase 1 done: each material map samples with its own glTF sampler (loader `mapSampling`, a sampler binding per map in the mesh shader). Phases 2 onward are planned.
+Status: Phases 1–2 done, plus the engine gaps they found.
+- **Phase 1:** each material map samples with its own glTF sampler.
+- **Phase 2:** `packages/dna` (`framefields/dna`) reads DNA files (2.1 to 2.8: descriptor and its extension, definition, behavior, geometry; other layers are listed and skipped). `dnaToGlb` / `addDna` write the neutral pose with rest orientations (the forge skeleton gained `orient`), a LOD's meshes, skin weights (duplicate joint entries merged) and blend shapes as named morph targets.
+- **Parity with Epic's library:** `packages/dna/fixtures/oracle.cpp` builds against OpenRigLogic 5.8 (commit `d3d329bb`). `oracle.dna` is made-up data written by Epic's writer, and each fixture's `.json` is what Epic's reader reads. `readDna` matches it field for field for 2.8 and 2.1 files. Epic's reader also reads our test writer's files identically.
+- **Engine gaps, closed:**
+  - **Sparse morphs:** the loader keeps sparse morph targets sparse (`MorphTarget3D.indices`), and the GPU pass gathers deltas per vertex from entries that exist (memory follows the deltas, no atomics).
+  - **Eight influences:** skins take up to eight influences per vertex (`JOINTS_1` / `WEIGHTS_1` through writer, loader and shader; a second vertex slot, flagged).
+  - **Materials:** DNA meshes get role materials, and `dnaMaterials` scans an export folder for textures.
+
+Still open:
+- The export's real texture file names (the scan's patterns are guesses until a real export is read).
+- The rig evaluator (Phase 3).
 
 ## Goal
 
 Load a character exported from MetaHuman Creator (Export > DCC Export: a head DNA file, a body DNA file and textures) into a composition, and animate it with the same rig evaluation Unreal Engine uses: face controls drive joints, corrective blend shapes and wrinkle-map weights. The character then animates with the same tracks as forge humans: `morphs` (ARKit names), `pose`, `aim`, `lookAt`, IK and retargeting from vision.
 
-This sits next to `human()`, not in place of it. `human()` stays the path for people built in code from CC0 data. DNA characters are for users who bring a character made in MetaHuman Creator. Their realism comes from the rig: hundreds of correctives, and wrinkle maps that fade in with each expression. Both kinds of character share the renderer improvements this work brings, wrinkle maps above all.
+DNA characters are the only realistic-human path: `human()` and MakeHuman were removed (2026-11-05) because their rendering and motion fell short. Characters come from MetaHuman Creator exports and render with our own shaders. The forge stays for skeletons, sculpted props, costumes and non-humans.
 
 ## Source and terms
 
@@ -85,7 +96,7 @@ API: `const rig = new RigEvaluator(reader, { lod })`, then `rig.evaluate(control
 
 ## Verification
 
-- **Oracle:** build the pinned OpenRigLogic (CMake) with its Python bindings under `scratch/`, after the user approves the clone.
+- **Oracle:** OpenRigLogic 5.8 built under `scratch/` with a small C++ program (`packages/dna/fixtures/oracle.cpp`; no Python bindings needed). Done for reading; extended to evaluation in Phase 3.
 - **Committed fixture:** a small synthetic DNA file written with the C++ writer from data we make up (a few joints, controls, PSDs, blend shapes, a conditional table, one tiny mesh). It contains no MetaHuman content, so it can be committed. A script regenerates it.
 - **Parity tests:**
   - the reader against the oracle on every layer of the fixture;
@@ -95,18 +106,34 @@ API: `const rig = new RigEvaluator(reader, { lod })`, then `rig.evaluate(control
   - rendered frames of a neutral face, then jawOpen, smile, blink and brow raise, with wrinkles on and off;
   - the timings recorded.
   
-  Skipped in CI when absent, like the MakeHuman cache tests.
+  Skipped in CI when no export is present.
 
 ## Phases
 
-1. Per-map samplers in the renderer (prerequisite for wrinkle maps, fixes the pore map).
-2. DNA reader: header, descriptor, definition, geometry. `dnaToGlb` renders a neutral head with its textures.
-3. Behavior layer and evaluator: controls, PSD, joints, blend shapes. Face controls animate the head. Parity tests.
+1. Per-map samplers in the renderer. **Done.**
+2. DNA reader and `dnaToGlb`. **Done**, with reader parity against Epic's library, sparse morphs, eight influences and role materials.
+3. Rig evaluator, body first:
+   - **3a. Shared core. Done.** `RigEvaluator` (`packages/dna/src/rig.ts`) covers GUI → raw controls, PSDs, joint matrices per group and LOD, blend shapes and animated maps.
+     - **Parity:** RigLogic's scalar, full-precision outputs on the oracle character (`oracle eval`, 48 seeded cases across GUI/raw controls and both LODs) match to float precision. Mutation checks confirm the fixture catches interval skipping, PSD clamping and the PSD cap.
+     - **One deliberate difference:** PSDs a LOD does not use are 0 rather than last frame's value, so evaluation is stateless.
+     - **Still open:** composing deltas onto the neutral pose. Translation and scale add; the rotation delta applies in the joint's oriented frame (Maya's joint-orient convention). That needs a real export to confirm.
+   - **3b. Body correctives. Evaluation done; wiring and the render milestone open.**
+     - **RBF and twist/swing:** `rig-body.ts` adds RBF solvers (additive and interpolative; Euclidean, quaternion, swing-angle and twist-angle distances; Gaussian, exponential, linear, cubic and quintic kernels; automatic radius; normalization, pose scales, thresholds, gating) and twist/swing (tdm's slerp and quaternion-to-Euler, including its polynomial asin). The reader adds the `rbfb`, `rbfe`, `twsw`, `jbmd` and `mlbh` (names only) layers.
+     - **Parity:** the oracle character has five solvers covering every method and kernel, plus a twist and a swing. Outputs match RigLogic to float32 rounding (1e-6 for face parts; 2e-4 where an ill-conditioned interpolation matrix amplifies RigLogic's float32 inversion).
+     - **Mutation checks:** sixteen behaviour changes are caught.
+     - **Not evaluated yet:** quaternion joint groups (files needing them are refused) and machine-learned behavior.
+     - **Still open:** feeding the skeleton's joint quaternions into raw controls inside layers, and the shoulder raise and elbow bend milestone on a real exported body.
+   - **3c. Face:** face controls drive joints and correctives; ARKit names map to face controls so `morphs` keeps working.
 4. Animated maps and wrinkle maps in the renderer.
-5. ARKit mapping and `morphs` on DNA characters; ARKit-named faces drive both kinds of character.
-6. Body DNA: twist/swing, RBF correctives, the `"unreal"` retarget preset, head and body merged.
-7. Machine-learned behavior, if present in exports and worth it.
-8. Docs: the `framefields-compose` skill (DNA characters, face controls, wrinkles), NOTICE, changesets, an example film shot with a DNA character, and the license wording from open question 1.
+5. Head and body as one character: the head's skeleton joined to the body's at the neck, with no gap and no double neck motion; the `"unreal"` retarget preset.
+6. Machine-learned behavior, if present in exports and worth it.
+7. Docs: the skill, NOTICE, changesets, an example film shot with a DNA character, and the license wording from open question 1.
+
+Tests every phase keeps:
+- **Seeking matches playing:** rendering frame 200 directly gives the same pixels and rig outputs as rendering 0 through 200. The evaluator keeps no state between frames.
+- **LOD switching:** each LOD loads and evaluates; switching LOD mid-shot keeps the pose.
+- **Several characters:** two instances of one character and two different characters in one scene evaluate independently.
+- **Memory:** rig data and GPU buffers are released when a character leaves the scene; repeated renders do not grow memory.
 
 ## Open questions
 

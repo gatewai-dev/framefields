@@ -24,8 +24,7 @@
 		"dev": "tsdown --watch",
 		"typecheck": "tsc --noEmit -p .",
 		"test": "vitest run",
-		"clean": "rm -rf .turbo && rm -rf node_modules && rm -rf dist",
-		"pin:makehuman": "tsx scripts/pin-makehuman.ts"
+		"clean": "rm -rf .turbo && rm -rf node_modules && rm -rf dist"
 	},
 	"devDependencies": {
 		"@framefields/tsconfig": "workspace:*",
@@ -36,8 +35,5 @@
 		"typescript": "^5.8.3",
 		"vitest": "^4.1.5",
 		"tsx": "^4.20.3"
-	},
-	"dependencies": {
-		"@framefields/storage": "workspace:*"
 	}
 }

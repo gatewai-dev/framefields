@@ -1956,6 +1956,25 @@ export class Renderer3D {
 			mapUvBuffer.unmap();
 		}
 
+		// The second set of four influences, where a mesh has one.
+		let skin1Buffer: GPUBuffer | undefined;
+		if (mesh.jointIndices1 && mesh.jointWeights1) {
+			const data = new Float32Array(numVerts * 8);
+			for (let i = 0; i < numVerts; i++)
+				for (let k = 0; k < 4; k++) {
+					data[i * 8 + k] = mesh.jointIndices1[i * 4 + k] ?? 0;
+					data[i * 8 + 4 + k] = mesh.jointWeights1[i * 4 + k] ?? 0;
+				}
+			skin1Buffer = this.device.createBuffer({
+				label: "Mesh3DSkin1",
+				size: Math.max(32, data.byteLength),
+				usage: GPUBufferUsage.VERTEX,
+				mappedAtCreation: true,
+			});
+			new Float32Array(skin1Buffer.getMappedRange()).set(data);
+			skin1Buffer.unmap();
+		}
+
 		cached = {
 			vertexBuffer,
 			indexBuffer,
@@ -1964,6 +1983,7 @@ export class Renderer3D {
 			topology: mesh.topology,
 			colorBuffer,
 			mapUvBuffer,
+			skin1Buffer,
 		};
 		this.meshBuffersCache.set(mesh, cached);
 		if (wireframe && (!mesh.topology || mesh.topology === "triangle-list"))
@@ -2062,6 +2082,7 @@ export class Renderer3D {
 			topology: meshBuffers.topology,
 			colorBuffer: meshBuffers.colorBuffer,
 			mapUvBuffer: meshBuffers.mapUvBuffer,
+			skin1Buffer: meshBuffers.skin1Buffer,
 			wireIndexBuffer: meshBuffers.wireIndexBuffer,
 			wireIndexCount: meshBuffers.wireIndexCount,
 		};

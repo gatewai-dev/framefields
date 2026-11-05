@@ -57,6 +57,8 @@ struct VertexInput {
     @location(7) mrUv     : vec2<f32>,
     @location(8) aoUv     : vec2<f32>,
     @location(9) emissiveUv : vec2<f32>,
+    @location(10) joints1  : vec4<f32>,
+    @location(11) weights1 : vec4<f32>,
 };
 
 `;
@@ -146,7 +148,12 @@ fn deform${n}(in: VertexInput, instanceIndex: u32) -> MeshDeform {
         let w2 = in.weights.z;
         let w3 = in.weights.w;
 
-        let totalWeight = w0 + w1 + w2 + w3;
+        // A second set of four influences (glTF JOINTS_1 / WEIGHTS_1), when flagged.
+        let eight = (u32(${model}.params.w) & 16u) != 0u;
+        let wb = select(vec4<f32>(0.0), in.weights1, eight);
+        let jb = vec4<u32>(select(vec4<f32>(0.0), in.joints1, eight));
+
+        let totalWeight = w0 + w1 + w2 + w3 + wb.x + wb.y + wb.z + wb.w;
         var skinMat = mat4x4<f32>();
         if (crowd) {
             // A node-attached (rigid) mesh bakes its node as joint 0.
@@ -157,12 +164,24 @@ fn deform${n}(in: VertexInput, instanceIndex: u32) -> MeshDeform {
                     crowdJoint${n}(palette0, palette1, paletteT, j1) * w1 +
                     crowdJoint${n}(palette0, palette1, paletteT, j2) * w2 +
                     crowdJoint${n}(palette0, palette1, paletteT, j3) * w3;
+                if (eight) {
+                    skinMat += crowdJoint${n}(palette0, palette1, paletteT, jb.x) * wb.x +
+                        crowdJoint${n}(palette0, palette1, paletteT, jb.y) * wb.y +
+                        crowdJoint${n}(palette0, palette1, paletteT, jb.z) * wb.z +
+                        crowdJoint${n}(palette0, palette1, paletteT, jb.w) * wb.w;
+                }
             }
         } else if (totalWeight > 0.001) {
             skinMat = ${skin}.jointMatrices[j0] * w0 +
                       ${skin}.jointMatrices[j1] * w1 +
                       ${skin}.jointMatrices[j2] * w2 +
                       ${skin}.jointMatrices[j3] * w3;
+            if (eight) {
+                skinMat += ${skin}.jointMatrices[jb.x] * wb.x +
+                           ${skin}.jointMatrices[jb.y] * wb.y +
+                           ${skin}.jointMatrices[jb.z] * wb.z +
+                           ${skin}.jointMatrices[jb.w] * wb.w;
+            }
         }
         if (crowd || totalWeight > 0.001) {
             let pos4 = skinMat * vec4<f32>(in.position, 1.0);

@@ -21,7 +21,12 @@ import {
 	materialJson,
 	type TextureRef,
 } from "./material.js";
-import type { Skeleton } from "./skeleton.js";
+import {
+	quatConjugate,
+	quatRotate,
+	type Skeleton,
+	type Vec3,
+} from "./skeleton.js";
 import { computeTangents } from "./tangents.js";
 
 type Numbers = ArrayLike<number>;
@@ -48,9 +53,12 @@ export interface PrimitiveSpec {
 	uvs1?: Numbers;
 	/** Vertex color, linear RGBA, 4 per vertex. */
 	colors?: Numbers;
-	/** 4 joint indices per vertex, into the skin's joint list. */
+	/**
+	 * 4 joint indices per vertex, into the skin's joint list, or 8 (written
+	 * as glTF's two sets, JOINTS_0 and JOINTS_1) for faces that need them.
+	 */
 	joints?: Numbers;
-	/** 4 weights per vertex; normalized on write. */
+	/** 4 or 8 weights per vertex, like `joints`; normalized on write. */
 	weights?: Numbers;
 	/** Triangle (or line / point) indices; omit for an unindexed list. */
 	indices?: Numbers;
@@ -172,20 +180,38 @@ function floats(name: string, data: Numbers, size: number, count?: number) {
 }
 
 /** Weights normalized to sum 1 per vertex (glTF requires it). */
-function normalizedWeights(data: Numbers, count: number): Float32Array {
-	const w = floats("weights", data, 4, count);
+function normalizedWeights(
+	data: Numbers,
+	count: number,
+	size: number,
+): Float32Array {
+	const w = floats("weights", data, size, count);
 	for (let v = 0; v < count; v++) {
-		const o = v * 4;
+		const o = v * size;
 		let sum = 0;
-		for (let i = 0; i < 4; i++) {
+		for (let i = 0; i < size; i++) {
 			if ((w[o + i] as number) < 0)
 				throw new Error(`weights: vertex ${v} has a negative weight`);
 			sum += w[o + i] as number;
 		}
 		if (sum <= 0) throw new Error(`weights: vertex ${v} has no weight`);
-		for (let i = 0; i < 4; i++) w[o + i] = (w[o + i] as number) / sum;
+		for (let i = 0; i < size; i++) w[o + i] = (w[o + i] as number) / sum;
 	}
 	return w;
+}
+
+/** Columns `from … from + 3` of an `size`-wide table: one glTF influence set. */
+function influenceSet<T extends Float32Array | Uint8Array | Uint16Array>(
+	data: T,
+	size: number,
+	from: number,
+): T {
+	const count = data.length / size;
+	const out = new (data.constructor as new (n: number) => T)(count * 4);
+	for (let v = 0; v < count; v++)
+		for (let k = 0; k < 4; k++)
+			out[v * 4 + k] = data[v * size + from + k] as number;
+	return out;
 }
 
 export class GltfDocument {
@@ -314,21 +340,30 @@ export class GltfDocument {
 		if (p.joints || p.weights) {
 			if (!p.joints || !p.weights)
 				throw new Error(`${label}: joints and weights go together`);
-			const j = floats(`${label} joints`, p.joints, 4, count);
+			const size = p.joints.length / count;
+			if (size !== 4 && size !== 8)
+				throw new Error(
+					`${label}: ${p.joints.length} joints for ${count} vertices (4 or 8 per vertex)`,
+				);
+			const j = floats(`${label} joints`, p.joints, size, count);
 			for (const v of j) {
 				if (!Number.isInteger(v) || v < 0)
 					throw new Error(`${label}: joint index ${v} is not a whole number`);
 				maxJoint = Math.max(maxJoint, v);
 			}
-			attributes.JOINTS_0 = this.bin.accessor(
-				maxJoint < 256 ? Uint8Array.from(j) : Uint16Array.from(j),
-				"VEC4",
-				{ target: "vertex" },
-			);
-			attributes.WEIGHTS_0 = vertex(
-				normalizedWeights(p.weights, count),
-				"VEC4",
-			);
+			const joints = maxJoint < 256 ? Uint8Array.from(j) : Uint16Array.from(j);
+			const weights = normalizedWeights(p.weights, count, size);
+			for (let set = 0; set < size / 4; set++) {
+				attributes[`JOINTS_${set}`] = this.bin.accessor(
+					influenceSet(joints, size, set * 4),
+					"VEC4",
+					{ target: "vertex" },
+				);
+				attributes[`WEIGHTS_${set}`] = vertex(
+					influenceSet(weights, size, set * 4),
+					"VEC4",
+				);
+			}
 		}
 		const json: Record<string, unknown> = { attributes };
 		if (p.indices) {
@@ -359,11 +394,11 @@ export class GltfDocument {
 						true,
 					),
 				};
-				if (t.normals)
-					target.NORMAL = this.targetAccessor(
-						floats(`${name} normals`, t.normals, 3, count),
-						false,
-					);
+				// Normal deltas that are all zero say nothing: leave them out.
+				const normals =
+					t.normals && floats(`${name} normals`, t.normals, 3, count);
+				if (normals?.some((x) => x !== 0))
+					target.NORMAL = this.targetAccessor(normals, false);
 				return target;
 			});
 		}
@@ -476,6 +511,7 @@ export class GltfDocument {
 				this.addNode({
 					name: j.name,
 					translation: skeleton.local(j.name),
+					...(j.orient ? { rotation: skeleton.localRotation(j.name) } : {}),
 					...(children.length ? { children } : {}),
 					...(j.extras ? { extras: j.extras } : {}),
 				}),
@@ -485,11 +521,22 @@ export class GltfDocument {
 		list.forEach((j, i) => {
 			joints.set(j.name, nodeOf.get(j.name) as NodeRef);
 			jointIndex.set(j.name, i);
+			// The inverse of the joint's rest transform: Rᵀ, then −Rᵀ·at.
 			const o = i * 16;
-			ibm[o] = ibm[o + 5] = ibm[o + 10] = ibm[o + 15] = 1;
-			ibm[o + 12] = 0 - j.at[0];
-			ibm[o + 13] = 0 - j.at[1];
-			ibm[o + 14] = 0 - j.at[2];
+			const q = skeleton.orientation(j.name);
+			const rt = [
+				quatRotate(quatConjugate(q), [1, 0, 0]),
+				quatRotate(quatConjugate(q), [0, 1, 0]),
+				quatRotate(quatConjugate(q), [0, 0, 1]),
+			];
+			for (let c = 0; c < 3; c++)
+				for (let r = 0; r < 3; r++)
+					ibm[o + c * 4 + r] = ((rt[c] as Vec3)[r] as number) + 0; // no -0
+			const t = quatRotate(quatConjugate(q), j.at);
+			ibm[o + 12] = 0 - t[0];
+			ibm[o + 13] = 0 - t[1];
+			ibm[o + 14] = 0 - t[2];
+			ibm[o + 15] = 1;
 		});
 		const roots = list
 			.filter((j) => j.parent === undefined)

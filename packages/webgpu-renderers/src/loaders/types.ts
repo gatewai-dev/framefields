@@ -1,5 +1,32 @@
 import type { Mat4, Vec3 } from "../math3d/index.js";
 
+/**
+ * One morph target's deltas. Dense: 3 floats per vertex. Sparse (with
+ * `indices`): 3 floats per listed vertex, every other vertex unmoved.
+ */
+export interface MorphTarget3D {
+	positions?: Float32Array;
+	normals?: Float32Array;
+	/** The moved vertices, ascending; absent for dense deltas. */
+	indices?: Uint32Array;
+}
+
+/** A morph target's position (or normal) deltas as a dense array. */
+export function denseMorphDeltas(
+	target: MorphTarget3D,
+	vertexCount: number,
+	kind: "positions" | "normals" = "positions",
+): Float32Array {
+	const data = target[kind];
+	if (!target.indices) return data ?? new Float32Array(vertexCount * 3);
+	const out = new Float32Array(vertexCount * 3);
+	if (data)
+		target.indices.forEach((v, i) => {
+			out.set(data.subarray(i * 3, i * 3 + 3), v * 3);
+		});
+	return out;
+}
+
 export interface Mesh3DData {
 	id?: string;
 	name?: string;
@@ -7,7 +34,7 @@ export interface Mesh3DData {
 	normals: Float32Array; // 3 floats per vertex (nx, ny, nz)
 	uvs: Float32Array; // 2 floats per vertex (u, v), for the base color map
 	/** Object-space morph deltas, applied before skinning. */
-	morphTargets?: { positions?: Float32Array; normals?: Float32Array }[];
+	morphTargets?: MorphTarget3D[];
 	/** Default morph weights for this mesh instance. */
 	morphWeights?: number[];
 	/** Morph target names (glTF mesh `extras.targetNames`), one per target. */
@@ -27,6 +54,9 @@ export interface Mesh3DData {
 	// Skinned Mesh / Skeletal Animation attributes
 	jointIndices?: Float32Array; // 4 bone indices per vertex
 	jointWeights?: Float32Array; // 4 normalized weights per vertex (sum = 1.0)
+	/** A second set of 4 influences per vertex (glTF JOINTS_1 / WEIGHTS_1): up to 8 in all, the weights of both sets summing to 1. */
+	jointIndices1?: Float32Array;
+	jointWeights1?: Float32Array;
 	materialName?: string;
 	/** Scene node that places this mesh (Model3DData.nodes); its world matrix applies unless the mesh is skinned. */
 	node?: number;

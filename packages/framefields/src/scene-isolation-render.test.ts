@@ -87,4 +87,49 @@ describe("3D scenes in a sequence", () => {
 		expect(both.r).toBeGreaterThan(50);
 		expect(both.b).toBeGreaterThan(50);
 	});
+
+	it("paints a gradient background behind its 3D scene", async () => {
+		// The scene's own composition used to take the gradient string as its
+		// clear color, which is not a color, and cleared to black.
+		const comp = new Composition({
+			width: 200,
+			height: 200,
+			fps: 30,
+			durationFrames: 1,
+			backgroundColor: "#000000",
+		});
+		comp.add(
+			Layer.box({
+				width: 200,
+				height: 200,
+				background: "linear-gradient(180deg, #ff0000 0%, #ff0000 100%)",
+				children: [
+					Layer.camera({
+						x: 100,
+						y: 100,
+						z: -400,
+						targetX: 100,
+						targetY: 100,
+						targetZ: 0,
+					}),
+					Layer3D.sphere({
+						x: 100,
+						y: 100,
+						z: 0,
+						radius: 20,
+						color: "#ffffff",
+					}),
+				],
+			}),
+		);
+		const png = await comp.renderFrame({ frame: 0 });
+		const img = await loadImage(png);
+		const canvas = new Canvas(img.width, img.height);
+		const ctx = canvas.getContext("2d");
+		ctx.drawImage(img, 0, 0);
+		const [r, g, b] = ctx.getImageData(10, 10, 1, 1).data;
+		expect(r).toBeGreaterThan(240);
+		expect(g).toBeLessThan(15);
+		expect(b).toBeLessThan(15);
+	});
 });

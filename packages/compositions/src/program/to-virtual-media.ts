@@ -19,6 +19,7 @@ import {
 	getActiveMediaMetadata,
 	MediaTimeRemapInputSchema,
 	type MediaTimeSignalRemap,
+	parseCssColor,
 	type ResolvedMediaTimeRemap,
 	type VirtualMediaData,
 	validateMediaTimeRemap,
@@ -271,6 +272,34 @@ function nodeToVirtualMedia(
 			const frames =
 				nodeDuration ?? Math.round(((compDurationMs ?? 10000) / 1000) * fps);
 			const durationMs = (frames / fps) * 1000;
+			// A plain color clears the scene; any other background (a gradient,
+			// an image) is the scene's first layer, so its 3D passes see it.
+			const background =
+				typeof node.background === "string" ? node.background : undefined;
+			const clear =
+				background && parseCssColor(background) ? background : undefined;
+			if (background && !clear) {
+				children.unshift(
+					nodeToVirtualMedia(
+						{
+							kind: "box",
+							id: `${node.id ?? "scene"}-background`,
+							position: "absolute",
+							x: 0,
+							y: 0,
+							width: node.width as number,
+							height: node.height as number,
+							background,
+						} as LayoutNode,
+						resolveMedia,
+						fps,
+						0,
+						compDurationMs,
+						frames,
+						resolveSignal,
+					),
+				);
+			}
 			media = {
 				metadata: {
 					width: node.width as number,
@@ -286,9 +315,7 @@ function nodeToVirtualMedia(
 					mode: "Video",
 					dataType: "Video",
 					volume: 1,
-					...(typeof node.background === "string" && {
-						backgroundColor: node.background,
-					}),
+					...(clear && { backgroundColor: clear }),
 				},
 				children,
 			} as unknown as VirtualMediaData;

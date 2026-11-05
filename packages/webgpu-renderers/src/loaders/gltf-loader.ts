@@ -9,6 +9,7 @@ import type {
 	AnimationClip3D,
 	LoadModelOptions,
 	Material3D,
+	MaterialSurface,
 	Model3DData,
 	ModelNode3D,
 	NodeAnimationTrack3D,
@@ -176,6 +177,29 @@ interface GltfMaterial {
 		KHR_materials_emissive_strength?: { emissiveStrength?: number };
 		/** VRM 1.0 toon material: the base is lit flat, the shadowed side tinted by shadeColorFactor. */
 		VRMC_materials_mtoon?: { shadeColorFactor?: [number, number, number] };
+		KHR_materials_clearcoat?: {
+			clearcoatFactor?: number;
+			clearcoatRoughnessFactor?: number;
+		};
+		KHR_materials_sheen?: {
+			sheenColorFactor?: [number, number, number];
+			sheenRoughnessFactor?: number;
+		};
+		KHR_materials_anisotropy?: {
+			anisotropyStrength?: number;
+			anisotropyRotation?: number;
+		};
+		KHR_materials_iridescence?: {
+			iridescenceFactor?: number;
+			iridescenceIor?: number;
+			iridescenceThicknessMinimum?: number;
+			iridescenceThicknessMaximum?: number;
+		};
+	};
+	extras?: {
+		framefields?: {
+			subsurface?: { factor?: number; color?: [number, number, number] };
+		};
 	};
 }
 
@@ -264,6 +288,10 @@ interface GltfDocument {
 const SUPPORTED_REQUIRED_EXTENSIONS = new Set([
 	"KHR_materials_unlit",
 	"KHR_materials_emissive_strength",
+	"KHR_materials_clearcoat",
+	"KHR_materials_sheen",
+	"KHR_materials_anisotropy",
+	"KHR_materials_iridescence",
 	"KHR_texture_transform",
 	"KHR_texture_basisu",
 	"EXT_texture_webp",
@@ -891,6 +919,8 @@ export class GltfLoader {
 			material.emissiveStrength =
 				mat.extensions?.KHR_materials_emissive_strength?.emissiveStrength ?? 1;
 		}
+		const surface = materialSurface(mat);
+		if (surface) material.surface = surface;
 		const mtoon = mat.extensions?.VRMC_materials_mtoon;
 		if (mtoon) {
 			material.shading = "toon";
@@ -1390,6 +1420,50 @@ export function loadGLB(
 	options: LoadModelOptions = {},
 ): Model3DData {
 	return GltfLoader.load(srcOrData, options);
+}
+
+/** The layered lobes a glTF material's extensions describe (display colors, degrees). */
+function materialSurface(mat: GltfMaterial): MaterialSurface | undefined {
+	const ext = mat.extensions;
+	const out: MaterialSurface = {};
+	const display = (c: [number, number, number]): [number, number, number] => [
+		linearToSrgb(c[0]),
+		linearToSrgb(c[1]),
+		linearToSrgb(c[2]),
+	];
+	const cc = ext?.KHR_materials_clearcoat;
+	if (cc && (cc.clearcoatFactor ?? 0) > 0) {
+		out.clearcoat = cc.clearcoatFactor;
+		out.clearcoatRoughness = cc.clearcoatRoughnessFactor ?? 0;
+	}
+	const sh = ext?.KHR_materials_sheen;
+	if (sh) {
+		const c = sh.sheenColorFactor ?? [0, 0, 0];
+		const peak = Math.max(c[0], c[1], c[2]);
+		if (peak > 0) {
+			// The lobe takes a strength and a tint; glTF folds both into one color.
+			out.sheen = Math.min(1, peak);
+			out.sheenColor = display([c[0] / peak, c[1] / peak, c[2] / peak]);
+			out.sheenRoughness = sh.sheenRoughnessFactor ?? 0;
+		}
+	}
+	const an = ext?.KHR_materials_anisotropy;
+	if (an && (an.anisotropyStrength ?? 0) > 0) {
+		out.anisotropy = an.anisotropyStrength;
+		out.anisotropyRotation = ((an.anisotropyRotation ?? 0) * 180) / Math.PI;
+	}
+	const ir = ext?.KHR_materials_iridescence;
+	if (ir && (ir.iridescenceFactor ?? 0) > 0) {
+		out.iridescence = ir.iridescenceFactor;
+		out.iridescenceIor = ir.iridescenceIor ?? 1.3;
+		out.iridescenceThickness = ir.iridescenceThicknessMaximum ?? 400;
+	}
+	const ss = mat.extras?.framefields?.subsurface;
+	if (ss && (ss.factor ?? 0) > 0) {
+		out.subsurface = ss.factor;
+		out.subsurfaceColor = display(ss.color ?? [1, 0.2, 0.1]);
+	}
+	return Object.keys(out).length ? out : undefined;
 }
 
 function linearToSrgb(c: number): number {

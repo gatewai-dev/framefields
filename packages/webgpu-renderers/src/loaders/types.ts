@@ -77,6 +77,30 @@ export interface Material3D {
 	occlusionStrength?: number;
 	/** Encoded emissive color map (multiplies `emissive`). */
 	emissiveTextureBuffer?: Uint8Array;
+	/** Layered shading lobes from the file's material extensions (display colors, degrees). */
+	surface?: MaterialSurface;
+}
+
+/**
+ * Physical lobes a model file's material asks for, in the units layers use:
+ * KHR_materials_clearcoat / _sheen / _anisotropy / _iridescence, and
+ * subsurface from `extras.framefields.subsurface` (glTF has no skin lobe).
+ */
+export interface MaterialSurface {
+	clearcoat?: number;
+	clearcoatRoughness?: number;
+	sheen?: number;
+	sheenColor?: [number, number, number];
+	sheenRoughness?: number;
+	anisotropy?: number;
+	/** Degrees. */
+	anisotropyRotation?: number;
+	iridescence?: number;
+	iridescenceIor?: number;
+	/** Film thickness, nm. */
+	iridescenceThickness?: number;
+	subsurface?: number;
+	subsurfaceColor?: [number, number, number];
 }
 
 /** A scene-graph node: its rest transform and parent (glTF node semantics). */

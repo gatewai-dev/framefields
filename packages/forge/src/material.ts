@@ -65,6 +65,13 @@ export interface MaterialSpec {
 		| { factor: number; ior?: number; thickness?: [number, number] };
 	/** Brushed / combed highlights: strength 0..1, rotation in degrees. */
 	anisotropy?: { strength: number; rotation?: number };
+	/**
+	 * Light scattering under the surface (skin, wax, jade, leaves): strength
+	 * 0..1 and the scattered color (display sRGB). glTF has no ratified
+	 * lobe for it, so it is written to `extras.framefields.subsurface`,
+	 * which framefields renders and other viewers ignore.
+	 */
+	subsurface?: number | { factor: number; color?: ColorInput };
 	/** Free data for other tools (glTF `extras`). */
 	extras?: Record<string, unknown>;
 }
@@ -146,7 +153,24 @@ export function materialJson(m: MaterialSpec): MaterialJson {
 			json.alphaCutoff = m.alphaCutoff;
 	}
 	if (m.doubleSided) json.doubleSided = true;
-	if (m.extras) json.extras = m.extras;
+	const extras: Record<string, unknown> = { ...(m.extras ?? {}) };
+	if (m.subsurface !== undefined) {
+		const ss =
+			typeof m.subsurface === "number"
+				? { factor: m.subsurface }
+				: m.subsurface;
+		check("subsurface", ss.factor);
+		const own =
+			(extras.framefields as Record<string, unknown> | undefined) ?? {};
+		extras.framefields = {
+			...own,
+			subsurface: {
+				factor: ss.factor,
+				color: linearRgb(ss.color ?? "#ff6a4a"),
+			},
+		};
+	}
+	if (Object.keys(extras).length) json.extras = extras;
 
 	const ext: Record<string, Record<string, unknown>> = {};
 	if (m.unlit) ext.KHR_materials_unlit = {};

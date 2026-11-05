@@ -29,6 +29,8 @@ interface SceneOptions {
 	sphere: SphereOptions;
 	/** Key light direction, from the light toward the sphere (y down). */
 	keyFrom?: [number, number, number];
+	/** Key light intensity. Default 2.2. */
+	keyIntensity?: number;
 	environment?: Parameters<typeof Layer.environment>;
 }
 
@@ -58,7 +60,7 @@ async function render(o: SceneOptions): Promise<Uint8ClampedArray> {
 			targetX: CX,
 			targetY: CY,
 			targetZ: 0,
-			intensity: 2.2,
+			intensity: o.keyIntensity ?? 2.2,
 			color: "#ffffff",
 		}),
 		Layer3D.sphere({
@@ -214,6 +216,25 @@ describe("Phase 2: Substrate multi-lobe materials", () => {
 		expect(luma(after)).toBeGreaterThan(luma(before) + 4);
 		// The bleed carries the subsurface tint: red rises more than blue.
 		expect(after[0] - before[0]).toBeGreaterThan(after[2] - before[2]);
+	});
+
+	it("subsurface moves light past the terminator instead of adding it (front-lit)", async () => {
+		const skin: SphereOptions = { color: "#e2bfa5", roughness: 0.6 };
+		const keyFrom: [number, number, number] = [0.6, -0.4, -1];
+		// Dim enough that tone mapping stays linear: its highlight compression
+		// would otherwise couple the channels.
+		const keyIntensity = 0.7;
+		const opaque = await render({ sphere: skin, keyFrom, keyIntensity });
+		const sss = await render({
+			sphere: { ...skin, subsurface: 0.8, subsurfaceColor: "#ff5a3c" },
+			keyFrom,
+			keyIntensity,
+		});
+		const disc = silhouette(opaque, sss);
+		// The core facing the light gives a little up; it never brightens.
+		const core = (img: typeof opaque) => luma(ringMean(img, disc, 0, 0.35));
+		expect(core(sss)).toBeLessThanOrEqual(core(opaque) + 0.5);
+		expect(core(sss)).toBeGreaterThan(core(opaque) - 25);
 	});
 
 	it("sheen lifts grazing angles more than the center (velvet rim)", async () => {

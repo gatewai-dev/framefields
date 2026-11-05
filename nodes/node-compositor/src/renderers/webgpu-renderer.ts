@@ -60,6 +60,7 @@ import {
 	Light3D,
 	type Light3DOptions,
 	type Mat4,
+	type MaterialSurface,
 	Matrix4Math,
 	type Mesh3DData,
 	type MeshCrowd,
@@ -587,7 +588,11 @@ function drawProjectedQuad(
 function surfaceProps(
 	target: Partial<CompositionNodeBase> | undefined,
 	lop: Partial<CompositionNodeBase>,
-	mat?: { emissive?: [number, number, number]; emissiveStrength?: number },
+	mat?: {
+		emissive?: [number, number, number];
+		emissiveStrength?: number;
+		surface?: MaterialSurface;
+	},
 ): {
 	emissive?: string | [number, number, number];
 	emissiveIntensity?: number;
@@ -599,9 +604,9 @@ function surfaceProps(
 	anisotropy?: number;
 	anisotropyRotation?: number;
 	subsurface?: number;
-	subsurfaceColor?: string;
+	subsurfaceColor?: string | [number, number, number];
 	sheen?: number;
-	sheenColor?: string;
+	sheenColor?: string | [number, number, number];
 	sheenRoughness?: number;
 	iridescence?: CompositionNodeBase["iridescence"];
 	iridescenceThickness?: number;
@@ -635,36 +640,39 @@ function surfaceProps(
 	if (lop.castShadow !== undefined) out.castShadow = lop.castShadow;
 	out.toon = target?.toon ?? lop.toon;
 	out.outline = target?.outline ?? lop.outline;
-	const clearcoat = target?.clearcoat ?? lop.clearcoat;
-	if (clearcoat !== undefined) out.clearcoat = clearcoat;
-	const clearcoatRoughness =
-		target?.clearcoatRoughness ?? lop.clearcoatRoughness;
-	if (clearcoatRoughness !== undefined)
-		out.clearcoatRoughness = clearcoatRoughness;
-	const anisotropy = target?.anisotropy ?? lop.anisotropy;
-	if (anisotropy !== undefined) out.anisotropy = anisotropy;
-	const anisotropyRotation =
-		target?.anisotropyRotation ?? lop.anisotropyRotation;
-	if (anisotropyRotation !== undefined)
-		out.anisotropyRotation = anisotropyRotation;
-	const subsurface = target?.subsurface ?? lop.subsurface;
-	if (subsurface !== undefined) out.subsurface = subsurface;
-	const subsurfaceColor = target?.subsurfaceColor ?? lop.subsurfaceColor;
-	if (subsurfaceColor !== undefined) out.subsurfaceColor = subsurfaceColor;
-	const sheen = target?.sheen ?? lop.sheen;
-	if (sheen !== undefined) out.sheen = sheen;
-	const sheenColor = target?.sheenColor ?? lop.sheenColor;
-	if (sheenColor !== undefined) out.sheenColor = sheenColor;
-	const sheenRoughness = target?.sheenRoughness ?? lop.sheenRoughness;
-	if (sheenRoughness !== undefined) out.sheenRoughness = sheenRoughness;
-	const iridescence = target?.iridescence ?? lop.iridescence;
-	if (iridescence !== undefined) out.iridescence = iridescence;
-	const iridescenceThickness =
-		target?.iridescenceThickness ?? lop.iridescenceThickness;
-	if (iridescenceThickness !== undefined)
-		out.iridescenceThickness = iridescenceThickness;
-	const iridescenceIor = target?.iridescenceIor ?? lop.iridescenceIor;
-	if (iridescenceIor !== undefined) out.iridescenceIor = iridescenceIor;
+	// Layer settings win; the model file's own material extensions fill in.
+	const file = mat?.surface;
+	const lobes = {
+		clearcoat: target?.clearcoat ?? lop.clearcoat ?? file?.clearcoat,
+		clearcoatRoughness:
+			target?.clearcoatRoughness ??
+			lop.clearcoatRoughness ??
+			file?.clearcoatRoughness,
+		anisotropy: target?.anisotropy ?? lop.anisotropy ?? file?.anisotropy,
+		anisotropyRotation:
+			target?.anisotropyRotation ??
+			lop.anisotropyRotation ??
+			file?.anisotropyRotation,
+		subsurface: target?.subsurface ?? lop.subsurface ?? file?.subsurface,
+		subsurfaceColor:
+			target?.subsurfaceColor ?? lop.subsurfaceColor ?? file?.subsurfaceColor,
+		sheen: target?.sheen ?? lop.sheen ?? file?.sheen,
+		sheenColor: target?.sheenColor ?? lop.sheenColor ?? file?.sheenColor,
+		sheenRoughness:
+			target?.sheenRoughness ?? lop.sheenRoughness ?? file?.sheenRoughness,
+		iridescence: target?.iridescence ?? lop.iridescence ?? file?.iridescence,
+		iridescenceThickness:
+			target?.iridescenceThickness ??
+			lop.iridescenceThickness ??
+			file?.iridescenceThickness,
+		iridescenceIor:
+			target?.iridescenceIor ?? lop.iridescenceIor ?? file?.iridescenceIor,
+	};
+	for (const [key, value] of Object.entries(lobes) as [
+		keyof typeof lobes,
+		never,
+	][])
+		if (value !== undefined) out[key] = value;
 	const triplanar = target?.triplanar ?? lop.triplanar;
 	if (triplanar !== undefined) out.triplanar = triplanar;
 	const triplanarScale = target?.triplanarScale ?? lop.triplanarScale;

@@ -831,22 +831,26 @@ fn shadePhysicalSubstrate(
 
         var directLobe = diff * nDotL + spec * select(0.0, nDotLSpec, nDotL > 0.0);
 
-        // Subsurface wrap diffuse + terminator bleed + translucent back-scattering
+        // Subsurface scattering (skin, wax, jade): light enters, scatters and
+        // leaves past where it entered. Each channel's lit region wraps past
+        // the terminator by how far that channel scatters (the subsurface
+        // color: red farthest in skin), normalized so the wrap moves energy
+        // rather than adding it: the form keeps its shading and only the
+        // shadow edge softens and warms.
         if (sssWeight > 0.001) {
-            let wrap = 0.45 * sssWeight;
-            let wrapNdotL = max(0.0, (rawNdotL + wrap) / ((1.0 + wrap) * (1.0 + wrap)));
-            let terminator = smoothstep(0.0, wrap + 0.3, max(0.0, rawNdotL + wrap)) * (1.0 - nDotL);
-            let wrapDiff = diffuseColor * wrapNdotL + sssColor * (diffuseColor * 0.6 + vec3<f32>(0.4)) * terminator * sssWeight * 0.55;
-            let backL = normalize(ls.L + N * 0.35);
+            let w = sssWeight * mix(vec3<f32>(0.06), vec3<f32>(0.75), sssColor);
+            let onePlusW = vec3<f32>(1.0) + w;
+            let wrapped = max(vec3<f32>(0.0), vec3<f32>(rawNdotL) + w) / (onePlusW * onePlusW);
             // Light crossing a convex body travels far through its middle and
             // briefly near its silhouette: how closely the exit normal follows
             // the light's travel direction stands in for that chord length, so
-            // back-lit solids glow at the rim and stay dense at the core.
+            // thin parts (ears, nostrils, fingers) glow when back-lit.
+            let backL = normalize(ls.L + N * 0.35);
             let chord = clamp(dot(N, -ls.L), 0.0, 1.0);
-            let transmittance = exp(-chord * mix(6.0, 1.5, sssWeight));
-            let backTrans = pow(clamp(dot(V, -backL), 0.0, 1.0), 3.0) * transmittance * sssWeight * 0.65;
-            let sssContrib = (wrapDiff + sssColor * backTrans) / PI;
-            directLobe = mix(diff * nDotL, sssContrib, sssWeight) + spec * select(0.0, nDotLSpec, nDotL > 0.0);
+            let transmittance = exp(-chord * mix(8.0, 3.0, sssWeight));
+            let backTrans = pow(clamp(dot(V, -backL), 0.0, 1.0), 3.0) * transmittance * 0.35;
+            let sssDiff = (vec3<f32>(1.0) - F) * diffuseColor * (wrapped + sssColor * backTrans) / PI;
+            directLobe = mix(diff * nDotL, sssDiff, sssWeight) + spec * select(0.0, nDotLSpec, nDotL > 0.0);
         }
 
         // Charlie cloth / velvet sheen lobe (Estevez & Kulla)
@@ -891,11 +895,7 @@ fn shadePhysicalSubstrate(
     let si = screenIndirectAt(worldPos);
     let specOcclusion = screenSpecularOcclusion(si, nDotV, r);
     let irradiance = screenAmbient(si, envIrradiance(N) + lights.ambientLinear.rgb);
-    var diffAmbient = diffuseColor * irradiance;
-    if (sssWeight > 0.001) {
-        let backIrradiance = envIrradiance(-N) * 0.35 + irradiance * 0.25;
-        diffAmbient += sssColor * (diffuseColor * 0.5 + vec3<f32>(0.5)) * backIrradiance * sssWeight * 0.45;
-    }
+    let diffAmbient = diffuseColor * irradiance;
     let specEnv = screenReflection(si, r, envRadiance(R_ibl, r) * specOcclusion) * envBrdfApprox(f0_ibl, r, nDotV);
     var iblTotal = diffAmbient + specEnv;
 

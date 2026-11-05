@@ -189,6 +189,32 @@ describe("GltfDocument", () => {
 		expect(report.errors).toBe(0);
 	});
 
+	it("writes layered lobes the engine loader reads back", () => {
+		const doc = new GltfDocument();
+		const material = doc.addMaterial({
+			color: "#e8cfb0",
+			clearcoat: { factor: 0.6, roughness: 0.1 },
+			sheen: { color: "#ffd9c0", roughness: 0.4 },
+			anisotropy: { strength: 0.5, rotation: 30 },
+			iridescence: { factor: 0.7, ior: 1.4, thickness: [100, 380] },
+			subsurface: { factor: 0.8, color: "#ff5040" },
+		});
+		doc.addNode({
+			mesh: doc.addMesh({ primitives: [{ ...strip(1, 10), material }] }),
+		});
+		const surface = Object.values(parseGLB(doc.toGlb()).materials)[0]?.surface;
+		expect(surface?.clearcoat).toBeCloseTo(0.6);
+		expect(surface?.clearcoatRoughness).toBeCloseTo(0.1);
+		expect(surface?.sheen).toBeCloseTo(1);
+		// Display colors come back as written.
+		expect(surface?.sheenColor?.[0]).toBeCloseTo(1, 2);
+		expect(surface?.sheenColor?.[1]).toBeCloseTo(0xd9 / 0xff, 2);
+		expect(surface?.anisotropyRotation).toBeCloseTo(30);
+		expect(surface?.iridescenceThickness).toBeCloseTo(380);
+		expect(surface?.subsurface).toBeCloseTo(0.8);
+		expect(surface?.subsurfaceColor?.[1]).toBeCloseTo(0x50 / 0xff, 2);
+	});
+
 	it("refuses inconsistent input where it is given", () => {
 		const doc = new GltfDocument();
 		expect(() =>

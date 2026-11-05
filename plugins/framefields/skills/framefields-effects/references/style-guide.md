@@ -1,6 +1,6 @@
 # Style guide: which look for which request
 
-Use this guide to turn what someone asks for ("make it look like a VHS tape", "8-bit", "liquid logo") into the framefields features that produce it. Start from a `Styles.*` preset when one fits, then tune it or add layers. Every preset returns an effect stack: `layer.withEffects(Styles.vhs())`. Effects attach to media layers (video, image, SVG, particles, VFX). To stylize a whole scene, apply the effects to the composition's master pass (see SKILL.md "Whole-Composition Master Emulsion").
+Use this guide to turn what someone asks for ("make it look like a VHS tape", "8-bit", "liquid logo") into the framefields features that produce it. Start from a `Styles.*` preset when one fits, then tune it or add layers. Every preset returns an effect stack: `layer.withEffects(Styles.vhs())`. Effects attach to media layers (video, image, SVG, particles, VFX). To stylize a whole scene, apply the effects to the whole composition with `comp.apply` (SKILL.md, "Attaching effects").
 
 ## Visual styles
 

@@ -5,10 +5,7 @@ description: On-device computer vision in framefields — object detection and t
 
 # framefields-vision
 
-## Setup
-Import from [`framefields`](https://www.npmjs.com/package/framefields). If the project has no framefields setup yet, follow the `framefields` skill first. Effects that consume vision (blur, grading, outlines) are in `framefields-effects`; rendering and frame checks in `framefields-render`.
-
-Vision runs ONNX models locally. Nothing is sent anywhere. Models download on first use from pinned Hugging Face revisions, are checked against their exact size and SHA-256, and are cached in `$FRAMEFIELDS_MODELS_DIR` (default `~/.cache/framefields/models`).
+Vision runs ONNX models locally from [`framefields`](https://www.npmjs.com/package/framefields); nothing is sent anywhere. Models download on first use from pinned Hugging Face revisions, are checked by size and SHA-256, and are cached in `$FRAMEFIELDS_MODELS_DIR` (default `~/.cache/framefields/models`). Effects that consume vision are in `framefields-effects`; frame checks in `framefields-render`.
 
 ## Which API
 
@@ -34,7 +31,7 @@ Vision runs ONNX models locally. Nothing is sent anywhere. Models download on fi
 About 480 MB for all of them. `variant: "t" | "s" | "m"` picks the size.
 
 ### SAM 2.1 Tiny and Small (`sam2`, Apache-2.0)
-Meta SAM 2.1 Hiera checkpoints in Diffusion Studio's fp16 video exports, with the same five graphs and memory bank (the prompted frame, the 6 latest frames, 16 object pointers). Point and box prompts only. Pick one with `sam2: { model }`:
+Meta SAM 2.1 Hiera checkpoints (Diffusion Studio fp16 video exports; memory of the prompted frame, the 6 latest frames, 16 object pointers). Point and box prompts only. `sam2: { model }`:
 
 | `model` | Input | Image encoder | Memory attention | Total | Per frame, M1 Pro WebGPU |
 | --- | --- | --- | --- | --- | --- |
@@ -55,7 +52,7 @@ Video tracking at 1008², plus text ("concept") selection. Only the image encode
 
 That is about 1.75 GB on a GPU and 1.2 GB on the CPU. The text graphs load only for text prompts.
 
-Why fp16 on the GPU, measured for one 1008² frame on an M1 Pro: WebGPU fp16 took 3.65 s, q4f16 4.43 s, q4 6.63 s, and int8 140 s (its ops fall back to the CPU). fp16 is also the closest to full precision. On WebGPU, 4-bit weights are dequantized before every matmul, so they save disk and memory, not time. The backend-to-precision table is `SAM3_ENCODER` in `framefields/sam`; `sam3.precision: "fp16" | "q4f16" | "q4"` overrides it.
+fp16 is the fastest and most precise on WebGPU (one 1008² frame on an M1 Pro: fp16 3.65 s, q4f16 4.43 s, q4 6.63 s; 4-bit saves memory, not time). `SAM3_ENCODER` in `framefields/sam` maps backend to precision; `sam3.precision: "fp16" | "q4f16" | "q4"` overrides it.
 
 ## Backends
 
@@ -117,8 +114,6 @@ At render time:
 
 ## Clip vision (`comp.vision`)
 
-Use `comp.vision` when something must know the motion **at** a frame:
-
 ```typescript
 const dancer = comp.vision("assets/dancer.mp4", { startFrame: 0 });   // pose + silhouette (person)
 const person = dancer.person.place({ width: W, height: H, fit: "cover" });
@@ -128,8 +123,7 @@ person.sample(48, x, y);           // silhouette alpha + inward gradient
 await dancer.ready(0);             // analyse a frame (or ready(0, 120)) to read it at build time
 ```
 
-- The composition analyses each frame's clips just before drawing it, in every render path and the preview. Nothing runs up front.
-- Results persist in Node, keyed by the file and settings (`cacheDir: false` opts out). Later renders and renders after a preview are instant.
+- Each frame is analysed just before it draws, in every render path and the preview; nothing runs up front. Results persist, keyed by file and settings (`cacheDir: false` opts out), so later renders are instant.
 - Options: `startFrame` / `trimStartSec` (where the clip plays; pass `trimStartSec` yourself when you give a path instead of the layer), `fps` (analysis rate), `pose`, `mask`, `maskCell` (silhouette grid, default 8 px), `smoothing` (frames, default 2), `variant`. A lost person's last pose is held for up to a second.
 - `depth: true` adds each frame's relative depth (Depth Anything V2 Small; 0 far … 1 near, per-frame range, not metric) at about 924×518 for 16:9. A depth clip tracks no pose or silhouette unless `pose` / `mask` ask. Read it with `clip.depthMap(frame)` (`{ data, width, height }`), or draw it with `withVision({ mode: "depth" })` and lift a 3D layer with it via `withRelief` (framefields-compose). Depth frames persist one file each, keyed by the file only, so other options never invalidate them. About 0.4 s per frame on an M1 Pro GPU.
 - A `withVision({ mode: "matte" })` cutout (or `mask` / `crop`) of the same clip reuses the clip's subject for the frame being drawn: segmented once, aligned with the plate. Layers with `classes`, `keyBackground`, `matteSource: "selfie"` or different model settings keep their own pass. With several `comp.vision` clips of one source, the matte links to the **first one created**.
@@ -147,15 +141,15 @@ Detection picks "the largest person". Use SAM when the subject is **a specific**
 | Download | ~83 MB | ~112 MB | ~1.75 GB (GPU) / ~1.2 GB (CPU) |
 | Weights license | Apache-2.0 | Apache-2.0 | Meta SAM License |
 
-**Choosing.** Decide from the shot and the request, and say which model you chose and why:
-- **SAM 2.1 Tiny:** one subject you can point at, which is large in frame (a close-up, a dancer, a speaker). It is the fastest by far; on such subjects its masks match Small's closely (IoU 0.98 on a close-up).
-- **SAM 2.1 Small:** still one subject from points or a box, but small in frame, thin or detailed (a ball, a hand, a bike, hair, a distant runner), or a shot with cuts or look-alikes where Tiny latches onto a similar object. About 4× Tiny's cost.
-- **SAM 3:** the subject has to be found from a description, or several people or objects must be tracked at once. It is the most expensive, so trim to the stretch you need.
-- Unsure between Tiny and Small: prototype with Tiny on a short trimmed stretch, inspect the masks, and switch to Small if edges, small parts or identity fail.
+**Choosing** (tell the user which and why):
+- **Tiny:** one subject you can point at, large in frame (close-up, dancer, speaker). Fastest; masks match Small's on such shots (IoU 0.98).
+- **Small:** one subject that is small, thin or detailed (ball, hand, hair, distant runner), or cuts and look-alikes that fool Tiny. ~4× Tiny's cost.
+- **SAM 3:** the subject must be found from a description, or several must be tracked. Most expensive: trim to the stretch you need.
+- Unsure: prototype with Tiny on a short stretch, switch to Small if edges, small parts or identity fail.
 
 ### License
 
-The SAM code ships in `framefields`, Apache-2.0 like the rest of it, and loads only when a clip uses `sam2` or `sam3`; nothing extra to install. SAM 2.1's weights are Apache-2.0 and need no acceptance. SAM 3's weights are under Meta's SAM License, so `sam3` needs explicit acceptance before anything downloads: `acceptSamLicense: true` on the clip (or `acceptLicense: true` inside `sam3`), or `FRAMEFIELDS_ACCEPT_SAM_LICENSE=1`. Ask the user before accepting it on their behalf. Import `Sam2Tracker` / `Sam3Tracker` from `framefields/sam` when you drive SAM directly.
+SAM code ships in `framefields` (Apache-2.0) and loads only when a clip uses it. SAM 2.1 weights are Apache-2.0. SAM 3 weights are under Meta's SAM License and need explicit acceptance before download: `acceptSamLicense: true` on the clip (or `acceptLicense: true` inside `sam3`), or `FRAMEFIELDS_ACCEPT_SAM_LICENSE=1`. Ask the user before accepting it on their behalf. Import `Sam2Tracker` / `Sam3Tracker` from `framefields/sam` when you drive SAM directly.
 
 ### Prompts
 
@@ -218,10 +212,10 @@ Layer.box({
 
 - **Coordinates** are normalized to the source image, before layout. Labels: `1` foreground, `0` background, `2` / `3` box corners.
 - **Prompt frames** are increasing integers on the source analysis clock, before trimming. SAM propagates forward from the first prompt; earlier frames are empty and are not analysed. To track only a stretch of a long clip, trim the layer and prompt on the stretch's first source frame.
-- **Text prompts are concepts.** Name what sets the target apart in that shot. In a crowd where everyone shows a white collar, "man in white shirt" picks a student. In the same film's wide shot, where only he has no blazer, it picks him. Check the first frame of every prompt.
+- **Text prompts are concepts.** Name what sets the target apart *in that shot* ("man in white shirt" fails where every student shows a white collar). Check the first frame of every prompt.
 - **Several objects** (`maxObjects`): one encoder pass per frame serves every track, and each track keeps its own memory. Where tracks overlap, the more confident one keeps the pixel. `signals.objects.get(k)` and `signals.masks` carry tracks `1…N`; the clip's matte and subject are all tracks merged. A later text prompt re-selects every track (IDs renumber); a points prompt with `object: k` seeds or corrects track `k` only (the next unused ID adds one).
-- **One entity for a whole group** (`merge: true`): every instance the text matches (up to `maxObjects`, default all) becomes one seed mask, tracked as one object with one memory. Use it when you need the group's mask or matte (cut out a crowd, grade everyone but the hero), not each member's box; it costs the same as one track however many match (4.1 s per frame for a whole crowd of students on an M1 Pro). Use `maxObjects` without `merge` when each member needs its own track, at about 0.7 s per member per frame.
-- **People who appear later** (`redetect: N`): a text selection is made once, on the prompt frame; anyone missed there, uncovered later, or lost by the tracker never joins on their own. `redetect: N` runs the text again every N frames and adds what no track covers: into the one object with `merge`, as new track IDs up to `maxObjects` otherwise. On a 4 s close-up where the man in front bends away, a merged "students in black blazers" group kept 46–61% of the frame through the end instead of falling to 22–33%. Each pass costs about as much as the prompt frame's selection (about 50 s on an M1 Pro), so pick N for how fast people enter the shot (10–25 frames), not 1.
+- **One entity for a whole group** (`merge: true`): every match (up to `maxObjects`, default all) becomes one object with one memory, at the cost of one track. Use it for a group's mask or matte (cut out a crowd); use `maxObjects` without `merge` when each member needs its own track (~0.7 s per member per frame).
+- **People who appear later** (`redetect: N`): text selects once, on the prompt frame. `redetect: N` re-runs it every N frames and adds what no track covers (into the merged object, or as new IDs up to `maxObjects`). Each pass costs about a prompt-frame selection (~50 s on an M1 Pro): pick N by how fast people enter (10–25), not 1.
 - Two text-prompted clips of one shot can claim the same person (a "student" track on the hero). Prefer prompts that exclude each other.
 - **Corrections and cuts.** A prompt on a later frame resets that object's memory. Re-prompt after hard cuts or long occlusions; appearance tracking cannot guarantee re-identification.
 - An explicit selection never falls back to another detected person. If its mask cannot align with a matte layer (a different aspect ratio), the render fails. Matte at the source aspect ratio and crop afterwards.
@@ -238,15 +232,14 @@ Read the request's number before writing any vision code.
 | **A group** of look-alikes as a whole: "the students", "all dancers", "everyone in black jackets", "the crowd", "the cars" | one entity | **one** `comp.vision` clip, **one** text prompt, `merge: true` |
 | **Each member** separately: "box every student", "label each car", "count them" | N objects | one clip, one text prompt, `maxObjects: N` |
 
-- **Never select a group one member at a time.** One clip or detection per student, or several clips with the same or overlapping prompts, re-detect the same people. That gives duplicate and overlapping masks, members claimed twice or missed, and N times the cost. A group is always one prompt on one clip.
-- Plural wording is fine in the prompt itself: "students in black jackets" and "student in black jacket" selected the same group (87% of the frame either way). Grammatical number does not change which instances SAM 3 matches; `merge` decides whether they are one entity, and `maxObjects` whether they are separate tracks.
-- Name the group by what its members share and others lack ("in black jackets" excluded the main character in a white shirt). If the group still includes someone it shouldn't, describe the group more precisely; don't add a second clip to subtract them.
+- **Never select a group one member at a time.** Several clips with the same or overlapping prompts re-detect the same people: duplicate masks, members claimed twice or missed, N× the cost. A group is one prompt on one clip.
+- Grammatical number in the prompt doesn't matter; `merge` and `maxObjects` decide. Name what members share and others lack ("in black jackets"); if someone wrong is included, describe the group more precisely instead of adding a clip to subtract them.
 - A group plus a different individual (the crowd and the main character) is two clips with prompts that exclude each other: `merge` on the group, a single object for the individual.
 
 ### Cost and caching
 
 - Every SAM 3 clip in a process shares one image encoder and reuses its result per frame. Tracking the hero and the crowd of one source costs one encoder pass, not two.
-- Setup (loading the models, then text selection on the prompt frame) takes about 2 minutes on an M1 Pro. Measured there: a 20-frame stretch with 6 tracks (hero + 5 others) renders in about 5 minutes; a 15 s clip at 25 fps is estimated at about 55 minutes. A CUDA GPU should be much faster; the CPU image encoder is about 9× slower than WebGPU.
+- On an M1 Pro: ~2 min setup (models, text selection), then a 20-frame stretch with 6 tracks takes ~5 min; a 15 s clip at 25 fps ~55 min. CUDA is much faster; the CPU encoder ~9× slower than WebGPU.
 - Results persist like other clip vision, and the cache key includes every prompt, the model revisions and the encoder precision. Re-rendering after changing layout, colours or effects skips SAM entirely, so prototype prompts on a short trimmed stretch first.
 - Offline or CI: download the weights on a connected machine once, then copy `~/.cache/framefields/models`, or point `FRAMEFIELDS_MODELS_BASE_URL` at a mirror. `SAM_MODELS` (`framefields/sam`) lists every file with its URL, size and SHA-256.
 

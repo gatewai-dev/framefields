@@ -33,6 +33,7 @@ const AGENT_PLUGINS_SCHEMA =
 	"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json";
 const SKILL_NAMES = [
 	"framefields",
+	"framefields-cloud",
 	"framefields-compose",
 	"framefields-effects",
 	"framefields-render",

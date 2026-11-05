@@ -5,130 +5,75 @@ description: Apply, configure, and modulate WebGPU post-processing shaders, styl
 
 # framefields-effects
 
-## Setup
-Import everything from the [`framefields`](https://www.npmjs.com/package/framefields) npm package. If the project doesn't have framefields set up yet, follow the `framefields` skill first (install, project scaffold, first render).
+Effects are typed `Effect` classes imported from [`framefields`](https://www.npmjs.com/package/framefields) (grading, lens, texture, stylize, keying, temporal). Every prop takes a value or a `Signal`. No project yet: see the `framefields` skill.
 
-## Overview
-Effects are typed `Effect` classes (grading, lens, texture, stylize, keying, temporal). Every prop takes a static value or a `Signal`.
+**Look every prop up in [references/effects-catalog.md](references/effects-catalog.md) before setting it** (generated: every class, prop, default and range). Scales differ per effect, and a value on the wrong scale renders as nothing, without an error.
 
-**Before setting a prop, look it up in [references/effects-catalog.md](references/effects-catalog.md)**: the generated list of every class with its props, defaults and ranges. Scales differ between effects, and a value on the wrong scale renders as nothing.
-
----
-
-## Attaching Effects
-
-Four ways to attach effects:
-
-### 1. A layer (`withEffect` / `withEffects`)
-Any layer (`box`, `flex`, `shape`, `text`, `media`):
+## Attaching effects
 
 ```typescript
-import { Layer, Curves, Vignette, Blur, Pixelate } from "framefields";
+import { ApplyLUT, Blur, Crop, Curves, FilmGrain, Layer, Media, Vignette } from "framefields";
 
-// Media layer with color grade and lens effects
-const videoLayer = Layer.video("assets/footage.mp4", { fit: "cover" })
-  .withEffect(new Curves({
-    master: [{ x: 0, y: 0.05 }, { x: 0.5, y: 0.52 }, { x: 1, y: 0.95 }]
-  }))
-  .withEffect(new Vignette({ strength: 40, radius: 0.85, softness: 0.6 }))
-  .withEffect(new Blur({ strength: 8, blurType: "Gaussian" }));
+// 1. A layer (box, flex, shape, text, media): withEffect / withEffects
+Layer.video("assets/footage.mp4", { fit: "cover" })
+  .withEffect(new Curves({ master: [{ x: 0, y: 0.05 }, { x: 0.5, y: 0.52 }, { x: 1, y: 0.95 }] }))
+  .withEffect(new Vignette({ strength: 40, radius: 0.85, softness: 0.6 }));
 
-// Styled container box with blur
-const cardLayer = Layer.box({ width: 400, height: 300, background: "#1e1e24" })
-  .withEffect(new Blur({ strength: 12 }));
-
-// Kinetic text with pixelation
-const titleLayer = Layer.text("CYBERPUNK", { fontSize: 72 })
-  .withEffect(new Pixelate({ size: 8 }));
-```
-
-### 2. The whole composition (`comp.apply`)
-A grade or grain over everything rendered:
-```typescript
-import { Composition, FilmGrain, ColorBalance } from "framefields";
-
-const comp = new Composition({ width: 1920, height: 1080, fps: 30, durationMs: 10_000 });
-
-// Shared organic 35mm grain applied across titles, background video, and vector graphics
+// 2. The whole composition
 comp.apply(new FilmGrain({ strength: 18, size: 1.5, monochrome: true }));
 
-comp.apply(new ColorBalance({
-  shadows: { cyanRed: 4, yellowBlue: -6 },
-  highlights: { cyanRed: 2, yellowBlue: -4 },
-  preserveLuminosity: true,
-}));
-```
+// 3. A region (rectangle or tracked object) of a plate
+comp.section({ source: "assets/interview.mp4", x: 400, y: 200, width: 300, height: 300, borderRadius: 150,
+  effects: [new Blur({ strength: 25, blurType: "Gaussian" })] });
 
-### 3. A region (`comp.section` / `Layer.section`)
-Effects inside a rectangle (or a tracked object) of a plate:
-```typescript
-// Box blur on a tracked object or explicit bounding rectangle
-const blurredPlate = comp.section({
-  source: "assets/interview.mp4",
-  x: 400,
-  y: 200,
-  width: 300,
-  height: 300,
-  borderRadius: 150,
-  effects: [new Blur({ strength: 25, blurType: "Gaussian" })],
-});
-```
-
-### 4. Media chains (`Media`)
-Process a clip outside the layout tree:
-```typescript
-import { Media, ApplyLUT, Crop } from "framefields";
-
+// 4. A clip outside the layout tree
 const clip = Media.video("assets/raw_log.mp4")
-  .apply(new ApplyLUT({ lutUrl: "assets/luts/cinematic.cube", intensity: 1.0 }))
+  .apply(new ApplyLUT({ lutUrl: "assets/luts/cinematic.cube", intensity: 1 }))
   .apply(new Crop({ cropType: "rect", topPercentage: 10, heightPercentage: 80 }));
-
-const pngBuffer = await clip.renderFrame({ atMs: 1500 });
+await clip.renderFrame({ atMs: 1500 });
 ```
 
----
+## Effects
 
-## Effect Categories
+### Grading
+- **`Curves`**: master/RGB tone curves plus hue and saturation curves (`hueVsHue`, `hueVsSat`, `lumVsSat`, `satVsSat`).
+- **`ColorBalance`**: shadows/midtones/highlights shifts, `preserveLuminosity`.
+- **`Levels`**: black/white points and gamma, master or per channel.
+- **`SelectiveColor`**: CMYK-style adjustments per color range (reds … blacks).
+- **`GradientMap`**: gradient remap (`stops: [{ position: 0, color: "#000" }, { position: 1, color: "#FFF" }]`).
+- **`ShadowsHighlights`**: shadow lift and highlight recovery.
+- **`ApplyLUT`**: 1D/3D `.cube` LUTs.
+- **`Modulate`**: `hue`, `brightness`, `contrast`, `exposure`, `saturation`, `sepia`.
 
-### 1. Color Grading & Tonal Dynamics
-- **`Curves`**: Spline-interpolated tone curves for master, red, green, blue, plus hue/saturation curves (`hueVsHue`, `hueVsSat`, `lumVsSat`, `satVsSat`).
-- **`ColorBalance`**: Shadows, midtones, and highlights split color adjustments with `preserveLuminosity`.
-- **`Levels`**: Master and per-channel input/output black/white points and gamma.
-- **`SelectiveColor`**: CMYK-style photographic selective adjustments targeting reds, yellows, greens, cyans, blues, magentas, whites, neutrals, and blacks.
-- **`GradientMap`**: Multi-stop gradient remapping (`stops: [{ position: 0, color: "#000" }, { position: 1, color: "#FFF" }]`).
-- **`ShadowsHighlights`**: Separate shadow lifting and highlight recovery with radius and tonal width controls.
-- **`ApplyLUT`**: 1D and 3D `.cube` color lookup table applicator.
-- **`Modulate`**: Real-time HSL/contrast controls: `hue`, `brightness`, `contrast`, `exposure`, `saturation`, `sepia`.
+### Optics and texture
+- **`FilmGrain`**: grain with size, tonal masking, animation speed.
+- **`Vignette`**: lens falloff: center, roundness, softness.
+- **`Blur`**: `"Gaussian"`, `"Box"`, `"Median"`, `"Motion"`, `"Bilateral"`, `"Edge-preserving"`, `"Radial"`, `"Zoom"`; partial regions and tracked boxes.
+- **`UnsharpMask`**: sharpen with threshold.
+- **`HighPass`**: frequency isolation.
+- **`HalftoneScreen`**: print screen: `"Circle"`, `"Diamond"`, `"Line"`, or `"Square"` dots in `"Monochrome"` or `"CMYK"` angles.
+- **`TileOffset`**: UV wrap: `"wrap"`, `"clamp"`, `"mirror"`, or `"transparent"`.
+- **`MotionBlur`**: directional shutter blur.
+- **`TemporalDeflicker`**: optical-flow blend that removes flicker (AI clips, high-speed footage).
 
-### 2. Optical, Texture & Cinematic Emulsions
-- **`FilmGrain`**: GPU-synthesized film grain with grain sizing, shadow/highlight masking, and temporal animation speed.
-- **`Vignette`**: Elliptical or circular lens falloff with customizable center, roundness, and softness.
-- **`Blur`**: High-performance multi-mode blur: `"Gaussian"`, `"Box"`, `"Median"`, `"Motion"`, `"Bilateral"`, `"Edge-preserving"`, `"Radial"`, `"Zoom"`. Supports partial blur regions and tracked object bounding boxes.
-- **`UnsharpMask`**: High-frequency edge sharpener with threshold suppression.
-- **`HighPass`**: Edge and frequency isolation with contrast boost.
-- **`HalftoneScreen`**: Procedural print screening with `"Circle"`, `"Diamond"`, `"Line"`, or `"Square"` dots in `"Monochrome"` or `"CMYK"` angles.
-- **`TileOffset`**: Seamless UV wrapping with `"wrap"`, `"clamp"`, `"mirror"`, or `"transparent"` boundaries.
-- **`MotionBlur`**: Directional shutter simulation with custom shutter angles and velocity clamps.
-- **`TemporalDeflicker`**: Multi-frame optical flow blending to eliminate flickering in generative AI clips or high-speed footage.
-
-### Temporal (effects with memory)
+### Temporal (with memory)
 - **`Trails`**: the layer over a decaying copy of its own past. `mode: "blend"` (default; echoes on full-frame footage), `"over"` (cutouts and text), `"add"` (light painting on dark scenes), `"max"` (light trails). `decay` 0.8 short echo → 0.97 long trails; per-frame `zoom` (1.02 = tunnel), `rotation`, `offsetX/Y`, `hueShift` (psychedelic cycling).
 - **`Datamosh`**: the previous picture dragged along the new frame's optical flow instead of being refreshed, until a `keyframes` frame (I-frame) shows the clean picture. Put keyframes where you want it clean; leave a cut out to smear one shot with the next one's motion. `strength`, `bleed` (clean picture mixed back per frame).
 - Both step as frames render; after a jump (scrubbing, a single `renderFrame`) they replay the last frames (`warmup`) to rebuild the history.
 
-### 3. 3D Spatial Lighting & Materials
-- **`Relight3D`**: Screen-space normal map relighting with point, spot, and directional lights, specular highlights, roughness, and metallic uniforms.
-- **`SSAO`**: Screen-space ambient occlusion generating contact shadows from depth buffers.
-- **`PBRGlass`**: Physically-based transmission, index of refraction (IOR), optical dispersion, and Fresnel reflections.
-- **`DepthOfField`**: Camera lens simulation with aperture size, focal length, focus plane distance, and circle-of-confusion (CoC) blur.
+### Screen-space 3D
+- **`Relight3D`**: screen-space normal relighting (point, spot, directional).
+- **`SSAO`**: contact shadows from depth.
+- **`PBRGlass`**: refraction, IOR, dispersion, Fresnel.
+- **`DepthOfField`**: aperture, focal length, focus distance.
 
-### 4. Matte, Keying & Edge Operations
-- **`ColorKey`**: Studio greenscreen/bluescreen keyer with spill suppression and smoothness controls.
+### Keying and crop
+- **`ColorKey`**: green/bluescreen keyer with spill suppression.
 - **`Crop`**: `cropType: "rect"` (percent edges, `roundness` for rounded or circular corners) or `"path"` (`pathPoints` polygon); `mode: "rest"` keeps the outside instead.
 
-### 5. Stylize Looks (`Styles.*`)
+### Stylized looks (`Styles.*`)
 
-**Which look for which request:** see [references/style-guide.md](references/style-guide.md). It maps phrases like "VHS", "8-bit", "comic" or "liquid logo" to presets, effects and techniques. Read it whenever someone names a style.
+**When someone names a style** ("VHS", "8-bit", "comic", "liquid logo"), read [references/style-guide.md](references/style-guide.md): it maps requests to presets, effects and techniques.
 
 `Styles.<name>(options?)` returns an effect stack: `layer.withEffects(Styles.vhs())`. Presets: `pixelArt`, `gameBoy`, `teletext`, `ledWall`, `ascii`, `oneBit`, `risograph`, `comic`, `cartoon`, `thermal`, `vhs`, `crt`, `glitch`, `oilPainting`, `watercolor`, `topographic`, `kaleidoscope`, `opArt`, `holographic`, `noir`, `film`.
 
@@ -150,31 +95,13 @@ The effects behind them, for finer control:
 
 ---
 
-## Vision-driven effects
+## Signals and vision
 
-Cutouts, subject mattes, tracked boxes, pose, smart re-framing, subject outlines, tracked region blur, and prompted tracking of a specific person or several people (SAM 2.1 / SAM 3) live in the `framefields-vision` skill. Effects here consume its signals: for example `layer.blurRegion(vision.objects.byCategory("person"))`, or an effect uniform driven by `clip.signals.objects.get(1).bounds`.
+Any numeric prop takes a `Signal` sampled every frame: audio envelopes, physics impacts, vision bounds, `sineSignal({ frequency: 0.5, min: 0, max: 20 })`. Detection, cutouts, pose and SAM tracking live in `framefields-vision`; effects consume their signals, e.g. `layer.blurRegion(vision.objects.byCategory("person"))` or a uniform driven by `clip.signals.objects.get(1).bounds`.
 
----
+## Rules of thumb
 
-## Reactive Signal Modulation
-
-Any numeric prop takes a `Signal` (audio envelopes, physics impacts, vision bounds, `sineSignal`), sampled every frame:
-
-```typescript
-import { Layer, Blur, sineSignal } from "framefields";
-
-// Oscillating breath blur
-const blurSignal = sineSignal({ frequency: 0.5, min: 0, max: 20 });
-
-const layer = Layer.image("assets/bg.jpg")
-  .withEffect(new Blur({
-    strength: blurSignal,
-    blurType: "Gaussian"
-  }));
-```
-
-### Best Practices:
-1. **Check the prop's scale in the catalog before picking a number.** Scales differ per effect: `FilmGrain` and `Vignette` `strength` run 0–100 (defaults 15 and 50), `Blur` `strength` 0–100, while `Blur` `radius` is the 0–1 size of a *partial* blur region, not the blur amount. A value on the wrong scale renders as nothing, without an error.
-2. **Emulsion restraint:** keep `FilmGrain` around 10–25 and `Vignette` around 25–45. Over-filtering looks amateurish.
-3. **Order matters:** Place tonal grading (`Curves`, `ColorBalance`) before lens optics (`Blur`, `DepthOfField`), and apply grain (`FilmGrain`) as the outermost layer.
-4. **Stills:** set `animated: false` on `FilmGrain` so the grain does not change between frames of a held image.
+1. **Check the scale in the catalog.** `FilmGrain` and `Vignette` `strength` run 0–100 (defaults 15 and 50), `Blur` `strength` 0–100, while `Blur` `radius` is the 0–1 size of a *partial* blur region.
+2. **Restraint:** `FilmGrain` around 10–25, `Vignette` 25–45.
+3. **Order:** tonal grading (`Curves`, `ColorBalance`) before optics (`Blur`, `DepthOfField`); grain outermost.
+4. **Stills:** `animated: false` on `FilmGrain` keeps grain fixed on a held image.

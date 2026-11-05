@@ -8,7 +8,8 @@ Agent skills for [framefields](https://github.com/gatewai-dev/framefields), a co
 | `framefields-compose` | Compositions, layer trees, layout, animation and easing, beat grids, film structure |
 | `framefields-effects` | Post-processing effects, color grading, VFX |
 | `framefields-vision` | On-device vision: detection, segmentation, pose, cutouts, and prompted tracking with SAM 2.1 / SAM 3 |
-| `framefields-render` | Headless rendering, frame-grid inspection, pixel probes, MP4 delivery checks |
+| `framefields-render` | Headless rendering, frame-grid inspection, pixel probes, live preview, MP4 delivery checks |
+| `framefields-cloud` | Rendering on framefields cloud GPUs (`framefields render --cloud`, `renderCloud`), cost plans, split renders, cloud error codes |
 
 Skills load automatically when a task matches, for example *"add a film-grain pass to this scene"* or *"render a frame grid of intro.ts"*.
 

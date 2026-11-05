@@ -1,64 +1,39 @@
 ---
 name: framefields
-description: Start a new framefields video project, or add framefields to an existing Node.js project. Use when the user wants to make a video with framefields and the project has no framefields setup yet, or asks how to install framefields, scaffold a composition and render script, get from an empty folder to a first MP4, generate images, video, music or voice for a film with AI models (`ai` from framefields, the framefields AI gateway), or add ready-made components (pointers, captions, title cards, device frames …) with `npx framefields add`. Hands off to framefields-compose, framefields-effects, framefields-vision, and framefields-render for the details.
+description: Start a new framefields video project, or add framefields to an existing Node.js project. Use when the user wants to make a video with framefields and the project has no framefields setup yet, or asks how to install framefields, scaffold a composition and render script, get from an empty folder to a first MP4, store footage (asset buckets, Git LFS), generate images, video, music or voice for a film with AI models (`ai` from framefields, the framefields AI gateway), or add ready-made components (pointers, captions, title cards, device frames …) with `npx framefields add`. Hands off to framefields-compose, framefields-effects, framefields-vision, framefields-render and framefields-cloud for the details.
 ---
 
 # framefields
 
-## Overview
-`framefields` is a code-first video SDK. A video is a TypeScript `Composition` (a tree of layers with keyframed animation) that renders natively on WebGPU (Dawn) in Node.js, with no browser, Puppeteer, or Chromium. The engine is the [`framefields`](https://www.npmjs.com/package/framefields) npm package; everything below runs in the user's own project.
-
-This skill takes a project from nothing to a verified first render. For anything past that, load the specialist skill:
+A video is a TypeScript `Composition` (a layer tree with keyframed animation) rendered natively on WebGPU (Dawn) in Node.js, no browser. The engine is the [`framefields`](https://www.npmjs.com/package/framefields) npm package. This skill takes a project to a verified first render; then load the specialist:
 
 | Task | Skill |
 | --- | --- |
-| Scenes, layout, typography, animation, beat grids, film structure | `framefields-compose` |
-| Post-processing, color grading, VFX | `framefields-effects` |
-| On-device vision: detection, cutouts, pose, tracking a specific person or several people (SAM 2.1 / SAM 3) | `framefields-vision` |
-| Frame inspection, frame grids, pixel tests, video export and QA | `framefields-render` |
-| Ready-made components (`npx framefields add`) | this skill, section 8 |
-| Generating images, video, music, voice with AI models (`ai`) | this skill, section 6 |
-| Autonomous agent payments & runway checks | this skill, section 7 |
-| Reporting bugs or engine defects to GitHub | this skill, section 9 |
+| Scenes, layout, typography, animation, 3D, physics, film structure | `framefields-compose` |
+| Post-processing, grading, stylized looks | `framefields-effects` |
+| Detection, cutouts, pose, tracking a specific person (SAM 2.1 / SAM 3) | `framefields-vision` |
+| Frames, grids, pixel tests, live preview, export, QA | `framefields-render` |
+| Rendering on framefields' cloud GPUs or a self-hosted worker | `framefields-cloud` |
 
----
+## 1. Environment
 
-## 1. Check the environment
+- **Node.js 22+** and an ES module project (`"type": "module"`).
+- **A GPU or a CPU renderer.** macOS: Metal. Linux: Vulkan, or Mesa lavapipe on the CPU (`apt-get install -y libvulkan1 mesa-vulkan-drivers`). Windows: D3D12/Vulkan, or WARP. On the CPU everything renders the same, ~12× slower (`describeGpu()` reports `software: true`).
 
-- **Node.js 22 or later.** Run `node --version`. Older versions fail at import.
-- **A GPU, or a CPU renderer.** macOS uses Metal (every Mac and macOS VM has a Metal GPU). Linux uses Vulkan, Windows Direct3D 12 or Vulkan. Without a GPU, framefields renders on the CPU: on Linux (a sandbox, CI runner or container) through Mesa lavapipe, installed with `apt-get install -y libvulkan1 mesa-vulkan-drivers`; on Windows through WARP (built into Windows) or lavapipe. Every feature renders the same there (text, media, Lottie, effects, 3D, vision), only slower: about 12× slower than an M1 Pro's GPU in our Linux test. `describeGpu()` reports `software: true`. Fine for frames, grids and short exports; for long films, use a GPU machine or the render worker (`framefields-render`).
-- **An ES module project.** The project's `package.json` needs `"type": "module"`.
-
-## 2. Install
-
-**Fastest path: `npx framefields init`.** It writes everything in sections 2 and 3 for you: `package.json` (with the install-script approvals below, scripts, dependencies, `packageManager`), `tsconfig.json`, `src/theme.ts` / `film.ts` / `render.ts`, `assets/`, the LFS `.gitattributes` and `.gitignore`, and `framefields.json` (the components folder, installed fonts, and a `film` render naming `buildFilm` in `src/film.ts`). It also downloads Inter, JetBrains Mono, and Noto Color Emoji (pinned, with their OFL licenses), registers them in the generated `src/components/fonts.ts` that `theme.ts` calls, and runs `git init`.
+## 2. Install: `npx framefields init`
 
 ```bash
-npx framefields init my-film --install      # a new project; or `init` inside an existing one
+npx framefields init my-film --install      # or `init` inside an existing project
 ```
 
-In an existing project it never overwrites: existing files are left alone, and `package.json`, `.gitignore` and `.gitattributes` only gain what they lack (a `"type": "commonjs"` package is refused). Options: `--pm npm|pnpm|yarn|bun` (default: the one running it), `--no-fonts`, `--no-emoji`, `--no-git`, `--name`. It asks no questions, so it runs unattended in CI. The AI gateway key is optional: `init` writes `.env.example` and git-ignores `.env`, and `render.ts` loads `.env` when it exists; the user sets `FRAMEFIELDS_API_KEY` there themselves (never write a key for them). Then go to section 4. The rest of this section and section 3 describe what it writes, for doing it by hand or merging into an unusual setup.
+It writes `package.json` (install-script approvals, scripts, dependencies, `packageManager`), `tsconfig.json`, `src/theme.ts` / `film.ts` / `render.ts`, `assets/`, LFS `.gitattributes`, `.gitignore`, `.env.example`, and `framefields.json` (components folder, fonts, a `film` render). It downloads Inter, JetBrains Mono and Noto Color Emoji (pinned, OFL), registers them in `src/components/fonts.ts`, and runs `git init`. It never prompts or overwrites: existing files are kept and `package.json`, `.gitignore`, `.gitattributes` only gain what they lack (a `"type": "commonjs"` package is refused). Options: `--pm npm|pnpm|yarn|bun`, `--no-fonts`, `--no-emoji`, `--no-git`, `--name`.
 
-Use the package manager the project already uses (look for `pnpm-lock.yaml`, `yarn.lock`, `bun.lock`, or `package-lock.json`).
-
-**Write `package.json` before installing.** npm 11, pnpm 10, and bun block dependency install scripts unless the project approves them, and framefields needs exactly one: `skia-canvas` downloads its native binary in its install script. Without it, `import "framefields"` fails with `Cannot find module '.../skia.node'`. The other packages that ship install scripts work without them, so deny them to keep installs quiet and skip downloads framefields never uses.
-
-For a new project, create `package.json` with all three blocks. In an existing project, merge them into its `package.json`, keeping any entries it already has:
+**By hand**, use the project's package manager and write `package.json` *before* installing. npm 11, pnpm 10 and bun block install scripts; framefields needs exactly one (`skia-canvas`, else `Cannot find module '.../skia.node'`). Deny the rest:
 
 ```json
 {
-  "name": "my-film",
-  "private": true,
   "type": "module",
-  "allowScripts": {
-    "skia-canvas": true,
-    "sharp": false,
-    "webgpu": false,
-    "onnxruntime-node": false,
-    "node-av": false,
-    "esbuild": false,
-    "protobufjs": false
-  },
+  "allowScripts": { "skia-canvas": true, "sharp": false, "webgpu": false, "onnxruntime-node": false, "node-av": false, "esbuild": false, "protobufjs": false },
   "pnpm": {
     "onlyBuiltDependencies": ["skia-canvas"],
     "ignoredBuiltDependencies": ["sharp", "webgpu", "onnxruntime-node", "node-av", "esbuild", "protobufjs"]
@@ -67,61 +42,27 @@ For a new project, create `package.json` with all three blocks. In an existing p
 }
 ```
 
-`allowScripts` is read by npm, `pnpm` by pnpm, and `trustedDependencies` by bun; each tool ignores the others' fields. Yarn runs install scripts by default and needs none of them. Also add `"packageManager"` with the exact manager and version you install with (e.g. `"pnpm@10.13.1"`), and commit the lockfile the install writes (pnpm, npm or yarn; bun lockfiles can't be rendered by the worker). Then install:
+`allowScripts` is npm's, `pnpm` pnpm's, `trustedDependencies` bun's; yarn needs none. Pin `"packageManager"` and commit the lockfile. Then `npm install framefields` and `npm install -D tsx typescript @types/node`. The install must finish without an `install-scripts` warning; if it didn't, add the approval and `npm rebuild skia-canvas`. Never approve every script wholesale. `tsconfig.json`: `module`/`moduleResolution` `NodeNext`, `target` `ES2022`, `strict`, `skipLibCheck`, `noEmit`, `types: ["node"]`, `include: ["src/**/*"]`.
 
-```bash
-npm install framefields
-npm install --save-dev tsx typescript @types/node
-```
-
-The install must finish without an `install-scripts` warning. If framefields was installed before the approval was in place, add it and rerun the skipped script with `npm rebuild skia-canvas` (`pnpm rebuild skia-canvas`). Never approve every script wholesale (`npm install-scripts approve --all`).
-
-A minimal `tsconfig.json`:
-
-```json
-{
-  "compilerOptions": {
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
-    "target": "ES2022",
-    "strict": true,
-    "skipLibCheck": true,
-    "noEmit": true,
-    "types": ["node"]
-  },
-  "include": ["src/**/*"]
-}
-```
-
-## 3. Scaffold the project
-
-Keep the composition separate from the script that renders it, so tests, the preview, the render script and the render worker all build the same film. `film.ts` must only build: no rendering, no `process.exit()`, no writes at import time.
+## 3. Project shape
 
 ```
-src/
-  theme.ts    # canvas size, fps, colors, fonts: the only place for magic numbers
-  film.ts     # buildFilm(): assembles the Composition
-  render.ts   # renders frames for review, a live preview, or the full video
-assets/
-  fonts/      # .ttf / .otf files the film uses
-  footage/    # source videos (.mp4, .mov) and audio (.mp3, .wav) tracked in Git LFS
-output/       # renders (add to .gitignore)
+src/theme.ts    # size, fps, colors, fonts: the only place for magic numbers
+src/film.ts     # buildFilm(): builds the Composition, nothing else
+src/render.ts   # frames and contact sheets for quick looks
+assets/         # fonts/, footage/ (bucket or Git LFS)
+output/         # renders (git-ignored)
+framefields.json
 ```
 
-Text needs a real font file. Ask the user which font to use.
+`film.ts` must only build (no rendering, `process.exit()` or writes at import): tests, preview, CLI and the cloud all import it. Text needs a real font file; ask the user which.
 
 ```typescript
 // src/theme.ts
 import { FontManager } from "framefields";
-
-export const W = 1920;
-export const H = 1080;
-export const FPS = 30;
-export const INK = "#0E0D0C";
-export const PAPER = "#EEE9E0";
-export const SANS = "Inter";
-
-export async function registerFonts(): Promise<void> {
+export const W = 1920, H = 1080, FPS = 30;
+export const INK = "#0E0D0C", PAPER = "#EEE9E0", SANS = "Inter";
+export async function registerFonts() {
   await FontManager.register({ family: SANS, source: "assets/fonts/Inter.ttf" });
 }
 ```
@@ -131,46 +72,21 @@ export async function registerFonts(): Promise<void> {
 import { Composition, Layer, LayerAnimation } from "framefields";
 import { FPS, H, INK, PAPER, registerFonts, SANS, W } from "./theme.js";
 
-const DURATION = 3 * FPS; // frames
-
 export async function buildFilm(): Promise<Composition> {
-  // Fonts must be registered before any text layer is built.
-  await registerFonts();
-
-  const film = new Composition({
-    width: W,
-    height: H,
-    fps: FPS,
-    durationMs: (DURATION / FPS) * 1000,
-    backgroundColor: INK,
-  });
-
+  await registerFonts(); // before any text layer
+  const film = new Composition({ width: W, height: H, fps: FPS, durationMs: 3000, backgroundColor: INK });
   film.add(
     Layer.text("Hello, framefields", {
-      id: "title",
-      position: "absolute",
-      x: 0,
-      y: H / 2 - 60,
-      width: W,
-      height: 120,
-      fontFamily: SANS,
-      fontSize: 96,
-      fontWeight: 700,
-      fill: PAPER,
-      align: "center",
-    }).animate(
-      LayerAnimation.create()
-        .fadeIn(0, 20, "power2.out")
-        .fromTo("y", H / 2 - 20, H / 2 - 60, { start: 0, end: 30, ease: "expo.out" }),
-    ),
+      position: "absolute", x: 0, y: H / 2 - 60, width: W, height: 120,
+      fontFamily: SANS, fontSize: 96, fontWeight: 700, fill: PAPER, align: "center",
+    }).animate(LayerAnimation.create().fadeIn(0, 20, "power2.out").fromTo("y", H / 2 - 20, H / 2 - 60, { start: 0, end: 30, ease: "expo.out" })),
   );
-
   return film;
 }
 ```
 
 ```typescript
-// src/render.ts: quick looks (frames, a contact sheet). Full renders and the preview use the CLI.
+// src/render.ts: `tsx src/render.ts frames 0 30 60` or `tsx src/render.ts grid`
 import fs from "node:fs/promises";
 import path from "node:path";
 import { HeadlessMediaRenderer } from "framefields";
@@ -178,150 +94,58 @@ import { buildFilm } from "./film.js";
 
 const OUT = path.resolve(import.meta.dirname, "../output");
 const [mode = "frames", ...args] = process.argv.slice(2);
-
 const film = await buildFilm();
 await fs.mkdir(OUT, { recursive: true });
-
 if (mode === "grid") {
-  const png = await film.renderFrameGrid({
-    frames: args.length ? args.map(Number) : [0, 10, 20, 30, 45, 60, 75, 89],
-    columns: 4,
-    cellWidth: 480,
-    showLabels: true,
-  });
-  await fs.writeFile(path.join(OUT, "grid.png"), png);
+  const frames = args.length ? args.map(Number) : [0, 10, 20, 30, 45, 60, 75, 89];
+  await fs.writeFile(path.join(OUT, "grid.png"), await film.renderFrameGrid({ frames, columns: 4, cellWidth: 480, showLabels: true }));
 } else {
   const renderer = new HeadlessMediaRenderer();
-  for (const frame of (args.length ? args : ["0"]).map(Number)) {
-    const png = await film.renderFrame({ frame, renderer });
-    await fs.writeFile(path.join(OUT, `f${String(frame).padStart(4, "0")}.png`), png);
-  }
+  for (const frame of (args.length ? args : ["0"]).map(Number))
+    await fs.writeFile(path.join(OUT, `f${String(frame).padStart(4, "0")}.png`), await film.renderFrame({ frame, renderer }));
 }
-
-// Native GPU and encoder threads keep Node alive; always exit explicitly.
-process.exit(0);
+process.exit(0); // native threads keep Node alive
 ```
 
-Add scripts to `package.json`:
+Scripts: `typecheck` (`tsc --noEmit -p .`), `frames`, `grid`, `check` (`framefields check`), `check:render`, `preview` (`framefields preview film`), `render` (`framefields render film`), `render:cloud` (`framefields render film --cloud`). All three CLI commands read the `film` render in `framefields.json`, so local and cloud renders write the same file. For another cut (teaser, vertical, language) add an export and a named render (`framefields-render`), not a flag.
+
+### Assets: a bucket, or Git LFS
+
+Footage, audio, Lottie, LUTs and generated media don't belong in plain git; small files (logos, a LUT) can be committed.
+
+**Preferred: `framefields assets` on an S3-compatible bucket** (suggest Cloudflare R2: no egress fees). Files stay out of git; `framefields.json` pins each by sha256.
 
 ```json
-"scripts": {
-  "typecheck": "tsc --noEmit -p .",
-  "frames": "tsx src/render.ts frames",
-  "grid": "tsx src/render.ts grid",
-  "preview": "framefields preview film",
-  "render": "framefields render film",
-  "render:cloud": "framefields render film --cloud"
-}
+"storage": { "remotes": { "media": {
+  "endpoint": "https://<account-id>.r2.cloudflarestorage.com", "bucket": "films", "prefix": "launch/",
+  "publicUrl": "https://media.example.com"
+} } }
 ```
 
-`framefields render film`, `framefields render film --cloud` and `framefields preview film` all read the `film` render below, so a render writes the same file wherever it runs: switching between this machine and the cloud is the `--cloud` flag, nothing else. Flags (`--export`, `--select`, `--codec`, `--quality`, `--output`) override the render's fields either way.
+- `publicUrl` (optional) lets reads skip keys; objects upload `immutable`. AWS needs `region`. Several remotes: `default` names where new assets go, `--remote` picks another.
+- Keys come from the environment only: `FRAMEFIELDS_STORAGE_MEDIA_ACCESS_KEY_ID` / `_SECRET_ACCESS_KEY` (remote name upper-cased) or `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`. Ask the user to set them; never print or write them.
+- `npx framefields assets add assets/footage` hashes, uploads what's missing, records under `assets`, git-ignores them. Commit `framefields.json` and `.gitignore`. `assets pull` (verified; `--overwrite` replaces local edits), `assets status` (`ok` / `missing` / `changed`), `assets push`.
+- Code uses ordinary paths. Where files are missing, `framefields preview` streams them from the bucket (needs a CORS rule: https://framefields.dev/docs/guides/assets/#preview-from-the-bucket), `framefields render` pulls them first, `framefields check` says to pull.
 
-`framefields.json` names what the project renders; `film` is the scaffold's. Add an entry per cut (teaser, vertical edit) so the CLI, `framefields check` and the dashboard pick it by name:
+**Or Git LFS** (init writes `.gitattributes`). Fresh clones hold ~130-byte pointers that render blank: `git lfs pull` first, and never git-ignore LFS-tracked media. LFS bandwidth is billed to the repo owner on every clone and cloud render.
 
-```json
-{
-  "components": "src/components",
-  "renders": {
-    "film": { "title": "Launch film", "entry": "src/film.ts", "export": "buildFilm", "workers": "auto", "output": "output/film.mp4" }
-  }
-}
-```
+## 4. Verify, cheapest first
 
-`render:cloud` renders on framefields' GPUs (api.framefields.dev) from the pushed commit, with the same `FRAMEFIELDS_API_KEY` as the AI gateway, and splits long films across several GPUs; `framefields-render` covers it. When the user wants another version of the film (a teaser, a vertical cut, a language), add an export and a named render for it rather than a flag in `render.ts`.
+1. `npm run typecheck`, then `npm run check`.
+2. `npm run frames -- 0 30 60` and look at the PNGs. Black usually means a missing font, a layer off canvas, or opacity stuck at 0.
+3. `npm run grid` for motion.
+4. `npm run preview` when a person is watching (background command; give them the URL; read their pinned notes). Details in `framefields-render`.
+5. `npm run render` in the background with a long timeout. A pause after the last frame is audio mix/mux, not a hang.
 
-### Video assets: a bucket, or Git LFS
+Show the user frames or the grid before the full render. For long films or no GPU, `npm run render:cloud` (`framefields-cloud`).
 
-Footage, audio, Lottie files, LUTs and generated media are too big for plain git. Render outputs in `output/` stay in `.gitignore`. Small files (logos, short sound effects, a LUT) can simply be committed.
+## 5. Generate assets with AI
 
-**Preferred: `framefields assets` on the project's own bucket.** Any S3-compatible bucket works; Cloudflare R2 is the one to suggest, since it charges no egress. The files stay out of git, `framefields.json` pins each one by sha256, and anyone (or any worker) gets exactly those bytes back.
+The Framefields MCP server (when connected) answers `list_models`, `get_model_schema` and `estimate_generation_cost`; in Claude Code they're `mcp__plugin_framefields_framefields__*`. It does not run jobs: generation runs through `ai` from `framefields`, authenticated by a gateway key (`FRAMEFIELDS_API_KEY`, `ff_live_…` from https://framefields.dev/dashboard/keys), not the MCP connection.
 
-1. Add a remote to `framefields.json`. `publicUrl` is optional: a custom domain (or CDN, or the `r2.dev` URL) in front of the bucket, so reads need no keys. Content-addressed objects are uploaded `immutable`, so a CDN caches them forever.
-   ```json
-   "storage": {
-     "remotes": {
-       "media": {
-         "endpoint": "https://<account-id>.r2.cloudflarestorage.com",
-         "bucket": "films",
-         "prefix": "launch/",
-         "publicUrl": "https://media.example.com"
-       }
-     }
-   }
-   ```
-   AWS needs `"region"`; R2 uses `auto`. Several remotes are fine (a public one for media you may share, a private one for raw footage): `"default"` names the one new assets go to, `--remote` picks another.
-2. Keys come from the environment, never the file: `FRAMEFIELDS_STORAGE_MEDIA_ACCESS_KEY_ID` and `FRAMEFIELDS_STORAGE_MEDIA_SECRET_ACCESS_KEY` (the remote's name upper-cased), or `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`. Ask the user to set them; never print or write them.
-3. `npx framefields assets add assets/footage` hashes the files (a folder means every file in it), uploads what the bucket lacks, records them under `assets` and adds them to `.gitignore`. Commit `framefields.json` and `.gitignore`. Adding a changed file again records the new version.
-4. In a fresh clone or container, `npx framefields assets pull` downloads what's missing and checks every byte; it leaves files changed locally alone unless `--overwrite`. `assets status` lists each asset as `ok`, `missing` or `changed`; `assets push` re-uploads what the bucket lacks.
+**The key:** ask the user to set it in the environment themselves (init writes `.env.example`; `render.ts` loads `.env`). Never ask for it in chat, print it, inspect env or credential files, embed or commit it.
 
-Code references assets by path as usual (`Layer.video("assets/footage/intro.mp4")`); nothing in the film changes. Where the files aren't on disk (a fresh clone, a cloud agent's sandbox):
-
-- `framefields preview` streams them from the bucket: the page is redirected to the remote's `publicUrl` (or a URL signed with the remote's keys), so nothing is downloaded into the sandbox. The bucket needs a CORS rule allowing the preview's origin; see the assets guide (https://framefields.dev/docs/guides/assets/#preview-from-the-bucket).
-- `framefields render` downloads the missing ones first (`assets pull`), then renders.
-- `framefields check` says to run `assets pull`.
-
-**Or Git LFS**, when the project already uses it or there's no bucket. `npx framefields init` writes the LFS `.gitattributes`. In fresh clones LFS media are ~130-byte pointer files that decode as blank frames, so run `git lfs pull` first, and never add `*.mp4` to `.gitignore` for LFS-tracked footage. Every clone and every cloud render worker downloads LFS objects from the git host, which bills that bandwidth to the repo owner; a bucket with no egress fees avoids it.
-
-## 4. Verify, cheapest step first
-
-Never go straight to a full video render. On a machine without a GPU every render runs on the CPU (lavapipe or WARP), so the cheap steps matter even more. Each step catches problems in seconds that a video render takes minutes to show:
-
-1. `npm run typecheck`
-2. `npm run frames -- 0 30 60` and look at the PNGs in `output/`. A black frame usually means a missing font, a layer outside the canvas, or opacity stuck at 0.
-3. `npm run grid` and check the motion reads smoothly across the contact sheet.
-4. `npm run preview` when a person is watching: they play the film with sound before you export (see below).
-5. `npm run render` once frames and motion look right. Run it in the background with a long timeout. It logs each phase (`Rendered 40% …`, `Mixing audio`, `Muxing mp4`, `Done in …`) and a `Still …` line when one runs long, so a pause after the last frame is the audio mix or mux, not a hang.
-
-Show the user the frame PNGs or the grid before the full render. `framefields-render` covers pixel-probe tests, render QA (`renderVideo({ qa })`), and diagnosing blank frames. If you suspect an issue or defect in the engine itself or ai gateway, see [section 9](#9-report-engine-issues).
-
-### Live preview
-
-`npm run preview` serves a localhost player (picture, sound, timeline) and prints its URL. The page runs `film.ts` itself and renders with WebGPU in real time, so the user sees the real film; a slow device skips frames to keep up with the sound.
-
-- Run it as a background command and read its output: it says when the page opened, prints errors from the page (a failed build, a frame that threw, a missing font), and says why it stopped. It stops 5 s after its last tab closes; just run it again.
-- It doesn't open anything. If your app has a built-in browser, open the URL there; otherwise give the user the link. `startPreview(..., { open: true })` opens their default browser.
-- **Reference assets from the file's URL.** The page runs `film.ts` itself, so asset paths must resolve in the browser too: build them from the module's own URL, `path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../assets/fonts")`, rather than `process.cwd()` or a bare relative path. The preview serves any file inside the project (the folder with `package.json`); pass `root` (one or more paths) to `startPreview` for fonts or media kept elsewhere.
-- After changing the film, run it again. It takes over the same URL, and the open tab reloads by itself at the same moment.
-- Link to a moment with `#t=12.5` (seconds). In a browser you can script, `window.framefieldsPreview` has `seek(seconds)`, `play()`, `pause()` and `state()`; `seek` resolves once the frame is drawn, so screenshot after it.
-- **The user can pin notes on the picture.** Pausing and clicking (or dragging an area) adds a note at that spot and moment. Each one prints in the preview's output and is saved in `.framefields/preview-notes/`: `notes.json`, plus `note-<id>.jpg`, the frame with the spot marked. When the user says they left notes, read `notes.json` and look at each open note's picture before you edit. Then run the preview again so they can check the changes and tick them off. `framefields-render` has the details.
-
-## 5. Render on a server
-
-The framefields render worker (Docker, RunPod pod or serverless) renders a pushed commit: it pulls LFS assets, downloads the assets `framefields.json` pins, installs from the lockfile, imports `src/film.ts`, calls `buildFilm`, and uploads the result. A project built as above works unchanged if:
-
-- `framefields` is 2.2+, the lockfile is committed and matches `package.json`, and `packageManager` is pinned;
-- every input is under `assets/`, and either pinned with `framefields assets add` (and on the bucket) or tracked by Git LFS and pushed (`git lfs ls-files` lists it);
-- asset paths come from `import.meta.url`, never `process.cwd()`;
-- nothing writes into `node_modules` while rendering (files are shared read-only).
-
-A failed job returns `{ code, hint, retryable }`; resubmit unchanged only when `retryable` is true. Job format and error codes: https://framefields.dev/docs/guides/render-service/
-
-## 6. Generate assets with AI
-
-Use the connected Framefields MCP server for `list_models`, `get_model_schema`, and `estimate_generation_cost` when available (in Claude Code sessions, these are exposed as `mcp__plugin_framefields_framefields__list_models`, `mcp__plugin_framefields_framefields__get_model_schema`, and `mcp__plugin_framefields_framefields__estimate_generation_cost`). Use `import { ai } from "framefields"` in a local script to generate, edit, or process media; MCP does not submit or retrieve generation jobs. The SDK authenticates with a separate gateway API key (`FRAMEFIELDS_API_KEY`), not the MCP OAuth connection. Use only the currently supported catalog models and the input fields from the selected model's schema.
-
-- `list_models`: inspect catalog models and category tasks (`text-to-image`, `text-to-video`, `speech-to-text`, etc.).
-- `get_model_schema`: check required and optional inputs for the model before writing the script.
-- `estimate_generation_cost`: check published rates or request cost estimates before running paid generation.
-
-`framefields` exports `ai` for image, video and audio operations through the Framefields gateway. Each request uses a model ID and account credits. `run`, `subscribe`, `stream`, `queue`, and `storage` support the gateway workflow.
-
-```typescript
-import { ai } from "framefields";
-
-const apiKey = process.env.FRAMEFIELDS_API_KEY;
-if (!apiKey) throw new Error("Set FRAMEFIELDS_API_KEY before generating assets.");
-ai.config({ apiKey });
-
-const { data, requestId } = await ai.subscribe<{ images: { url: string }[] }>("seedream/4.5", {
-  input: { prompt: "Neon street at night, rain, 35mm", image_size: "landscape_16_9" },
-});
-console.log(data.images[0].url);
-```
-
-**The key.** Requests authenticate with an `ff_live_…` key from https://framefields.dev/dashboard/keys. For local execution, ask the user to set `FRAMEFIELDS_API_KEY` in the process environment themselves; never ask them to paste a key into chat. The script reads `process.env.FRAMEFIELDS_API_KEY` and fails with an actionable message when it is missing. Do not inspect or print environment variables or credential files, embed the key in source, or commit it. AI generation is optional and does not affect local composition and rendering. Without a key, gateway calls cannot run. Failures throw `ApiError` with the gateway's `type`: on `insufficient_credits` (status `402`) tell the user to top up at https://framefields.dev/dashboard/billing rather than retrying; `key_limit_reached` means the key's monthly cap; `rate_limited` and `too_many_inflight_requests` mean wait and retry. A `ValidationError` (`422`) lists the bad input fields in `fieldErrors`.
-
-**Generate once, into `assets/`, in its own script.** Generation costs money and is not deterministic, so it never runs inside `buildFilm()`, the preview, tests or the render worker. Write `src/generate.ts`, run it on purpose, download every output into `assets/generated/`, pin it with `npx framefields assets add assets/generated` (or track it in Git LFS), and reference the local file from the film. Generated output URLs expire, and the worker renders from the repository.
+**Generate once, into `assets/`, in its own script.** It costs money and isn't deterministic, so never call `ai` from `buildFilm()`, the preview, tests or the worker. Download outputs (their URLs expire) into `assets/generated/`, pin them (`framefields assets add`), reference the local files.
 
 ```typescript
 // src/generate.ts
@@ -332,114 +156,57 @@ import { ai } from "framefields";
 const apiKey = process.env.FRAMEFIELDS_API_KEY;
 if (!apiKey) throw new Error("Set FRAMEFIELDS_API_KEY before generating assets.");
 ai.config({ apiKey });
-
 const OUT = path.resolve(import.meta.dirname, "../assets/generated");
 await fs.mkdir(OUT, { recursive: true });
-
-async function save(url: string, name: string): Promise<string> {
-  const file = path.join(OUT, name);
-  await fs.writeFile(file, Buffer.from(await (await fetch(url)).arrayBuffer()));
-  return file;
-}
+const save = async (url: string, name: string) =>
+  fs.writeFile(path.join(OUT, name), Buffer.from(await (await fetch(url)).arrayBuffer()));
 
 const still = await ai.subscribe<{ images: { url: string }[] }>("seedream/4.5", {
   input: { prompt: "Neon street at night, rain, 35mm", image_size: "landscape_16_9", seed: 7 },
 });
 await save(still.data.images[0].url, "street.jpg");
 
-// Feed a local file to a model: put a Blob in the input and it is uploaded for you
-// (or call ai.storage.upload(blob) yourself and pass the URL).
+// A Blob in the input is uploaded for you (or ai.storage.upload(blob) and pass the URL).
 const image_url = new Blob([await fs.readFile(path.join(OUT, "street.jpg"))], { type: "image/jpeg" });
 const clip = await ai.subscribe<{ video: { url: string } }>("seedance/2.0/image-to-video", {
   input: { prompt: "slow push in, rain falling", image_url, duration: "5" },
-  logs: true,
-  onQueueUpdate: (u) => u.status === "IN_PROGRESS" && u.logs.forEach((l) => console.log(l.message)),
 });
 await save(clip.data.video.url, "street.mp4");
 process.exit(0);
 ```
 
-Then `Layer.image("assets/generated/street.jpg")` / `Layer.video("assets/generated/street.mp4")` in the film.
+- **Models and inputs come from the catalog** (https://framefields.dev/models or `get_model_schema`). Output shapes differ (`images[0].url`, `video.url`, `audio.url` …): read the schema or log `data` once.
+- **Many long jobs:** `ai.queue.submit` each, keep the `request_id`s, collect with `ai.queue.result`. Status and result reads are free and retried; submits never retry, so nothing bills twice.
+- **Costs:** quote the estimate tool or catalog rate; don't invent a total from a unit rate. Use a fixed `seed` and keep prompts in `generate.ts`.
+- Generated clips rarely match the film's fps or aspect: `fit: "cover"`, check real durations.
+- **Errors** throw `ApiError` with `type`: `insufficient_credits` (402: user tops up at https://framefields.dev/dashboard/billing; don't retry), `key_limit_reached` (monthly cap), `rate_limited` / `too_many_inflight_requests` (wait, retry). `ValidationError` (422) lists `fieldErrors`.
 
-- **Pick the model and its input from the catalog.** https://framefields.dev/models lists every model with its id, category, price per unit and input schema. Each model has its own input and output fields (`images[0].url`, `video.url`, `audio.url`, `audio_file.url` …): read the schema and pass the output shape as the type argument, or log `data` once, instead of guessing.
-- **Long jobs** (video, music): `subscribe` waits and polls. For several at once, `ai.queue.submit(model, { input })` each, keep every `request_id`, then `ai.queue.result(model, { requestId })`; an interrupted script can collect the results instead of paying again. Reading a status or result is free and retried on transient errors; submitting is never retried, so it can't bill twice.
-- **Costs:** Generation consumes credits. When useful, use the MCP price-estimate tool or the model catalog to report an estimate or unit rate; actual charges can vary. Do not invent a total when only a unit rate is known.
-- Pass a fixed `seed` where the model accepts one, and keep the prompts in `generate.ts`, so a result can be regenerated.
-- Frame-rate and size: generated clips rarely match the composition's `fps` or aspect. Use `fit: "cover"` on the layer, and check the clip's real duration before cutting to it.
+**Agent payments.** `GET https://framefields.dev/.well-known/agent-payment.json` describes auth, packs and endpoints. `GET https://framefields.dev/api/v1/agent/balance` (bearer `FRAMEFIELDS_API_KEY`) returns `{ balance_usd, held_usd, available_usd }`: check it before big batches. A 402 carries `action_required.url`, a checkout link: pass it to the user. `POST https://framefields.dev/api/v1/agent/top-up` with `{"amount": 10 | 25 | 50 | 100}` creates one on demand.
 
-## 7. Autonomous agent payments
+## 6. Ready-made components
 
-Coding agents interacting with the AI gateway can discover endpoints, inspect credit runway, and handle top-ups programmatically:
-
-- **Manifest discovery:** Read `GET https://framefields.dev/.well-known/agent-payment.json` for live auth schemes, pack amounts, and endpoint paths.
-- **Runway check:** `GET https://framefields.dev/api/v1/agent/balance` using the `FRAMEFIELDS_API_KEY` process environment variable as the bearer credential (never print it) returns `{ balance_usd, held_usd, available_usd }`. Query this before expensive generation batches.
-- **Autonomous 402 flow:** When credits are exhausted, the gateway returns HTTP `402 Payment Required` with a dynamic Dodo checkout link:
-  ```json
-  {
-    "status": "payment_required",
-    "action_required": {
-      "type": "redirect_to_checkout",
-      "url": "https://checkout.dodopayments.com/buy/...",
-      "instructions": "Pass this URL to your human user to complete authorization."
-    }
-  }
-  ```
-  Pass the URL to the user in chat/terminal to authorize via Dodo Payments.
-- **On-demand top-up:** Alternatively, call `POST https://framefields.dev/api/v1/agent/top-up` with `{"amount": 25}` (or 10, 50, 100) to generate a checkout session dynamically.
-
-## 8. Grow the film
-
-Once the first render works, move to the specialist skills: `framefields-compose` for splitting the film into scene modules on a beat grid, `framefields-effects` for grading and grain, `framefields-vision` for cutouts, pose and tracking people, and `framefields-render` for tests and delivery checks. Keep `theme.ts` as the single source of sizes, colors, fonts, and timing as the project grows.
-
-### Ready-made components
-
-framefields has a registry of parametric motion components: a mouse pointer with clicks and drags, a camera that zooms to clicks, window and device frames, word-timed captions, text reveals, counters, annotations, a terminal, code blocks, title cards, lower thirds, meters, chat threads, toasts, callouts, spotlights, confetti, logo reveals, backdrops, audio waveforms, word cycles, touches, before/after splits, selections and card stacks. They are not in the npm package: `framefields add` copies their source into the project, where it is ordinary project code to read and change.
+A registry of parametric motion components (mouse pointer with clicks, click zoom, window and device frames, word-timed captions, text reveals, counters, annotations, terminal, code blocks, title cards, lower thirds, chat threads, toasts, callouts, confetti, logo reveals, waveforms, before/after splits …). `framefields add` copies their source into the project, where it's ordinary code to read and change. **Run `npx framefields list` before hand-writing a common motion piece.**
 
 ```bash
-npx framefields list                            # every component, one line each
-npx framefields list --json                     # generated props, dependencies, fonts and examples
-npx framefields fonts list --json               # pinned font catalog and configured paths
-npx framefields api                             # generated timing/grid/preflight reference
+npx framefields list [--json]                   # one line each, or props, deps, fonts, examples
 npx framefields add mouse-pointer focus-zoom    # writes src/components/<name>/
-npx framefields fonts add emoji                 # color emoji (chat-thread and captions add it themselves)
+npx framefields fonts add emoji                 # color emoji for plain Layer.text
 ```
-
-The generated project also has `check` (TypeScript plus schema/lint/timeline preflight) and `check:render` (adds a GPU frame/grid smoke check) scripts. They produce versioned JSON for agents and terminate with a failure code on errors. For another named render, use `framefields check teaser --json` (no name checks them all); for a module without one, `framefields check src/film.ts --export buildFilm --json`; add `--render` to write inspection artifacts under `output/check`. Keep the builder free of generation, rendering and writes, because preflight imports and executes it.
 
 ```typescript
 import { MousePointer } from "./components/mouse-pointer/index.js";
-
-const pointer = MousePointer({
-  path: [
-    { to: [400, 300], at: 0 },
-    { to: [960, 540], at: 30, click: true },
-  ],
-});
-film.add(pointer);
-// pointer.cues.clicks[0].frame: key a button press or a sound to the click.
+const pointer = MousePointer({ path: [{ to: [400, 300], at: 0 }, { to: [960, 540], at: 30, click: true }] });
+film.add(pointer); // pointer.cues.clicks[0].frame: key a sound or press to the click
 ```
 
-- **Before writing a common motion piece by hand, run `npx framefields list`.** A component already handles timing, theme, cues and edge cases, and the copy is the project's to adjust.
-- Files go to `src/components` (or `components` when there is no `src`); the folder is saved in `framefields.json`, and `--dir` changes it on first use. Components that build on others bring them along (`terminal` adds `app-frame` and `counter`).
-- Installed code imports only `framefields` and `framefields/components` (the shared toolkit), so it always matches the installed framefields version. After upgrading framefields, `npx framefields add <name> --overwrite` refreshes a component; without the flag, files you changed are left alone and reported as `skipped`.
-- **Fonts come with the components that need them.** `chat-thread` and `captions` ask for a color emoji font. `add` downloads Noto Color Emoji (pinned by SHA-256, ~10.7 MB, saved with its OFL license) into `assets/fonts/`, records it under `fonts` in `framefields.json`, and writes `src/components/fonts.ts`. Call its `registerFonts()` once before building or rendering, next to the `FontManager.register` calls. `--no-fonts` skips the download, `npx framefields fonts add emoji` installs it later (or for plain `Layer.text`), and pointing `fonts.emoji` in `framefields.json` at another font keeps yours. Track `assets/fonts/**` with Git LFS.
-- **Emoji without an emoji font draw nothing.** `comp.lint()` reports `missing_emoji_font`, and the first render prints the same warning. Fix it with the command above, not by removing the emoji.
-- Every component takes the base props (`x`, `y`, `width`, `height`, `at`, `duration`, `hold`, `theme`, `enter`, `exit`, `seed`, `fps`, `canvas`) and returns a normal box layer with `cues` (frames of its events), `span` and `parts` (inner layers to animate or style). Time is in frames.
-- Each installed `index.ts` documents what the component does at the top and defines its props in its schema; `npx framefields list` gives one-line summaries. Props are validated when the component is built, and a wrong one throws with the reason.
+- Every component takes base props (`x`, `y`, `width`, `height`, `at`, `duration`, `hold`, `theme`, `enter`, `exit`, `seed`, `fps`, `canvas`; time in frames) and returns a box layer with `cues`, `span` and `parts`. Props are validated at build; each `index.ts` documents itself at the top.
+- Files go to the folder saved in `framefields.json` (`--dir` on first use); dependencies come along. Installed code imports only `framefields` and `framefields/components`. After upgrading framefields, `add <name> --overwrite` refreshes; without it, edited files are `skipped`.
+- Components needing emoji (`chat-thread`, `captions`) download Noto Color Emoji (pinned, ~10.7 MB) into `assets/fonts/` and write `src/components/fonts.ts`: call its `registerFonts()` before building. Emoji without an emoji font draw nothing (`lint` reports `missing_emoji_font`): install the font, don't remove the emoji.
 
-## 9. Report engine issues
+## 7. Report engine issues
 
-When you encounter an unexpected crash, native WebGPU / Dawn failure, WGSL shader compilation error, compositor schema validation defect, or behavior bug in `framefields` itself (distinguishable from project-level configuration or asset errors):
+For a crash, Dawn/WebGPU failure, WGSL compile error, schema defect or behavior bug in framefields itself (not project config or assets):
 
-1. **Ask the user first:** Never open an issue autonomously without explicit confirmation. Explain what went wrong, summarize the reproduction, and ask if they would like an issue reported to `gatewai-dev/framefields`.
-2. **Collect diagnostic details:**
-   - Operating system and architecture (`process.platform`, `process.arch`).
-   - Node.js version (`node --version`) and `framefields` version.
-   - GPU backend and device (run `describeGpu()` or note Metal, Vulkan, DX12, or CPU lavapipe/WARP).
-   - Minimal reproduction code (the smallest composition or script that triggers it).
-   - Exact error message, full stack trace, or validation failure log.
-3. **Open the issue:** Once the user confirms, submit the issue via GitHub CLI:
-   ```bash
-   gh issue create --repo gatewai-dev/framefields --title "<concise summary>" --body "<diagnostic details and repro>"
-   ```
-   If `gh` is unavailable or not authenticated in the environment, output the title, formatted body, and a direct link for the user: https://github.com/gatewai-dev/framefields/issues/new.
+1. **Ask the user first.** Summarize the problem and repro; never file autonomously.
+2. Collect OS/arch, Node and framefields versions, GPU backend (`describeGpu()`), a minimal repro, the exact error and stack.
+3. On confirmation: `gh issue create --repo gatewai-dev/framefields --title "…" --body "…"`. Without `gh`, give the user the title, body and https://github.com/gatewai-dev/framefields/issues/new.

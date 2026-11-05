@@ -684,6 +684,13 @@ function surfaceProps(
 	return out;
 }
 
+/** A transform's mean scale: the average length of its basis columns. */
+function matrixScale(m: Mat4): number {
+	const c = (i: number) =>
+		Math.hypot(m[i] as number, m[i + 1] as number, m[i + 2] as number);
+	return (c(0) + c(4) + c(8)) / 3;
+}
+
 function computeContainerScissor(
 	matrix: DOMMatrix,
 	width: number,
@@ -2039,9 +2046,14 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 
 			const sceneShadow = shadow.length ? shadow : null;
 			/** One forward pass over the scene: floor, then the sorted draws. */
+			/**
+			 * One draw of the batch. `glassBackdrop` is what glass refracts;
+			 * null leaves the glass out (the pre-pass that makes that picture).
+			 */
 			const drawScene = (
 				screenIndirect: "radiance" | "apply" | undefined,
 				writeHdr: boolean,
+				glassBackdrop: GPUTexture | null = curTex,
 			) => {
 				const begun = r3d.beginPass(
 					encoder,
@@ -2073,6 +2085,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					);
 				}
 				for (const item of ordered) {
+					if (glassBackdrop === null && isGlass(item)) continue;
 					if (item.kind === "quad") {
 						r3d.drawTextureQuad(
 							pass,
@@ -2099,7 +2112,9 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 							lightsBindGroup,
 							item.meshBuffers ?? item.mesh,
 							item.texture,
-							isGlass(item) ? { ...item.opts, backdrop: curTex } : item.opts,
+							isGlass(item)
+								? { ...item.opts, backdrop: glassBackdrop ?? curTex }
+								: item.opts,
 							geometryEnabled,
 						);
 					}
@@ -2114,9 +2129,23 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				const { cameraBuffer: radianceCamera } = drawScene("radiance", true);
 				r3d.traceScreenIndirect(encoder, radianceCamera, sceneEnvironment);
 			}
+			// Glass refracts the scene behind it, not just the layers under the
+			// batch: draw everything else first and lay it over them.
+			let glassBackdrop = curTex;
+			if (glass.length) {
+				drawScene(screenIndirectEnabled ? "apply" : undefined, false, null);
+				glassBackdrop = ctx.renderer.composite(
+					encoder,
+					curTex,
+					scene3dTex,
+					"normal",
+					[targetTexture, scene3dTex, ...curExcludes],
+				);
+			}
 			const { cameraBindGroup, cameraBuffer, lightsBindGroup } = drawScene(
 				screenIndirectEnabled ? "apply" : undefined,
 				Boolean(sceneBloom),
+				glassBackdrop,
 			);
 
 			let final3dTex = scene3dTex;
@@ -4030,9 +4059,13 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 							target?.ambientIntensity ?? lop.ambientIntensity ?? 1.0,
 						metallic: target?.metallic ?? lop.metallic ?? mat?.metallic,
 						...surfaceProps(target, lop, mat),
-						ior: target?.ior ?? lop.ior,
+						ior: target?.ior ?? lop.ior ?? mat?.ior,
 						dispersion: target?.dispersion ?? lop.dispersion,
 						thickness: target?.thickness ?? lop.thickness,
+						// The file's thickness is in model units; the draw wants world units.
+						...(mat?.thickness !== undefined
+							? { worldThickness: mat.thickness * matrixScale(placed.matrix) }
+							: {}),
 						audioDeform: meshAudioDeform,
 						wind: meshWind(lop.wind, model, (shiftedFrame ?? 0) / (fps || 30)),
 					};

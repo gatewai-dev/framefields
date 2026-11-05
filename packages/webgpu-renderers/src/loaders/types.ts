@@ -60,7 +60,11 @@ export interface Material3D {
 	alphaMode?: "opaque" | "mask" | "blend";
 	alphaCutoff?: number;
 	/** How the material wants to be lit when the layer leaves `material` unset. */
-	shading?: "lit" | "unlit" | "toon";
+	shading?: "lit" | "unlit" | "toon" | "glass";
+	/** Glass (KHR_materials_transmission): index of refraction (KHR_materials_ior). */
+	ior?: number;
+	/** Glass: thickness in model units (KHR_materials_volume thicknessFactor). */
+	thickness?: number;
 	/** Toon shading: the color multiplier of the shadowed side. */
 	shadeColor?: [number, number, number];
 	/** Linear-ish emissive color 0..1 (glTF emissiveFactor). */
@@ -168,6 +172,15 @@ export interface Model3DData {
 	skins?: Skin3D[];
 	/** Centering and size normalization, applied above the scene graph instead of baked into vertices. */
 	rootTransform?: Mat4;
+	/**
+	 * Joints the file drives from other joints (scene `extras.framefields.drivers`):
+	 * eyelids following the eyes, twist bones, correctives.
+	 */
+	drivers?: {
+		joint: string;
+		from: string;
+		rotate: { x?: number; y?: number; z?: number };
+	}[];
 	animations: AnimationClip3D[];
 	bounds: {
 		min: Vec3;

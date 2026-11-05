@@ -325,8 +325,20 @@ fn shadeGlass(in: VertexOutput, Nin: vec3<f32>, tint: vec3<f32>, alpha: f32, rim
     let ior = max(model.pbr.w, 1.0001);
     let screen = max(cam.screenParams.xy, vec2<f32>(1.0));
     let uv = in.clipPos.xy / screen;
-    // Screen-space bend: the normal's in-plane part, stronger toward the rim.
-    let bend = N.xy * model.shade.g * (1.0 - 1.0 / ior) * (0.6 + rim) * rimAA / screen;
+    // Screen-space bend. A world thickness (model files, stored negative):
+    // where the refracted ray leaves the material, projected, against where
+    // the straight ray would; it scales with distance like the object does.
+    // Otherwise a bend in px: the normal's in-plane part, stronger toward the rim.
+    var bend = N.xy * model.shade.g * (1.0 - 1.0 / ior) * (0.6 + rim) * rimAA / screen;
+    if (model.shade.g < 0.0) {
+        let t = -model.shade.g;
+        let exitW = in.worldPos + refract(-V, N, 1.0 / ior) * t;
+        let straightW = in.worldPos - V * t;
+        let a = cam.viewProjMatrix * vec4<f32>(exitW, 1.0);
+        let b = cam.viewProjMatrix * vec4<f32>(straightW, 1.0);
+        let dNdc = a.xy / a.w - b.xy / b.w;
+        bend = -vec2<f32>(dNdc.x * 0.5, -dNdc.y * 0.5);
+    }
     let disp = model.shade.r;
     let frost = model.shade.b * 22.0 / screen;
     var col = vec3<f32>(0.0);

@@ -323,7 +323,7 @@ describe("glTF texture features", () => {
 	});
 
 	it("rejects unknown required extensions", () => {
-		for (const ext of ["VENDOR_unknown", "KHR_materials_transmission"]) {
+		for (const ext of ["VENDOR_unknown", "KHR_materials_dispersion"]) {
 			expect(() => parse(quadGltf({}, { extensionsRequired: [ext] }))).toThrow(
 				ext,
 			);

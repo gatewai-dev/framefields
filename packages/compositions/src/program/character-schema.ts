@@ -131,6 +131,27 @@ export const AimSchema = z
 	.strict();
 export type AimConstraint = z.infer<typeof AimSchema>;
 
+/**
+ * A joint driven by another: it turns by a share of the source joint's turn
+ * from its rest, per local axis (Euler degrees, Z then Y then X). Applied
+ * after look-ats, before IK, so eyelids follow eyes a `lookAt` aims.
+ */
+export const JointDriverSchema = z
+	.object({
+		joint: z.string(),
+		from: z.string(),
+		/** Share of the source's turn about each local axis; 1 follows it fully. */
+		rotate: z
+			.object({
+				x: z.number().optional(),
+				y: z.number().optional(),
+				z: z.number().optional(),
+			})
+			.strict(),
+	})
+	.strict();
+export type JointDriver = z.infer<typeof JointDriverSchema>;
+
 export const SpringBoneChainSchema = z
 	.object({
 		/** Root joints of chains (cape, tail, antenna, hair); each runs down its first child. */

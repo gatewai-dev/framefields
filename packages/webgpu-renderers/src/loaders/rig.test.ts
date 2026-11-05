@@ -3,6 +3,7 @@ import type { Vec3 } from "../math3d/index.js";
 import { sampleLocalPose } from "./pose.js";
 import {
 	applyConstraints,
+	applyDriver,
 	applyJointPose,
 	blendClipLayers,
 	RigPose,
@@ -140,6 +141,28 @@ describe("rig", () => {
 		});
 		expect(dist(half.position(2), [60, 120, 0])).toBeGreaterThan(5);
 		expect(dist(half.position(2), [0, 200, 0])).toBeGreaterThan(5);
+	});
+
+	it("drives a joint by a share of another joint's turn", () => {
+		const rig = rest();
+		// The hip turns 90° about z; tail0 (not its child) follows by half.
+		applyJointPose(rig, {
+			joint: "hip",
+			rotation: [0, 0, Math.SQRT1_2, Math.SQRT1_2],
+			offset: [0, 0, 0],
+			weight: 1,
+			mode: "additive",
+		});
+		applyDriver(rig, { joint: "tail0", from: "hip", rotate: { z: 0.5 } });
+		// tail1 sits 40 along tail0's x: after 45° about z it is at 45°.
+		const p = rig.position(4);
+		const a = (Math.atan2(p[1], p[0] - 50) * 180) / Math.PI;
+		expect(a).toBeCloseTo(45, 3);
+		// Unnamed joints and zero shares change nothing.
+		const still = rest();
+		applyDriver(still, { joint: "nope", from: "hip", rotate: { z: 1 } });
+		applyDriver(still, { joint: "tail0", from: "hip", rotate: { z: 1 } });
+		expect(still.position(4)).toEqual(rest().position(4));
 	});
 
 	it("turns a joint toward a target within its limit", () => {

@@ -176,6 +176,12 @@ export interface DrawMesh3DOpts extends SurfaceParams {
 	dispersion?: number;
 	/** Edge bend for glass materials, px (default 80). */
 	thickness?: number;
+	/**
+	 * Glass thickness in world units (model files: KHR_materials_volume):
+	 * the refracted ray's exit point is projected, so the bend follows the
+	 * object's size on screen. Used when `thickness` (px) is unset.
+	 */
+	worldThickness?: number;
 	/** Screen-sized picture behind this 3D batch; glass materials refract it. */
 	backdrop?: GPUTexture;
 	/**
@@ -2110,7 +2116,12 @@ export class Renderer3D {
 			? {
 					ior: opts.ior ?? (material === "acrylic" ? 1.49 : 1.5),
 					dispersion: opts.dispersion ?? (material === "glass" ? 0.04 : 0.015),
-					thickness: opts.thickness ?? 80,
+					// A world thickness travels to the shader negative (see shadeGlass).
+					thickness:
+						opts.thickness ??
+						(opts.worldThickness !== undefined
+							? -Math.max(1e-4, opts.worldThickness)
+							: 80),
 					frost: material === "frosted" ? (roughness ?? 0.5) : 0,
 				}
 			: undefined;

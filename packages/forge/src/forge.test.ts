@@ -215,6 +215,30 @@ describe("GltfDocument", () => {
 		expect(surface?.subsurfaceColor?.[1]).toBeCloseTo(0x50 / 0xff, 2);
 	});
 
+	it("writes rig drivers and transmissive glass the loader reads", () => {
+		const doc = new GltfDocument();
+		const glass = doc.addMaterial({
+			transmission: 1,
+			ior: 1.376,
+			volume: { thickness: 0.3 },
+		});
+		doc.addNode({
+			mesh: doc.addMesh({ primitives: [{ ...strip(1, 10), material: glass }] }),
+		});
+		doc.addDriver({ joint: "lid", from: "eye", rotate: { x: 0.65 } });
+		const model = parseGLB(doc.toGlb());
+		expect(model.drivers).toEqual([
+			{ joint: "lid", from: "eye", rotate: { x: 0.65 } },
+		]);
+		const m = Object.values(model.materials)[0];
+		expect(m?.shading).toBe("glass");
+		expect(m?.ior).toBeCloseTo(1.376);
+		expect(m?.thickness).toBeCloseTo(0.3);
+		expect(() => doc.addDriver({ joint: "a", from: "b", rotate: {} })).toThrow(
+			/finite share/,
+		);
+	});
+
 	it("refuses inconsistent input where it is given", () => {
 		const doc = new GltfDocument();
 		expect(() =>

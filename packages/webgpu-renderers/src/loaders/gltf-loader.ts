@@ -178,6 +178,9 @@ interface GltfMaterial {
 		/** VRM 1.0 toon material: the base is lit flat, the shadowed side tinted by shadeColorFactor. */
 		VRMC_materials_mtoon?: { shadeColorFactor?: [number, number, number] };
 		KHR_materials_clearcoat?: {
+			KHR_materials_transmission?: { transmissionFactor?: number };
+			KHR_materials_ior?: { ior?: number };
+			KHR_materials_volume?: { thicknessFactor?: number };
 			clearcoatFactor?: number;
 			clearcoatRoughnessFactor?: number;
 		};
@@ -270,7 +273,11 @@ interface GltfDocument {
 	extensionsUsed?: string[];
 	extensionsRequired?: string[];
 	scene?: number;
-	scenes?: Array<{ name?: string; nodes?: number[] }>;
+	scenes?: Array<{
+		name?: string;
+		nodes?: number[];
+		extras?: { framefields?: { drivers?: Model3DData["drivers"] } };
+	}>;
 	nodes?: GltfNode[];
 	meshes?: GltfMesh[];
 	materials?: GltfMaterial[];
@@ -292,6 +299,9 @@ const SUPPORTED_REQUIRED_EXTENSIONS = new Set([
 	"KHR_materials_sheen",
 	"KHR_materials_anisotropy",
 	"KHR_materials_iridescence",
+	"KHR_materials_transmission",
+	"KHR_materials_ior",
+	"KHR_materials_volume",
 	"KHR_texture_transform",
 	"KHR_texture_basisu",
 	"EXT_texture_webp",
@@ -927,6 +937,15 @@ export class GltfLoader {
 			material.shadeColor = mtoon.shadeColorFactor ?? [1, 1, 1];
 		} else if (mat.extensions?.KHR_materials_unlit) {
 			material.shading = "unlit";
+		} else if (
+			(mat.extensions?.KHR_materials_transmission?.transmissionFactor ?? 0) > 0
+		) {
+			// Transmissive surfaces (corneas, windows, potions) render as glass
+			// that refracts the scene behind them.
+			material.shading = "glass";
+			material.ior = mat.extensions?.KHR_materials_ior?.ior ?? 1.5;
+			const t = mat.extensions?.KHR_materials_volume?.thicknessFactor;
+			if (t !== undefined) material.thickness = t;
 		}
 		const image = (info: GltfTextureInfo | undefined, slot: string) => {
 			if (!info) return undefined;
@@ -1103,6 +1122,8 @@ export class GltfLoader {
 				boundingSphereRadius: 0,
 			},
 		};
+		const drivers = doc.scenes?.[doc.scene ?? 0]?.extras?.framefields?.drivers;
+		if (drivers?.length) model.drivers = drivers;
 		const rest = poseNodes(model, undefined, 0);
 
 		let minX = Infinity,

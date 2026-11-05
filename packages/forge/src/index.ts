@@ -12,6 +12,7 @@ export {
 	type AnimationPath,
 	type AnimationSpec,
 	type ChannelSpec,
+	type DriverSpec,
 	GltfDocument,
 	type MaterialRef,
 	type MeshRef,
@@ -31,6 +32,11 @@ export {
 	type AccessorType,
 	GlbBuilder,
 } from "./glb-builder.js";
+export {
+	type AddedHuman,
+	type AddHumanOptions,
+	addHuman,
+} from "./human/add-human.js";
 export { type HumanModel, type HumanOptions, human } from "./human/human.js";
 export { MAKEHUMAN_SOURCE } from "./human/source.js";
 export {

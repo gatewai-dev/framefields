@@ -95,6 +95,17 @@ export interface AnimationSpec {
 	channels: ChannelSpec[];
 }
 
+/**
+ * A joint driven by another (framefields rigs read it from the scene's
+ * `extras.framefields.drivers`): it turns by a share of the source joint's
+ * turn from its rest, per local axis.
+ */
+export interface DriverSpec {
+	joint: string;
+	from: string;
+	rotate: { x?: number; y?: number; z?: number };
+}
+
 export interface TextureSpec {
 	/** Encoded image bytes. */
 	image: Uint8Array;
@@ -189,6 +200,7 @@ export class GltfDocument {
 	private readonly images: Record<string, unknown>[] = [];
 	private readonly samplers: Record<string, unknown>[] = [];
 	private readonly extensions = new Set<string>();
+	private readonly drivers: DriverSpec[] = [];
 
 	addMaterial(spec: MaterialSpec): MaterialRef {
 		const { json, extensions } = materialJson(spec);
@@ -509,6 +521,16 @@ export class GltfDocument {
 			throw new Error("material: unknown texture");
 	}
 
+	/** Drives `joint` from `from` (eyelids following eyes, twist bones). Joints are matched by name at render time. */
+	addDriver(spec: DriverSpec): void {
+		const shares = Object.values(spec.rotate);
+		if (!shares.length || shares.some((v) => !Number.isFinite(v)))
+			throw new Error(
+				`driver ${spec.joint}: give a finite share for at least one axis`,
+			);
+		this.drivers.push(spec);
+	}
+
 	/** The document's glTF JSON (without the binary chunk), for inspection. */
 	json(): Record<string, unknown> {
 		const roots = this.nodes
@@ -516,7 +538,14 @@ export class GltfDocument {
 			.filter((i) => !this.parents.has(i));
 		const out: Record<string, unknown> = {
 			scene: 0,
-			scenes: [{ nodes: roots }],
+			scenes: [
+				{
+					nodes: roots,
+					...(this.drivers.length
+						? { extras: { framefields: { drivers: this.drivers } } }
+						: {}),
+				},
+			],
 			nodes: this.nodes,
 		};
 		const put = (key: string, list: unknown[]) => {

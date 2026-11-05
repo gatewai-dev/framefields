@@ -19,12 +19,16 @@
  * doc.addNode({ mesh: doc.addMesh({ name: "Body", primitives: [{ ...elf.body, material: skin }] }), skin: rig.skin });
  * ```
  */
-import type { PrimitiveSpec } from "../document.js";
+import type { DriverSpec, PrimitiveSpec } from "../document.js";
 import { Skeleton, type Vec3 } from "../skeleton.js";
 import {
 	type BaseMesh,
+	fitProxy,
+	type MhProxy,
 	type MhSkeleton,
 	parseBaseObj,
+	parseObj,
+	parseProxy,
 	parseSkeleton,
 	parseTarget,
 	parseWeights,
@@ -65,13 +69,51 @@ export interface HumanModel {
 			"positions" | "normals" | "uvs" | "joints" | "weights" | "indices"
 		>
 	>;
+	/**
+	 * Both eyeballs (sclera, iris, pupil), fitted to the shaped head and
+	 * skinned to `LeftEye` / `RightEye`, so `lookAt` on those joints aims
+	 * them. Give them a material with `eyeTexture` as its color texture.
+	 */
+	eyes: Required<
+		Pick<
+			PrimitiveSpec,
+			"positions" | "normals" | "uvs" | "joints" | "weights" | "indices"
+		>
+	>;
+	/**
+	 * The clear corneas over the irises, skinned like `eyes`. Give them a
+	 * transmissive material (`transmission`, `ior` ≈ 1.376, `volume.thickness`
+	 * ≈ 0.3 cm, the depth of the chamber in front of the iris) and they
+	 * refract the iris: it shifts with the viewing angle like a real eye's.
+	 */
+	cornea: HumanModel["eyes"];
+	/** MakeHuman's brown eye texture (PNG, CC0): sclera, iris and pupil, mapped to `eyes`' UVs. */
+	eyeTexture: Uint8Array;
+	/**
+	 * Rig drivers that come with the body: the upper lids follow the eyes'
+	 * up-and-down turn by 65%, the lower lids by 35%, so a gaze aimed with
+	 * `lookAt` carries the lids with it. Write them with `GltfDocument.addDriver`
+	 * (`addHuman` does).
+	 */
+	drivers: DriverSpec[];
 	/** Model height after shaping and scaling, model units. */
 	height: number;
 }
 
+/** Lid joints per side: MakeHuman's orbicularis03 (upper) and 04 (lower) pivot at the eyeball's center. */
+const LID_DRIVERS: DriverSpec[] = (["L", "R"] as const).flatMap((side) => {
+	const eye = side === "L" ? "LeftEye" : "RightEye";
+	return [
+		{ joint: `orbicularis03.${side}`, from: eye, rotate: { x: 0.65 } },
+		{ joint: `orbicularis04.${side}`, from: eye, rotate: { x: 0.35 } },
+	];
+});
+
 /** MakeHuman bone → Mixamo joint name, for the bones Mixamo has. */
 const MIXAMO: Record<string, string> = {
 	root: "Hips",
+	"eye.L": "LeftEye",
+	"eye.R": "RightEye",
 	spine05: "Spine",
 	spine03: "Spine1",
 	spine01: "Spine2",
@@ -200,6 +242,11 @@ const cache = new WeakMap<
 		base: BaseMesh;
 		rig: MhSkeleton;
 		weights: Map<string, [number, number][]>;
+		eyes: {
+			obj: ReturnType<typeof parseObj>;
+			proxy: MhProxy;
+			texture: Uint8Array;
+		};
 	}>
 >();
 const targetCache = new WeakMap<
@@ -214,10 +261,18 @@ function baseAssets(store: HumanAssetStore) {
 			store.text("3dobjs/base.obj"),
 			store.text("rigs/default.mhskel"),
 			store.text("rigs/default_weights.mhw"),
-		]).then(([obj, skel, w]) => ({
+			store.text("eyes/high-poly/high-poly.obj"),
+			store.text("eyes/high-poly/high-poly.mhclo"),
+			store.ensure("eyes/materials/brown_eye.png"),
+		]).then(([obj, skel, w, eyeObj, eyeClo, eyeTex]) => ({
 			base: parseBaseObj(obj),
 			rig: parseSkeleton(skel),
 			weights: parseWeights(w),
+			eyes: {
+				obj: parseObj(eyeObj),
+				proxy: parseProxy(eyeClo),
+				texture: eyeTex,
+			},
 		}));
 		cache.set(store, p);
 	}
@@ -244,7 +299,7 @@ let defaultStore: HumanAssetStore | undefined;
 export async function human(options: HumanOptions = {}): Promise<HumanModel> {
 	defaultStore ??= new HumanAssetStore();
 	const store = options.store ?? defaultStore;
-	const { base, rig, weights } = await baseAssets(store);
+	const { base, rig, weights, eyes } = await baseAssets(store);
 	const wanted = macroTargets(options);
 	for (const [path, w] of Object.entries(options.targets ?? {}))
 		if (w) wanted.set(path, (wanted.get(path) ?? 0) + w);
@@ -315,9 +370,21 @@ export async function human(options: HumanOptions = {}): Promise<HumanModel> {
 		}
 		return [sum[0] / vs.length, sum[1] / vs.length, sum[2] / vs.length];
 	};
+	// Eyes turn about their centers; MakeHuman's eye bones start at the back of the eyeball.
+	const toModel = (x: number, y: number, z: number): Vec3 => [
+		x * scale,
+		(y - minY) * scale,
+		z * scale,
+	];
+	const fittedEyes = fitEyes(eyes, shaped);
+	const centers = eyeCenters(fittedEyes, toModel);
+	const pivot: Record<string, Vec3> = {
+		"eye.L": centers.left,
+		"eye.R": centers.right,
+	};
 	for (const b of rig.bones)
 		skeleton.add(nameOf(b.name), {
-			at: jointAt(b.head),
+			at: pivot[b.name] ?? jointAt(b.head),
 			...(b.parent ? { parent: nameOf(b.parent) } : {}),
 		});
 
@@ -356,10 +423,192 @@ export async function human(options: HumanOptions = {}): Promise<HumanModel> {
 			weights: wts,
 			indices,
 		},
+		eyes: eyeballs(eyes.obj, fittedEyes, toModel, skeleton, false),
+		cornea: eyeballs(eyes.obj, fittedEyes, toModel, skeleton, true),
+		eyeTexture: eyes.texture,
+		drivers: LID_DRIVERS,
 		height: natural * (scale / 10),
 	};
 }
 
+/** The eye mesh fitted to the shaped head, with each vertex's shell marked. */
+interface FittedEyes {
+	fitted: Float32Array;
+	/** Per vertex: part of a cornea shell (left out). */
+	cornea: Uint8Array;
+}
+
+/**
+ * Each eye in MakeHuman's mesh is two shells: the eyeball and, just
+ * outside it, a clear cornea mapped to the texture's transparent corner.
+ * Per side, the shell reaching further forward is the cornea.
+ */
+function fitEyes(
+	eyes: { obj: ReturnType<typeof parseObj>; proxy: MhProxy },
+	shaped: Float32Array,
+): FittedEyes {
+	const fitted = fitProxy(eyes.proxy, shaped);
+	const nv = fitted.length / 3;
+	const parent = Array.from({ length: nv }, (_, i) => i);
+	const find = (x: number): number => {
+		while (parent[x] !== x) {
+			parent[x] = parent[parent[x] as number] as number;
+			x = parent[x] as number;
+		}
+		return x;
+	};
+	for (const f of eyes.obj.faces)
+		for (const v of f.v) parent[find(v)] = find(f.v[0] as number);
+	const shells = new Map<number, { maxZ: number; side: number }>();
+	for (let v = 0; v < nv; v++) {
+		const r = find(v);
+		const sh = shells.get(r) ?? { maxZ: Number.NEGATIVE_INFINITY, side: 0 };
+		sh.maxZ = Math.max(sh.maxZ, fitted[v * 3 + 2] as number);
+		sh.side += fitted[v * 3] as number;
+		shells.set(r, sh);
+	}
+	const corneaRoots = new Set<number>();
+	for (const side of [-1, 1]) {
+		const mine = [...shells].filter(([, sh]) => Math.sign(sh.side) === side);
+		if (mine.length > 1) {
+			mine.sort((a, b) => b[1].maxZ - a[1].maxZ);
+			corneaRoots.add((mine[0] as [number, unknown])[0]);
+		}
+	}
+	const cornea = new Uint8Array(nv);
+	for (let v = 0; v < nv; v++) if (corneaRoots.has(find(v))) cornea[v] = 1;
+	return { fitted, cornea };
+}
+
+/**
+ * Each eyeball's center, model space: where the eye turns. The shell is
+ * only the front of the ball, so its mean sits forward of the center; the
+ * least-squares sphere through its vertices finds the real one.
+ */
+function eyeCenters(
+	e: FittedEyes,
+	toModel: (x: number, y: number, z: number) => Vec3,
+) {
+	const side = (sign: number): Vec3 => {
+		const pts: Vec3[] = [];
+		for (let v = 0; v < e.cornea.length; v++)
+			if (!e.cornea[v] && Math.sign(e.fitted[v * 3] as number) === sign)
+				pts.push(
+					toModel(
+						e.fitted[v * 3] as number,
+						e.fitted[v * 3 + 1] as number,
+						e.fitted[v * 3 + 2] as number,
+					),
+				);
+		return sphereCenter(pts);
+	};
+	return { left: side(1), right: side(-1) };
+}
+
+/** Center of the least-squares sphere through points: |p|² = 2c·p + k, solved by normal equations. */
+function sphereCenter(pts: Vec3[]): Vec3 {
+	const A = Array.from({ length: 4 }, () => [0, 0, 0, 0]);
+	const b = [0, 0, 0, 0];
+	for (const p of pts) {
+		const row = [2 * p[0], 2 * p[1], 2 * p[2], 1];
+		const rhs = p[0] * p[0] + p[1] * p[1] + p[2] * p[2];
+		for (let i = 0; i < 4; i++) {
+			b[i] = (b[i] as number) + (row[i] as number) * rhs;
+			for (let j = 0; j < 4; j++)
+				(A[i] as number[])[j] =
+					((A[i] as number[])[j] as number) +
+					(row[i] as number) * (row[j] as number);
+		}
+	}
+	// Gaussian elimination with partial pivoting on the 4×4 system.
+	const M = A.map((r, i) => [...r, b[i] as number]);
+	for (let c = 0; c < 4; c++) {
+		let piv = c;
+		for (let r = c + 1; r < 4; r++)
+			if (
+				Math.abs((M[r] as number[])[c] as number) >
+				Math.abs((M[piv] as number[])[c] as number)
+			)
+				piv = r;
+		[M[c], M[piv]] = [M[piv] as number[], M[c] as number[]];
+		const d = (M[c] as number[])[c] as number;
+		if (Math.abs(d) < 1e-12) throw new Error("human: eye shell is degenerate");
+		for (let r = 0; r < 4; r++) {
+			if (r === c) continue;
+			const f = ((M[r] as number[])[c] as number) / d;
+			for (let k = c; k < 5; k++)
+				(M[r] as number[])[k] =
+					((M[r] as number[])[k] as number) -
+					f * ((M[c] as number[])[k] as number);
+		}
+	}
+	const x = M.map((r, i) => (r[4] as number) / (r[i] as number));
+	return [x[0] as number, x[1] as number, x[2] as number];
+}
+
+/** The eyeballs (or their corneas) as a primitive, each moved by its eye joint. */
+function eyeballs(
+	obj: ReturnType<typeof parseObj>,
+	e: FittedEyes,
+	toModel: (x: number, y: number, z: number) => Vec3,
+	skeleton: Skeleton,
+	cornea: boolean,
+): HumanModel["eyes"] {
+	const leftEye = skeleton.joint("LeftEye").index;
+	const rightEye = skeleton.joint("RightEye").index;
+	const corner = new Map<number, number>();
+	const positions: number[] = [];
+	const uvs: number[] = [];
+	const joints: number[] = [];
+	const weights: number[] = [];
+	const indices: number[] = [];
+	const src: number[] = [];
+	const nUv = obj.uvs.length / 2;
+	const { fitted } = e;
+	for (const f of obj.faces) {
+		if (Boolean(e.cornea[f.v[0] as number]) !== cornea) continue;
+		const c = f.v.map((v, k) => {
+			const vt = f.vt[k] as number;
+			const key = v * nUv + vt;
+			let i = corner.get(key);
+			if (i === undefined) {
+				i = src.length;
+				corner.set(key, i);
+				src.push(v);
+				positions.push(
+					...toModel(
+						fitted[v * 3] as number,
+						fitted[v * 3 + 1] as number,
+						fitted[v * 3 + 2] as number,
+					),
+				);
+				uvs.push(
+					obj.uvs[vt * 2] as number,
+					1 - (obj.uvs[vt * 2 + 1] as number),
+				);
+				// The character's left is +x.
+				joints.push(
+					(fitted[v * 3] as number) > 0 ? leftEye : rightEye,
+					0,
+					0,
+					0,
+				);
+				weights.push(1, 0, 0, 0);
+			}
+			return i;
+		});
+		for (let k = 1; k + 1 < c.length; k++)
+			indices.push(c[0] as number, c[k] as number, c[k + 1] as number);
+	}
+	return {
+		positions,
+		normals: vertexNormals(positions, indices, src),
+		uvs,
+		joints,
+		weights,
+		indices,
+	};
+}
 /** Smooth normals, averaged across UV seams (vertices with the same source vertex share one). */
 function vertexNormals(
 	positions: number[],

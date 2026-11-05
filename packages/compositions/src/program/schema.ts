@@ -32,6 +32,8 @@ import {
 	AimSchema,
 	type CrowdConfig,
 	CrowdSchema,
+	type JointDriver,
+	JointDriverSchema,
 	type JointPose,
 	JointPoseSchema,
 	type LookAtConstraint,
@@ -1855,6 +1857,8 @@ export interface Model3DNode {
 	pose?: Record<string, JointPose>;
 	/** Bones pointed along scene directions, parents first (pose retargeting). */
 	aim?: AimConstraint[];
+	/** Joints driven by other joints, on top of any the model file declares (eyelids, twist bones). */
+	drive?: JointDriver[];
 	/** Instance nodes: every instance a skinned character on its own clip, phase and speed. */
 	crowd?: CrowdConfig;
 }
@@ -2192,6 +2196,7 @@ export const Model3DNodeSchema: z.ZodType<Model3DNode> = z
 		springBones: z.array(SpringBoneChainSchema).optional(),
 		pose: z.record(z.string(), JointPoseSchema).optional(),
 		aim: z.array(AimSchema).optional(),
+		drive: z.array(JointDriverSchema).optional(),
 		crowd: CrowdSchema.optional(),
 	})
 	.strict() as unknown as z.ZodType<Model3DNode>;

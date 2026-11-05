@@ -12,6 +12,7 @@ import { join } from "node:path";
 import { validateBytes } from "gltf-validator";
 import { describe, expect, it } from "vitest";
 import {
+	addHuman,
 	GltfDocument,
 	HumanAssetStore,
 	human,
@@ -138,13 +139,62 @@ describe.skipIf(!cached)("human (cached MakeHuman assets)", () => {
 			expect(Math.abs(s - 1)).toBeLessThan(1e-6);
 		}
 		const doc = new GltfDocument();
-		const rig = doc.addSkeleton(h.skeleton);
-		doc.addNode({
-			mesh: doc.addMesh({ primitives: [h.body] }),
-			skin: rig.skin,
-		});
+		addHuman(doc, h);
 		const report = await validateBytes(doc.toGlb(), { maxIssues: 20 });
 		expect(report.issues.messages.filter((m) => m.severity <= 1)).toEqual([]);
+	});
+
+	it("fits eyeballs that turn about their own centers", async () => {
+		const h = await human({ sex: 0, height: 170 });
+		const left = h.skeleton.joint("LeftEye");
+		const right = h.skeleton.joint("RightEye");
+		expect(left.at[0]).toBeGreaterThan(0);
+		expect(right.at[0]).toBeCloseTo(-left.at[0], 1);
+		const { positions, joints, weights } = h.eyes;
+		const n = positions.length / 3;
+		expect(n).toBeGreaterThan(400);
+		// Every vertex follows its own side's eye, rigidly; each lies on a
+		// sphere around that eye's joint (the pivot is the ball's center).
+		const radii: number[] = [];
+		for (let v = 0; v < n; v++) {
+			const x = positions[v * 3] as number;
+			const j = joints[v * 4];
+			expect(j).toBe(x > 0 ? left.index : right.index);
+			expect(weights[v * 4]).toBe(1);
+			const c = x > 0 ? left.at : right.at;
+			radii.push(
+				Math.hypot(
+					x - c[0],
+					(positions[v * 3 + 1] as number) - c[1],
+					(positions[v * 3 + 2] as number) - c[2],
+				),
+			);
+		}
+		const mean = radii.reduce((s, r) => s + r, 0) / n;
+		expect(mean).toBeGreaterThan(0.9);
+		expect(mean).toBeLessThan(1.8);
+		expect(Math.max(...radii.map((r) => Math.abs(r - mean)))).toBeLessThan(
+			mean * 0.15,
+		);
+		// Corneas: their own shells, in front of the eyeballs, skinned the same way.
+		expect(h.cornea.positions.length).toBeGreaterThan(300);
+		const frontEye = Math.max(
+			...Array.from({ length: n }, (_, v) => positions[v * 3 + 2] as number),
+		);
+		const frontCornea = Math.max(
+			...Array.from(
+				{ length: h.cornea.positions.length / 3 },
+				(_, v) => h.cornea.positions[v * 3 + 2] as number,
+			),
+		);
+		expect(frontCornea).toBeGreaterThan(frontEye);
+		// The lid drivers name joints the skeleton has.
+		for (const d of h.drivers) {
+			expect(h.skeleton.has(d.joint), d.joint).toBe(true);
+			expect(h.skeleton.has(d.from), d.from).toBe(true);
+		}
+		// The texture is a PNG.
+		expect(Array.from(h.eyeTexture.slice(1, 4))).toEqual([0x50, 0x4e, 0x47]);
 	});
 
 	it("adds named targets on top of the macro shape", async () => {

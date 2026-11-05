@@ -50,7 +50,14 @@ const transformDir = (m: Mat4, v: Vec3): Vec3 => [
 
 type CharacterNode = Pick<
 	Model3DNode,
-	"animationLayers" | "ik" | "lookAt" | "springBones" | "loop" | "pose" | "aim"
+	| "animationLayers"
+	| "ik"
+	| "lookAt"
+	| "springBones"
+	| "loop"
+	| "pose"
+	| "aim"
+	| "drive"
 >;
 
 /** Whether a node needs the rig evaluator (anything beyond one plain clip). */
@@ -61,7 +68,8 @@ export function hasRig(n: CharacterNode): boolean {
 			n.lookAt?.length ||
 			n.springBones?.length ||
 			(n.pose && Object.keys(n.pose).length) ||
-			n.aim?.length,
+			n.aim?.length ||
+			n.drive?.length,
 	);
 }
 
@@ -163,6 +171,8 @@ function constraintsAt(
 			pole: c.poleTarget ? point(c.poleTarget) : undefined,
 			weight: numberAt(c.weight, clock, 1),
 		})),
+		// The file's own drivers, then the layer's.
+		drive: [...(p.model.drivers ?? []), ...(p.node.drive ?? [])],
 		lookAt: (p.node.lookAt ?? []).map((c: LookAtConstraint) => ({
 			joint: c.joint,
 			target: point(c.target),
@@ -230,7 +240,8 @@ function springsAt(
 
 /** Model-space node matrices for this frame. */
 export function poseCharacter(p: PoseInput): Mat4[] {
-	if (!hasRig(p.node)) return poseNodes(p.model, p.clip, p.clipSec);
+	if (!hasRig(p.node) && !p.model.drivers?.length)
+		return poseNodes(p.model, p.clip, p.clipSec);
 	const toModel = Matrix4Math.invert(p.sceneRoot) ?? Matrix4Math.identity();
 	const rig = basePose(p, p.frame, toModel);
 	springsAt(p, toModel, rig)?.apply(rig);

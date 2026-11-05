@@ -133,12 +133,26 @@ export interface RigAim {
 	axis?: Vec3;
 }
 
+/**
+ * A joint driven by another: it turns by a share of the source joint's turn
+ * from its rest, per local Euler axis (degrees, Z then Y then X, like
+ * layers). Eyelids follow the eye's pitch, twist bones a share of the limb's
+ * twist, a corrective joint its parent's bend.
+ */
+export interface RigDriver {
+	joint: string;
+	from: string;
+	/** Share of the source's turn about each local axis (1 follows it fully). */
+	rotate: { x?: number; y?: number; z?: number };
+}
+
 export interface RigConstraints {
-	/** Applied in order: poses, aims, look-ats, then IK. */
+	/** Applied in order: poses, aims, look-ats, drivers, then IK. */
 	pose?: RigJointPose[];
 	aim?: RigAim[];
 	ik?: RigTwoBoneIk[];
 	lookAt?: RigLookAt[];
+	drive?: RigDriver[];
 }
 
 /** A pose being edited: local TRS plus the matching model-space matrices. */
@@ -363,7 +377,49 @@ export function applyConstraints(rig: RigPose, c: RigConstraints): void {
 	for (const p of c.pose ?? []) applyJointPose(rig, p);
 	for (const a of c.aim ?? []) solveAim(rig, a);
 	for (const l of c.lookAt ?? []) solveLookAt(rig, l);
+	for (const d of c.drive ?? []) applyDriver(rig, d);
 	for (const k of c.ik ?? []) solveTwoBoneIk(rig, k);
+}
+
+/** Euler degrees of R = Rz · Ry · Rx (the layer order) for a unit quaternion. */
+function eulerZyx(q: Quat): Vec3 {
+	const [x, y, z, w] = q;
+	const r11 = 1 - 2 * (y * y + z * z);
+	const r21 = 2 * (x * y + w * z);
+	const r31 = 2 * (x * z - w * y);
+	const r32 = 2 * (y * z + w * x);
+	const r33 = 1 - 2 * (x * x + y * y);
+	const d = 180 / Math.PI;
+	return [
+		Math.atan2(r32, r33) * d,
+		Math.asin(clamp(-r31, -1, 1)) * d,
+		Math.atan2(r21, r11) * d,
+	];
+}
+
+/** qz · qy · qx for Euler degrees. */
+function quatZyx(e: Vec3): Quat {
+	const h = Math.PI / 360;
+	const qx: Quat = [Math.sin(e[0] * h), 0, 0, Math.cos(e[0] * h)];
+	const qy: Quat = [0, Math.sin(e[1] * h), 0, Math.cos(e[1] * h)];
+	const qz: Quat = [0, 0, Math.sin(e[2] * h), Math.cos(e[2] * h)];
+	return qMul(qz, qMul(qy, qx));
+}
+
+/** Turns a joint by shares of another joint's turn from its rest (see {@link RigDriver}). */
+export function applyDriver(rig: RigPose, d: RigDriver): void {
+	const i = rig.index(d.joint);
+	const src = rig.index(d.from);
+	if (i === undefined || src === undefined) return;
+	const rest = rig.nodes[src]!.rotation;
+	const turn = eulerZyx(qMul(qConj(rest), rig.local.r[src]!));
+	const share: Vec3 = [
+		turn[0] * (d.rotate.x ?? 0),
+		turn[1] * (d.rotate.y ?? 0),
+		turn[2] * (d.rotate.z ?? 0),
+	];
+	rig.local.r[i] = qMul(rig.local.r[i]!, quatZyx(share));
+	rig.touch();
 }
 
 /** Poses one joint (see {@link RigJointPose}). */

@@ -50,6 +50,7 @@ import { BufferPool } from "../renderer2d/buffer-pool.js";
 import { SamplerCache } from "../renderer2d/sampler-cache.js";
 import { UniformBindGroupCache } from "../renderer2d/uniform-bind-group-cache.js";
 import { dofBokehWgsl } from "../shaders/dof-bokeh.js";
+import { quadVelocityWgsl } from "../shaders/mesh-velocity.js";
 import type { SlugGlyphBatch } from "../slug/slug-pipeline.js";
 import { AudioMeshDeformPipeline } from "./audio-mesh-deform-pipeline.js";
 import { type BloomOptions, BloomPipeline } from "./bloom-pipeline.js";
@@ -63,9 +64,16 @@ import {
 	Mesh3DPipeline,
 	type MeshCrowd,
 	type MeshMaterialMaps,
+	type MeshMotionPrev,
 	type MeshWind,
+	VELOCITY_DEPTH_FORMAT,
+	VELOCITY_FORMAT,
 } from "./mesh3d-pipeline.js";
 import { MorphPipeline } from "./morph-pipeline.js";
+import {
+	type MotionBlurPassOptions,
+	MotionBlurPipeline,
+} from "./motion-blur-pipeline.js";
 import { Quad3DPipeline, type Relief3D } from "./quad3d-pipeline.js";
 import { SHADOW_DEPTH_FORMAT } from "./shadow-depth.js";
 import {
@@ -323,6 +331,19 @@ export class Renderer3D {
 	/** Whether the current pass also writes HDR radiance (bloom). */
 	private passWritesHdr = false;
 	private cameraUniformData = new Float32Array(80); // 320 bytes = 80 floats
+	private velocityCameraPool = new BufferPool(
+		192,
+		GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+	);
+	private quadMotionPool = new BufferPool(
+		128,
+		GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+	);
+	private motionBlurPipeline?: MotionBlurPipeline;
+	private quadVelocity?: {
+		pipeline: GPURenderPipeline;
+		layout: GPUBindGroupLayout;
+	};
 	private meshBuffersCache = new WeakMap<Mesh3DData, GPUMeshBuffers>();
 	private materialTextures = new WeakMap<
 		Material3D,
@@ -414,7 +435,9 @@ export class Renderer3D {
 
 		this.instancePool = new BufferPool(
 			65536,
-			GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+			GPUBufferUsage.STORAGE |
+				GPUBufferUsage.COPY_DST |
+				GPUBufferUsage.COPY_SRC,
 		);
 
 		// Initialize DoF Bokeh Pipeline
@@ -514,6 +537,9 @@ export class Renderer3D {
 		this.volumetricFogPipeline?.resetPools();
 		this.ssrGiPipeline?.resetPools();
 		this.cameraPool.reset();
+		this.velocityCameraPool.reset();
+		this.quadMotionPool.reset();
+		this.motionBlurPipeline?.resetPools();
 		// The cached camera buffer goes back to the pool and may be handed
 		// out again (e.g. to a shadow pass's light camera): never reuse it
 		// across a reset.
@@ -2120,6 +2146,223 @@ export class Renderer3D {
 		);
 	}
 
+	/**
+	 * Begins the velocity pass for shutter motion blur: draw the scene's
+	 * meshes and planes with `drawMeshVelocity` / `drawQuadVelocity`, end
+	 * the pass, then `applyMotionBlur` with the returned texture.
+	 */
+	beginVelocityPass(
+		encoder: GPUCommandEncoder,
+		width: number,
+		height: number,
+		camera: Camera3DPose,
+		prevCamera: Camera3DPose,
+	): {
+		pass: GPURenderPassEncoder;
+		cameraBindGroup: GPUBindGroup;
+		velocity: GPUTexture;
+	} {
+		const usage =
+			GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING;
+		const velocity = this.attachment("Renderer3DVelocity", width, height, {
+			format: VELOCITY_FORMAT,
+			usage,
+		});
+		const depth = this.attachment("Renderer3DVelocityDepth", width, height, {
+			format: VELOCITY_DEPTH_FORMAT,
+			usage: GPUTextureUsage.RENDER_ATTACHMENT,
+		});
+		const data = new Float32Array(48);
+		data.set(Camera3D.computeViewProjectionMatrix(camera), 0);
+		data.set(Camera3D.computeViewProjectionMatrix(prevCamera), 16);
+		const fwd = Vector3Math.normalize(
+			Vector3Math.subtract(camera.target, camera.eye),
+		);
+		data.set([...camera.eye, 1, ...fwd, 0, width, height, 0, 0], 32);
+		const cameraBindGroup = this.device.createBindGroup({
+			layout: this.mesh3dPipeline.velocityCameraLayout,
+			entries: [
+				{
+					binding: 0,
+					resource: {
+						buffer: this.velocityCameraPool.getBuffer(this.device, data),
+					},
+				},
+			],
+		});
+		const pass = encoder.beginRenderPass({
+			label: "Renderer3DVelocityPass",
+			colorAttachments: [
+				{
+					view: velocity.createView(),
+					loadOp: "clear",
+					storeOp: "store",
+					clearValue: { r: 0, g: 0, b: 0, a: 0 },
+				},
+			],
+			depthStencilAttachment: {
+				view: depth.createView(),
+				depthClearValue: 1,
+				depthLoadOp: "clear",
+				depthStoreOp: "discard",
+			},
+		});
+		return { pass, cameraBindGroup, velocity };
+	}
+
+	/** Draws a mesh's motion since `prev` (its state a frame earlier) into the velocity pass. */
+	drawMeshVelocity(
+		pass: GPURenderPassEncoder,
+		cameraBindGroup: GPUBindGroup,
+		meshOrBuffers: Mesh3DData | GPUMeshBuffers,
+		texture: GPUTexture | undefined,
+		opts: DrawMesh3DOpts,
+		prev: MeshMotionPrev | undefined,
+	): void {
+		const meshBuffers =
+			"vertexBuffer" in meshOrBuffers
+				? meshOrBuffers
+				: this.getOrCreateMeshBuffers(meshOrBuffers, opts.wireframe);
+		const m = this.meshModelMatrix(opts);
+		const address = ADDRESS_MODES[opts.textureWrap ?? "clamp"];
+		const sampler = this.samplerCache.getSampler(this.device, {
+			addressModeU: address,
+			addressModeV: address,
+		});
+		this.mesh3dPipeline.drawVelocity(
+			pass,
+			cameraBindGroup,
+			meshBuffers,
+			texture,
+			sampler,
+			{
+				modelMatrix: m,
+				normalMatrix: opts.normalMatrix ?? Light3D.computeNormalMatrix(m),
+				colorTint: opts.colorTint,
+				wireframe: opts.wireframe,
+				isSkinned: opts.isSkinned,
+				skinningMatrices: opts.skinningMatrices,
+				alphaCutoff: opts.alphaCutoff,
+				uvRect: opts.uvRect,
+				wind: opts.wind,
+				crowd: opts.crowd,
+				isInstanced: Boolean(
+					opts.instanceBuffer || (opts.instanceCount && opts.instanceCount > 1),
+				),
+				instanceBuffer: opts.instanceBuffer,
+				matrixInstances: opts.matrixInstances,
+			},
+			prev,
+			opts.instanceCount ?? 1,
+			opts.firstInstance ?? 0,
+		);
+	}
+
+	/** Draws a 3D layer plane's motion since `prevModelMatrix` into the velocity pass. */
+	drawQuadVelocity(
+		pass: GPURenderPassEncoder,
+		cameraBindGroup: GPUBindGroup,
+		texture: GPUTexture,
+		opts: DrawQuad3DOpts,
+		prevModelMatrix: Mat4 | undefined,
+	): void {
+		const quad = this.quadVelocityPipeline();
+		const m = this.quadModelMatrix(opts);
+		const data = new Float32Array(32);
+		data.set(m, 0);
+		data.set(prevModelMatrix ?? m, 16);
+		const group = this.device.createBindGroup({
+			layout: quad.layout,
+			entries: [
+				{
+					binding: 0,
+					resource: {
+						buffer: this.quadMotionPool.getBuffer(this.device, data),
+					},
+				},
+				{ binding: 1, resource: this.samplerCache.getSampler(this.device, {}) },
+				{ binding: 2, resource: texture.createView() },
+			],
+		});
+		pass.setPipeline(quad.pipeline);
+		pass.setBindGroup(0, cameraBindGroup);
+		pass.setBindGroup(1, group);
+		pass.draw(4);
+	}
+
+	private quadVelocityPipeline(): {
+		pipeline: GPURenderPipeline;
+		layout: GPUBindGroupLayout;
+	} {
+		if (this.quadVelocity) return this.quadVelocity;
+		const module = this.device.createShaderModule({
+			label: "quad-velocity.wgsl",
+			code: quadVelocityWgsl,
+		});
+		const layout = this.device.createBindGroupLayout({
+			label: "Renderer3DQuadVelocityLayout",
+			entries: [
+				{
+					binding: 0,
+					visibility: GPUShaderStage.VERTEX,
+					buffer: { type: "uniform" },
+				},
+				{
+					binding: 1,
+					visibility: GPUShaderStage.FRAGMENT,
+					sampler: { type: "filtering" },
+				},
+				{
+					binding: 2,
+					visibility: GPUShaderStage.FRAGMENT,
+					texture: { sampleType: "float" },
+				},
+			],
+		});
+		const pipeline = this.device.createRenderPipeline({
+			label: "Renderer3DQuadVelocity",
+			layout: this.device.createPipelineLayout({
+				bindGroupLayouts: [this.mesh3dPipeline.velocityCameraLayout, layout],
+			}),
+			vertex: { module, entryPoint: "vs_quad_velocity" },
+			fragment: {
+				module,
+				entryPoint: "fs_quad_velocity",
+				targets: [{ format: VELOCITY_FORMAT }],
+			},
+			depthStencil: {
+				format: VELOCITY_DEPTH_FORMAT,
+				depthWriteEnabled: true,
+				depthCompare: "less-equal",
+			},
+			primitive: { topology: "triangle-strip", cullMode: "none" },
+		});
+		this.quadVelocity = { pipeline, layout };
+		return this.quadVelocity;
+	}
+
+	/**
+	 * Shutter motion blur: blurs `color` by the velocity pass's `velocity`
+	 * into `target` (a view of a texture in this renderer's format, same size).
+	 */
+	applyMotionBlur(
+		encoder: GPUCommandEncoder,
+		color: GPUTexture,
+		velocity: GPUTexture,
+		target: GPUTextureView,
+		options: MotionBlurPassOptions = {},
+	): void {
+		this.motionBlurPipeline ??= new MotionBlurPipeline(this.device);
+		this.motionBlurPipeline.render(
+			encoder,
+			color,
+			velocity,
+			target,
+			this.format,
+			options,
+		);
+	}
+
 	loadModel(
 		srcOrData: string | ArrayBuffer | Uint8Array,
 		format:
@@ -2491,6 +2734,9 @@ export class Renderer3D {
 	}
 
 	destroy(): void {
+		this.motionBlurPipeline?.destroy();
+		this.velocityCameraPool.destroy();
+		this.quadMotionPool.destroy();
 		for (const texture of this.attachments.values()) texture.destroy();
 		this.attachments.clear();
 		this.bloomPipeline?.destroy();

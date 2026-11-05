@@ -213,3 +213,24 @@ export const TextureLayerSchema = z
 		node: z.custom<unknown>((v) => typeof v === "object" && v !== null),
 	})
 	.strict();
+
+/**
+ * Voronoi destruction (`world.fracture`): the model is cut into `cells`
+ * pieces, drawn as one rigidly skinned mesh posed per frame from `track`.
+ * Without a track the pieces rest in place and the model looks whole.
+ */
+export const Fracture3DSchema = z
+	.object({
+		/** Voronoi pieces, 2..256. Default 48. */
+		cells: z.number().int().min(2).max(256).optional(),
+		seed: z.number().optional(),
+		/** Object-space point the pieces crowd around. */
+		impactPoint: Vec3Schema.optional(),
+		/** Exposed faces' color. Default "#d8d2c4". */
+		interiorColor: z.string().optional(),
+		interiorRoughness: z.number().min(0).max(1).optional(),
+		/** Per composition frame, per piece: x, y, z (scene px), qx, qy, qz, qw. */
+		track: z.array(z.number()).optional(),
+	})
+	.strict();
+export type Fracture3DSpec = z.infer<typeof Fracture3DSchema>;

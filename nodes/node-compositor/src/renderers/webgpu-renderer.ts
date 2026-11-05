@@ -3,6 +3,8 @@
 import { resolveMediaSourceUrl } from "@framefields/client-utils";
 import { decodeAudioSource } from "@framefields/compositions";
 import {
+	type CameraMotionBlur,
+	type CameraNode,
 	type CompositionNodeBase,
 	type CrowdConfig,
 	collectNodeOps,
@@ -48,6 +50,7 @@ import {
 	type DrawQuad3DOpts,
 	type Environment3DOptions,
 	type ExtrudedTextGeometryOptions,
+	FRACTURE_INTERIOR_MATERIAL,
 	fitSpansToText,
 	type GPUMeshBuffers,
 	generateExtrudedTextGeometry,
@@ -92,7 +95,9 @@ import {
 	poseCharacter,
 } from "./character.js";
 import { shouldPaintContainerBackground } from "./container-bg.js";
+import { fracturedModel, fracturePose, fractureWhole } from "./fracture.js";
 import { compatibleMeshDraws } from "./mesh-instancing.js";
+import { type MotionHistory, motionHistory } from "./motion-history.js";
 import {
 	composeQuat,
 	meshWind,
@@ -1082,6 +1087,17 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				: (frame ?? 0),
 		);
 		const compositionFrame = props.compositionFrame ?? shiftedFrame;
+		// Shutter motion blur reads every 3D draw one frame earlier: after a
+		// seek, render the frame before first, recording only.
+		const historyOnly = props.motionHistoryOnly === true;
+		if (
+			!historyOnly &&
+			frame != null &&
+			sceneMotionBlur(virtualMedia) &&
+			motionHistory(ctx.device, props.renderId).needsPrevious(shiftedFrame)
+		) {
+			await renderMotionHistory(args, frame - 1);
+		}
 
 		// 1. Create a temporary texture at native resolution
 		const compTex = ctx.renderer.getTemporaryTexture(
@@ -1313,6 +1329,9 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 		/** Where a relief keeps its look from: the default camera at the scene's field of view. */
 		let reliefEye: [number, number, number] = [0, 0, 0];
 		let dofEnabled = false;
+		/** Shutter motion blur of the 3D scene, and what its draws looked like a frame ago. */
+		let motionBlur: CameraMotionBlur | null = null;
+		let history: MotionHistory | null = null;
 		const sceneLights: Light3DOptions[] = [];
 		let sceneEnvironment: Environment3DOptions | null = null;
 		let sceneBloom: BloomOptions | null = null;
@@ -1415,6 +1434,12 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				camera.fStop = camStub?.fStop ?? camOp?.dof?.fStop ?? 2.8;
 				camera.maxBlurRadius =
 					camStub?.maxBlurRadius ?? camOp?.dof?.maxBlurRadius ?? 24;
+			}
+
+			const blur = (camOp as CameraNode | undefined)?.motionBlur;
+			if (blur && fps) {
+				motionBlur = blur === true ? {} : blur;
+				history = motionHistory(ctx.device, props.renderId);
 			}
 
 			// Collect Active Lights
@@ -1548,7 +1573,8 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 			}
 		}
 
-		type Pending3DItem =
+		/** `owner`: the node id, so motion blur finds the item a frame earlier. */
+		type Pending3DItem = (
 			| { kind: "quad"; texture: GPUTexture; opts: DrawQuad3DOpts }
 			| {
 					// A text layer's glyphs, drawn natively on its plane.
@@ -1565,7 +1591,8 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					texture?: GPUTexture;
 					opts: DrawMesh3DOpts;
 					meshBuffers?: GPUMeshBuffers;
-			  };
+			  }
+		) & { owner?: string };
 		const pending3DItems: Pending3DItem[] = [];
 		/** Textures the queued 3D items still read: their layers, mattes and reliefs. */
 		const pendingTextures = (): GPUTexture[] =>
@@ -1599,12 +1626,111 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 			};
 		};
 
+		/** Each queued item with its motion key: owner id and its index among the owner's items. */
+		const motionItems = (): Array<[Pending3DItem, string | undefined]> => {
+			const seen = new Map<string, number>();
+			return pending3DItems.map((item) => {
+				if (item.owner === undefined) return [item, undefined];
+				const n = seen.get(item.owner) ?? 0;
+				seen.set(item.owner, n + 1);
+				return [item, `${item.owner}#${n}`];
+			});
+		};
+		/** Writes this frame's draws (and camera) into the motion history. */
+		const recordMotion = (h: MotionHistory, cam: Camera3DPose) => {
+			const r3d = getRenderer3D(
+				ctx.device,
+				ctx.renderer.format ?? "rgba8unorm",
+				sampleCount3d,
+			);
+			for (const [item, key] of motionItems()) {
+				if (!key) continue;
+				if (item.kind === "mesh") {
+					h.recordMesh(
+						encoder,
+						key,
+						shiftedFrame,
+						{
+							modelMatrix: r3d.meshModelMatrix(item.opts),
+							skinning: item.opts.skinningMatrices,
+							windTime: item.opts.wind?.time,
+							crowdTime: item.opts.crowd?.time,
+						},
+						item.opts.instanceBuffer,
+					);
+				} else if (item.kind === "quad") {
+					h.recordQuad(key, shiftedFrame, r3d.quadModelMatrix(item.opts));
+				}
+			}
+			h.recordFrame(shiftedFrame, cam);
+		};
+		/** Draws the queued items' screen motion since the last frame, then blurs `color` by it into `into`. */
+		const blurScene = (
+			h: MotionHistory,
+			cam: Camera3DPose,
+			color: GPUTexture,
+			into: GPUTexture,
+			blur: CameraMotionBlur,
+		) => {
+			const r3d = getRenderer3D(
+				ctx.device,
+				ctx.renderer.format ?? "rgba8unorm",
+				sampleCount3d,
+			);
+			const vel = r3d.beginVelocityPass(
+				encoder,
+				nativeWidth,
+				nativeHeight,
+				cam,
+				h.previousCamera(shiftedFrame) ?? cam,
+			);
+			for (const [item, key] of motionItems()) {
+				if (item.kind === "mesh") {
+					const prev = key
+						? h.previousMesh(key, shiftedFrame, {
+								skinning: item.opts.skinningMatrices,
+								instanceBuffer: item.opts.instanceBuffer,
+								wind: item.opts.wind,
+								crowd: item.opts.crowd,
+							})
+						: undefined;
+					r3d.drawMeshVelocity(
+						vel.pass,
+						vel.cameraBindGroup,
+						item.meshBuffers ?? item.mesh,
+						item.texture,
+						item.opts,
+						prev,
+					);
+				} else if (item.kind === "quad") {
+					r3d.drawQuadVelocity(
+						vel.pass,
+						vel.cameraBindGroup,
+						item.texture,
+						item.opts,
+						key ? h.previousQuad(key, shiftedFrame) : undefined,
+					);
+				}
+			}
+			vel.pass.end();
+			r3d.applyMotionBlur(encoder, color, vel.velocity, into.createView(), {
+				shutterAngle: blur.shutter,
+				sampleCount: blur.samples,
+				maxBlur: blur.maxBlur,
+			});
+		};
+
 		const flush3DPass = (
 			curTex: GPUTexture,
 			curView: GPUTextureView,
 			curExcludes: GPUTexture[],
 		): { finalTex: GPUTexture; finalView: GPUTextureView } => {
 			if (pending3DItems.length === 0 || !camera) {
+				return { finalTex: curTex, finalView: curView };
+			}
+			if (historyOnly) {
+				if (history) recordMotion(history, camera);
+				pending3DItems.length = 0;
 				return { finalTex: curTex, finalView: curView };
 			}
 
@@ -2042,6 +2168,17 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				);
 				final3dTex = dofResultTex;
 			}
+
+			if (motionBlur && history) {
+				const blurredTex = ctx.renderer.getTemporaryTexture(
+					nativeWidth,
+					nativeHeight,
+					[curTex, targetTexture, scene3dTex, final3dTex, ...curExcludes],
+				);
+				blurScene(history, camera, final3dTex, blurredTex, motionBlur);
+				final3dTex = blurredTex;
+			}
+			if (history) recordMotion(history, camera);
 
 			if (sceneBloom) {
 				const bloomTex = ctx.renderer.getTemporaryTexture(
@@ -2537,6 +2674,9 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 						{ cause: err },
 					);
 				}
+				// Voronoi destruction draws the model's pieces, posed by physics below.
+				if (model && lop.fracture3d)
+					model = fracturedModel(model, lop.fracture3d);
 
 				if (!model || model.meshes.length === 0) return;
 
@@ -3089,6 +3229,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 										crowd: crowdOpts(crowdBakes[k], mesh),
 									};
 									pending3DItems.push({
+										owner: lop.id,
 										kind: "mesh",
 										mesh,
 										texture: mat ? await r3d.materialTexture(mat) : undefined,
@@ -3468,6 +3609,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 									firstInstance,
 								};
 								pending3DItems.push({
+									owner: lop.id,
 									kind: "mesh",
 									mesh,
 									texture: mat ? await r3d.materialTexture(mat) : undefined,
@@ -3501,6 +3643,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 									firstInstance: sparkFirst,
 								};
 								pending3DItems.push({
+									owner: lop.id,
 									kind: "mesh",
 									mesh,
 									texture: mat ? await r3d.materialTexture(mat) : undefined,
@@ -3537,18 +3680,31 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					finalModelMatrix,
 					model.rootTransform ?? Matrix4Math.identity(),
 				);
-				const posed = model.nodes
-					? poseCharacter({
-							model,
-							node: lop,
-							frame: shiftedFrame ?? 0,
-							fps: fps || 30,
-							clip,
-							clipSec,
-							sceneRoot,
-							key: String(lop.id),
-						})
-					: undefined;
+				// A whole fracture rests exactly (identity joints): pieces stay sealed.
+				const wholeFracture = Boolean(
+					lop.fracture3d &&
+						fractureWhole(model, lop.fracture3d, shiftedFrame ?? 0),
+				);
+				const posed =
+					(lop.fracture3d &&
+						!wholeFracture &&
+						fracturePose(model, lop.fracture3d, shiftedFrame ?? 0, sceneRoot, [
+							scX,
+							scY,
+							scZ,
+						])) ||
+					(model.nodes
+						? poseCharacter({
+								model,
+								node: lop,
+								frame: shiftedFrame ?? 0,
+								fps: fps || 30,
+								clip,
+								clipSec,
+								sceneRoot,
+								key: String(lop.id),
+							})
+						: undefined);
 				const skinCache = new Map<number, Float32Array>();
 				const placeMesh = (
 					mesh: Mesh3DData,
@@ -3620,6 +3776,8 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				}
 
 				for (const mesh of model.meshes) {
+					if (wholeFracture && mesh.materialName === FRACTURE_INTERIOR_MATERIAL)
+						continue;
 					const mat = mesh.materialName
 						? model.materials[mesh.materialName]
 						: undefined;
@@ -3845,6 +4003,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 
 					if (mat) meshOpts.maps = await r3d.materialMaps(mat);
 					pending3DItems.push({
+						owner: lop.id,
 						kind: "mesh",
 						mesh,
 						texture: mat ? await r3d.materialTexture(mat) : undefined,
@@ -4309,6 +4468,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					}
 
 					pending3DItems.push({
+						owner: lop.id,
 						kind: "quad",
 						texture: activeGroupTex,
 						opts: quadOpts,
@@ -6022,6 +6182,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					);
 				if (!glyphBatches || quadHasContent) {
 					pending3DItems.push({
+						owner: lop.id,
 						kind: "quad",
 						texture: renderedTex,
 						opts: quadOpts,
@@ -6029,6 +6190,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				}
 				if (glyphBatches && glyphBatches.length > 0) {
 					pending3DItems.push({
+						owner: lop.id,
 						kind: "slug",
 						batches: glyphBatches,
 						opts: quadOpts,
@@ -6281,6 +6443,59 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 		args.pass = finalPass;
 	}
 };
+
+/** Whether a composition's camera asks for shutter motion blur. */
+function sceneMotionBlur(virtualMedia: VirtualMediaData): boolean {
+	return collectNodeOps(virtualMedia.children).some((vm) => {
+		const op = vm.operation as
+			| { kind?: string; motionBlur?: unknown }
+			| undefined;
+		return op?.kind === "camera" && Boolean(op.motionBlur);
+	});
+}
+
+/**
+ * Renders `frame` of the composition into a scratch target only to record
+ * its 3D motion history (the frame after it reads it).
+ */
+async function renderMotionHistory(
+	args: Parameters<WebGPUNodeRenderer>[0],
+	frame: number,
+): Promise<void> {
+	const { ctx, encoder, props, targetTexture, targetWidth, targetHeight } =
+		args;
+	const excludeTextures = [...(props.excludeTextures ?? []), targetTexture];
+	const scratch = ctx.renderer.getTemporaryTexture(
+		targetWidth,
+		targetHeight,
+		excludeTextures,
+	);
+	const view = scratch.createView();
+	const sub = {
+		...args,
+		targetView: view,
+		targetTexture: scratch,
+		pass: ctx.renderer.beginFrame(
+			encoder,
+			view,
+			{ r: 0, g: 0, b: 0, a: 0 },
+			targetWidth,
+			targetHeight,
+			"clear",
+		),
+		props: {
+			...props,
+			frame,
+			...(props.compositionFrame !== undefined && {
+				compositionFrame: props.compositionFrame - 1,
+			}),
+			motionHistoryOnly: true,
+			excludeTextures,
+		},
+	};
+	await CompositorWebGPURenderer(sub);
+	sub.pass.end();
+}
 
 /** Pixels of room around a border texture for its anti-aliased edge. */
 const BORDER_AA_MARGIN = 2;

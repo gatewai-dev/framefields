@@ -1,182 +1,174 @@
 /**
- * @file packages/webgpu-renderers/src/renderer3d/motion-blur-pipeline.ts
- * WebGPU render pipeline for camera shutter motion blur using screen-space velocity buffers.
+ * Shutter motion blur of a 3D scene from its velocity buffer (see
+ * `shaders/motion-blur.ts`): tile max, neighbor max, then a depth-aware
+ * reconstruction gather into the target.
  */
-
+import { BufferPool } from "../renderer2d/buffer-pool.js";
 import { motionBlurWgsl } from "../shaders/motion-blur.js";
 
 export interface MotionBlurPassOptions {
+	/** Shutter angle, degrees. Default 180. */
 	shutterAngle?: number;
+	/** Taps along each pixel's motion. Default 20. */
 	sampleCount?: number;
-	maxVelocity?: number;
-	depthThreshold?: number;
-	curveType?: "box" | "gaussian" | "triangle";
-	width: number;
-	height: number;
+	/** Longest blur from a pixel (and the tile size), px. Default 48. */
+	maxBlur?: number;
+	/** Depth softness between in front and behind, scene px. Default 20. */
+	softDepth?: number;
 }
 
+const TILE_FORMAT: GPUTextureFormat = "rgba16float";
+
 export class MotionBlurPipeline {
-	private device: GPUDevice;
-	private pipeline: GPURenderPipeline;
-	private bindGroupLayout: GPUBindGroupLayout;
-	private uniformBuffer: GPUBuffer;
-	private sampler: GPUSampler;
+	private readonly device: GPUDevice;
+	private readonly module: GPUShaderModule;
+	private readonly tileMax: GPURenderPipeline;
+	private readonly neighborMax: GPURenderPipeline;
+	private readonly reconstruct = new Map<GPUTextureFormat, GPURenderPipeline>();
+	/** One uniform block per blur this frame: an encoder may blur several scenes. */
+	private readonly params: BufferPool;
+	private tiles: { a: GPUTexture; b: GPUTexture; w: number; h: number } | null =
+		null;
 
 	constructor(device: GPUDevice) {
 		this.device = device;
-
-		const shaderModule = device.createShaderModule({
-			label: "motion-blur-shader",
+		this.module = device.createShaderModule({
+			label: "motion-blur.wgsl",
 			code: motionBlurWgsl,
 		});
+		this.tileMax = this.pipeline("fs_tile_max", TILE_FORMAT);
+		this.neighborMax = this.pipeline("fs_neighbor_max", TILE_FORMAT);
+		this.params = new BufferPool(
+			32,
+			GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+		);
+	}
 
-		this.bindGroupLayout = device.createBindGroupLayout({
-			label: "motion-blur-bgl",
-			entries: [
-				{
-					binding: 0,
-					visibility: GPUShaderStage.FRAGMENT,
-					texture: { sampleType: "float" },
-				},
-				{
-					binding: 1,
-					visibility: GPUShaderStage.FRAGMENT,
-					texture: { sampleType: "float" },
-				},
-				{
-					binding: 2,
-					visibility: GPUShaderStage.FRAGMENT,
-					texture: { sampleType: "depth" },
-				},
-				{
-					binding: 3,
-					visibility: GPUShaderStage.FRAGMENT,
-					sampler: { type: "filtering" },
-				},
-				{
-					binding: 4,
-					visibility: GPUShaderStage.FRAGMENT,
-					buffer: { type: "uniform" },
-				},
-			],
-		});
-
-		const pipelineLayout = device.createPipelineLayout({
-			label: "motion-blur-layout",
-			bindGroupLayouts: [this.bindGroupLayout],
-		});
-
-		this.pipeline = device.createRenderPipeline({
-			label: "motion-blur-pipeline",
-			layout: pipelineLayout,
-			vertex: {
-				module: shaderModule,
-				entryPoint: "vs_main",
-			},
+	private pipeline(entry: string, format: GPUTextureFormat): GPURenderPipeline {
+		return this.device.createRenderPipeline({
+			label: `motion-blur-${entry}`,
+			layout: "auto",
+			vertex: { module: this.module, entryPoint: "vs_main" },
 			fragment: {
-				module: shaderModule,
-				entryPoint: "fs_motion_blur",
-				targets: [
-					{
-						format: "rgba8unorm",
-						blend: {
-							color: {
-								srcFactor: "one",
-								dstFactor: "one-minus-src-alpha",
-								operation: "add",
-							},
-							alpha: {
-								srcFactor: "one",
-								dstFactor: "one-minus-src-alpha",
-								operation: "add",
-							},
-						},
-					},
-				],
+				module: this.module,
+				entryPoint: entry,
+				targets: [{ format }],
 			},
-			primitive: {
-				topology: "triangle-strip",
-			},
-		});
-
-		this.uniformBuffer = device.createBuffer({
-			label: "motion-blur-uniforms",
-			size: 32, // 8 * 4 bytes
-			usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-		});
-
-		this.sampler = device.createSampler({
-			label: "motion-blur-sampler",
-			magFilter: "linear",
-			minFilter: "linear",
+			primitive: { topology: "triangle-list" },
 		});
 	}
 
-	public render(
-		commandEncoder: GPUCommandEncoder,
-		colorView: GPUTextureView,
-		velocityView: GPUTextureView,
-		depthView: GPUTextureView,
-		targetView: GPUTextureView,
-		options: MotionBlurPassOptions,
+	private tileTextures(w: number, h: number): { a: GPUTexture; b: GPUTexture } {
+		if (this.tiles && this.tiles.w === w && this.tiles.h === h)
+			return this.tiles;
+		this.tiles?.a.destroy();
+		this.tiles?.b.destroy();
+		const make = (label: string) =>
+			this.device.createTexture({
+				label,
+				size: { width: w, height: h },
+				format: TILE_FORMAT,
+				usage:
+					GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+			});
+		this.tiles = {
+			a: make("motion-blur-tile-max"),
+			b: make("motion-blur-neighbor-max"),
+			w,
+			h,
+		};
+		return this.tiles;
+	}
+
+	/**
+	 * Blurs `color` (premultiplied) by `velocity` (`VELOCITY_FORMAT`, same
+	 * size) into `target` (a view of `targetFormat`, same size).
+	 */
+	render(
+		encoder: GPUCommandEncoder,
+		color: GPUTexture,
+		velocity: GPUTexture,
+		target: GPUTextureView,
+		targetFormat: GPUTextureFormat,
+		options: MotionBlurPassOptions = {},
 	): void {
-		const shutterFraction = (options.shutterAngle ?? 180) / 360;
-		const sampleCount = options.sampleCount ?? 16;
-		const maxVelocity = options.maxVelocity ?? 64;
-		const depthThreshold = options.depthThreshold ?? 0.05;
-		const curveType =
-			options.curveType === "box"
-				? 0
-				: options.curveType === "triangle"
-					? 2
-					: 1;
+		const k = Math.max(4, Math.min(160, Math.round(options.maxBlur ?? 48)));
+		const width = color.width;
+		const height = color.height;
+		const tw = Math.ceil(width / k);
+		const th = Math.ceil(height / k);
+		const { a, b } = this.tileTextures(tw, th);
+		const params = this.params.getBuffer(
+			this.device,
+			new Float32Array([
+				width,
+				height,
+				tw,
+				th,
+				(options.shutterAngle ?? 180) / 360 / 2,
+				k,
+				Math.max(1, Math.round(options.sampleCount ?? 20)),
+				options.softDepth ?? 20,
+			]),
+		);
+		const velocityView = velocity.createView();
+		this.pass(encoder, this.tileMax, a.createView(), [
+			{ binding: 0, resource: { buffer: params } },
+			{ binding: 1, resource: velocityView },
+		]);
+		this.pass(encoder, this.neighborMax, b.createView(), [
+			{ binding: 0, resource: { buffer: params } },
+			{ binding: 2, resource: a.createView() },
+		]);
+		let reconstruct = this.reconstruct.get(targetFormat);
+		if (!reconstruct) {
+			reconstruct = this.pipeline("fs_reconstruct", targetFormat);
+			this.reconstruct.set(targetFormat, reconstruct);
+		}
+		this.pass(encoder, reconstruct, target, [
+			{ binding: 0, resource: { buffer: params } },
+			{ binding: 1, resource: velocityView },
+			{ binding: 2, resource: b.createView() },
+			{ binding: 3, resource: color.createView() },
+		]);
+	}
 
-		const uniformData = new ArrayBuffer(32);
-		const f32View = new Float32Array(uniformData);
-		const u32View = new Uint32Array(uniformData);
-
-		f32View[0] = shutterFraction;
-		u32View[1] = sampleCount;
-		f32View[2] = maxVelocity;
-		u32View[3] = 16; // tileDilation
-		f32View[4] = options.width;
-		f32View[5] = options.height;
-		f32View[6] = depthThreshold;
-		u32View[7] = curveType;
-
-		this.device.queue.writeBuffer(this.uniformBuffer, 0, uniformData);
-
-		const bindGroup = this.device.createBindGroup({
-			label: "motion-blur-bg",
-			layout: this.bindGroupLayout,
-			entries: [
-				{ binding: 0, resource: colorView },
-				{ binding: 1, resource: velocityView },
-				{ binding: 2, resource: depthView },
-				{ binding: 3, resource: this.sampler },
-				{ binding: 4, resource: { buffer: this.uniformBuffer } },
-			],
-		});
-
-		const pass = commandEncoder.beginRenderPass({
-			label: "motion-blur-pass",
+	private pass(
+		encoder: GPUCommandEncoder,
+		pipeline: GPURenderPipeline,
+		view: GPUTextureView,
+		entries: GPUBindGroupEntry[],
+	): void {
+		const pass = encoder.beginRenderPass({
+			label: pipeline.label,
 			colorAttachments: [
 				{
-					view: targetView,
+					view,
 					loadOp: "clear",
 					storeOp: "store",
 					clearValue: { r: 0, g: 0, b: 0, a: 0 },
 				},
 			],
 		});
-
-		pass.setPipeline(this.pipeline);
-		pass.setBindGroup(0, bindGroup);
-		pass.draw(4);
+		pass.setPipeline(pipeline);
+		pass.setBindGroup(
+			0,
+			this.device.createBindGroup({
+				layout: pipeline.getBindGroupLayout(0),
+				entries,
+			}),
+		);
+		pass.draw(3);
 		pass.end();
 	}
 
-	public destroy(): void {
-		this.uniformBuffer.destroy();
+	resetPools(): void {
+		this.params.reset();
+	}
+
+	destroy(): void {
+		this.params.destroy();
+		this.tiles?.a.destroy();
+		this.tiles?.b.destroy();
 	}
 }

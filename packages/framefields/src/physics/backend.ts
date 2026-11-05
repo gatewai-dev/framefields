@@ -90,6 +90,8 @@ export interface SimBody<V, R> {
 	mass(): number;
 	setEnabled(enabled: boolean): void;
 	applyImpulse(impulse: V): void;
+	/** Sets linear and angular velocity (wakes the body). */
+	setVelocity(linear: V, angular: R extends number ? number : Vec3): void;
 	setKinematicTarget(position: V, rotation: R): void;
 }
 
@@ -227,6 +229,10 @@ class RapierWorld2D implements SimWorld2D {
 			mass: () => body.mass(),
 			setEnabled: (on) => body.setEnabled(on),
 			applyImpulse: ([x, y]) => body.applyImpulse({ x, y }, true),
+			setVelocity: ([x, y], w) => {
+				body.setLinvel({ x, y }, true);
+				body.setAngvel(w, true);
+			},
 			setKinematicTarget: ([x, y], angle) => {
 				body.setNextKinematicTranslation({ x, y });
 				body.setNextKinematicRotation(angle);
@@ -361,6 +367,10 @@ class RapierWorld3D implements SimWorld3D {
 			mass: () => body.mass(),
 			setEnabled: (on) => body.setEnabled(on),
 			applyImpulse: (v) => body.applyImpulse(vec3(v), true),
+			setVelocity: (v, w) => {
+				body.setLinvel(vec3(v), true);
+				body.setAngvel(vec3(w), true);
+			},
 			setKinematicTarget: (p, [x, y, z, w]) => {
 				body.setNextKinematicTranslation(vec3(p));
 				body.setNextKinematicRotation({ x, y, z, w });

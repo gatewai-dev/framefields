@@ -404,6 +404,10 @@ Where depth jumps (an object's outline) the surface stretches across with the ed
 
 ---
 
+### Motion blur (3D)
+
+`Layer.camera({ ..., motionBlur: true })` (or `{ shutter: 180, samples: 20, maxBlur: 48 }`) streaks every mesh by its own motion over the shutter, along with the camera's: moving layers, skinned joints, crowds, swarms, wind and fractured pieces. 3D layer planes (cards, video screens) move by their transform. Still things stay sharp, and a frame renders the same in order or after a seek (the frame before is rendered first, recording only). `shutter` is in degrees (180 = film, 360 = the whole frame interval). `maxBlur` caps the streak in px. A layer's own `motionBlurShutter` still streaks a whole flat layer by its position; use the camera's for 3D.
+
 ### Characters: blending, IK, look-at, springs, crowds
 
 glTF characters (`Layer.glb` / `Layer.gltf`) take layered clips and procedural constraints. Joint names come from the file. Targets are scene coordinates: a point, keys `[[frame, x, y, z]]`, or `(frame) => [x, y, z]`.
@@ -581,6 +585,7 @@ stage.animate(LayerAnimation.create().signal("y", world.impact, { multiplier: 14
 - **Particles:** for clouds, dust, sparks, fluids and flow fields use `Layer.particles` (GPU, below), not hundreds of physics bodies. Keep physics bodies for a few dozen things that must collide and stack (cards, letters, products).
 - **Keyframes instead of signals:** `world.bakeKeyframes({ tolerance: 0.25 })` in place of `simulate()` writes plain, simplified linear keyframes (editable, plain JSON).
 - **3D:** `Physics.world3d` takes `Layer3D` solids (`roundedBox`, `sphere`, `cylinder`, `capsule`, `torus`, `ring`, `prism`, `pyramid`, `polyhedron`, `icosahedron`, `icosphere`, `shard`) and models (convex hull of the mesh); same options with 3-vectors, `world.hinge(a, b, at, axis)`, `world.walls({ width, height, depth })`. Use `Layer3D.instances({ count: bodies.length, mesh: Layer3D.shard({ radius: 24 }), bodies, emissiveBySpeed: { speedThreshold: 200, maxSpeed: 1200, color: "#ff5511", intensity: 4 } })` to render hundreds of physics bodies in a single GPU draw call.
+- **Destruction:** `const broken = world.fracture(statue, { cells: 48, impactPoint: [x, y, z], fractureFrame: "onImpact" | frame, explosionSpeed: 300, interiorColor: "#e9dcc0" })` cuts a `Layer3D` solid, extruded text or model (with `modelData`) into Voronoi pieces. It looks whole (a fixed collider of its own shape) until the frame or the first body that hits it, which carries on through, then the pieces fall as rigid bodies (`broken.pieces`, `broken.frame` after simulating). The node changes in place: add it as usual. One draw call per material; pieces crowd around `impactPoint`. Needs `simulate()` (not `live()`).
 - **Timing:** signals are on the composition clock. In a scene that starts at frame `S`, pass `startFrame: S` to the world. Before it and after `frames` the signals hold their first/last value. Add every body, joint and force before `simulate()` (or before reading any signal): the world then locks.
 - **Feel:** gravity 2400 px/s² reads snappy on a 1080p canvas; `pixelsPerMeter` (100) scales how heavy things feel. Raise `substeps` (4) for tall stacks or thin, fast bodies.
 - Install note: physics uses the optional dependency `@dimforge/rapier2d-deterministic-compat` / `rapier3d-deterministic-compat` (installed by default with framefields).

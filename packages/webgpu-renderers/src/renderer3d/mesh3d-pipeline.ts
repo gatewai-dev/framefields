@@ -1,4 +1,5 @@
 import { BufferPool } from "../renderer2d/buffer-pool.js";
+import { meshVelocityWgsl } from "../shaders/mesh-velocity.js";
 import { mesh3dWgsl } from "../shaders/mesh3d.js";
 import { fullCoverageView, matteLayoutEntry } from "./matte3d.js";
 import {
@@ -122,6 +123,25 @@ export interface MeshUniformData extends SurfaceParams {
 	crowd?: MeshCrowd;
 }
 
+/**
+ * A mesh's state one frame earlier, for the velocity pass; unset fields
+ * repeat this frame's (no motion from them).
+ */
+export type MeshMotionPrev = Pick<
+	MeshUniformData,
+	| "modelMatrix"
+	| "normalMatrix"
+	| "skinningMatrices"
+	| "instanceBuffer"
+	| "wind"
+	| "crowd"
+>;
+
+/** Format of the velocity target: motion px (rg), linear depth (b), coverage (a). */
+export const VELOCITY_FORMAT: GPUTextureFormat = "rgba16float";
+/** Depth format of the velocity pass. */
+export const VELOCITY_DEPTH_FORMAT: GPUTextureFormat = "depth24plus";
+
 export interface GPUMeshBuffers {
 	vertexBuffer: GPUBuffer;
 	indexBuffer: GPUBuffer;
@@ -206,6 +226,11 @@ export class Mesh3DPipeline {
 
 	// Transform, tint, draw/material params, shade, shared surface block, maps.
 	private modelData = new Float32Array(MESH_MODEL_FLOATS);
+	private readonly vertexBuffers: GPUVertexBufferLayout[];
+	/** Velocity-pass camera: this and the previous view-projection. */
+	public readonly velocityCameraLayout: GPUBindGroupLayout;
+	private velocityModule?: GPUShaderModule;
+	private readonly velocityPipelines = new Map<string, GPURenderPipeline>();
 
 	constructor(
 		device: GPUDevice,
@@ -325,6 +350,18 @@ export class Mesh3DPipeline {
 				},
 			],
 		};
+
+		this.vertexBuffers = [...(vertexState.buffers as GPUVertexBufferLayout[])];
+		this.velocityCameraLayout = device.createBindGroupLayout({
+			label: "Mesh3DVelocityCameraLayout",
+			entries: [
+				{
+					binding: 0,
+					visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+					buffer: { type: "uniform" },
+				},
+			],
+		});
 
 		const base: PipelineVariantBase = {
 			label: "Mesh3DPipeline",
@@ -625,25 +662,7 @@ export class Mesh3DPipeline {
 			...data,
 			hasMapUvs: Boolean(meshBuffers.mapUvBuffer),
 		});
-		const white = this.defaultWhiteTexture;
-		const maps = data.maps;
-		const textureBindGroup = this.device.createBindGroup({
-			layout: this.textureLayout,
-			entries: [
-				{ binding: 0, resource: sampler },
-				{ binding: 1, resource: (texture ?? white).createView() },
-				{
-					binding: 2,
-					resource: (maps?.normal ?? this.flatNormalTexture).createView(),
-				},
-				{
-					binding: 3,
-					resource: (maps?.metallicRoughness ?? white).createView(),
-				},
-				{ binding: 4, resource: (maps?.occlusion ?? white).createView() },
-				{ binding: 5, resource: (maps?.emissive ?? white).createView() },
-			],
-		});
+		const textureBindGroup = this.textureGroup(texture, sampler, data.maps);
 
 		const wireframe =
 			data.wireframe === true &&
@@ -683,28 +702,153 @@ export class Mesh3DPipeline {
 		pass.setBindGroup(1, modelBindGroup);
 		pass.setBindGroup(2, textureBindGroup);
 		pass.setBindGroup(3, lightsBindGroup);
+		this.issue(
+			pass,
+			meshBuffers,
+			wireframe,
+			data,
+			instanceCount,
+			firstInstance,
+		);
+	}
+
+	/**
+	 * Draws the mesh's screen motion since `prev` into a velocity pass
+	 * (`VELOCITY_FORMAT`): the vertex runs this frame's and the previous
+	 * frame's deformation, so skinning, instances, wind and crowds move it
+	 * too.
+	 */
+	drawVelocity(
+		pass: GPURenderPassEncoder,
+		velocityCameraBindGroup: GPUBindGroup,
+		meshBuffers: GPUMeshBuffers,
+		texture: GPUTexture | undefined,
+		sampler: GPUSampler,
+		data: MeshUniformData,
+		prev: MeshMotionPrev | undefined,
+		instanceCount = 1,
+		firstInstance = 0,
+	): void {
+		const hasMapUvs = Boolean(meshBuffers.mapUvBuffer);
+		const now = this.packModel({ ...data, hasMapUvs });
+		const before = this.packModel({ ...data, ...prev, hasMapUvs });
+		const wireframe =
+			data.wireframe === true &&
+			(!meshBuffers.topology || meshBuffers.topology === "triangle-list");
+		if (wireframe && !meshBuffers.wireIndexBuffer) {
+			throw new Error("Wireframe requires mesh buffers with edge indices");
+		}
+		const topology: GPUPrimitiveTopology =
+			meshBuffers.topology === "point-list"
+				? "point-list"
+				: wireframe || meshBuffers.topology === "line-list"
+					? "line-list"
+					: "triangle-list";
+		pass.setPipeline(this.velocityPipeline(topology));
+		pass.setBindGroup(0, velocityCameraBindGroup);
+		pass.setBindGroup(1, now);
+		pass.setBindGroup(2, before);
+		pass.setBindGroup(3, this.textureGroup(texture, sampler, undefined));
+		this.issue(
+			pass,
+			meshBuffers,
+			wireframe,
+			data,
+			instanceCount,
+			firstInstance,
+		);
+	}
+
+	private velocityPipeline(topology: GPUPrimitiveTopology): GPURenderPipeline {
+		let pipeline = this.velocityPipelines.get(topology);
+		if (pipeline) return pipeline;
+		this.velocityModule ??= this.device.createShaderModule({
+			label: "mesh-velocity.wgsl",
+			code: meshVelocityWgsl,
+		});
+		pipeline = this.device.createRenderPipeline({
+			label: `Mesh3DVelocity-${topology}`,
+			layout: this.device.createPipelineLayout({
+				bindGroupLayouts: [
+					this.velocityCameraLayout,
+					this.modelLayout,
+					this.modelLayout,
+					this.textureLayout,
+				],
+			}),
+			vertex: {
+				module: this.velocityModule,
+				entryPoint: "vs_velocity",
+				buffers: this.vertexBuffers,
+			},
+			fragment: {
+				module: this.velocityModule,
+				entryPoint: "fs_velocity",
+				targets: [{ format: VELOCITY_FORMAT }],
+			},
+			depthStencil: {
+				format: VELOCITY_DEPTH_FORMAT,
+				depthWriteEnabled: true,
+				depthCompare: "less-equal",
+			},
+			primitive: { topology, cullMode: "none" },
+		});
+		this.velocityPipelines.set(topology, pipeline);
+		return pipeline;
+	}
+
+	private textureGroup(
+		texture: GPUTexture | undefined,
+		sampler: GPUSampler,
+		maps: MeshMaterialMaps | undefined,
+	): GPUBindGroup {
+		const white = this.defaultWhiteTexture;
+		return this.device.createBindGroup({
+			layout: this.textureLayout,
+			entries: [
+				{ binding: 0, resource: sampler },
+				{ binding: 1, resource: (texture ?? white).createView() },
+				{
+					binding: 2,
+					resource: (maps?.normal ?? this.flatNormalTexture).createView(),
+				},
+				{
+					binding: 3,
+					resource: (maps?.metallicRoughness ?? white).createView(),
+				},
+				{ binding: 4, resource: (maps?.occlusion ?? white).createView() },
+				{ binding: 5, resource: (maps?.emissive ?? white).createView() },
+			],
+		});
+	}
+
+	/** Binds the vertex and index buffers and draws (instanced when asked). */
+	private issue(
+		pass: GPURenderPassEncoder,
+		meshBuffers: GPUMeshBuffers,
+		wireframe: boolean,
+		data: MeshUniformData,
+		instanceCount: number,
+		firstInstance: number,
+	): void {
 		pass.setVertexBuffer(0, meshBuffers.vertexBuffer);
 		pass.setVertexBuffer(1, this.colorsFor(meshBuffers));
 		pass.setVertexBuffer(
 			2,
 			meshBuffers.mapUvBuffer ?? meshBuffers.vertexBuffer,
 		);
+		const wire = wireframe && meshBuffers.wireIndexBuffer;
 		pass.setIndexBuffer(
-			wireframe ? meshBuffers.wireIndexBuffer! : meshBuffers.indexBuffer,
+			wire || meshBuffers.indexBuffer,
 			meshBuffers.indexFormat,
 		);
+		const count = wire
+			? (meshBuffers.wireIndexCount ?? 0)
+			: meshBuffers.indexCount;
 		if (instanceCount > 1 || data.isInstanced) {
-			pass.drawIndexed(
-				wireframe ? meshBuffers.wireIndexCount! : meshBuffers.indexCount,
-				instanceCount,
-				0,
-				0,
-				firstInstance,
-			);
+			pass.drawIndexed(count, instanceCount, 0, 0, firstInstance);
 		} else {
-			pass.drawIndexed(
-				wireframe ? meshBuffers.wireIndexCount! : meshBuffers.indexCount,
-			);
+			pass.drawIndexed(count);
 		}
 	}
 
@@ -732,29 +876,14 @@ export class Mesh3DPipeline {
 		);
 		pass.setBindGroup(0, lightCameraBindGroup);
 		pass.setBindGroup(1, this.packModel(data));
-		pass.setVertexBuffer(0, meshBuffers.vertexBuffer);
-		pass.setVertexBuffer(1, this.colorsFor(meshBuffers));
-		pass.setVertexBuffer(
-			2,
-			meshBuffers.mapUvBuffer ?? meshBuffers.vertexBuffer,
+		this.issue(
+			pass,
+			meshBuffers,
+			wireframe,
+			data,
+			instanceCount,
+			firstInstance,
 		);
-		pass.setIndexBuffer(
-			wireframe ? meshBuffers.wireIndexBuffer! : meshBuffers.indexBuffer,
-			meshBuffers.indexFormat,
-		);
-		if (instanceCount > 1 || data.isInstanced) {
-			pass.drawIndexed(
-				wireframe ? meshBuffers.wireIndexCount! : meshBuffers.indexCount,
-				instanceCount,
-				0,
-				0,
-				firstInstance,
-			);
-		} else {
-			pass.drawIndexed(
-				wireframe ? meshBuffers.wireIndexCount! : meshBuffers.indexCount,
-			);
-		}
 	}
 
 	private colorsFor(meshBuffers: GPUMeshBuffers): GPUBuffer {

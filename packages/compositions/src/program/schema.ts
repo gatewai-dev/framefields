@@ -40,6 +40,8 @@ import {
 	TwoBoneIkSchema,
 } from "./character-schema.js";
 import {
+	Fracture3DSchema,
+	type Fracture3DSpec,
 	Primitive3DSpecSchema,
 	Scatter3DSchema,
 	type Scatter3DSpec,
@@ -1420,6 +1422,24 @@ export const CameraShakeSchema = z
 
 export type CameraShake = z.input<typeof CameraShakeSchema>;
 
+/**
+ * Per-object shutter motion blur for the 3D scene: every mesh, skinned
+ * joint, instance and fractured piece streaks by its own motion over the
+ * shutter (and the camera's), reconstructed from a velocity buffer.
+ */
+export const CameraMotionBlurSchema = z
+	.object({
+		/** Shutter angle, degrees: 180 is the film look, 360 the whole frame interval. Default 180. */
+		shutter: z.number().min(1).max(720).default(180),
+		/** Taps along each pixel's motion, 4..64. Default 20. */
+		samples: z.number().int().min(4).max(64).default(20),
+		/** Longest streak from a pixel, px (also the tile size). Default 48. */
+		maxBlur: z.number().min(4).max(160).default(48),
+	})
+	.strict();
+
+export type CameraMotionBlur = z.input<typeof CameraMotionBlurSchema>;
+
 export interface CameraNode {
 	id: string;
 	kind: "camera";
@@ -1436,6 +1456,8 @@ export interface CameraNode {
 	lens?: CameraLens;
 	dof?: CameraDoF;
 	shake?: CameraShake;
+	/** Shutter motion blur of the 3D scene; `true` takes the defaults. */
+	motionBlur?: boolean | CameraMotionBlur;
 	startFrame?: number;
 	durationFrames?: number;
 	animation?: LayerAnimationSpec;
@@ -1458,6 +1480,7 @@ export const CameraNodeSchema: z.ZodType<CameraNode> = z
 		lens: CameraLensSchema.optional(),
 		dof: CameraDoFSchema.optional(),
 		shake: CameraShakeSchema.optional(),
+		motionBlur: z.union([z.boolean(), CameraMotionBlurSchema]).optional(),
 		startFrame: z.number().int().min(0).default(0),
 		durationFrames: z.number().int().min(1).optional(),
 		animation: LayerAnimationSchema.default({ tracks: [] }),
@@ -1808,6 +1831,8 @@ export interface Model3DNode {
 	swarm3d?: unknown;
 	/** Layer3D.scatter: instances placed on another model's surface. */
 	scatter3d?: Scatter3DSpec;
+	/** Voronoi destruction: the mesh drawn as pieces posed by physics (`world.fracture`). */
+	fracture3d?: Fracture3DSpec;
 	/** Procedural wind sway (bends vertices downwind by height above the mesh base). */
 	wind?: WindConfig;
 	/** Any layer (image, video, layout) drawn each frame and wrapped onto the mesh by its UVs. */
@@ -2149,6 +2174,7 @@ export const Model3DNodeSchema: z.ZodType<Model3DNode> = z
 		instances3d: z.unknown().optional(),
 		swarm3d: z.unknown().optional(),
 		scatter3d: Scatter3DSchema.optional(),
+		fracture3d: Fracture3DSchema.optional(),
 		wind: WindSchema.optional(),
 		textureLayer: TextureLayerSchema.optional(),
 		textureLayerId: z.string().optional(),

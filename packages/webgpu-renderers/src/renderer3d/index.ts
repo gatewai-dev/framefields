@@ -1,6 +1,7 @@
 export * from "./audio-mesh-deform-pipeline.js";
 export * from "./bloom-pipeline.js";
 export * from "./floor-reflection-pipeline.js";
+export * from "./fracture-geometry.js";
 export * from "./glass-pipeline.js";
 export * from "./hdr-environment.js";
 export * from "./matte3d.js";

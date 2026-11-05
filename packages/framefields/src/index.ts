@@ -934,6 +934,8 @@ export {
 	type BodyCommonOptions,
 	type FieldSample2D,
 	type FieldSample3D,
+	Fracture3D,
+	type Fracture3DOptions,
 	Physics,
 	type PhysicsBakeOptions,
 	PhysicsBody2D,

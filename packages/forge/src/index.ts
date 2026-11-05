@@ -37,7 +37,13 @@ export {
 	type AddHumanOptions,
 	addHuman,
 } from "./human/add-human.js";
-export { type HumanModel, type HumanOptions, human } from "./human/human.js";
+export { FACE_SHAPES } from "./human/expressions.js";
+export {
+	type HumanModel,
+	type HumanOptions,
+	type HumanPart,
+	human,
+} from "./human/human.js";
 export { MAKEHUMAN_SOURCE } from "./human/source.js";
 export {
 	HumanAssetStore,
@@ -85,3 +91,8 @@ export {
 	Skeleton,
 	type Vec3,
 } from "./skeleton.js";
+export {
+	type SubdivideOptions,
+	smoothNormals,
+	subdivide,
+} from "./subdivide.js";

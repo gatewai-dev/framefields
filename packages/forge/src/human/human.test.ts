@@ -197,6 +197,52 @@ describe.skipIf(!cached)("human (cached MakeHuman assets)", () => {
 		expect(Array.from(h.eyeTexture.slice(1, 4))).toEqual([0x50, 0x4e, 0x47]);
 	});
 
+	it("builds ARKit-named face shapes, split into sides, on the body and mouth", async () => {
+		const h = await human({});
+		const byName = new Map(h.body.targets.map((t) => [t.name, t.positions]));
+		for (const name of [
+			"eyeBlinkLeft",
+			"eyeBlinkRight",
+			"jawOpen",
+			"mouthSmileLeft",
+			"mouthSmileRight",
+			"browInnerUp",
+		])
+			expect(byName.has(name)).toBe(true);
+		// Each side's shape moves its own side: the character's left is +x.
+		const sideOf = (d: ArrayLike<number>) => {
+			let left = 0;
+			let right = 0;
+			for (let v = 0; v < d.length / 3; v++) {
+				const m = Math.hypot(
+					d[v * 3] as number,
+					d[v * 3 + 1] as number,
+					d[v * 3 + 2] as number,
+				);
+				if ((h.body.positions[v * 3] as number) > 0) left += m;
+				else right += m;
+			}
+			return { left, right };
+		};
+		for (const shape of ["eyeBlink", "mouthSmile"]) {
+			const l = sideOf(byName.get(`${shape}Left`)!);
+			const r = sideOf(byName.get(`${shape}Right`)!);
+			expect(l.left).toBeGreaterThan(l.right * 5);
+			expect(r.right).toBeGreaterThan(r.left * 5);
+		}
+		// The split halves of a symmetric unit add back up to the whole unit.
+		const l = byName.get("mouthSmileLeft")!;
+		const r = byName.get("mouthSmileRight")!;
+		const sum = Array.from(l, (x, i) => x + (r[i] as number));
+		expect(sum.some((x) => Math.abs(x) > 0.05)).toBe(true);
+		// The jaw opens the teeth too; the mouth carries only shapes that move it.
+		const mouth = new Map(h.mouth.targets.map((t) => [t.name, t.positions]));
+		expect(
+			Array.from(mouth.get("jawOpen")!).some((d) => Math.abs(d) > 0.1),
+		).toBe(true);
+		expect(mouth.has("eyeBlinkLeft")).toBe(false);
+	});
+
 	it("adds named targets on top of the macro shape", async () => {
 		const plain = await human({});
 		const shaped = await human({ targets: { "nose/nose-base-up": 1 } });

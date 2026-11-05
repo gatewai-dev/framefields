@@ -110,6 +110,55 @@ export class GlbBuilder {
 		return this.accessors.length - 1;
 	}
 
+	/**
+	 * A float accessor of `count` elements that are zero except at
+	 * `indices` (strictly increasing), which take `values`: glTF's sparse
+	 * storage, for morph targets that move a few vertices of many.
+	 */
+	sparseAccessor(
+		count: number,
+		type: AccessorType,
+		indices: Uint32Array,
+		values: Float32Array,
+		options: { bounds?: boolean } = {},
+	): number {
+		const size = COMPONENTS[type];
+		if (values.length !== indices.length * size)
+			throw new Error("sparse accessor: values don't match the indices");
+		const idx = count <= 65536 ? Uint16Array.from(indices) : indices;
+		const accessor: Record<string, unknown> = {
+			componentType: 5126,
+			count,
+			type,
+			sparse: {
+				count: indices.length,
+				indices: {
+					bufferView: this.view(
+						new Uint8Array(idx.buffer, idx.byteOffset, idx.byteLength),
+					),
+					componentType: componentType(idx),
+				},
+				values: {
+					bufferView: this.view(
+						new Uint8Array(values.buffer, values.byteOffset, values.byteLength),
+					),
+				},
+			},
+		};
+		if (options.bounds) {
+			const b = bounds(values, size);
+			// The elements outside `indices` are zero.
+			if (indices.length < count)
+				for (let c = 0; c < size; c++) {
+					b.min[c] = Math.min(b.min[c] as number, 0);
+					b.max[c] = Math.max(b.max[c] as number, 0);
+				}
+			Object.assign(accessor, b);
+		}
+		this.accessors.push(accessor);
+		return this.accessors.length - 1;
+	}
+
 	/** Raw bytes (an image) as a buffer view. Returns its index. */
 	image(bytes: Uint8Array): number {
 		return this.view(bytes);

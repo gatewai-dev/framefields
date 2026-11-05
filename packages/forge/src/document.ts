@@ -349,22 +349,46 @@ export class GltfDocument {
 		if (mode !== 4) json.mode = mode;
 		if (p.targets?.length) {
 			json.targets = p.targets.map((t) => {
+				const name = `${label} target ${t.name}`;
 				const target: Record<string, number> = {
-					POSITION: this.bin.accessor(
-						floats(`${label} target ${t.name}`, t.positions, 3, count),
-						"VEC3",
-						{ bounds: true, target: "vertex" },
+					POSITION: this.targetAccessor(
+						floats(name, t.positions, 3, count),
+						true,
 					),
 				};
 				if (t.normals)
-					target.NORMAL = vertex(
-						floats(`${label} target ${t.name} normals`, t.normals, 3, count),
-						"VEC3",
+					target.NORMAL = this.targetAccessor(
+						floats(`${name} normals`, t.normals, 3, count),
+						false,
 					);
 				return target;
 			});
 		}
 		return { json, maxJoint };
+	}
+
+	/** A morph target's deltas, sparse when they move under half the vertices. */
+	private targetAccessor(deltas: Float32Array, bounds: boolean): number {
+		const count = deltas.length / 3;
+		const moved: number[] = [];
+		for (let v = 0; v < count; v++)
+			if (deltas[v * 3] || deltas[v * 3 + 1] || deltas[v * 3 + 2])
+				moved.push(v);
+		if (moved.length === 0 || moved.length * 2 >= count)
+			return this.bin.accessor(deltas, "VEC3", { bounds, target: "vertex" });
+		const values = new Float32Array(moved.length * 3);
+		moved.forEach((v, i) => {
+			values.set(deltas.subarray(v * 3, v * 3 + 3), i * 3);
+		});
+		return this.bin.sparseAccessor(
+			count,
+			"VEC3",
+			Uint32Array.from(moved),
+			values,
+			{
+				bounds,
+			},
+		);
 	}
 
 	addNode(spec: NodeSpec): NodeRef {

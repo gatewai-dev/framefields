@@ -10,6 +10,8 @@ export interface Mesh3DData {
 	morphTargets?: { positions?: Float32Array; normals?: Float32Array }[];
 	/** Default morph weights for this mesh instance. */
 	morphWeights?: number[];
+	/** Morph target names (glTF mesh `extras.targetNames`), one per target. */
+	morphTargetNames?: string[];
 	/** Per-map UVs, with the map's own texture transform already applied. */
 	mapUvs?: {
 		normal?: Float32Array;

@@ -40,6 +40,8 @@ import {
 	LookAtSchema,
 	type ModelAnimationLayer,
 	ModelAnimationLayerSchema,
+	type NumberTrack,
+	NumberTrackSchema,
 	type SpringBoneChain,
 	SpringBoneChainSchema,
 	type TwoBoneIkConstraint,
@@ -1855,6 +1857,13 @@ export interface Model3DNode {
 	springBones?: SpringBoneChain[];
 	/** Joints posed directly by name (local Euler degrees, offsets), over the clips. */
 	pose?: Record<string, JointPose>;
+	/**
+	 * Blend shape weights by target name (glTF `extras.targetNames`; case is
+	 * ignored): `{ eyeBlinkLeft: blink, jawOpen: speech }`. Each value is a
+	 * number, `[[frame, v]]` keys, `(frame) => v` or a signal; it replaces the
+	 * clip's weight for that target.
+	 */
+	morphs?: Record<string, NumberTrack>;
 	/** Bones pointed along scene directions, parents first (pose retargeting). */
 	aim?: AimConstraint[];
 	/** Joints driven by other joints, on top of any the model file declares (eyelids, twist bones). */
@@ -2195,6 +2204,7 @@ export const Model3DNodeSchema: z.ZodType<Model3DNode> = z
 		lookAt: z.array(LookAtSchema).optional(),
 		springBones: z.array(SpringBoneChainSchema).optional(),
 		pose: z.record(z.string(), JointPoseSchema).optional(),
+		morphs: z.record(z.string(), NumberTrackSchema).optional(),
 		aim: z.array(AimSchema).optional(),
 		drive: z.array(JointDriverSchema).optional(),
 		crowd: CrowdSchema.optional(),

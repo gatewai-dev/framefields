@@ -12,12 +12,22 @@ export interface BaseMesh {
 	uvs: Float32Array;
 	/** Faces of the "body" group: per corner, vertex and UV index. */
 	faces: { v: number[]; vt: number[] }[];
+	/** Faces of the helper groups the body uses (teeth, tongue), by group name. */
+	helpers: Map<string, { v: number[]; vt: number[] }[]>;
 }
+
+/** Helper geometry that renders: the teeth and tongue inside the mouth. */
+export const MOUTH_GROUPS = new Set([
+	"helper-upper-teeth",
+	"helper-lower-teeth",
+	"helper-tongue",
+]);
 
 export function parseBaseObj(text: string): BaseMesh {
 	const positions: number[] = [];
 	const uvs: number[] = [];
 	const faces: { v: number[]; vt: number[] }[] = [];
+	const helpers = new Map<string, { v: number[]; vt: number[] }[]>();
 	let group = "";
 	for (const line of text.split("\n")) {
 		if (line.startsWith("v ")) {
@@ -27,18 +37,28 @@ export function parseBaseObj(text: string): BaseMesh {
 			const [, u, v] = line.trim().split(/\s+/);
 			uvs.push(Number(u), Number(v));
 		} else if (line.startsWith("g ")) group = line.slice(2).trim();
-		else if (line.startsWith("f ") && group === "body") {
+		else if (
+			line.startsWith("f ") &&
+			(group === "body" || MOUTH_GROUPS.has(group))
+		) {
 			const corners = line.trim().split(/\s+/).slice(1);
-			faces.push({
+			const face = {
 				v: corners.map((c) => Number(c.split("/")[0]) - 1),
 				vt: corners.map((c) => Number(c.split("/")[1]) - 1),
-			});
+			};
+			if (group === "body") faces.push(face);
+			else {
+				const list = helpers.get(group) ?? [];
+				list.push(face);
+				helpers.set(group, list);
+			}
 		}
 	}
 	return {
 		positions: Float32Array.from(positions),
 		uvs: Float32Array.from(uvs),
 		faces,
+		helpers,
 	};
 }
 

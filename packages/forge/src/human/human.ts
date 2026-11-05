@@ -19,8 +19,14 @@
  * doc.addNode({ mesh: doc.addMesh({ name: "Body", primitives: [{ ...elf.body, material: skin }] }), skin: rig.skin });
  * ```
  */
-import type { DriverSpec, PrimitiveSpec } from "../document.js";
+import type {
+	DriverSpec,
+	MorphTargetSpec,
+	PrimitiveSpec,
+} from "../document.js";
 import { Skeleton, type Vec3 } from "../skeleton.js";
+import { subdivide } from "../subdivide.js";
+import { ETHNIC_UNITS, FACE_SHAPES, halfWeight } from "./expressions.js";
 import {
 	type BaseMesh,
 	fitProxy,
@@ -56,37 +62,48 @@ export interface HumanOptions {
 	 * weights: `{ "nose/nose-base-up": 0.6, "chin/chin-jut-in": 0.3 }`.
 	 */
 	targets?: Record<string, number>;
+	/**
+	 * Loop subdivision levels for the body and mouth (each multiplies the
+	 * triangles by four; blend shapes and weights carry through exactly).
+	 * 1 smooths faceting in close-ups. Default 0.
+	 */
+	subdivide?: number;
+	/**
+	 * Facial blend shapes on the body under ARKit names (`eyeBlinkLeft`,
+	 * `jawOpen`, `mouthSmileRight`, …; see `FACE_SHAPES`). Default true.
+	 */
+	expressions?: boolean;
 	/** Where the assets come from (default: a store on the shared cache). */
 	store?: HumanAssetStore;
 }
 
+/** A skinned, UV-mapped part of a human. */
+export type HumanPart = Required<
+	Pick<
+		PrimitiveSpec,
+		"positions" | "normals" | "uvs" | "joints" | "weights" | "indices"
+	>
+>;
+
 export interface HumanModel {
 	skeleton: Skeleton;
-	/** The skinned body, ready for `GltfDocument.addMesh` (add a material). */
-	body: Required<
-		Pick<
-			PrimitiveSpec,
-			"positions" | "normals" | "uvs" | "joints" | "weights" | "indices"
-		>
-	>;
+	/** The skinned body with its facial blend shapes, ready for `GltfDocument.addMesh` (add a material). */
+	body: HumanPart & { targets: MorphTargetSpec[] };
+	/** Teeth and tongue, skinned to the head and jaw, with the expression shapes that move them. */
+	mouth: HumanPart & { targets: MorphTargetSpec[] };
 	/**
 	 * Both eyeballs (sclera, iris, pupil), fitted to the shaped head and
 	 * skinned to `LeftEye` / `RightEye`, so `lookAt` on those joints aims
 	 * them. Give them a material with `eyeTexture` as its color texture.
 	 */
-	eyes: Required<
-		Pick<
-			PrimitiveSpec,
-			"positions" | "normals" | "uvs" | "joints" | "weights" | "indices"
-		>
-	>;
+	eyes: HumanPart;
 	/**
 	 * The clear corneas over the irises, skinned like `eyes`. Give them a
 	 * transmissive material (`transmission`, `ior` ≈ 1.376, `volume.thickness`
 	 * ≈ 0.3 cm, the depth of the chamber in front of the iris) and they
 	 * refract the iris: it shifts with the viewing angle like a real eye's.
 	 */
-	cornea: HumanModel["eyes"];
+	cornea: HumanPart;
 	/** MakeHuman's brown eye texture (PNG, CC0): sclera, iris and pupil, mapped to `eyes`' UVs. */
 	eyeTexture: Uint8Array;
 	/**
@@ -353,6 +370,7 @@ export async function human(options: HumanOptions = {}): Promise<HumanModel> {
 		(shaped[v * 3 + 2] as number) * scale,
 	];
 	const positions = src.flatMap((v) => at(v));
+	const bodyNormals = vertexNormals(positions, indices, src);
 
 	// Skeleton: each bone's head is the mean of its joint group on the shaped body.
 	const skeleton = new Skeleton();
@@ -400,34 +418,116 @@ export async function human(options: HumanOptions = {}): Promise<HumanModel> {
 			l.push([j, w]);
 		}
 	});
-	const joints = new Array<number>(src.length * 4).fill(0);
-	const wts = new Array<number>(src.length * 4).fill(0);
-	src.forEach((v, i) => {
-		const l = (perVertex.get(v) ?? [[0, 1]])
-			.sort((a, b) => b[1] - a[1])
-			.slice(0, 4);
-		const sum = l.reduce((s, x) => s + x[1], 0) || 1;
-		l.forEach(([j, w], k) => {
-			joints[i * 4 + k] = j;
-			wts[i * 4 + k] = w / sum;
+	/** Top four painted weights per vertex, normalized. */
+	const skinOf = (list: number[]) => {
+		const joints = new Array<number>(list.length * 4).fill(0);
+		const weights = new Array<number>(list.length * 4).fill(0);
+		list.forEach((v, i) => {
+			const l = (perVertex.get(v) ?? [[0, 1]])
+				.sort((a, b) => b[1] - a[1])
+				.slice(0, 4);
+			const sum = l.reduce((t, x) => t + x[1], 0) || 1;
+			l.forEach(([j, w], k) => {
+				joints[i * 4 + k] = j;
+				weights[i * 4 + k] = w / sum;
+			});
 		});
-	});
+		return { joints, weights };
+	};
+	const { joints, weights: wts } = skinOf(src);
 
-	return {
+	// Teeth and tongue: helper geometry of the base mesh, skinned and shaped like the body.
+	const mouthFaces = [...base.helpers.values()].flat();
+	const mouthSrc: number[] = [];
+	const mouthUvs: number[] = [];
+	const mouthIndices: number[] = [];
+	const mouthCorner = new Map<number, number>();
+	for (const f of mouthFaces) {
+		const c = f.v.map((v, k) => {
+			const vt = f.vt[k] as number;
+			const key = v * nUv + vt;
+			let i = mouthCorner.get(key);
+			if (i === undefined) {
+				i = mouthSrc.length;
+				mouthCorner.set(key, i);
+				mouthSrc.push(v);
+				mouthUvs.push(base.uvs[vt * 2] ?? 0, 1 - (base.uvs[vt * 2 + 1] ?? 0));
+			}
+			return i;
+		});
+		for (let k = 1; k + 1 < c.length; k++)
+			mouthIndices.push(c[0] as number, c[k] as number, c[k + 1] as number);
+	}
+	const mouthPositions = mouthSrc.flatMap((v) => at(v));
+	const mouthNormals = vertexNormals(mouthPositions, mouthIndices, mouthSrc);
+	const mouthSkin = skinOf(mouthSrc);
+	const expressions = options.expressions !== false;
+	const ethnic = levels(options).ethnic;
+
+	const subdivisions = Math.max(0, Math.floor(options.subdivide ?? 0));
+	const smooth = <T extends HumanPart & { targets: MorphTargetSpec[] }>(
+		part: T,
+		weld: number[],
+	): T =>
+		subdivisions
+			? { ...part, ...(subdivide(part, { levels: subdivisions, weld }) as T) }
+			: part;
+	const model = {
 		skeleton,
 		body: {
 			positions,
-			normals: vertexNormals(positions, indices, src),
+			normals: bodyNormals,
 			uvs,
 			joints,
 			weights: wts,
 			indices,
+			targets: expressions
+				? await faceTargets(
+						store,
+						ethnic,
+						base.positions,
+						src,
+						scale,
+						positions,
+						indices,
+						bodyNormals,
+					)
+				: [],
+		},
+		mouth: {
+			positions: mouthPositions,
+			normals: mouthNormals,
+			uvs: mouthUvs,
+			joints: mouthSkin.joints,
+			weights: mouthSkin.weights,
+			indices: mouthIndices,
+			// Only the shapes that move the teeth or tongue (jaw, lips).
+			targets: expressions
+				? (
+						await faceTargets(
+							store,
+							ethnic,
+							base.positions,
+							mouthSrc,
+							scale,
+							mouthPositions,
+							mouthIndices,
+							mouthNormals,
+						)
+					).filter((t) => Array.from(t.positions).some((d) => d !== 0))
+				: [],
 		},
 		eyes: eyeballs(eyes.obj, fittedEyes, toModel, skeleton, false),
 		cornea: eyeballs(eyes.obj, fittedEyes, toModel, skeleton, true),
 		eyeTexture: eyes.texture,
 		drivers: LID_DRIVERS,
 		height: natural * (scale / 10),
+	};
+	// Copies of a base vertex at UV seams weld into one surface point.
+	return {
+		...model,
+		body: smooth(model.body, src),
+		mouth: smooth(model.mouth, mouthSrc),
 	};
 }
 
@@ -553,7 +653,7 @@ function eyeballs(
 	toModel: (x: number, y: number, z: number) => Vec3,
 	skeleton: Skeleton,
 	cornea: boolean,
-): HumanModel["eyes"] {
+): HumanPart {
 	const leftEye = skeleton.joint("LeftEye").index;
 	const rightEye = skeleton.joint("RightEye").index;
 	const corner = new Map<number, number>();
@@ -646,4 +746,58 @@ function vertexNormals(
 		const l = Math.hypot(n[0], n[1], n[2]) || 1;
 		return [n[0] / l, n[1] / l, n[2] / l];
 	});
+}
+
+/**
+ * The facial blend shapes on the body: each ARKit-named shape sums its
+ * MakeHuman units (blended by ethnicity, halved for one side where the
+ * unit is symmetric) into model units, with normal deltas so the shaded
+ * surface follows the shape.
+ */
+async function faceTargets(
+	store: HumanAssetStore,
+	ethnic: Record<string, number>,
+	basePositions: Float32Array,
+	src: number[],
+	scale: number,
+	positions: number[],
+	indices: number[],
+	normals: number[],
+): Promise<MorphTargetSpec[]> {
+	const bodyOf = new Map<number, number[]>();
+	src.forEach((v, i) => {
+		const list = bodyOf.get(v);
+		if (list) list.push(i);
+		else bodyOf.set(v, [i]);
+	});
+	const n = src.length;
+	const shapes = await Promise.all(
+		Object.entries(FACE_SHAPES).map(async ([name, source]) => {
+			const delta = new Float32Array(n * 3);
+			for (const unit of source.units)
+				for (const race of ETHNIC_UNITS) {
+					const we = ethnic[race] ?? 0;
+					if (we <= 0) continue;
+					const t = await target(store, `expression/units/${race}/${unit}`);
+					for (let k = 0; k < t.indices.length; k++) {
+						const v = t.indices[k] as number;
+						const w =
+							we *
+							scale *
+							halfWeight(source.half, basePositions[v * 3] as number);
+						if (!w) continue;
+						for (const i of bodyOf.get(v) ?? [])
+							for (let a = 0; a < 3; a++)
+								delta[i * 3 + a] =
+									(delta[i * 3 + a] as number) +
+									(t.deltas[k * 3 + a] as number) * w;
+					}
+				}
+			const moved = positions.map((p, i) => p + (delta[i] as number));
+			const shaped = vertexNormals(moved, indices, src);
+			const normalDelta = shaped.map((v, i) => v - (normals[i] as number));
+			return { name, positions: delta, normals: normalDelta };
+		}),
+	);
+	return shapes;
 }

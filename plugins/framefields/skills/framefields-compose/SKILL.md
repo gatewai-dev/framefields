@@ -476,6 +476,12 @@ Layer.glb("rig.glb", { rotateX: 180, pose: { LeftArm: { rotateZ: 90 } } });
 
 **Realistic humans (`human`)**: `await human({ sex, age, muscle, weight, proportions, ethnicity, height, targets })` builds a rigged, skinned body from MakeHuman's CC0 base mesh: `sex` 0 female … 1 male, `age` 0 baby / 0.1875 child / 0.5 adult / 1 old, `muscle` and `weight` 0 … 1 (0.5 average), `height` in cm (exact), and any MakeHuman target by path with a weight (`targets: { "nose/nose-base-up": 0.6, "ears/l-ear-shape-pointed": 1 }`). Its skeleton is placed from the shaped body with Mixamo names on the main bones (twist, extra spine and face bones keep MakeHuman names), so `pose`, `aim` and `retarget({ rig: "mixamo" })` work; weights are MakeHuman's painted weights; UVs come with the mesh. Assets download on first use (about 2 MB base plus only the targets a body needs; 131 MB if every target is used) into `~/.cache/framefields/makehuman`, verified by SHA-256 (`FRAMEFIELDS_CACHE_DIR`, `FRAMEFIELDS_HUMAN_BASE_URL` for a mirror). Use `sculpt` for costume, armor and non-human characters.
 
+**Faces**: the body carries facial blend shapes under ARKit names (`eyeBlinkLeft`, `eyeWideRight`, `eyeSquintLeft`, `browDownLeft`, `browInnerUp`, `browOuterUpRight`, `noseSneerLeft`, `jawOpen`, `mouthSmileLeft`, `mouthFrownRight`, `mouthPucker`, `mouthFunnel`, `mouthPressLeft`, `mouthStretchRight`, `mouthUpperUpLeft`, `mouthLowerDownRight`, `mouthDimpleLeft`, `mouthRollLower`, plus `noseFlareLeft/Right`, `noseWrinkle`, `mouthPart`, `neckTense`; the list is `FACE_SHAPES`), built from MakeHuman's expression units for the body's ethnicity; symmetric mouth units are split into sides. `human().mouth` (teeth and tongue) moves with `jawOpen` and the lips. Drive them per layer with `morphs`: names match the file's target names case-insensitively, each a number, keys or a signal; unnamed targets keep the clip's weights. `expressions: false` leaves them out; `subdivide: 1` (Loop, blend shapes and weights carried exactly) smooths faceting in close-ups. Morph targets that move few vertices are written sparse (a face-rigged body is about 2 MB, 6 MB subdivided).
+
+```ts
+Layer.glb("elf.glb", { morphs: { jawOpen: [[0, 0], [12, 0.6]], mouthSmileLeft: 0.8, mouthSmileRight: 0.8, eyeBlinkLeft: blink, eyeBlinkRight: blink } });
+```
+
 ```ts
 import { GltfDocument, human } from "framefields/forge";
 const elf = await human({ sex: 0, age: 0.6, muscle: 0.55, weight: 0.35, height: 184 });

@@ -10,7 +10,7 @@ import type {
 	SkeletonRefs,
 } from "../document.js";
 import type { MaterialSpec } from "../material.js";
-import type { HumanModel } from "./human.js";
+import type { HumanModel, HumanPart } from "./human.js";
 
 export interface AddHumanOptions {
 	/** Node name. Default "Human". */
@@ -21,12 +21,19 @@ export interface AddHumanOptions {
 	eyes?: MaterialSpec;
 	/** Cornea material. Default: clear glass (IOR 1.376, 3 mm deep). */
 	cornea?: MaterialSpec;
+	/** Teeth and tongue material. Default: a wet, slightly translucent ivory. */
+	mouth?: MaterialSpec;
 }
 
 export interface AddedHuman {
 	rig: SkeletonRefs;
-	nodes: { body: NodeRef; eyes: NodeRef; cornea: NodeRef };
-	materials: { skin: MaterialRef; eyes: MaterialRef; cornea: MaterialRef };
+	nodes: { body: NodeRef; eyes: NodeRef; cornea: NodeRef; mouth: NodeRef };
+	materials: {
+		skin: MaterialRef;
+		eyes: MaterialRef;
+		cornea: MaterialRef;
+		mouth: MaterialRef;
+	};
 }
 
 export function addHuman(
@@ -63,11 +70,15 @@ export function addHuman(
 			volume: { thickness: 0.3 },
 		},
 	);
-	const part = (
-		part: string,
-		primitive: HumanModel["body"],
-		material: MaterialRef,
-	) =>
+	const mouth = doc.addMaterial(
+		options.mouth ?? {
+			name: `${name}Mouth`,
+			color: "#e8dccb",
+			roughness: 0.3,
+			subsurface: { factor: 0.5, color: "#ff8070" },
+		},
+	);
+	const part = (part: string, primitive: HumanPart, material: MaterialRef) =>
 		doc.addNode({
 			name: `${name}${part}`,
 			mesh: doc.addMesh({
@@ -80,7 +91,8 @@ export function addHuman(
 		body: part("Body", h.body, skin),
 		eyes: part("Eyes", h.eyes, eyes),
 		cornea: part("Cornea", h.cornea, cornea),
+		mouth: part("Mouth", h.mouth, mouth),
 	};
 	for (const d of h.drivers) doc.addDriver(d);
-	return { rig, nodes, materials: { skin, eyes, cornea } };
+	return { rig, nodes, materials: { skin, eyes, cornea, mouth } };
 }

@@ -60,6 +60,27 @@ type CharacterNode = Pick<
 	| "drive"
 >;
 
+/**
+ * A mesh's morph weights: the clip's (or the file's defaults), with any
+ * target the layer names in `morphs` set from its track. Names match
+ * case-insensitively against the mesh's `morphTargetNames`.
+ */
+export function namedMorphWeights(
+	names: readonly string[] | undefined,
+	base: number[],
+	morphs: Model3DNode["morphs"],
+	clock: TrackClock,
+): number[] {
+	if (!morphs || !names?.length) return base;
+	const out = [...base];
+	const index = new Map(names.map((n, i) => [n.toLowerCase(), i]));
+	for (const [name, track] of Object.entries(morphs)) {
+		const i = index.get(name.toLowerCase());
+		if (i !== undefined) out[i] = numberAt(track, clock, out[i] ?? 0);
+	}
+	return out;
+}
+
 /** Whether a node needs the rig evaluator (anything beyond one plain clip). */
 export function hasRig(n: CharacterNode): boolean {
 	return Boolean(

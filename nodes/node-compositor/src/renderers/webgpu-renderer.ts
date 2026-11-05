@@ -93,6 +93,7 @@ import {
 	type CrowdInstanceAnim,
 	crowdBake,
 	crowdRecord,
+	namedMorphWeights,
 	paletteBuffer,
 	poseCharacter,
 } from "./character.js";
@@ -4031,7 +4032,12 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 
 					const meshOpts: DrawMesh3DOpts = {
 						modelMatrix: placed.matrix,
-						morphWeights: sampleMorphWeights(mesh, clip, clipSec),
+						morphWeights: namedMorphWeights(
+							mesh.morphTargetNames,
+							sampleMorphWeights(mesh, clip, clipSec),
+							target?.morphs ?? lop.morphs,
+							{ frame: shiftedFrame ?? 0, fps: fps || 30 },
+						),
 						opacity: modelOpacity * (mat?.opacity ?? 1.0),
 						colorTint: meshColorTint,
 						transparent:

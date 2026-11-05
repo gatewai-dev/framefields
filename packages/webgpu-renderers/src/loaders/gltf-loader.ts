@@ -141,6 +141,8 @@ interface GltfMesh {
 	name?: string;
 	weights?: number[];
 	primitives: GltfPrimitive[];
+	/** `targetNames`: the de-facto convention for naming morph targets. */
+	extras?: { targetNames?: string[] };
 }
 
 interface GltfTextureTransform {
@@ -178,9 +180,6 @@ interface GltfMaterial {
 		/** VRM 1.0 toon material: the base is lit flat, the shadowed side tinted by shadeColorFactor. */
 		VRMC_materials_mtoon?: { shadeColorFactor?: [number, number, number] };
 		KHR_materials_clearcoat?: {
-			KHR_materials_transmission?: { transmissionFactor?: number };
-			KHR_materials_ior?: { ior?: number };
-			KHR_materials_volume?: { thicknessFactor?: number };
 			clearcoatFactor?: number;
 			clearcoatRoughnessFactor?: number;
 		};
@@ -192,6 +191,9 @@ interface GltfMaterial {
 			anisotropyStrength?: number;
 			anisotropyRotation?: number;
 		};
+		KHR_materials_transmission?: { transmissionFactor?: number };
+		KHR_materials_ior?: { ior?: number };
+		KHR_materials_volume?: { thicknessFactor?: number };
 		KHR_materials_iridescence?: {
 			iridescenceFactor?: number;
 			iridescenceIor?: number;
@@ -1283,6 +1285,10 @@ export class GltfLoader {
 					mapUvs,
 					morphTargets,
 					morphWeights,
+					...(morphTargets &&
+					meshDef.extras?.targetNames?.length === morphTargets.length
+						? { morphTargetNames: meshDef.extras.targetNames }
+						: {}),
 					colors: rgba,
 					jointIndices: skinned
 						? read(prim.attributes.JOINTS_0)?.data

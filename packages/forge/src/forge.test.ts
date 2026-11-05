@@ -162,6 +162,50 @@ describe("GltfDocument", () => {
 		);
 	});
 
+	it("stores morph targets that move few vertices as sparse accessors", async () => {
+		const s = strip(20, 100);
+		const n = s.positions.length / 3;
+		const poke = new Array<number>(n * 3).fill(0);
+		poke[7 * 3 + 2] = 4; // one vertex out along +z
+		const doc = new GltfDocument();
+		doc.addNode({
+			mesh: doc.addMesh({
+				primitives: [
+					{
+						...s,
+						targets: [
+							{
+								name: "poke",
+								positions: poke,
+								normals: new Array(n * 3).fill(0),
+							},
+						],
+					},
+				],
+			}),
+		});
+		const glb = doc.toGlb();
+		const report = await validate(glb);
+		expect(report.issues).toEqual([]);
+		const jsonLength = new DataView(glb.buffer, glb.byteOffset).getUint32(
+			12,
+			true,
+		);
+		const json = JSON.parse(
+			new TextDecoder().decode(glb.subarray(20, 20 + jsonLength)),
+		) as {
+			meshes: { primitives: { targets: { POSITION: number }[] }[] }[];
+			accessors: { sparse?: { count: number }; max?: number[] }[];
+		};
+		const acc =
+			json.accessors[json.meshes[0]!.primitives[0]!.targets[0]!.POSITION]!;
+		expect(acc.sparse?.count).toBe(1);
+		expect(acc.max).toEqual([0, 0, 4]);
+		const m = parseGLB(glb).meshes[0]!;
+		expect(Array.from(m.morphTargets![0]!.positions!)).toEqual(poke);
+		expect(m.morphTargetNames).toEqual(["poke"]);
+	});
+
 	it("writes every material extension in a valid form", async () => {
 		const doc = new GltfDocument();
 		const material = doc.addMaterial({

@@ -11,6 +11,7 @@ import {
 	parseCssGradient,
 	type RenderDiagnostic,
 } from "@framefields/core";
+import type { Scatter3DSpec } from "./procedural-schema.js";
 import type { CompositorProgramConfig, LayoutNode } from "./schema.js";
 
 type AnyNode = LayoutNode & Record<string, unknown>;
@@ -61,7 +62,16 @@ export interface LintOptions {
 	 * the emoji would draw nothing. Unknown (omitted): not checked.
 	 */
 	emojiFont?: boolean;
+	/**
+	 * Share of a scatter's surface area its slope and altitude filters keep
+	 * (0..1), or undefined when the surface can't be measured here (a model
+	 * file not loaded yet). framefields passes the real mesher; this module
+	 * has no geometry of its own.
+	 */
+	scatterCoverage?: (scatter: Scatter3DSpec) => number | undefined;
 }
+
+const DIRECT_LIGHTS = new Set(["directional", "spot", "point", "rect"]);
 
 /** Contrast below this makes text hard to read (WCAG large-text minimum). */
 const MIN_TEXT_CONTRAST = 3;
@@ -121,6 +131,8 @@ export function lintComposition(
 	const pbrNodes: string[] = [];
 	const emojiText: string[] = [];
 	const seenIds = new Set<string>();
+	let directLights = 0;
+	let fogLight: string | undefined;
 
 	const visit = (node: AnyNode, backdrop: string | null, atRoot: boolean) => {
 		const id = String(node.id ?? "?");
@@ -167,6 +179,8 @@ export function lintComposition(
 			const type = node.lightType ?? "directional";
 			if (type === "environment") hasEnvironment = true;
 			if (type === "ambient") ambientLights.push(id);
+			if (DIRECT_LIGHTS.has(String(type))) directLights++;
+			if (type === "environment" && node.volumetricFog) fogLight = id;
 			if (node.castShadow) {
 				if (
 					type !== "directional" &&
@@ -219,6 +233,18 @@ export function lintComposition(
 		const is3D =
 			Boolean(node.is3D) || (typeof node.z === "number" && node.z !== 0);
 		if (is3D || node.kind === "model3d") has3D = true;
+		const scatter = node.scatter3d as Scatter3DSpec | undefined;
+		if (
+			scatter &&
+			scatter.count > 0 &&
+			options.scatterCoverage?.(scatter) === 0
+		)
+			push(
+				"warning",
+				"scatter_filters_reject_all",
+				`'${id}' scatters onto a surface its slopeRange / elevationRange filters reject entirely, so no instance is placed. Widen the ranges (slope is degrees from level, elevation 0..1 from the surface's lowest to highest point).`,
+				id,
+			);
 		if (node.roughness !== undefined || node.metallic !== undefined)
 			pbrNodes.push(id);
 
@@ -347,6 +373,15 @@ export function lintComposition(
 			"info",
 			"ambient_with_environment",
 			`The environment already fills shadows with light; ambient light ${ambientLights.join(", ")} adds flat light on top (remove it, or lower it, if the scene looks washed out).`,
+		);
+	}
+
+	if (fogLight && directLights === 0) {
+		push(
+			"warning",
+			"volumetric_fog_without_lights",
+			`'${fogLight}' turns on volumetricFog, but the scene has no directional, spot, point or rect light: fog scatters only direct light, so there are no light shafts. Add a light (castShadow for shafts).`,
+			fogLight,
 		);
 	}
 

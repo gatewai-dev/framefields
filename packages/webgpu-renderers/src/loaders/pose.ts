@@ -154,12 +154,19 @@ export function sampleMorphWeights(
 		: (mesh.morphWeights ?? Array(count).fill(0));
 }
 
-/** Each node's local matrix with the clip's tracks applied at `time` (seconds). */
-function localMatrices(
+/** Every node's local translation, rotation (unit quaternion) and scale. */
+export interface LocalPose {
+	t: Vec3[];
+	r: Quat[];
+	s: Vec3[];
+}
+
+/** The rest pose with the clip's tracks applied at `time` (seconds). */
+export function sampleLocalPose(
 	nodes: ModelNode3D[],
 	clip: AnimationClip3D | undefined,
 	time: number,
-): Mat4[] {
+): LocalPose {
 	const t = nodes.map((n) => [...n.translation] as Vec3);
 	const r = nodes.map((n) => [...n.rotation] as Quat);
 	const s = nodes.map((n) => [...n.scale] as Vec3);
@@ -174,7 +181,32 @@ function localMatrices(
 		if (track.scales)
 			s[i] = sampleChannel(track, track.scales, 3, time) as Vec3;
 	}
-	return nodes.map((n, i) => n.matrix ?? trsMatrix(t[i]!, r[i]!, s[i]!));
+	return { t, r, s };
+}
+
+/** Each node's local matrix (a fixed glTF `matrix` wins over TRS). */
+export function localPoseMatrices(
+	nodes: ModelNode3D[],
+	pose: LocalPose,
+): Mat4[] {
+	return nodes.map(
+		(n, i) => n.matrix ?? trsMatrix(pose.t[i]!, pose.r[i]!, pose.s[i]!),
+	);
+}
+
+/** Model-space matrices from local ones. Parents may follow their children in the list. */
+export function composeWorld(nodes: ModelNode3D[], local: Mat4[]): Mat4[] {
+	const world: (Mat4 | undefined)[] = new Array(nodes.length);
+	const resolve = (i: number): Mat4 => {
+		const done = world[i];
+		if (done) return done;
+		const parent = nodes[i]!.parent;
+		const m =
+			parent < 0 ? local[i]! : Matrix4Math.multiply(resolve(parent), local[i]!);
+		world[i] = m;
+		return m;
+	};
+	return nodes.map((_, i) => resolve(i));
 }
 
 /**
@@ -187,18 +219,10 @@ export function poseNodes(
 	time: number,
 ): Mat4[] {
 	const nodes = model.nodes ?? [];
-	const local = localMatrices(nodes, clip, time);
-	const world: (Mat4 | undefined)[] = new Array(nodes.length);
-	const resolve = (i: number): Mat4 => {
-		const done = world[i];
-		if (done) return done;
-		const parent = nodes[i]!.parent;
-		const m =
-			parent < 0 ? local[i]! : Matrix4Math.multiply(resolve(parent), local[i]!);
-		world[i] = m;
-		return m;
-	};
-	return nodes.map((_, i) => resolve(i));
+	return composeWorld(
+		nodes,
+		localPoseMatrices(nodes, sampleLocalPose(nodes, clip, time)),
+	);
 }
 
 /** The joint matrices of one skin for a posed scene graph. */

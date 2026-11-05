@@ -8,11 +8,13 @@
 
 export * from "../utils/layout/resolve-layout.js";
 export * from "./animation.js";
+export * from "./character-schema.js";
 export * from "./evaluator.js";
 export * from "./lint.js";
 export * from "./mattes.js";
 export * from "./media-signal.js";
 export * from "./path-morph.js";
+export * from "./procedural-schema.js";
 export * from "./schema.js";
 export * from "./sequence.js";
 export * from "./stagger.js";

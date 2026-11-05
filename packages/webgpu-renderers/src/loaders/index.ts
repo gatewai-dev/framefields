@@ -1,4 +1,5 @@
 export * from "./3ds-loader.js";
+export * from "./crowd.js";
 export * from "./exr-loader.js";
 export * from "./fbx-loader.js";
 export * from "./gltf-loader.js";
@@ -7,6 +8,7 @@ export * from "./obj-loader.js";
 export * from "./off-loader.js";
 export * from "./ply-loader.js";
 export * from "./pose.js";
+export * from "./rig.js";
 export * from "./stl-loader.js";
 export * from "./types.js";
 export * from "./vox-loader.js";

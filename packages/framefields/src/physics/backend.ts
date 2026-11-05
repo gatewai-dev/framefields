@@ -32,7 +32,9 @@ export type Shape3D =
 	/** Axis along y. */
 	| { kind: "cylinder"; halfHeight: number; radius: number }
 	/** Flat [x0, y0, z0, …] around the body origin. */
-	| { kind: "hull"; points: number[] };
+	| { kind: "hull"; points: number[] }
+	/** Exact triangle mesh (static / kinematic bodies: terrain, sculptures). */
+	| { kind: "trimesh"; vertices: number[]; indices: number[] };
 
 interface BodySpecBase extends MaterialSpec {
 	type: BodyType;
@@ -500,5 +502,10 @@ function shapeDesc3D(R: Rapier3D, shape: Shape3D): RAPIER3D.ColliderDesc {
 				);
 			return desc;
 		}
+		case "trimesh":
+			return R.ColliderDesc.trimesh(
+				new Float32Array(shape.vertices),
+				new Uint32Array(shape.indices),
+			);
 	}
 }

@@ -4,11 +4,13 @@ import { resolveMediaSourceUrl } from "@framefields/client-utils";
 import { decodeAudioSource } from "@framefields/compositions";
 import {
 	type CompositionNodeBase,
+	type CrowdConfig,
 	collectNodeOps,
 	computeLayout,
 	initLayout,
 	type LayoutNode,
 	type Rect,
+	type Scatter3DSpec,
 } from "@framefields/compositions/program";
 import type { MeshAudioDeformConfig, TextSpan } from "@framefields/core";
 import {
@@ -41,6 +43,7 @@ import {
 	Camera3D,
 	type Camera3DPose,
 	type Color,
+	type CrowdBake,
 	type DrawMesh3DOpts,
 	type DrawQuad3DOpts,
 	type Environment3DOptions,
@@ -55,12 +58,12 @@ import {
 	type Mat4,
 	Matrix4Math,
 	type Mesh3DData,
+	type MeshCrowd,
 	type Model3DData,
 	measureMaxCaptionHeight,
 	type PrimitiveGeometryOptions,
 	parseColor,
 	parseDashArray,
-	poseNodes,
 	type RenderContextValue,
 	Renderer3D,
 	resolveTextSpans,
@@ -81,8 +84,25 @@ import {
 } from "@framefields/webgpu-renderers";
 import { compileTimeline, seekTimeline } from "../shared/compiler.js";
 import type { CompositorOperation } from "../shared/config.js";
+import {
+	type CrowdInstanceAnim,
+	crowdBake,
+	crowdRecord,
+	paletteBuffer,
+	poseCharacter,
+} from "./character.js";
 import { shouldPaintContainerBackground } from "./container-bg.js";
 import { compatibleMeshDraws } from "./mesh-instancing.js";
+import {
+	composeQuat,
+	meshWind,
+	NO_PRE,
+	type SurfaceNodeSpec,
+	scatterTransforms,
+	surfaceModel,
+	type VariantPre,
+	variantBottom,
+} from "./procedural3d.js";
 import {
 	buildLayerMatrix,
 	layerRasterScale,
@@ -2143,15 +2163,17 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 			// Matte and relief layers are not drawn on their own: their owner draws them.
 			const mattesByOwner = new Map<string, VirtualMediaData>();
 			const reliefsByOwner = new Map<string, VirtualMediaData>();
+			const texturesByOwner = new Map<string, VirtualMediaData>();
 			for (const vm of vms) {
 				const op = vm.operation as any;
 				if (op?.matteOf) mattesByOwner.set(op.matteOf, vm);
 				if (op?.reliefOf) reliefsByOwner.set(op.reliefOf, vm);
+				if (op?.textureOf) texturesByOwner.set(op.textureOf, vm);
 			}
 			for (const child of sorted) {
 				const lop = child.operation as any;
 				if (lop.kind === "camera" || lop.kind === "light") continue;
-				if (lop.matteOf || lop.reliefOf) continue;
+				if (lop.matteOf || lop.reliefOf || lop.textureOf) continue;
 				const targetId = lop.id || lop.inputHandleId;
 				const target = targetId ? targetsById[targetId] : undefined;
 				const isChild3D =
@@ -2246,6 +2268,34 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 						amount: lop.reliefAmount ?? 0,
 					});
 				}
+				// A model's texture layer is drawn flat first; the meshes the
+				// model queues then read it through its place in that picture.
+				const textureVM = lop.textureLayerId
+					? texturesByOwner.get(lop.id)
+					: undefined;
+				let wrapTexture: (() => void) | undefined;
+				if (textureVM) {
+					const texture = await isolate(textureVM, nodeIndex);
+					activeExcludes = [...activeExcludes, texture];
+					nodeIndex += 1;
+					const r = rects[lop.textureLayerId];
+					const uvRect: [number, number, number, number] = r
+						? [
+								r.x / targetW,
+								r.y / targetH,
+								r.width / targetW,
+								r.height / targetH,
+							]
+						: [0, 0, 1, 1];
+					const from = pending3DItems.length;
+					wrapTexture = () => {
+						for (const item of pending3DItems.slice(from)) {
+							if (item.kind !== "mesh") continue;
+							item.texture = texture;
+							item.opts.uvRect = uvRect;
+						}
+					};
+				}
 				const matteVM = lop.matteId ? mattesByOwner.get(lop.id) : undefined;
 				if (matteVM) {
 					const mode: string = (matteVM.operation as any).matteMode ?? "alpha";
@@ -2316,6 +2366,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 						for (const item of pending3DItems.slice(before)) {
 							item.opts.matte = coverage;
 						}
+						wrapTexture?.();
 						if (res) {
 							if (res.finalTex !== activeTex) {
 								activeExcludes = [...activeExcludes, res.finalTex];
@@ -2365,6 +2416,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					parent3DMatrix,
 					isRootScene,
 				);
+				wrapTexture?.();
 				if (res) {
 					if (res.finalTex !== activeTex) {
 						activeExcludes = [...activeExcludes, res.finalTex];
@@ -2582,6 +2634,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 									: [];
 
 					const variants: Model3DData[] = [];
+					const variantPres: VariantPre[] = [];
 					for (const m of rawMeshes) {
 						let vModel: Model3DData | undefined;
 						if (typeof m === "object" && m !== null) {
@@ -2604,10 +2657,44 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 						}
 						if (vModel && vModel.meshes && vModel.meshes.length > 0) {
 							variants.push(vModel);
+							const isNode = !("meshes" in m);
+							variantPres.push(
+								isNode
+									? {
+											q: quatFromEulerAngles(
+												m.rotateX ?? 0,
+												m.rotateY ?? 0,
+												m.rotateZ ?? 0,
+											),
+											s: m.scale ?? 1,
+										}
+									: NO_PRE,
+							);
 						}
 					}
 					if (variants.length === 0 && model) {
 						variants.push(model);
+						variantPres.push(NO_PRE);
+					}
+					if (lop.scatter3d && variants.length > 0) {
+						// Layer3D.scatter: transforms from the surface, seated per variant.
+						const scatter = lop.scatter3d as Scatter3DSpec;
+						const surface = await surfaceModel(
+							scatter.surface as SurfaceNodeSpec,
+							(src, n) =>
+								r3d.loadModelAsync(src, (n.modelFormat ?? "auto") as never, {
+									center: n.center,
+									normalizeSize: n.normalizeSize,
+								}),
+						);
+						instOpt.transforms = surface
+							? scatterTransforms(
+									scatter,
+									surface,
+									variants.map((v, k) => variantBottom(v, variantPres[k]!)),
+								)
+							: [];
+						instOpt.count = instOpt.transforms.length;
 					}
 					if (variants.length > 0) {
 						const count =
@@ -2626,13 +2713,33 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 							for (let i = 0; i < count; i++) {
 								bucketCounts[i % numVariants]++;
 							}
+							// Skinned crowds: each instance takes a second record (clip, phase, speed).
+							const crowdCfg = lop.crowd as CrowdConfig | undefined;
+							const crowdBakes = variants.map((v) =>
+								crowdCfg ? crowdBake(v, crowdCfg) : undefined,
+							);
+							const strides = crowdBakes.map((b) => (b ? 32 : 16));
+							const crowdOpts = (
+								bake: CrowdBake | undefined,
+								mesh: Mesh3DData,
+							): MeshCrowd | undefined => {
+								const baked = bake?.meshes.get(mesh);
+								if (!bake || !baked) return undefined;
+								return {
+									palette: paletteBuffer(ctx.device, baked.palette),
+									jointCount: baked.jointCount,
+									time: (shiftedFrame ?? 0) / (fps || 30),
+								};
+							};
 							const bucketItems: Float32Array[] = [];
 							const bucketBounds: Array<{
 								min: [number, number, number];
 								max: [number, number, number];
 							}> = [];
 							for (let k = 0; k < numVariants; k++) {
-								bucketItems.push(new Float32Array(bucketCounts[k] * 16));
+								bucketItems.push(
+									new Float32Array(bucketCounts[k] * strides[k]),
+								);
 								bucketBounds.push({
 									min: [Infinity, Infinity, Infinity],
 									max: [-Infinity, -Infinity, -Infinity],
@@ -2655,7 +2762,8 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 								const cursor = bucketCursors[k];
 								const bData = bucketItems[k];
 								const bBox = bucketBounds[k];
-								const off = cursor * 16;
+								const off = cursor * strides[k];
+								let ianim: CrowdInstanceAnim = {};
 
 								let ix = 0;
 								let iy = 0;
@@ -2745,6 +2853,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 								} else if (typeof instOpt.instanceAt === "function") {
 									const t = instOpt.instanceAt(i, shiftedFrame ?? 0, fps || 30);
 									if (!t) continue;
+									ianim = t;
 									ix = t.x ?? 0;
 									iy = t.y ?? 0;
 									iz = t.z ?? 0;
@@ -2806,6 +2915,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 									instOpt.transforms[i]
 								) {
 									const t = instOpt.transforms[i];
+									ianim = t;
 									ix = t.x ?? 0;
 									iy = t.y ?? 0;
 									iz = t.z ?? 0;
@@ -2867,6 +2977,15 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 								}
 
 								bucketCursors[k]++;
+								// The variant's own rotation and scale, under the instance's.
+								const pre = variantPres[k]!;
+								if (pre !== NO_PRE) {
+									[iqx, iqy, iqz, iqw] = composeQuat(
+										[iqx, iqy, iqz, iqw],
+										pre.q,
+									);
+									iscale *= pre.s;
+								}
 								bData[off + 0] = ix;
 								bData[off + 1] = iy;
 								bData[off + 2] = iz;
@@ -2883,8 +3002,16 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 								bData[off + 13] = ieg;
 								bData[off + 14] = ieb;
 								bData[off + 15] = iew;
+								const bake = crowdBakes[k];
+								if (bake && crowdCfg) {
+									bData.set(crowdRecord(bake, crowdCfg, i, ianim), off + 16);
+								}
 
-								const rad = 50 * iscale;
+								const vb = variants[k].bounds;
+								const rad =
+									(vb
+										? vb.boundingSphereRadius + Math.hypot(...vb.center)
+										: 50) * iscale;
 								bBox.min[0] = Math.min(bBox.min[0], ix - rad);
 								bBox.min[1] = Math.min(bBox.min[1], iy - rad);
 								bBox.min[2] = Math.min(bBox.min[2], iz - rad);
@@ -2900,7 +3027,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 								const activeSlice =
 									bCount === bucketCounts[k]
 										? bucketItems[k]
-										: bucketItems[k].subarray(0, bCount * 16);
+										: bucketItems[k].subarray(0, bCount * strides[k]);
 								const instanceBuffer = r3d.uploadInstanceData(activeSlice);
 								const bounds = Number.isFinite(bucketBounds[k].min[0])
 									? bucketBounds[k]
@@ -2910,10 +3037,17 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 									const mat = mesh.materialName
 										? v.materials[mesh.materialName]
 										: undefined;
+									// The variant's own material color, under the node's tint.
+									const diffuse = mat?.diffuseColor ?? [1, 1, 1, 1];
 									const meshOpts: DrawMesh3DOpts = {
 										modelMatrix: finalModelMatrix,
 										opacity: modelOpacity * (mat?.opacity ?? 1.0),
-										colorTint,
+										colorTint: [
+											colorTint[0] * diffuse[0],
+											colorTint[1] * diffuse[1],
+											colorTint[2] * diffuse[2],
+											colorTint[3] * (diffuse[3] ?? 1),
+										],
 										transparent: false,
 										twoSided: target?.twoSided ?? lop.twoSided ?? true,
 										wireframe: Boolean(target?.wireframe ?? lop.wireframe),
@@ -2947,6 +3081,12 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 										instanceBuffer,
 										instanceCount: bCount,
 										bounds,
+										wind: meshWind(
+											lop.wind,
+											v,
+											(shiftedFrame ?? 0) / (fps || 30),
+										),
+										crowd: crowdOpts(crowdBakes[k], mesh),
 									};
 									pending3DItems.push({
 										kind: "mesh",
@@ -3397,7 +3537,18 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					finalModelMatrix,
 					model.rootTransform ?? Matrix4Math.identity(),
 				);
-				const posed = model.nodes ? poseNodes(model, clip, clipSec) : undefined;
+				const posed = model.nodes
+					? poseCharacter({
+							model,
+							node: lop,
+							frame: shiftedFrame ?? 0,
+							fps: fps || 30,
+							clip,
+							clipSec,
+							sceneRoot,
+							key: String(lop.id),
+						})
+					: undefined;
 				const skinCache = new Map<number, Float32Array>();
 				const placeMesh = (
 					mesh: Mesh3DData,
@@ -3689,6 +3840,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 						dispersion: target?.dispersion ?? lop.dispersion,
 						thickness: target?.thickness ?? lop.thickness,
 						audioDeform: meshAudioDeform,
+						wind: meshWind(lop.wind, model, (shiftedFrame ?? 0) / (fps || 30)),
 					};
 
 					if (mat) meshOpts.maps = await r3d.materialMaps(mat);

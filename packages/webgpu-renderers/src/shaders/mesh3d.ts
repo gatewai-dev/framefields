@@ -30,6 +30,10 @@ struct ModelUniforms {
     substrateSheen       : vec4<f32>, // x = sheen, yzw = sheenColor (sRGB)
     substrateIridescence : vec4<f32>, // x = iridescence, y = thicknessNm, z = filmIor, w = triplanarUvFreq
     maps                 : vec4<f32>, // x = normal scale (0 = no map), y = occlusion strength, z = has metallic-roughness map, w = has emissive map
+    uvRect               : vec4<f32>, // base-color uv' = xy + uv * zw
+    wind                 : vec4<f32>, // x = amplitude rad (0 = calm), y = angular frequency, z = wave number per px, w = time s
+    windFrame            : vec4<f32>, // xy = downwind (x, z), z = mesh base y, w = 1 / mesh height
+    crowd                : vec4<f32>, // x = time s, z = joints per baked frame
 };
 
 struct SkinningUniforms {
@@ -88,6 +92,31 @@ fn rotateVecByQuat(v: vec3<f32>, q: vec4<f32>) -> vec3<f32> {
     return v + q.w * t + cross(q.xyz, t);
 }
 
+// Wind lean in radians at a plant rooted at ground point root: a steady
+// push plus a traveling wave and a faster flutter, so neighbors sway together
+// and the far field lags the near one.
+fn windAngle(root: vec2<f32>) -> f32 {
+    let w = model.wind;
+    let phase = dot(root, model.windFrame.xy) * w.z - w.w * w.y;
+    return w.x * (0.55 + 0.35 * sin(phase) + 0.1 * sin(phase * 2.7 + 1.3));
+}
+
+// Bends a vertex (mesh space, scale s) downwind: the base stays put,
+// the tip leans furthest, along an arc so the stem keeps its length.
+fn windBend(local: vec3<f32>, angle: f32, s: f32) -> vec3<f32> {
+    let h = max(model.windFrame.z - local.y, 0.0);
+    let k = clamp(h * model.windFrame.w, 0.0, 1.0);
+    let a = angle * k * k;
+    let downwind = vec3<f32>(model.windFrame.x, 0.0, model.windFrame.y);
+    return downwind * (sin(a) * h * s) + vec3<f32>(0.0, (1.0 - cos(a)) * h * s, 0.0);
+}
+
+// A crowd joint: two baked frames of the palette, blended.
+fn crowdJoint(base0: u32, base1: u32, t: f32, joint: u32) -> mat4x4<f32> {
+    return skinning.jointMatrices[base0 + joint] * (1.0 - t) +
+        skinning.jointMatrices[base1 + joint] * t;
+}
+
 @vertex
 fn vs_main(
     in: VertexInput,
@@ -98,12 +127,33 @@ fn vs_main(
     var localPos = in.position;
     var localNorm = in.normal;
 
+    // Crowd instances (flag bit 3) carry a second record: (clip's first
+    // baked frame, its frames per loop, phase in frames, frames per second), and skin from a
+    // baked joint palette at their own point in their own clip.
+    let flags = u32(model.params.w);
+    let crowd = (flags & 8u) != 0u;
+    var palette0 = 0u;
+    var palette1 = 0u;
+    var paletteT = 0.0;
+    if (crowd) {
+        let anim = instances[instanceIndex * 2u + 1u].posScale;
+        let count = max(anim.y, 1.0);
+        let f = anim.z + model.crowd.x * anim.w;
+        let wrapped = f - floor(f / count) * count;
+        let f0 = floor(wrapped);
+        let jc = u32(model.crowd.z);
+        palette0 = (u32(anim.x) + u32(f0)) * jc;
+        // Each clip bakes count + 1 samples (its end too): no wrap inside a loop.
+        palette1 = (u32(anim.x) + u32(f0) + 1u) * jc;
+        paletteT = wrapped - f0;
+    }
+
     // Linear Blend Skinning (LBS) on GPU
     if (model.params.z > 0.5) {
-        let j0 = i32(in.joints.x);
-        let j1 = i32(in.joints.y);
-        let j2 = i32(in.joints.z);
-        let j3 = i32(in.joints.w);
+        let j0 = u32(in.joints.x);
+        let j1 = u32(in.joints.y);
+        let j2 = u32(in.joints.z);
+        let j3 = u32(in.joints.w);
 
         let w0 = in.weights.x;
         let w1 = in.weights.y;
@@ -111,12 +161,24 @@ fn vs_main(
         let w3 = in.weights.w;
 
         let totalWeight = w0 + w1 + w2 + w3;
-        if (totalWeight > 0.001) {
-            let skinMat = skinning.jointMatrices[j0] * w0 +
-                          skinning.jointMatrices[j1] * w1 +
-                          skinning.jointMatrices[j2] * w2 +
-                          skinning.jointMatrices[j3] * w3;
-
+        var skinMat = mat4x4<f32>();
+        if (crowd) {
+            // A node-attached (rigid) mesh bakes its node as joint 0.
+            if (totalWeight <= 0.001) {
+                skinMat = crowdJoint(palette0, palette1, paletteT, 0u);
+            } else {
+                skinMat = crowdJoint(palette0, palette1, paletteT, j0) * w0 +
+                    crowdJoint(palette0, palette1, paletteT, j1) * w1 +
+                    crowdJoint(palette0, palette1, paletteT, j2) * w2 +
+                    crowdJoint(palette0, palette1, paletteT, j3) * w3;
+            }
+        } else if (totalWeight > 0.001) {
+            skinMat = skinning.jointMatrices[j0] * w0 +
+                      skinning.jointMatrices[j1] * w1 +
+                      skinning.jointMatrices[j2] * w2 +
+                      skinning.jointMatrices[j3] * w3;
+        }
+        if (crowd || totalWeight > 0.001) {
             let pos4 = skinMat * vec4<f32>(in.position, 1.0);
             localPos = pos4.xyz;
 
@@ -131,6 +193,7 @@ fn vs_main(
     var instColor = vec4<f32>(1.0);
     var instEmissive = vec4<f32>(0.0);
 
+    let windy = model.wind.x != 0.0;
     if ((u32(model.params.w) & 4u) != 0u) {
         let a = instances[instanceIndex * 2u];
         let b = instances[instanceIndex * 2u + 1u];
@@ -139,14 +202,21 @@ fn vs_main(
         localPos = (instanceModel * vec4<f32>(localPos, 1.0)).xyz;
         localNorm = (instanceNormal * vec4<f32>(localNorm, 0.0)).xyz;
     } else if ((u32(model.params.w) & 1u) != 0u) {
-        let inst = instances[instanceIndex];
+        let inst = instances[select(instanceIndex, instanceIndex * 2u, crowd)];
         let scaledPos = localPos * inst.posScale.w;
-        localPos = rotateVecByQuat(scaledPos, inst.quat) + inst.posScale.xyz;
+        var bend = vec3<f32>(0.0);
+        if (windy) {
+            bend = windBend(localPos, windAngle(inst.posScale.xz), inst.posScale.w);
+        }
+        localPos = rotateVecByQuat(scaledPos, inst.quat) + inst.posScale.xyz + bend;
         localNorm = rotateVecByQuat(localNorm, inst.quat);
         instColor = inst.color;
         instEmissive = inst.emissive;
     } else {
         localPos.x += dummyInst * 0.0;
+        if (windy) {
+            localPos += windBend(localPos, windAngle(vec2<f32>(0.0)), 1.0);
+        }
     }
 
     let worldPos4 = model.modelMatrix * vec4<f32>(localPos, 1.0);
@@ -156,7 +226,7 @@ fn vs_main(
     out.worldNormal = normalize(norm4.xyz);
 
     out.clipPos = cam.viewProjMatrix * worldPos4;
-    out.uv = in.uv;
+    out.uv = model.uvRect.xy + in.uv * model.uvRect.zw;
     let hasMapUvs = (u32(model.params.w) & 2u) != 0u;
     out.normalUv = select(in.uv, in.normalUv, hasMapUvs);
     out.mrUv = select(in.uv, in.mrUv, hasMapUvs);

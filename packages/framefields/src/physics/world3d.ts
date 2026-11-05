@@ -62,10 +62,12 @@ export interface Body3DOptions extends Omit<BodyCommonOptions, "lockRotation"> {
 	lockRotation?: boolean | { x?: boolean; y?: boolean; z?: boolean };
 	/**
 	 * Collider: `"auto"` (default) reads the Layer3D primitive (box, sphere,
-	 * cylinder) and falls back to the mesh's convex hull for models and
-	 * tapered or uneven shapes. Force `"box"`, `"sphere"`, `"cylinder"` or `"hull"`.
+	 * cylinder), uses the exact triangles of `Layer3D.terrain` / `Layer3D.sdf`
+	 * on static bodies, and falls back to the mesh's convex hull for models and
+	 * tapered or uneven shapes. Force `"box"`, `"sphere"`, `"cylinder"`,
+	 * `"hull"` or `"mesh"` (exact triangles; static or kinematic bodies only).
 	 */
-	shape?: "auto" | "box" | "sphere" | "cylinder" | "hull";
+	shape?: "auto" | "box" | "sphere" | "cylinder" | "hull" | "mesh";
 	/** Collider size override `[width, height, depth]`, px (before the layer's scale). */
 	size?: [number, number, number];
 	/** px/s. */
@@ -734,6 +736,15 @@ function colliderShape3D(t: LayerLike, options: Body3DOptions): Shape3D {
 		return { kind: "hull", points: pts.map((v, i) => v * scale[i % 3]) };
 	};
 
+	const exact =
+		mode === "mesh" ||
+		(mode === "auto" &&
+			(options.type ?? "dynamic") !== "dynamic" &&
+			(prim.type === "terrain" || prim.type === "sdf"));
+	if (exact) {
+		const mesh = meshTriangles(t.modelData, scale);
+		if (mesh) return mesh;
+	}
 	if (options.size || mode === "box") {
 		const [w, h, d] = options.size ?? boxSize(t, prim) ?? [0, 0, 0];
 		if (w > 0 && h > 0 && d > 0) {
@@ -847,6 +858,36 @@ function boxSize(t: LayerLike, prim: PrimitiveSpec): Vec3 | undefined {
 	return undefined;
 }
 
+/** All of a model's triangles, scaled: an exact (non-convex) collider. */
+function meshTriangles(modelData: unknown, scale: Vec3): Shape3D | undefined {
+	const meshes = (
+		modelData as
+			| {
+					meshes?: Array<{
+						positions?: ArrayLike<number>;
+						indices?: ArrayLike<number>;
+						topology?: string;
+					}>;
+			  }
+			| undefined
+	)?.meshes;
+	if (!meshes?.length) return undefined;
+	const vertices: number[] = [];
+	const indices: number[] = [];
+	for (const m of meshes) {
+		if (!m.positions || !m.indices) continue;
+		if (m.topology && m.topology !== "triangle-list") continue;
+		const base = vertices.length / 3;
+		for (let i = 0; i < m.positions.length; i++)
+			vertices.push(m.positions[i]! * scale[i % 3]!);
+		for (let i = 0; i < m.indices.length; i++)
+			indices.push(m.indices[i]! + base);
+	}
+	return indices.length >= 3
+		? { kind: "trimesh", vertices, indices }
+		: undefined;
+}
+
 /** Every vertex of a model, flat xyz, at most ~4k points (the hull needs no more). */
 function meshPoints(modelData: unknown): number[] | undefined {
 	const meshes = (
@@ -891,5 +932,11 @@ function scaleShape(shape: Shape3D, s: number): Shape3D {
 			};
 		case "hull":
 			return { kind: "hull", points: shape.points.map((v) => v * s) };
+		case "trimesh":
+			return {
+				kind: "trimesh",
+				vertices: shape.vertices.map((v) => v * s),
+				indices: shape.indices,
+			};
 	}
 }

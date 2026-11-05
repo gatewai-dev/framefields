@@ -473,7 +473,10 @@ export function compositorToProgram(
 					}
 				: {}),
 		},
-		children: hoistMattes(config.layout).map((n) =>
+		children: hoistMattes(config.layout, {
+			width: config.width,
+			height: config.height,
+		}).map((n) =>
 			nodeToVirtualMedia(
 				n,
 				resolveMedia,

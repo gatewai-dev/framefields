@@ -27,6 +27,26 @@ import {
 	validateMediaTimeRemap,
 } from "@framefields/core";
 import { ColorSchema } from "@framefields/node-sdk";
+import {
+	type CrowdConfig,
+	CrowdSchema,
+	type LookAtConstraint,
+	LookAtSchema,
+	type ModelAnimationLayer,
+	ModelAnimationLayerSchema,
+	type SpringBoneChain,
+	SpringBoneChainSchema,
+	type TwoBoneIkConstraint,
+	TwoBoneIkSchema,
+} from "./character-schema.js";
+import {
+	Primitive3DSpecSchema,
+	Scatter3DSchema,
+	type Scatter3DSpec,
+	TextureLayerSchema,
+	type WindConfig,
+	WindSchema,
+} from "./procedural-schema.js";
 export type { TextSpan, TextSpanMark };
 export type { ToonShading, GeometryOutlineOptions };
 
@@ -934,6 +954,8 @@ const BaseNodeFields = {
 	/** Set by the compiler: this layer is the relief of node `reliefOf` (not drawn by itself). */
 	reliefOf: z.string().optional(),
 	reliefAmount: z.number().optional(),
+	/** Set by the compiler: this layer is the surface texture of model `textureOf` (not drawn by itself). */
+	textureOf: z.string().optional(),
 	/** Per-node motion: tracks keyed by node id. */
 	animation: LayerAnimationSchema.default({ tracks: [] }),
 	/** Vision configuration or effect attached directly to the node. */
@@ -1016,6 +1038,7 @@ export interface CompositionNodeBase {
 	reliefId?: string;
 	reliefOf?: string;
 	reliefAmount?: number;
+	textureOf?: string;
 	envIntensity?: number;
 	startFrame?: number;
 	durationFrames?: number;
@@ -1783,6 +1806,24 @@ export interface Model3DNode {
 	instances3d?: unknown;
 	/** Layer3D.swarm GPU simulation and instancing options. */
 	swarm3d?: unknown;
+	/** Layer3D.scatter: instances placed on another model's surface. */
+	scatter3d?: Scatter3DSpec;
+	/** Procedural wind sway (bends vertices downwind by height above the mesh base). */
+	wind?: WindConfig;
+	/** Any layer (image, video, layout) drawn each frame and wrapped onto the mesh by its UVs. */
+	textureLayer?: { node: unknown };
+	/** Set by the compiler: the id of the hoisted texture layer. */
+	textureLayerId?: string;
+	/** Clips blended in order, each over the pose beneath by its weight (replaces animationName). */
+	animationLayers?: ModelAnimationLayer[];
+	/** Two-bone IK: limbs reach scene-space targets. */
+	ik?: TwoBoneIkConstraint[];
+	/** Joints (heads, eyes) turn toward scene-space targets. */
+	lookAt?: LookAtConstraint[];
+	/** Secondary motion simulated from frame 0 (capes, tails, hair). */
+	springBones?: SpringBoneChain[];
+	/** Instance nodes: every instance a skinned character on its own clip, phase and speed. */
+	crowd?: CrowdConfig;
 }
 
 export type LayoutNode =
@@ -2104,9 +2145,18 @@ export const Model3DNodeSchema: z.ZodType<Model3DNode> = z
 		color: ColorSchema.optional(),
 		colorTint: ColorSchema.optional(),
 		text3dOptions: z.unknown().optional(),
-		primitive3d: z.unknown().optional(),
+		primitive3d: Primitive3DSpecSchema.optional(),
 		instances3d: z.unknown().optional(),
 		swarm3d: z.unknown().optional(),
+		scatter3d: Scatter3DSchema.optional(),
+		wind: WindSchema.optional(),
+		textureLayer: TextureLayerSchema.optional(),
+		textureLayerId: z.string().optional(),
+		animationLayers: z.array(ModelAnimationLayerSchema).optional(),
+		ik: z.array(TwoBoneIkSchema).optional(),
+		lookAt: z.array(LookAtSchema).optional(),
+		springBones: z.array(SpringBoneChainSchema).optional(),
+		crowd: CrowdSchema.optional(),
 	})
 	.strict() as unknown as z.ZodType<Model3DNode>;
 

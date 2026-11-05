@@ -987,6 +987,33 @@ export {
 	type Torus3DOptions,
 	type Tube3DOptions,
 } from "./shapes3d.js";
+
+import { scatterCoverage } from "./procedural3d.js";
+
+export type {
+	CrowdConfig,
+	LookAtConstraint,
+	ModelAnimationLayer,
+	NumberTrack,
+	SpringBoneChain,
+	TwoBoneIkConstraint,
+	Vec3Track,
+	WindConfig,
+} from "@framefields/compositions/program";
+export type {
+	ScatterPoint,
+	SdfPrimitive,
+	TerrainColorByElevation,
+	TerrainNoiseOptions,
+} from "@framefields/webgpu-renderers";
+export type {
+	Scatter3DNode,
+	Scatter3DOptions,
+	Sdf3DOptions,
+	Terrain3DNode,
+	Terrain3DOptions,
+	TerrainSurface,
+} from "./procedural3d.js";
 export { type StyleName, Styles } from "./styles.js";
 export type { Swarm3DOptions } from "./swarm3d.js";
 export {
@@ -2427,6 +2454,7 @@ export class Composition {
 	public lint(): RenderDiagnostic[] {
 		return lintComposition(this.toSpec(), {
 			emojiFont: FontManager.hasEmojiFont(),
+			scatterCoverage,
 		});
 	}
 }

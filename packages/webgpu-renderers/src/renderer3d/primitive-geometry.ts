@@ -3,6 +3,12 @@ import type { Material3D, Mesh3DData, Model3DData } from "../loaders/types.js";
 import { Path3D } from "../math3d/path3d.js";
 import type { Vec3 } from "../math3d/vector3.js";
 import { sampleSvgArc } from "../renderer2d/path-geometry.js";
+import type { GeometryArrays } from "./geometry-arrays.js";
+import { buildSdf, type SdfGeometryOptions } from "./sdf-geometry.js";
+import {
+	buildTerrain,
+	type TerrainGeometryOptions,
+} from "./terrain-geometry.js";
 import {
 	type Contour,
 	type CurveFlattening,
@@ -301,7 +307,9 @@ export type PrimitiveGeometryOptions =
 	| TubeGeometryOptions
 	| Line3DGeometryOptions
 	| Points3DGeometryOptions
-	| ShardGeometryOptions;
+	| ShardGeometryOptions
+	| TerrainGeometryOptions
+	| SdfGeometryOptions;
 
 class MeshBuilder {
 	positions: number[] = [];
@@ -2532,6 +2540,15 @@ function shard(o: ShardGeometryOptions, mb: MeshBuilder): void {
 	}
 }
 
+/** Takes over arrays built outside the builder (terrain, SDF). */
+function adopt(mb: MeshBuilder, g: GeometryArrays): void {
+	mb.positions = g.positions;
+	mb.normals = g.normals;
+	mb.uvs = g.uvs;
+	mb.colors = g.colors;
+	mb.indices = g.indices;
+}
+
 function finalizeModel3DData(
 	name: string,
 	meshes: Mesh3DData[],
@@ -2606,6 +2623,8 @@ export function generatePrimitiveGeometry(
 	else if (options.type === "line3d") line3d(options, mb);
 	else if (options.type === "points3d") points3d(options, mb);
 	else if (options.type === "shard") shard(options, mb);
+	else if (options.type === "terrain") adopt(mb, buildTerrain(options));
+	else if (options.type === "sdf") adopt(mb, buildSdf(options));
 	else {
 		throw new Error(
 			`Unknown 3D primitive: ${(options as { type?: string }).type}`,

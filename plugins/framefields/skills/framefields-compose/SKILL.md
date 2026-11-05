@@ -106,6 +106,9 @@ All `Layer.*` builders return `AnimatableNode<T>` instances with chainable `.ani
 | `Layer3D.extrude / lathe / tube / line / points(options)` | `"model3d"` | Custom & path-driven 3D geometry. `extrude`: extrude a 2D SVG path `d` (with holes) or `contour`/`holes` (`depth`, `bevelThickness`, `bevelSize`, `bevelSegments`, `bevelColor`). `lathe`: revolve a 2D `points` profile `[r, y][]` around the Y axis (`segments`, `phiStart`, `phiLength`, `closed`, `flatShaded`). `tube`: sweep a solid or thick-walled hollow pipe (`radius`, `innerRadius`, `radiusTaper`, `closed`, `capped`) along a `Path3D` or 3D control `points` using rotation-minimizing frames. `line`: 3D polyline (`points` or `Path3D`, `dashSize`, `gapSize`, per-vertex `colors`). `points`: 3D point cloud (`points`, `pointSize` for lit sphere dots or `0` for `point-list`, per-point `colors`). |
 | `Layer3D.instances(options)` | `"model3d"` | Hardware-instanced single or multi-variant mesh rendering in 1 GPU draw call. Options: `count`, `mesh` / `meshes` (array of Layer3D primitives or meshes), `instanceAt(index, frame): { position, rotation, scale, color, emissive }`, or bind directly to Rapier `Physics.world3d` bodies via `bodies: Body3D[]` with `emissiveBySpeed` and `colorRamp`. |
 | `Layer3D.swarm(options)` | `"model3d"` | Continuous 3D GPU particle swarm with compute-driven physics, 3D curl turbulence, vortex/cyclone field (`swirl`, `pull`, `axial`), ground plane collisions with Coulomb sliding friction and rotational roll torque, kinetic heat accumulation/cooling, and zero-copy packing directly into GPU instance buffers. |
+| `Layer3D.terrain(options)` | `"model3d"` | Procedural landscape, closed underneath. `width`, `depth`, `height` (relief px above the node's y, the valley floor), `segments`, `noise: { seed, scale, octaves, persistence, lacunarity, ridgeMode: "fbm" \| "ridged" \| "terrace", terraceSteps }`, or `heightFn(u, v) => 0..1` / `heights`, `overhangWarp`, `colorByElevation: { lowColor, midColor, highColor, cliffColor, cliffThreshold, bands }`, `flatShaded`. Returns a node with `heightAt(x, z)`, `normalAt(x, z)`, `elevationAt(x, z)` to stand cameras, lights, video screens and models on the ground. Static `Physics.world3d` bodies collide with its exact triangles. |
+| `Layer3D.sdf(options)` | `"model3d"` | Boolean sculpture: `primitives: [{ shape: "sphere" \| "box" \| "cylinder" \| "capsule" \| "torus" \| "gyroid", op: "union" \| "subtract" \| "intersect", smoothness (px blend), center, rotation, color, …size }]` meshed watertight inside `bounds: [w, h, d]` at `resolution` (16..160). Colors blend across smooth joins; a colored cutter paints its cut. |
+| `Layer3D.scatter(options)` | `"model3d"` | Scatter `mesh` (one or an array of variants, any Layer3D mesh or `Layer.model`) over `surface` (terrain, sdf, primitive or model file): `count`, `minDistance` (Poisson spacing), `seed`, `slopeRange` (deg from level), `elevationRange` (0..1), `alignToNormal`, `scaleRange`, `randomYaw`, `exclude: [{ x, z, radius, falloff }]`, `sink`, `wind`. Deterministic, one draw call per variant; `.points()` returns where they stand. |
 
 ---
 
@@ -400,6 +403,52 @@ Layer.video("assets/table.mp4", { ...plate, is3D: true })
 Where depth jumps (an object's outline) the surface stretches across with the edge pixels: footage never saw those sides. Keep camera moves within about 15° of the original lens, or hide the outlines.
 
 ---
+
+### Characters: blending, IK, look-at, springs, crowds
+
+glTF characters (`Layer.glb` / `Layer.gltf`) take layered clips and procedural constraints. Joint names come from the file. Targets are scene coordinates: a point, keys `[[frame, x, y, z]]`, or `(frame) => [x, y, z]`.
+
+```ts
+const hero = Layer.glb("hero.glb", {
+  x: 960, y: 900, z: 0, rotateX: 180, scale: 3,
+  animationLayers: [
+    { clip: "Walk" },
+    { clip: "Run", weight: [[0, 0], [48, 1]] },             // crossfade walk → run
+    { clip: "Wave", mask: ["Spine2"], weight: 0.8 },        // upper body only
+  ],
+  lookAt: [{ joint: "Head", target: (f) => [700 + f * 4, 600, -200], maxAngleDeg: 60 }],
+  ik: [{ chain: ["UpperArm.R", "LowerArm.R", "Hand.R"], target: [1100, 650, -80], poleTarget: [1200, 800, 200] }],
+  springBones: [{ joints: ["Tail1", "Cape"], stiffness: 4, damping: 0.6, gravity: [0, 980, 0] }],
+});
+// 3,000 walkers in one draw call per mesh, each at its own phase and speed:
+const extras = Layer3D.scatter({
+  surface: land, mesh: Layer.glb("walker.glb", { rotateX: 180, scale: 2 }), count: 3000, minDistance: 40,
+  crowd: { clips: ["Walk", "Idle"], speedRange: [0.8, 1.2] },
+});
+```
+
+Rules: a crowd mesh keeps its own `rotateX` / `scale` under each instance (y-up glTF: `rotateX: 180`). Spring bones follow the clip's motion and the model's current orientation, not the layer's keyframed travel. Per-instance `clip`, `animOffset`, `animSpeed` in `transforms` / `instanceAt` override the crowd's seeded choices.
+
+### Procedural worlds: terrain, sculptures, scatter
+
+Terrain, SDF sculptures and scatters are ordinary model nodes: they take materials, lights, shadows, SSR/GI, physics, keyframes and a `texture` that can be any layer (an image path, `Layer.video`, a layout tree) drawn fresh each frame.
+
+```ts
+const land = Layer3D.terrain({
+  x: 960, y: 900, z: 0, width: 4000, depth: 4000, height: 600,
+  noise: { seed: 3, ridgeMode: "ridged" },
+  colorByElevation: { lowColor: "#3d6b2a", midColor: "#7a6a4f", highColor: "#f4f4f4", cliffColor: "#5a5048" },
+});
+const pines = Layer3D.scatter({
+  surface: land, mesh: [Layer.gltf("pine.glb"), Layer3D.capsule({ radius: 8, length: 60, color: "#2f5d2a" })],
+  count: 800, minDistance: 60, slopeRange: [0, 30], elevationRange: [0.05, 0.6],
+  exclude: [{ x: 960, z: 0, radius: 300, falloff: 120 }], wind: { amplitudeDeg: 6 },
+});
+// Stand any layer on the ground: a video screen in the clearing.
+const screen = Layer3D.plane({ x: 960, y: land.heightAt(960, 0) - 160, z: 0, width: 480, height: 270, children: [Layer.video("clip.mp4", { width: 480, height: 270 })] });
+```
+
+Rules: the terrain's y is its valley floor, peaks rise `height` px above it (up is -y); `heightAt` follows the node's position and scale but not its rotation. Scatter reads the surface's static transform, so don't keyframe the surface. Make a terrain or sculpture `type: "fixed"` in `Physics.world3d` for exact-triangle collisions. `lint()` warns when `slopeRange` / `elevationRange` reject the whole surface.
 
 ## Scenes & Transitions
 

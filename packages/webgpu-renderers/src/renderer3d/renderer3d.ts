@@ -61,7 +61,9 @@ import { decodeKtx2, isKtx2 } from "./ktx2.js";
 import {
 	type GPUMeshBuffers,
 	Mesh3DPipeline,
+	type MeshCrowd,
 	type MeshMaterialMaps,
+	type MeshWind,
 } from "./mesh3d-pipeline.js";
 import { MorphPipeline } from "./morph-pipeline.js";
 import { Quad3DPipeline, type Relief3D } from "./quad3d-pipeline.js";
@@ -238,6 +240,12 @@ export interface DrawMesh3DOpts extends SurfaceParams {
 	matrixInstances?: boolean;
 	/** Optional overall bounding box (e.g. for instanced clusters or swarms) for shadow frustum fitting. */
 	bounds?: Aabb;
+	/** Base-color UV window [x, y, width, height] (a layer texture's place in its pass). */
+	uvRect?: [number, number, number, number];
+	/** Procedural wind sway (`MeshWind`). */
+	wind?: MeshWind;
+	/** Skinned crowd: instances skin from a baked palette (`MeshCrowd`). */
+	crowd?: MeshCrowd;
 }
 
 /** Scene-wide world settings for a 3D pass. */
@@ -1057,6 +1065,8 @@ export class Renderer3D {
 								(c.opts.instanceCount && c.opts.instanceCount > 1),
 						),
 						instanceBuffer: c.opts.instanceBuffer,
+						wind: c.opts.wind,
+						crowd: c.opts.crowd,
 					},
 					c.opts.instanceCount ?? 1,
 					c.opts.firstInstance ?? 0,
@@ -2079,6 +2089,9 @@ export class Renderer3D {
 				outline: opts.outline,
 				matte: opts.matte,
 				maps: opts.maps,
+				uvRect: opts.uvRect,
+				wind: opts.wind,
+				crowd: opts.crowd,
 				clearcoat: opts.clearcoat,
 				clearcoatRoughness: opts.clearcoatRoughness,
 				anisotropy: opts.anisotropy,

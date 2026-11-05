@@ -40,6 +40,41 @@ export interface MeshGlass {
 	frost: number;
 }
 
+/**
+ * Procedural wind: vertices bend downwind by how far they sit above the
+ * mesh's base, swaying in a traveling wave (instances sway out of phase).
+ */
+export interface MeshWind {
+	/** Peak lean, degrees. */
+	amplitudeDeg: number;
+	/** Sways per second. */
+	frequency: number;
+	/** Downwind direction on the ground plane [x, z]. */
+	direction: [number, number];
+	/** Gust wavelength across the field, px. */
+	waveScale: number;
+	/** Seconds. */
+	time: number;
+	/** The mesh's base (its largest local y: up is -y) and height, px. */
+	baseY: number;
+	height: number;
+}
+
+/** Floats in the mesh `ModelUniforms` struct. */
+export const MESH_MODEL_FLOATS = 52 + SURFACE_PARAMS_FLOATS + 16;
+
+/**
+ * Skinned crowd (vertex animation): every instance skins from a baked
+ * joint palette at its own clip, phase and speed (`bakeCrowdPalette`).
+ */
+export interface MeshCrowd {
+	/** `palette` uploaded once: `frames × jointCount` model-space joint matrices. */
+	palette: GPUBuffer;
+	jointCount: number;
+	/** Seconds. */
+	time: number;
+}
+
 export interface MeshUniformData extends SurfaceParams {
 	modelMatrix: Float32Array | number[];
 	normalMatrix?: Float32Array | number[];
@@ -80,6 +115,11 @@ export interface MeshUniformData extends SurfaceParams {
 	specularIntensity?: number;
 	ambientIntensity?: number;
 	metallic?: number;
+	/** Base-color UV window [x, y, width, height]: uv' = xy + uv · wh. */
+	uvRect?: [number, number, number, number];
+	wind?: MeshWind;
+	/** Instances carry a second record each and skin from a baked palette. */
+	crowd?: MeshCrowd;
 }
 
 export interface GPUMeshBuffers {
@@ -93,6 +133,26 @@ export interface GPUMeshBuffers {
 	mapUvBuffer?: GPUBuffer;
 	wireIndexBuffer?: GPUBuffer;
 	wireIndexCount?: number;
+}
+
+/** uvRect, then wind (amplitude rad, angular frequency, wave scale, time), then (dir x, dir z, baseY, 1 / height). */
+function packUvAndWind(out: Float32Array, at: number, data: MeshUniformData) {
+	const uv = data.uvRect ?? [0, 0, 1, 1];
+	out.set(uv, at);
+	const w = data.wind;
+	if (!w || w.amplitudeDeg === 0 || w.height <= 0) {
+		out.fill(0, at + 4, at + 12);
+		return;
+	}
+	const len = Math.hypot(w.direction[0], w.direction[1]) || 1;
+	out[at + 4] = (w.amplitudeDeg * Math.PI) / 180;
+	out[at + 5] = w.frequency * Math.PI * 2;
+	out[at + 6] = (Math.PI * 2) / Math.max(1, w.waveScale);
+	out[at + 7] = w.time;
+	out[at + 8] = w.direction[0] / len;
+	out[at + 9] = w.direction[1] / len;
+	out[at + 10] = w.baseY;
+	out[at + 11] = 1 / w.height;
 }
 
 export class Mesh3DPipeline {
@@ -145,7 +205,7 @@ export class Mesh3DPipeline {
 	private retiredColorBuffers: GPUBuffer[] = [];
 
 	// Transform, tint, draw/material params, shade, shared surface block, maps.
-	private modelData = new Float32Array(52 + SURFACE_PARAMS_FLOATS);
+	private modelData = new Float32Array(MESH_MODEL_FLOATS);
 
 	constructor(
 		device: GPUDevice,
@@ -158,7 +218,7 @@ export class Mesh3DPipeline {
 	) {
 		this.device = device;
 		this.modelPool = new BufferPool(
-			(52 + SURFACE_PARAMS_FLOATS) * 4,
+			MESH_MODEL_FLOATS * 4,
 			GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
 		);
 		this.skinningPool = new BufferPool(
@@ -451,12 +511,13 @@ export class Mesh3DPipeline {
 
 		this.modelData[36] = data.opacity ?? 1.0;
 		this.modelData[37] = data.twoSided ? 1.0 : 0.0;
-		this.modelData[38] = data.isSkinned ? 1.0 : 0.0;
+		this.modelData[38] = data.isSkinned || data.crowd ? 1.0 : 0.0;
 		// Bit 0 selects instance data; bit 1 selects the extra map UVs.
 		this.modelData[39] =
 			(data.isInstanced || data.instanceBuffer ? 1 : 0) +
 			(data.hasMapUvs ? 2 : 0) +
-			(data.matrixInstances ? 4 : 0);
+			(data.matrixInstances ? 4 : 0) +
+			(data.crowd ? 8 : 0);
 
 		const shininess =
 			data.roughness !== undefined
@@ -489,6 +550,12 @@ export class Mesh3DPipeline {
 			: 0;
 		this.modelData[mapsOffset + 2] = maps?.metallicRoughness ? 1 : 0;
 		this.modelData[mapsOffset + 3] = maps?.emissive ? 1 : 0;
+		packUvAndWind(this.modelData, mapsOffset + 4, data);
+		const crowd = data.crowd;
+		this.modelData.set(
+			crowd ? [crowd.time, 0, crowd.jointCount, 1] : [0, 0, 0, 0],
+			mapsOffset + 16,
+		);
 		const glass = data.glass;
 		if (glass) {
 			// shade.rgb and pbr.zw are unused outside toon: glass parameters.
@@ -510,8 +577,9 @@ export class Mesh3DPipeline {
 				`Skinning data requires ${data.skinningMatrices.byteLength} bytes, exceeding the device storage binding limit of ${this.device.limits.maxStorageBufferBindingSize} bytes`,
 			);
 		}
-		const skinningBuffer =
-			data.isSkinned && data.skinningMatrices
+		const skinningBuffer = data.crowd
+			? data.crowd.palette
+			: data.isSkinned && data.skinningMatrices
 				? this.skinningPool.getBuffer(this.device, data.skinningMatrices)
 				: this.defaultSkinningBuffer;
 

@@ -1,11 +1,13 @@
 import type {
 	BoxNode,
+	CrowdConfig,
 	IridescenceConfig,
 	LayoutNode,
 	MaterialType,
 	Model3DNode,
 	ToonShading,
 	TriplanarConfig,
+	WindConfig,
 } from "@framefields/compositions/program";
 import {
 	type CapsuleGeometryOptions,
@@ -37,6 +39,17 @@ import {
 	type SignalOrNumber,
 } from "./index.js";
 import type { PhysicsBody3D } from "./physics/world3d.js";
+import {
+	type Scatter3DNode,
+	type Scatter3DOptions,
+	type Sdf3DOptions,
+	scatter3d,
+	sdf3d,
+	type Terrain3DNode,
+	type Terrain3DOptions,
+	terrain3d,
+	textureLayerOf,
+} from "./procedural3d.js";
 import { createSwarm3D, type Swarm3DOptions } from "./swarm3d.js";
 
 /** Physically based surface options every 3D builder accepts. */
@@ -498,6 +511,16 @@ export interface Primitive3DNodeOptions extends Surface3DOptions {
 	opacity?: number;
 	startFrame?: number;
 	durationFrames?: number;
+	/**
+	 * Base-color texture wrapped by the mesh's UVs: an image path, or any
+	 * layer (`Layer.video`, `Layer.image`, a layout tree with text…) drawn
+	 * fresh every frame, so video plays on the surface. Without its own
+	 * x / y / width / height the layer fills the frame, which maps to the
+	 * whole UV square. Combine with `triplanar` to project it in world space.
+	 */
+	texture?: string | LayoutNode;
+	/** Procedural wind sway: vertices bend downwind by height above the mesh base. */
+	wind?: WindConfig;
 }
 
 export type RoundedBox3DOptions = Primitive3DNodeOptions &
@@ -554,6 +577,12 @@ export interface InstanceTransform3D {
 	color?: string | [number, number, number, number];
 	emissive?: string | [number, number, number];
 	emissiveIntensity?: number;
+	/** Crowds: index into `crowd.clips` (default: instance index % clip count). */
+	clip?: number;
+	/** Crowds: seconds into the clip at frame 0 (default: seeded random, or 0 with `phase: "sync"`). */
+	animOffset?: number;
+	/** Crowds: playback speed (default: seeded within `crowd.speedRange`). */
+	animSpeed?: number;
 }
 
 export interface Instances3DOptions extends Surface3DOptions {
@@ -579,6 +608,15 @@ export interface Instances3DOptions extends Surface3DOptions {
 		intensity?: number;
 	};
 	emissiveByImpact?: { color: string; intensity?: number };
+	/** Procedural wind sway: each instance bends downwind from its base. */
+	wind?: WindConfig;
+	/**
+	 * Skinned crowd: the mesh is an animated model (`Layer.glb`, `Layer.gltf`)
+	 * and every instance plays one of `clips` at its own phase and speed,
+	 * skinned on the GPU from a palette baked once: thousands of characters,
+	 * one draw call per mesh.
+	 */
+	crowd?: CrowdConfig;
 	x?: number;
 	y?: number;
 	z?: number;
@@ -622,7 +660,8 @@ function normalizePathSpec(input: Path3D | TubePathSpec): TubePathSpec {
 	return input;
 }
 
-function primitiveNode(
+/** A Layer3D mesh node built from a procedural geometry spec. */
+export function primitiveNode(
 	prefix: string,
 	geometry: PrimitiveGeometryOptions,
 	o: Primitive3DNodeOptions,
@@ -668,6 +707,10 @@ function primitiveNode(
 		wireframe: o.wireframe,
 		startFrame: o.startFrame,
 		durationFrames: o.durationFrames,
+		...(o.wind && { wind: o.wind }),
+		...(o.texture !== undefined && {
+			textureLayer: textureLayerOf(o.texture, (src) => Layer.image(src)),
+		}),
 	});
 }
 
@@ -1615,6 +1658,39 @@ export const Layer3D = {
 	 * Renders hundreds or thousands of 3D meshes in 1 draw call per mesh variant,
 	 * driven by Physics.world3d rigid bodies, procedural callbacks, or transform arrays.
 	 */
+	/**
+	 * Procedural terrain: seeded fractal noise ("fbm" hills, "ridged"
+	 * mountains, "terrace" plateaus) or your own heights, optional cliff
+	 * overhangs, biome colors by altitude and slope, closed underneath into a
+	 * solid block. The node's y is the valley floor; peaks rise `height` px
+	 * above it. The node carries `heightAt(x, z)` / `normalAt(x, z)` for
+	 * standing cameras, lights, video screens and models on the ground.
+	 */
+	terrain(options: Terrain3DOptions): Terrain3DNode {
+		return terrain3d(options);
+	},
+
+	/**
+	 * A sculpture of signed-distance primitives (sphere, box, cylinder,
+	 * capsule, torus, gyroid) joined in order by union / subtract /
+	 * intersect, hard or smooth (`smoothness` px), meshed watertight inside
+	 * `bounds`. Colored primitives blend where their joins blend.
+	 */
+	sdf(options: Sdf3DOptions): AnimatableNode<Model3DNode> {
+		return sdf3d(options);
+	},
+
+	/**
+	 * Scatters instances of one or more meshes over a surface (terrain, SDF,
+	 * any primitive or `Layer.model` file): area-weighted, deterministic per
+	 * `seed`, filtered by slope / altitude / exclusion zones, spaced by
+	 * `minDistance`, each standing on its base. One draw call per mesh
+	 * variant. `wind` sways them; `.points()` returns where they stand.
+	 */
+	scatter(options: Scatter3DOptions): Scatter3DNode {
+		return scatter3d(options);
+	},
+
 	instances(options: Instances3DOptions): AnimatableNode<Model3DNode> {
 		const primaryMesh = Array.isArray(options.mesh)
 			? options.mesh[0]
@@ -1642,6 +1718,8 @@ export const Layer3D = {
 			startFrame: options.startFrame,
 			durationFrames: options.durationFrames,
 			instances3d: { ...options },
+			...(options.wind && { wind: options.wind }),
+			...(options.crowd && { crowd: options.crowd }),
 			...materialProps(options),
 		};
 		if (primaryMesh) {

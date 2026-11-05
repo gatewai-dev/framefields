@@ -68,6 +68,10 @@ import {
 } from "./hdr-environment.js";
 import { decodeKtx2, isKtx2 } from "./ktx2.js";
 import {
+	type LensRemapOptions,
+	LensRemapPipeline,
+} from "./lens-remap-pipeline.js";
+import {
 	type GPUMeshBuffers,
 	Mesh3DPipeline,
 	type MeshCrowd,
@@ -415,7 +419,8 @@ export class Renderer3D {
 	>();
 	/** Parsed models by source and load options: a model file is read once, not every frame. */
 	private modelCache = new Map<string, Model3DData>();
-	private lastCameraPose: Camera3DPose | null = null;
+	/** What the cached camera buffer was packed from (pose, lens, surface). */
+	private lastCameraKey: string | null = null;
 	private shadowTexture: GPUTexture | null = null;
 	private shadowTextures = new Map<string, GPUTexture>();
 	private placeholderShadowTexture: GPUTexture | null = null;
@@ -432,6 +437,7 @@ export class Renderer3D {
 	private placeholderScreenIndirect: ScreenIndirectTextures | null = null;
 	private screenSampler: GPUSampler | null = null;
 	private lastCameraBuffer: GPUBuffer | null = null;
+	private lensPipeline: LensRemapPipeline | null = null;
 
 	/**
 	 * Samples per pixel in the 3D pass. Mesh silhouettes (extruded text,
@@ -568,17 +574,19 @@ export class Renderer3D {
 			format: GPUTextureFormat;
 			usage: number;
 			sampleCount?: number;
+			layers?: number;
 			mipLevelCount?: number;
 		},
 	): GPUTexture {
-		const key = `${label}:${width}x${height}:${desc.sampleCount ?? 1}:${desc.mipLevelCount ?? 1}:${desc.usage}`;
+		const { layers = 1, ...texture2d } = desc;
+		const key = `${label}:${width}x${height}x${layers}:${desc.sampleCount ?? 1}:${desc.mipLevelCount ?? 1}:${desc.format}:${desc.usage}`;
 		this.attachmentsUsed.add(key);
 		let texture = this.attachments.get(key);
 		if (!texture) {
 			texture = this.device.createTexture({
 				label,
-				size: { width, height },
-				...desc,
+				size: { width, height, depthOrArrayLayers: layers },
+				...texture2d,
 			});
 			this.attachments.set(key, texture);
 		}
@@ -611,6 +619,7 @@ export class Renderer3D {
 		this.bloomPipeline?.resetPools();
 		this.volumetricFogPipeline?.resetPools();
 		this.ssrGiPipeline?.resetPools();
+		this.lensPipeline?.resetPools();
 		this.cameraPool.reset();
 		this.velocityCameraPool.reset();
 		this.quadMotionPool.reset();
@@ -618,7 +627,7 @@ export class Renderer3D {
 		// The cached camera buffer goes back to the pool and may be handed
 		// out again (e.g. to a shadow pass's light camera): never reuse it
 		// across a reset.
-		this.lastCameraPose = null;
+		this.lastCameraKey = null;
 		this.lastCameraBuffer = null;
 		this.lightsPool.reset();
 		this.directLightsPool.reset();
@@ -664,6 +673,67 @@ export class Renderer3D {
 	/** The HDR radiance target the last `beginPass(…, writeHdr)` drew into. */
 	hdrSource(): GPUTexture | null {
 		return this.hdrBlurred ?? this.hdrTexture;
+	}
+
+	/**
+	 * A cube camera's target: six `size`² faces with a full mip chain, drawn
+	 * into face by face and sampled by `remapLens`. `hdr` holds the scene
+	 * radiance (the bloom source) instead of display colour.
+	 */
+	getOrCreateCubeTexture(size: number, hdr: boolean): GPUTexture {
+		return this.attachment(
+			hdr ? "Renderer3DCubeHdr" : "Renderer3DCube",
+			size,
+			size,
+			{
+				format: hdr ? "rgba16float" : this.format,
+				usage:
+					GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+				layers: 6,
+				mipLevelCount: LensRemapPipeline.mipLevels(size),
+			},
+		);
+	}
+
+	/** Face `face` (WebGPU layer order) of a cube target, as a render attachment. */
+	cubeFaceView(cube: GPUTexture, face: number): GPUTextureView {
+		return cube.createView({
+			dimension: "2d",
+			baseArrayLayer: face,
+			arrayLayerCount: 1,
+			baseMipLevel: 0,
+			mipLevelCount: 1,
+		});
+	}
+
+	/**
+	 * Draws a cube camera's picture into `dest` (`width` × `height`) through
+	 * its lens. With an `hdr` cube the radiance is remapped too and becomes
+	 * `hdrSource()`, so bloom glows where the lens put the light.
+	 */
+	remapLens(
+		encoder: GPUCommandEncoder,
+		color: GPUTexture,
+		hdr: GPUTexture | null,
+		dest: GPUTextureView,
+		width: number,
+		height: number,
+		options: LensRemapOptions,
+	): void {
+		this.lensPipeline ??= new LensRemapPipeline(this.device, this.format);
+		const destHdr = hdr
+			? this.getOrCreateHdrTexture(width, height).createView()
+			: null;
+		this.lensPipeline.remap(
+			encoder,
+			color,
+			hdr,
+			dest,
+			destHdr,
+			width,
+			height,
+			options,
+		);
 	}
 
 	private getOrCreateHdrTexture(width: number, height: number): GPUTexture {
@@ -773,23 +843,25 @@ export class Renderer3D {
 		surfaceHeight: number,
 		time = 0,
 	): GPUBuffer {
-		// Skip recomputation if camera pose hasn't changed
-		if (
-			this.lastCameraPose &&
-			this.lastCameraBuffer &&
-			this.lastCameraPose.eye[0] === camera.eye[0] &&
-			this.lastCameraPose.eye[1] === camera.eye[1] &&
-			this.lastCameraPose.eye[2] === camera.eye[2] &&
-			this.lastCameraPose.target[0] === camera.target[0] &&
-			this.lastCameraPose.target[1] === camera.target[1] &&
-			this.lastCameraPose.target[2] === camera.target[2] &&
-			this.lastCameraPose.up[0] === camera.up[0] &&
-			this.lastCameraPose.up[1] === camera.up[1] &&
-			this.lastCameraPose.up[2] === camera.up[2] &&
-			this.lastCameraPose.fov === camera.fov &&
-			this.lastCameraPose.near === camera.near &&
-			this.lastCameraPose.far === camera.far
-		) {
+		// Every packed field: a face of a cube camera differs from the main
+		// view in aspect and surface size alone.
+		const key = [
+			...camera.eye,
+			...camera.target,
+			...camera.up,
+			camera.fov,
+			camera.aspect,
+			camera.near,
+			camera.far,
+			camera.zoom,
+			camera.focusDistance,
+			camera.fStop,
+			camera.maxBlurRadius,
+			surfaceWidth,
+			surfaceHeight,
+			time,
+		].join(",");
+		if (this.lastCameraBuffer && this.lastCameraKey === key) {
 			return this.lastCameraBuffer;
 		}
 
@@ -838,7 +910,7 @@ export class Renderer3D {
 			this.device,
 			this.cameraUniformData,
 		);
-		this.lastCameraPose = camera;
+		this.lastCameraKey = key;
 		this.lastCameraBuffer = buffer;
 		return buffer;
 	}
@@ -1337,6 +1409,8 @@ export class Renderer3D {
 		world?: Scene3DWorld,
 		/** Also write unclamped scene radiance (`hdrTexture()`), the bloom source. */
 		writeHdr = false,
+		/** Where the radiance resolves instead of `hdrSource()` (a cube face). */
+		hdrTargetView?: GPUTextureView,
 	): {
 		pass: GPURenderPassEncoder;
 		cameraBindGroup: GPUBindGroup;
@@ -1446,7 +1520,9 @@ export class Renderer3D {
 		this.passWritesHdr = writeHdr;
 		this.hdrBlurred = null;
 		if (writeHdr) {
-			this.hdrTexture = this.getOrCreateHdrTexture(surfaceWidth, surfaceHeight);
+			const hdrView =
+				hdrTargetView ??
+				this.getOrCreateHdrTexture(surfaceWidth, surfaceHeight).createView();
 			if (msaa) {
 				this.msaaHdrTexture = this.getOrCreateMsaaTexture(
 					this.msaaHdrTexture,
@@ -1458,7 +1534,7 @@ export class Renderer3D {
 			}
 			colorAttachments.push(
 				attach(
-					this.hdrTexture.createView(),
+					hdrView,
 					msaa ? this.msaaHdrTexture : null,
 					{ r: 0, g: 0, b: 0, a: 0 },
 					"clear",
@@ -2977,6 +3053,7 @@ export class Renderer3D {
 		for (const texture of this.attachments.values()) texture.destroy();
 		this.attachments.clear();
 		this.bloomPipeline?.destroy();
+		this.lensPipeline?.destroy();
 		this.outlinePipeline?.destroy();
 		this.volumetricFogPipeline?.destroy();
 		this.ssrGiPipeline?.destroy();

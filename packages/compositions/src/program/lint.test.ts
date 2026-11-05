@@ -247,4 +247,36 @@ describe("lintComposition", () => {
 		// Callers that don't know about fonts aren't told.
 		expect(lint().map((d) => d.code)).not.toContain("missing_emoji_font");
 	});
+
+	it("flags cube cameras combined with single-view effects", () => {
+		const cube = {
+			id: "cam",
+			kind: "camera",
+			lens: { projection: "equirectangular" },
+		};
+		expect(codes([{ ...cube, dof: { enabled: true } }])).toContain(
+			"camera_cube_dof",
+		);
+		expect(codes([{ ...cube, motionBlur: true }])).toContain(
+			"camera_cube_motion_blur",
+		);
+		expect(
+			codes([
+				cube,
+				{ id: "env", kind: "light", lightType: "environment", ssr: true },
+			]),
+		).toContain("camera_cube_screen_space");
+		// A perspective camera takes all of them.
+		const plain = codes([
+			{ id: "cam", kind: "camera", motionBlur: true, dof: { enabled: true } },
+			{
+				id: "env",
+				kind: "light",
+				lightType: "environment",
+				ssr: true,
+				gi: true,
+			},
+		]);
+		expect(plain.filter((c) => c.startsWith("camera_cube"))).toEqual([]);
+	});
 });

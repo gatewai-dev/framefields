@@ -46,6 +46,7 @@ import {
 	type Camera3DPose,
 	type Color,
 	type CrowdBake,
+	cubeFaceCameras,
 	type DrawMesh3DOpts,
 	type DrawQuad3DOpts,
 	type Environment3DFloor,
@@ -98,6 +99,7 @@ import {
 	poseCharacter,
 } from "./character.js";
 import { shouldPaintContainerBackground } from "./container-bg.js";
+import { type CubeCamera, resolveCubeCamera } from "./cube-camera.js";
 import { fracturedModel, fracturePose, fractureWhole } from "./fracture.js";
 import { compatibleMeshDraws } from "./mesh-instancing.js";
 import { type MotionHistory, motionHistory } from "./motion-history.js";
@@ -1356,6 +1358,8 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 		/** Shutter motion blur of the 3D scene, and what its draws looked like a frame ago. */
 		let motionBlur: CameraMotionBlur | null = null;
 		let history: MotionHistory | null = null;
+		/** Set when the camera draws a cube map and remaps it through its lens. */
+		let cubeCamera: CubeCamera | null = null;
 		const sceneLights: Light3DOptions[] = [];
 		let sceneEnvironment: Environment3DOptions | null = null;
 		let sceneBloom: BloomOptions | null = null;
@@ -1464,6 +1468,20 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 			if (blur && fps) {
 				motionBlur = blur === true ? {} : blur;
 				history = motionHistory(ctx.device, compiled.key);
+			}
+
+			cubeCamera = resolveCubeCamera(
+				camOp,
+				camera,
+				camStub?.relativitySpeed ?? camOp?.relativity?.speed ?? 0,
+				nativeWidth,
+				nativeHeight,
+				ctx.device.limits.maxTextureDimension2D,
+			);
+			if (cubeCamera && dofEnabled) {
+				throw new Error(
+					`Camera '${camOp?.id}' is a cube camera (${camOp?.relativity ? "relativity" : camOp?.lens?.projection}) with depth of field: depth of field needs a single perspective view.`,
+				);
 			}
 
 			// Collect Active Lights
@@ -2004,23 +2022,44 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				...glass,
 			];
 
-			// Planar floor reflection pass (if environment.floor is active)
+			// Screen-space light, motion blur and depth of field need one
+			// perspective picture; a cube camera draws six faces and remaps them.
+			if (cubeCamera) {
+				const single = [
+					screenIndirectEnabled && "screen-space reflections and GI (ssr, gi)",
+					motionBlur && "motion blur",
+				].filter(Boolean);
+				if (single.length) {
+					throw new Error(
+						`A cube camera (${cubeCamera.remap.projection ?? "lens"}) cannot draw ${single.join(" or ")}: they need a single perspective view.`,
+					);
+				}
+			}
+
 			const floorSpec = sceneEnvironment?.floor;
-			let blurredReflectionTex: GPUTexture | null = null;
-			if (
-				floorSpec &&
-				typeof floorSpec.y === "number" &&
-				camera.eye[1] < floorSpec.y
-			) {
+			const sceneShadow = shadow.length ? shadow : null;
+			/** The floor's mirror image from `view`, blurred by its roughness, when the eye is above it. */
+			const floorReflection = (
+				view: Camera3DPose,
+				width: number,
+				height: number,
+			): GPUTexture | null => {
+				if (
+					!floorSpec ||
+					typeof floorSpec.y !== "number" ||
+					view.eye[1] >= floorSpec.y
+				) {
+					return null;
+				}
 				const reflectedCamera: Camera3DPose = {
-					...camera,
-					eye: [camera.eye[0], 2 * floorSpec.y - camera.eye[1], camera.eye[2]],
+					...view,
+					eye: [view.eye[0], 2 * floorSpec.y - view.eye[1], view.eye[2]],
 					target: [
-						camera.target[0],
-						2 * floorSpec.y - camera.target[1],
-						camera.target[2],
+						view.target[0],
+						2 * floorSpec.y - view.target[1],
+						view.target[2],
 					],
-					up: [camera.up[0], camera.up[1], camera.up[2]],
+					up: [view.up[0], view.up[1], view.up[2]],
 				};
 				const {
 					pass: reflPass,
@@ -2029,8 +2068,8 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					reflectionTexture: reflTex,
 				} = r3d.beginReflectionPass(
 					encoder,
-					nativeWidth,
-					nativeHeight,
+					width,
+					height,
 					reflectedCamera,
 					sceneLights,
 					{ environment: sceneEnvironment, shadow: null },
@@ -2068,33 +2107,45 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					}
 				}
 				reflPass.end();
-				blurredReflectionTex = r3d.blurReflection(
+				return r3d.blurReflection(
 					encoder,
 					reflTex,
 					floorSpec.roughness ?? 0.35,
 				);
-			}
+			};
 
-			const sceneShadow = shadow.length ? shadow : null;
-			/** One forward pass over the scene: floor, then the sorted draws. */
+			/** Where one draw of the batch goes, and how. */
+			interface ViewTarget {
+				view: Camera3DPose;
+				width: number;
+				height: number;
+				color: GPUTextureView;
+				geometry: GPUTextureView | undefined;
+				/** Where the radiance resolves instead of `hdrSource()` (a cube face). */
+				hdr?: GPUTextureView;
+				reflection: GPUTexture | null;
+			}
 			/**
-			 * One draw of the batch. `glassBackdrop` is what glass refracts;
-			 * null leaves the glass out (the pre-pass that makes that picture).
+			 * One forward pass over the batch: floor, then the sorted draws.
+			 * `glassBackdrop` is the 2D picture glass refracts: undefined draws
+			 * glass over the 3D scene alone (a cube face), null leaves the glass
+			 * out (the pre-pass that makes that picture).
 			 */
-			const drawScene = (
+			const drawView = (
+				target: ViewTarget,
 				screenIndirect: "radiance" | "apply" | undefined,
 				writeHdr: boolean,
-				glassBackdrop: GPUTexture | null = curTex,
+				glassBackdrop: GPUTexture | null | undefined,
 			) => {
 				const begun = r3d.beginPass(
 					encoder,
-					scene3dView,
-					nativeWidth,
-					nativeHeight,
-					camera,
+					target.color,
+					target.width,
+					target.height,
+					target.view,
 					"clear",
 					{ r: 0, g: 0, b: 0, a: 0 },
-					linearDepthView,
+					target.geometry,
 					sceneLights,
 					{
 						environment: sceneEnvironment,
@@ -2102,14 +2153,15 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 						screenIndirect,
 					},
 					writeHdr,
+					target.hdr,
 				);
 				const { pass, cameraBindGroup, lightsBindGroup } = begun;
-				if (floorSpec && blurredReflectionTex) {
+				if (floorSpec && target.reflection) {
 					r3d.drawFloor(
 						pass,
 						cameraBindGroup,
 						lightsBindGroup,
-						blurredReflectionTex,
+						target.reflection,
 						floorSpec,
 						geometryEnabled,
 						writeHdr,
@@ -2144,7 +2196,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 							item.meshBuffers ?? item.mesh,
 							item.texture,
 							isGlass(item)
-								? { ...item.opts, backdrop: glassBackdrop ?? curTex }
+								? { ...item.opts, backdrop: glassBackdrop ?? undefined }
 								: item.opts,
 							geometryEnabled,
 						);
@@ -2154,33 +2206,158 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				return begun;
 			};
 
-			// Screen-space reflections and GI read the scene's own light: draw
-			// its radiance once, trace it, then shade with what was found.
-			if (screenIndirectEnabled && sceneEnvironment) {
-				const { cameraBuffer: radianceCamera } = drawScene("radiance", true);
-				r3d.traceScreenIndirect(encoder, radianceCamera, sceneEnvironment);
-			}
-			// Glass refracts the scene behind it, not just the layers under the
-			// batch: draw everything else first and lay it over them.
-			let glassBackdrop = curTex;
-			if (glass.length) {
-				drawScene(screenIndirectEnabled ? "apply" : undefined, false, null);
-				glassBackdrop = ctx.renderer.composite(
-					encoder,
+			const sceneSeconds = shiftedFrame / Math.max(1, fps ?? 24);
+			let final3dTex = scene3dTex;
+			let mainReflection: GPUTexture | null = null;
+			let mainPass: ReturnType<typeof drawView> | null = null;
+			if (cubeCamera) {
+				// Six 90° faces around the eye, then the lens's picture of them.
+				const size = cubeCamera.faceSize;
+				const cube = r3d.getOrCreateCubeTexture(size, false);
+				const hdrCube = sceneBloom
+					? r3d.getOrCreateCubeTexture(size, true)
+					: null;
+				// Ink as wide on screen as without a cube: a face has size / 2
+				// pixels per radian at its centre, the output centerDensity.
+				const faceOutlines = outlines && {
+					...outlines,
+					referenceHeight:
+						((outlines.referenceHeight ?? 1080) *
+							2 *
+							cubeCamera.centerDensity) /
+						nativeHeight,
+				};
+				// A face is drawn into its own texture when a post pass (ink,
+				// fog) reads it and writes the cube face.
+				const post = Boolean(faceOutlines) || volumetricFogEnabled;
+				const faceExcludes = [
 					curTex,
+					targetTexture,
 					scene3dTex,
-					"normal",
-					[targetTexture, scene3dTex, ...curExcludes],
+					...curExcludes,
+					...itemTextures,
+				];
+				const faceTex = post
+					? ctx.renderer.getTemporaryTexture(size, size, faceExcludes)
+					: null;
+				const fogTex =
+					faceOutlines && volumetricFogEnabled
+						? ctx.renderer.getTemporaryTexture(size, size, [
+								...faceExcludes,
+								...(faceTex ? [faceTex] : []),
+							])
+						: null;
+				const faceGeometry = geometryEnabled
+					? r3d.getOrCreateLinearDepthTexture(size, size)
+					: null;
+				cubeFaceCameras(camera.eye, camera.near, camera.far).forEach(
+					(face, i) => {
+						const faceView = r3d.cubeFaceView(cube, i);
+						const { cameraBindGroup, lightsBindGroup } = drawView(
+							{
+								view: face,
+								width: size,
+								height: size,
+								color: faceTex ? faceTex.createView() : faceView,
+								geometry: faceGeometry?.createView(),
+								hdr: hdrCube ? r3d.cubeFaceView(hdrCube, i) : undefined,
+								reflection: floorReflection(face, size, size),
+							},
+							undefined,
+							Boolean(sceneBloom),
+							// A face has no 2D picture behind it: glass refracts the 3D scene.
+							undefined,
+						);
+						if (!faceTex || !faceGeometry) return;
+						if (volumetricFogEnabled)
+							r3d.resolveGeometry(encoder, faceGeometry);
+						let source = faceTex;
+						if (faceOutlines) {
+							const inked = fogTex ?? null;
+							r3d.applyOutlines(
+								encoder,
+								faceTex,
+								faceGeometry,
+								inked ? inked.createView() : faceView,
+								face,
+								faceOutlines,
+								sceneEnvironment?.fog,
+							);
+							if (!inked) return;
+							source = inked;
+						}
+						if (volumetricFogEnabled && sceneEnvironment) {
+							r3d.applyVolumetricFog(
+								encoder,
+								source,
+								faceGeometry,
+								faceView,
+								cameraBindGroup,
+								lightsBindGroup,
+								sceneEnvironment,
+								sceneSeconds,
+								shiftedFrame,
+							);
+						}
+					},
+				);
+				r3d.remapLens(
+					encoder,
+					cube,
+					hdrCube,
+					scene3dView,
+					nativeWidth,
+					nativeHeight,
+					cubeCamera.remap,
+				);
+			} else {
+				mainReflection = floorReflection(camera, nativeWidth, nativeHeight);
+				const target: ViewTarget = {
+					view: camera,
+					width: nativeWidth,
+					height: nativeHeight,
+					color: scene3dView,
+					geometry: linearDepthView,
+					reflection: mainReflection,
+				};
+				// Screen-space reflections and GI read the scene's own light: draw
+				// its radiance once, trace it, then shade with what was found.
+				if (screenIndirectEnabled && sceneEnvironment) {
+					const { cameraBuffer: radianceCamera } = drawView(
+						target,
+						"radiance",
+						true,
+						curTex,
+					);
+					r3d.traceScreenIndirect(encoder, radianceCamera, sceneEnvironment);
+				}
+				// Glass refracts the scene behind it, not just the layers under
+				// the batch: draw everything else first and lay it over them.
+				let glassBackdrop = curTex;
+				if (glass.length) {
+					drawView(
+						target,
+						screenIndirectEnabled ? "apply" : undefined,
+						false,
+						null,
+					);
+					glassBackdrop = ctx.renderer.composite(
+						encoder,
+						curTex,
+						scene3dTex,
+						"normal",
+						[targetTexture, scene3dTex, ...curExcludes],
+					);
+				}
+				mainPass = drawView(
+					target,
+					screenIndirectEnabled ? "apply" : undefined,
+					Boolean(sceneBloom),
+					glassBackdrop,
 				);
 			}
-			const { cameraBindGroup, cameraBuffer, lightsBindGroup } = drawScene(
-				screenIndirectEnabled ? "apply" : undefined,
-				Boolean(sceneBloom),
-				glassBackdrop,
-			);
 
-			let final3dTex = scene3dTex;
-			if (outlines && linearDepthTex) {
+			if (mainPass && outlines && linearDepthTex) {
 				if (dofEnabled || volumetricFogEnabled) {
 					r3d.resolveGeometry(encoder, linearDepthTex);
 				}
@@ -2200,7 +2377,12 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				);
 				final3dTex = outlinedTex;
 			}
-			if (volumetricFogEnabled && sceneEnvironment && linearDepthTex) {
+			if (
+				mainPass &&
+				volumetricFogEnabled &&
+				sceneEnvironment &&
+				linearDepthTex
+			) {
 				const vfogTex = ctx.renderer.getTemporaryTexture(
 					nativeWidth,
 					nativeHeight,
@@ -2218,15 +2400,15 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					final3dTex,
 					linearDepthTex,
 					vfogTex.createView(),
-					cameraBindGroup,
-					lightsBindGroup,
+					mainPass.cameraBindGroup,
+					mainPass.lightsBindGroup,
 					sceneEnvironment,
-					shiftedFrame / Math.max(1, fps ?? 24),
+					sceneSeconds,
 					shiftedFrame,
 				);
 				final3dTex = vfogTex;
 			}
-			if (dofEnabled && linearDepthTex) {
+			if (mainPass && dofEnabled && linearDepthTex) {
 				const dofResultTex = ctx.renderer.getTemporaryTexture(
 					nativeWidth,
 					nativeHeight,
@@ -2237,7 +2419,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					final3dTex,
 					linearDepthTex,
 					dofResultTex.createView(),
-					cameraBuffer,
+					mainPass.cameraBuffer,
 				);
 				final3dTex = dofResultTex;
 			}
@@ -2254,7 +2436,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					final3dTex,
 					blurredTex,
 					motionBlur,
-					floorSpec && blurredReflectionTex ? floorSpec : undefined,
+					floorSpec && mainReflection ? floorSpec : undefined,
 				);
 				final3dTex = blurredTex;
 			}

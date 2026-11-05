@@ -109,6 +109,50 @@ function solidColor(value: unknown): string | null {
 	return c && c[3] > 0.99 ? value : null;
 }
 
+type Push = (
+	severity: RenderDiagnostic["severity"],
+	code: string,
+	message: string,
+	nodeId?: string,
+) => void;
+
+/**
+ * Cube cameras (panoramic lenses, relativity) and what they cannot combine
+ * with. Returns whether the camera draws a cube.
+ */
+function lintCamera(node: AnyNode, id: string, push: Push): boolean {
+	const lens = node.lens as { projection?: string; fov?: number } | undefined;
+	const projection = lens?.projection ?? "perspective";
+	if (projection === "perspective" && (lens?.fov ?? 0) > 160)
+		push(
+			"error",
+			"camera_fov_range",
+			`'${id}' has a ${lens?.fov}° perspective lens: perspective goes up to 160°. Use projection "fisheye" for wider views.`,
+			id,
+		);
+	const relativity = node.relativity as { speed?: number } | undefined;
+	const cube =
+		projection !== "perspective" ||
+		(relativity?.speed ?? 0) > 0 ||
+		animates(node, ["relativitySpeed"]);
+	const dof = node.dof as { enabled?: boolean } | undefined;
+	if (cube && (dof?.enabled || animates(node, ["focusDistance"])))
+		push(
+			"error",
+			"camera_cube_dof",
+			`'${id}' is a cube camera (${relativity ? "relativity" : projection}) with depth of field: depth of field needs a single perspective view.`,
+			id,
+		);
+	if (cube && node.motionBlur)
+		push(
+			"error",
+			"camera_cube_motion_blur",
+			`'${id}' is a cube camera (${relativity ? "relativity" : projection}) with motionBlur: shutter motion blur needs a single perspective view.`,
+			id,
+		);
+	return cube;
+}
+
 export function lintComposition(
 	config: Pick<CompositorProgramConfig, "width" | "height" | "layout"> & {
 		backgroundColor?: string;
@@ -133,6 +177,8 @@ export function lintComposition(
 	const seenIds = new Set<string>();
 	let directLights = 0;
 	let fogLight: string | undefined;
+	let cubeCamera: string | undefined;
+	let screenSpaceLight: string | undefined;
 
 	const visit = (node: AnyNode, backdrop: string | null, atRoot: boolean) => {
 		const id = String(node.id ?? "?");
@@ -181,6 +227,8 @@ export function lintComposition(
 			if (type === "ambient") ambientLights.push(id);
 			if (DIRECT_LIGHTS.has(String(type))) directLights++;
 			if (type === "environment" && node.volumetricFog) fogLight = id;
+			if (type === "environment" && (node.ssr || node.gi))
+				screenSpaceLight = id;
 			if (node.castShadow) {
 				if (
 					type !== "directional" &&
@@ -197,7 +245,10 @@ export function lintComposition(
 			}
 			return;
 		}
-		if (node.kind === "camera") return;
+		if (node.kind === "camera") {
+			if (lintCamera(node, id, push)) cubeCamera = id;
+			return;
+		}
 
 		if (node.kind === "media") {
 			const src = node.inputHandleId;
@@ -379,6 +430,15 @@ export function lintComposition(
 			"info",
 			"ambient_with_environment",
 			`The environment already fills shadows with light; ambient light ${ambientLights.join(", ")} adds flat light on top (remove it, or lower it, if the scene looks washed out).`,
+		);
+	}
+
+	if (cubeCamera && screenSpaceLight) {
+		push(
+			"error",
+			"camera_cube_screen_space",
+			`'${cubeCamera}' is a cube camera, and '${screenSpaceLight}' turns on ssr / gi: screen-space reflections and GI need a single perspective view. Use the environment's floor for reflections.`,
+			screenSpaceLight,
 		);
 	}
 

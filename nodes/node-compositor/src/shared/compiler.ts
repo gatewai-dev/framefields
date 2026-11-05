@@ -94,6 +94,7 @@ export interface LayerStub {
 	maxBlurRadius?: number;
 	shakeTranslation?: number;
 	shakeRotation?: number;
+	relativitySpeed?: number;
 	orbitRadius?: number;
 	orbitAzimuth?: number;
 	orbitElevation?: number;
@@ -662,6 +663,7 @@ function hashNodes(
 				maxBlurRadius: lop.maxBlurRadius,
 				shakeTranslation: lop.shakeTranslation,
 				shakeRotation: lop.shakeRotation,
+				relativitySpeed: lop.relativitySpeed,
 				orbitRadius: lop.orbitRadius,
 				orbitAzimuth: lop.orbitAzimuth,
 				orbitElevation: lop.orbitElevation,
@@ -891,6 +893,7 @@ export function compileTimeline(
 			shakeRotation:
 				lop.shakeRotation ??
 				(lop.shake?.enabled ? (lop.shake?.rotationAmplitude ?? 0) : 0),
+			relativitySpeed: lop.relativitySpeed ?? lop.relativity?.speed ?? 0,
 			orbitRadius: lop.orbitRadius,
 			orbitAzimuth: lop.orbitAzimuth,
 			orbitElevation: lop.orbitElevation,

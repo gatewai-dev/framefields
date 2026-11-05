@@ -4,6 +4,7 @@ export * from "./floor-reflection-pipeline.js";
 export * from "./fracture-geometry.js";
 export * from "./glass-pipeline.js";
 export * from "./hdr-environment.js";
+export * from "./lens-remap-pipeline.js";
 export * from "./matte3d.js";
 export * from "./mesh3d-pipeline.js";
 export * from "./motion-blur-pipeline.js";

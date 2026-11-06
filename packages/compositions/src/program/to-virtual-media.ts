@@ -86,6 +86,37 @@ export function isScene3D(node: LayoutNode): boolean {
 	);
 }
 
+/**
+ * `media` with `node`'s effects applied in order, each a pass over the
+ * picture below it: a clip's frames, or a 3D scene's finished composition.
+ */
+function wrapEffects(
+	media: VirtualMediaData,
+	node: { id?: string; effects?: unknown },
+): VirtualMediaData {
+	if (!Array.isArray(node.effects)) return media;
+	let current = media;
+	for (const eff of node.effects) {
+		const effOp =
+			eff &&
+			typeof (eff as { toOperation?: unknown }).toOperation === "function"
+				? (eff as { toOperation: () => Record<string, unknown> }).toOperation()
+				: (eff as Record<string, unknown>);
+		current = {
+			metadata: { ...current.metadata },
+			operation: {
+				op: String(effOp.op ?? "effect"),
+				id: node.id ? `${node.id}-${effOp.op ?? "effect"}` : undefined,
+				effect: eff,
+				...effOp,
+				dataType: current.operation.dataType,
+			},
+			children: [current],
+		} as VirtualMediaData;
+	}
+	return current;
+}
+
 function nodeToVirtualMedia(
 	node: LayoutNode,
 	resolveMedia: CompositorToProgramOptions["resolveMedia"],
@@ -178,30 +209,7 @@ function nodeToVirtualMedia(
 				children: [media],
 			};
 		}
-		if (media && Array.isArray(node.effects)) {
-			let currentMedia: VirtualMediaData = media;
-			for (const eff of node.effects) {
-				const effOp =
-					eff &&
-					typeof (eff as { toOperation?: unknown }).toOperation === "function"
-						? (
-								eff as { toOperation: () => Record<string, unknown> }
-							).toOperation()
-						: (eff as Record<string, unknown>);
-				currentMedia = {
-					metadata: { ...currentMedia.metadata },
-					operation: {
-						op: String(effOp.op ?? "effect"),
-						id: node.id ? `${node.id}-${effOp.op ?? "effect"}` : undefined,
-						effect: eff,
-						...effOp,
-						dataType: currentMedia.operation.dataType,
-					},
-					children: [currentMedia],
-				};
-			}
-			media = currentMedia;
-		}
+		if (media) media = wrapEffects(media, node);
 		if (media && node.vision) {
 			const visionRaw = node.vision as
 				| { toOperation?: () => Record<string, unknown> }
@@ -319,6 +327,8 @@ function nodeToVirtualMedia(
 				},
 				children,
 			} as unknown as VirtualMediaData;
+			// Its effects run over the finished scene, as over a clip's frames.
+			media = wrapEffects(media, node);
 			children = [media];
 		}
 	}
@@ -361,7 +371,13 @@ function nodeToVirtualMedia(
 		// are authored parent-relative and its background shows before its first child
 		// arrives — and stays active until its last child ends.
 		// Also when its own durationFrames is unusable (0, NaN): `dur` is unset then.
-		if (dur === undefined) {
+		// A 3D scene's one child is its own composition, on the scene's clock
+		// from 0: it lasts the scene's inherited duration, not until an
+		// absolute frame (inside a parent that starts late, that would end it
+		// early).
+		if (dur === undefined && isScene3D(node)) {
+			dur = Math.max(1, defaultCompDuration);
+		} else if (dur === undefined) {
 			const childEnds = children.map(
 				(c) =>
 					(c.operation.startFrame ?? 0) +
@@ -425,11 +441,13 @@ function nodeToVirtualMedia(
 		operation: {
 			op: "CompositorLayer",
 			...node,
-			// A scene is placed as media: its nested composition paints its background.
+			// A scene is placed as media: its nested composition paints its
+			// background, and its effects already wrap that composition.
 			...(isScene3D(node) && {
 				kind: "media",
 				background: undefined,
 				children: undefined,
+				effects: undefined,
 			}),
 			startFrame,
 			durationFrames: dur,
@@ -577,6 +595,34 @@ function shareSignals(
  * Recursively gather every node op from a render tree (in order), stopping at
  * nested scene compositions: their layers belong to their own render.
  */
+/**
+ * Every layer, 3D scenes' layers included, with its start on the
+ * composition's clock. A scene's layers run on the scene's own clock, which
+ * starts where the scene's layer does, so their starts are offset by it.
+ */
+export function collectLayersOnClock(
+	nodes: VirtualMediaData[],
+): Array<{ vm: VirtualMediaData; startFrame: number }> {
+	const out: Array<{ vm: VirtualMediaData; startFrame: number }> = [];
+	const walk = (vm: VirtualMediaData, offset: number, layerStart: number) => {
+		const op = vm?.operation as
+			| { op?: string; startFrame?: number }
+			| undefined;
+		if (op?.op === "Compositor") {
+			for (const c of vm.children ?? []) walk(c, layerStart, layerStart);
+			return;
+		}
+		let start = layerStart;
+		if (op?.op === "CompositorLayer") {
+			start = offset + (op.startFrame ?? 0);
+			out.push({ vm, startFrame: start });
+		}
+		for (const c of vm?.children ?? []) walk(c, offset, start);
+	};
+	for (const n of nodes) walk(n, 0, 0);
+	return out;
+}
+
 export function collectNodeOps(nodes: VirtualMediaData[]): VirtualMediaData[] {
 	const out: VirtualMediaData[] = [];
 	const walk = (vm: VirtualMediaData) => {

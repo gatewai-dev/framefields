@@ -171,6 +171,8 @@ export interface MeasureTextOptions {
 	fontFamily: string;
 	fontSize?: number;
 	fontWeight?: string | number;
+	/** Variable font axes, as on `Layer.text` (`{ wdth: 68 }`). */
+	fontVariations?: Record<string, number>;
 	/** Extra px between characters, as on `Layer.text`. */
 	letterSpacing?: number;
 	/** Multiplier of fontSize when < 10, else px. Default 1.2. */
@@ -284,6 +286,7 @@ export class FontManager {
 			null,
 			undefined,
 			fontSize,
+			options.fontVariations,
 		);
 		if (!font) {
 			throw new Error(

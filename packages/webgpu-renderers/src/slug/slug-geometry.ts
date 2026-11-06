@@ -473,6 +473,7 @@ export class SlugGeometry {
 					null,
 					undefined,
 					spanFontSize,
+					defaultFont.variableAxes,
 				);
 				if (resolved) spanFont = resolved;
 			}

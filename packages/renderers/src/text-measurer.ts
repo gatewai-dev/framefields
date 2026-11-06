@@ -7,6 +7,8 @@ export interface TextMeasureStyle {
 	fontSize?: number;
 	fontWeight?: string | number;
 	fontStyle?: string;
+	/** Variable font axes, as `TextNode.fontVariations`. */
+	fontVariations?: Record<string, number>;
 	letterSpacing?: number;
 	lineHeight?: number;
 	padding?: number;
@@ -62,6 +64,7 @@ export function measureText(
 		null,
 		undefined,
 		fontSize,
+		style.fontVariations,
 	);
 
 	const padding = style.padding ?? 0;

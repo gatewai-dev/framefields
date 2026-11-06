@@ -7,7 +7,6 @@
 		"test": "turbo run test",
 		"clean": "pnpm -r exec rm -rf dist .turbo",
 		"check:deps": "pnpm -r exec node -e \"console.log(process.cwd())\"",
-		"check:plugins": "node scripts/validate-agent-plugin.mjs",
 		"generate:effects": "tsx --conditions development scripts/generate-effects.mts",
 		"generate:node-renderers": "tsx scripts/generate-node-renderers.mts",
 		"sync:effects-catalog": "node scripts/sync-effects-catalog.mjs",

@@ -7,7 +7,7 @@
 // plugin version to decide when to update, so a stale one leaves users on old skills.
 // The root version is what the server-utils logger reports.
 //
-// Dependency-free on purpose, like validate-agent-plugin.mjs.
+// Dependency-free on purpose.
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";

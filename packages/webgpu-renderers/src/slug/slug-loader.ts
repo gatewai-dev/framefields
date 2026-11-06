@@ -35,6 +35,8 @@ export interface SlugFont {
 	fontFamily?: string;
 	hasTrueWeight?: boolean;
 	weight?: number;
+	/** The variable axes this instance was asked for (spans inherit them). */
+	variableAxes?: Record<string, number>;
 }
 
 /** `SlugCodePoint.codePoint` of a glyph that only shaping reaches. */

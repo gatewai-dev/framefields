@@ -1298,6 +1298,13 @@ export interface TextNode extends CompositionNodeBase {
 	fontSize?: number;
 	fontWeight?: number | string;
 	fontStyle?: string;
+	/**
+	 * Variable font axes by tag, as CSS `font-variation-settings`: `{ wdth: 68 }`
+	 * narrows a font with a width axis, `{ opsz: 72 }` or `{ GRAD: 50 }` set
+	 * others. `fontWeight` sets `wght`; `opsz` follows the font size unless set.
+	 * Axes the font lacks are ignored. Spans inherit them.
+	 */
+	fontVariations?: Record<string, number>;
 	fill?: string;
 	align?: "start" | "center" | "end";
 	/**
@@ -2071,6 +2078,7 @@ const TextFields = {
 	fontSize: z.number().positive().optional(),
 	fontWeight: z.union([z.number().int(), z.string()]).optional(),
 	fontStyle: z.string().optional(),
+	fontVariations: z.record(z.string(), z.number()).optional(),
 	/** Text color (v1 name kept). */
 	fill: ColorSchema,
 	align: z.enum(["start", "center", "end"]).optional(),

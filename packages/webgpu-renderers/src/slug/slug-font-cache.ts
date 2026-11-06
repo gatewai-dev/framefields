@@ -667,6 +667,7 @@ export class SlugFontCache {
 					generated.hasTrueWeight = hasTrueWeight;
 					generated.weight = weight;
 					generated.fontFamily = fontFamily;
+					generated.variableAxes = variableAxes;
 					SlugFontCache.cache.set(cacheKey, generated);
 					return generated;
 				} catch (e) {

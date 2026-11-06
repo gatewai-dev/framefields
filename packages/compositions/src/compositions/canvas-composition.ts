@@ -118,6 +118,7 @@ function paragraphPropsFromTextOp(
 		verticalAlign: opText.verticalAlign,
 		fontWeight: opText.fontWeight,
 		fontStyle: opText.fontStyle,
+		variableAxes: opText.fontVariations,
 		letterSpacing: opText.letterSpacing,
 		shadows: opText.shadows,
 		textBackgroundColor: opText.textBackgroundColor,

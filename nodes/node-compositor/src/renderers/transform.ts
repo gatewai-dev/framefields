@@ -158,11 +158,13 @@ export const MAX_RASTER_SCALE = 4;
  * Pixels per layout px to rasterize a 2D layer at, so it stays sharp when its
  * transform onto the canvas scales it up by `axisScale` (the transform's
  * larger axis scale). Rounded up to a quarter, so an animated zoom reuses a
- * few texture sizes instead of allocating new ones every frame; never below 1
+ * few texture sizes instead of allocating new ones every frame; not below 1
  * (a shrunk layer keeps its layout raster). Capped, rounded down to a quarter,
  * by MAX_RASTER_SCALE, by `limits.maxDimension` (the GPU's texture side), by
  * `limits.maxPixels` (a pixel budget for one texture) and by
  * `limits.effects`, the highest scale the layer's effects keep their look at.
+ * The texture side is a hard limit: a layer longer than it at layout scale
+ * (a tall reel strip, a long scroll) rasterizes just under it, below 1.
  */
 export function layerRasterScale(
 	axisScale: number,
@@ -177,6 +179,8 @@ export function layerRasterScale(
 		Math.sqrt(limits.maxPixels / (w * h)),
 		limits.effects,
 	);
+	const fits = limits.maxDimension / Math.max(w, h);
+	if (fits < 1) return Math.floor(fits * 1024) / 1024;
 	const wanted = Math.ceil(axisScale * 4 - 1e-6) / 4;
 	return Math.max(1, Math.min(wanted, Math.floor(cap * 4 + 1e-6) / 4));
 }

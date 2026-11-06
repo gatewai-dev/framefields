@@ -338,7 +338,21 @@ describe("layerRasterScale", () => {
 		// A full 1080p layer under a 4-canvas budget doubles at most.
 		expect(layerRasterScale(4, { width: 1920, height: 1080 }, roomy)).toBe(2);
 		expect(layerRasterScale(4, size, { ...roomy, effects: 1.6 })).toBe(1.5);
-		// Never below layout scale, whatever the limits.
+		// Never below layout scale for a budget or an effect.
 		expect(layerRasterScale(4, size, { ...roomy, effects: 0.5 })).toBe(1);
+		expect(layerRasterScale(1, { width: 3000, height: 3000 }, roomy)).toBe(1);
+	});
+
+	it("shrinks a layer longer than the texture side to fit it", () => {
+		// A counter's reel strip, 8210 px tall at layout scale.
+		const strip = { width: 112, height: 8210 };
+		const scale = layerRasterScale(1, strip, roomy);
+		expect(scale).toBeLessThan(1);
+		expect(Math.ceil(strip.height * scale)).toBeLessThanOrEqual(8192);
+		expect(Math.ceil(strip.width * scale)).toBeLessThanOrEqual(8192);
+		// Zoomed in, it still fits.
+		expect(
+			Math.ceil(strip.height * layerRasterScale(3, strip, roomy)),
+		).toBeLessThanOrEqual(8192);
 	});
 });

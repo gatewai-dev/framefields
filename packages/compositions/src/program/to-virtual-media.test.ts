@@ -6,7 +6,11 @@ import {
 } from "@framefields/core";
 import { describe, expect, it } from "vitest";
 import type { CompositorProgramConfig, LayoutNode } from "./schema.js";
-import { compositorToProgram, isScene3D } from "./to-virtual-media.js";
+import {
+	collectLayersOnClock,
+	compositorToProgram,
+	isScene3D,
+} from "./to-virtual-media.js";
 
 const doc = {
 	width: 1920,
@@ -492,6 +496,103 @@ describe("compositorToProgram: 3D scenes", () => {
 		expect((nested?.operation as Record<string, unknown>).signals).toEqual({
 			ramp,
 		});
+	});
+	it("runs a scene's effects over its finished composition, once", () => {
+		const fx = compositorToProgram(
+			{
+				width: 1080,
+				height: 1920,
+				fps: 30,
+				mode: "Video",
+				layout: [
+					{
+						...(scene("fx", 0) as unknown as Record<string, unknown>),
+						effects: [{ op: "Vignette", strength: 80 }],
+					} as unknown as LayoutNode,
+				],
+			} as unknown as CompositorProgramConfig,
+			{ isVideoMode: true, fps: 30, durationMs: 4000 },
+		);
+		const layer = (fx.children as VirtualMediaData[])[0];
+		// The placed picture carries no effects of its own...
+		expect(
+			(layer?.operation as Record<string, unknown>).effects,
+		).toBeUndefined();
+		// ...they wrap the nested composition, once.
+		const pass = layer?.children?.[0];
+		expect(pass?.operation.op).toBe("Vignette");
+		expect(pass?.children?.[0]?.operation.op).toBe("Compositor");
+	});
+	it("keeps a windowless scene for its parent's whole window", () => {
+		const fx = compositorToProgram(
+			{
+				width: 1080,
+				height: 1920,
+				fps: 30,
+				mode: "Video",
+				layout: [
+					{
+						kind: "box",
+						id: "act",
+						width: 1080,
+						height: 1920,
+						startFrame: 282,
+						durationFrames: 341,
+						children: [
+							{
+								...(scene("inner", 0) as unknown as Record<string, unknown>),
+								startFrame: undefined,
+								durationFrames: undefined,
+							} as unknown as LayoutNode,
+						],
+					} as unknown as LayoutNode,
+				],
+			} as unknown as CompositorProgramConfig,
+			{ isVideoMode: true, fps: 30, durationMs: 30000 },
+		);
+		const act = (fx.children as VirtualMediaData[])[0];
+		const inner = act?.children?.[0]?.operation as Record<string, unknown>;
+		expect(inner.startFrame).toBe(282);
+		expect(inner.durationFrames).toBe(341);
+	});
+	it("puts a scene's layers on the composition's clock", () => {
+		const fx = compositorToProgram(
+			{
+				width: 1080,
+				height: 1920,
+				fps: 30,
+				mode: "Video",
+				layout: [
+					{
+						kind: "box",
+						id: "act",
+						width: 1080,
+						height: 1920,
+						startFrame: 200,
+						durationFrames: 300,
+						children: [
+							{
+								...(scene("inner", 40) as unknown as Record<string, unknown>),
+								durationFrames: 200,
+							} as unknown as LayoutNode,
+						],
+					} as unknown as LayoutNode,
+				],
+			} as unknown as CompositorProgramConfig,
+			{ isVideoMode: true, fps: 30, durationMs: 30000 },
+		);
+		const starts = new Map(
+			collectLayersOnClock(fx.children as VirtualMediaData[]).map(
+				({ vm, startFrame }) => [
+					(vm.operation as { id?: string }).id,
+					startFrame,
+				],
+			),
+		);
+		expect(starts.get("act")).toBe(200);
+		expect(starts.get("inner")).toBe(240);
+		// The cube starts 10 frames into the scene, on the scene's clock.
+		expect(starts.get("inner-cube")).toBe(250);
 	});
 	it("leaves a box holding only a camera as a shot over the shared world", () => {
 		expect(

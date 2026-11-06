@@ -1269,6 +1269,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 								const textStyle = {
 									fontSize: node.fontSize ?? 48,
 									fontWeight: node.fontWeight,
+									fontVariations: node.fontVariations,
 									fontFamily: node.fontFamily,
 									letterSpacing: node.letterSpacing,
 									lineHeight: node.lineHeight,
@@ -5842,6 +5843,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 						fontFamily: lop.fontFamily,
 						fontStyle: lop.fontStyle,
 						fontWeight: lop.fontWeight,
+						fontVariations: lop.fontVariations,
 						fill: target?.fill ?? target?.color ?? lop.fill,
 						align: lop.align,
 						direction: lop.direction,
@@ -6280,8 +6282,17 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					// to streak past their own bounds instead of smearing edge pixels.
 					if (!isTrue3D && !(is3D && quad3D)) {
 						const reach = shutterAngle / 360;
-						const padX = Math.ceil(Math.abs(vx) * rasterScale * reach);
-						const padY = Math.ceil(Math.abs(vy) * rasterScale * reach);
+						// Within the GPU's texture side: a layer already at it
+						// streaks only as far as the side allows.
+						const side = ctx.device.limits.maxTextureDimension2D;
+						const padX = Math.min(
+							Math.ceil(Math.abs(vx) * rasterScale * reach),
+							Math.max(0, Math.floor((side - texW) / 2)),
+						);
+						const padY = Math.min(
+							Math.ceil(Math.abs(vy) * rasterScale * reach),
+							Math.max(0, Math.floor((side - texH) / 2)),
+						);
 						blurPadX = padX / rasterScale;
 						blurPadY = padY / rasterScale;
 						const paddedTex = ctx.renderer.getTemporaryTexture(

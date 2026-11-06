@@ -29,7 +29,7 @@ Thumbs.db
 *.woff
 *.woff2
 *.eot
-assets/fonts/
+assets/fonts
 examples/25_bakery
 # Soundfonts
 *.sf2

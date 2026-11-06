@@ -161,7 +161,7 @@ import {
 	type CameraNode,
 	type CompositorProgramConfig,
 	type CompositorToProgramOptions,
-	collectNodeOps,
+	collectLayersOnClock,
 	compositorToProgram,
 	type EnvironmentPreset,
 	type EnvironmentVolumetricFog,
@@ -1376,11 +1376,15 @@ export class Composition {
 			const vm = this.toVirtualMedia({
 				resolveMediaSignal: this.mediaSignalResolver(true),
 			});
-			const layer = collectNodeOps(vm.children).find(
-				(node) =>
+			// Layers inside a 3D scene count too, with their start on this clock.
+			const found = collectLayersOnClock(vm.children).find(
+				({ vm: node }) =>
 					(node.operation as unknown as { id?: string }).id ===
 					sourceOrLayer.id,
 			);
+			const layer = found && {
+				operation: { ...found.vm.operation, startFrame: found.startFrame },
+			};
 			if (!layer)
 				throw new Error(
 					"Add the media layer to the composition before calling comp.vision(layer)",
@@ -1452,15 +1456,18 @@ export class Composition {
 				n.vision instanceof Vision &&
 				!(CLIP_SUBJECT in n.vision)
 			) {
+				// Scenes' layers too: a layer inside a 3D scene starts on the
+				// scene's clock, and its clip must analyse on this one.
 				layers ??= new Map(
-					collectNodeOps(this.toVirtualMedia().children).map((node) => {
-						const op = node.operation as unknown as {
-							id?: string;
-							startFrame?: number;
-							timeRemap?: ResolvedMediaTimeRemap;
-						};
-						return [op.id, op];
-					}),
+					collectLayersOnClock(this.toVirtualMedia().children).map(
+						({ vm, startFrame }) => {
+							const op = vm.operation as unknown as {
+								id?: string;
+								timeRemap?: ResolvedMediaTimeRemap;
+							};
+							return [op.id, { startFrame, timeRemap: op.timeRemap }];
+						},
+					),
 				);
 				const layer = layers.get(n.id);
 				const clip = this.clipForLayer(n.src ?? n.inputHandleId, n.vision, {

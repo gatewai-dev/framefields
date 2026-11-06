@@ -160,6 +160,45 @@ describe("remapped clip vision", () => {
 		expect(vision.startFrame).toBe(17);
 		expect(vision.clipFrame(19)).toBe(25);
 	});
+	it("binds a layer inside a 3D scene on the composition's clock", () => {
+		const comp = new Composition({
+			width: 64,
+			height: 64,
+			fps: 24,
+			durationFrames: 200,
+		});
+		// The scene starts at 90 (an act at 60, the scene 30 into it); the
+		// clip starts 4 frames into the scene, on the scene's own clock.
+		const layer = Layer.video("clip.mp4", {
+			id: "plate",
+			is3D: true,
+			startFrame: 4,
+			durationFrames: 40,
+			timeRemap: { kind: "rate", sourceStartSec: 1, rate: 0.5 },
+		});
+		comp.add(
+			Layer.box({
+				startFrame: 60,
+				durationFrames: 120,
+				children: [
+					Layer.box({
+						width: 64,
+						height: 64,
+						startFrame: 30,
+						durationFrames: 60,
+						children: [
+							Layer.camera({ x: 32, y: 32, z: -100, targetX: 32, targetY: 32 }),
+							layer,
+						],
+					}),
+				],
+			}),
+		);
+		const vision = comp.vision(layer);
+		expect(vision.startFrame).toBe(94);
+		// Its time remap comes along: 2 frames in, 1 s + 2/24 × 0.5 s of source.
+		expect(vision.clipFrame(96)).toBeCloseTo((1 + (2 / 24) * 0.5) * 24, 6);
+	});
 	it("shares a layer's live signal time with its render", () => {
 		const comp = new Composition({
 			width: 64,

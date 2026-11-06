@@ -5,6 +5,7 @@ import {
 	HeadlessMediaRenderer,
 	Layer,
 	Layer3D,
+	Pixelate,
 	Transition,
 } from "./index.js";
 
@@ -131,5 +132,43 @@ describe("3D scenes in a sequence", () => {
 		expect(r).toBeGreaterThan(240);
 		expect(g).toBeLessThan(15);
 		expect(b).toBeLessThan(15);
+	});
+	it("applies a scene box's effects over the finished scene", async () => {
+		// 40 px cells over a 200 px frame: pixelated, every cell is one colour.
+		const mixedCells = async (pixelate: boolean) => {
+			const box = scene(100, "#ff0000");
+			const comp = new Composition({
+				width: 200,
+				height: 200,
+				fps: 30,
+				durationFrames: 10,
+				backgroundColor: "#000000",
+			});
+			comp.add(
+				pixelate
+					? box.withEffects([new Pixelate({ size: 40, shape: "square" })])
+					: box,
+			);
+			const img = await loadImage(await comp.renderFrame({ frame: 2 }));
+			const canvas = new Canvas(img.width, img.height);
+			const ctx = canvas.getContext("2d");
+			ctx.drawImage(img, 0, 0);
+			let mixed = 0;
+			for (let cy = 0; cy < 5; cy++)
+				for (let cx = 0; cx < 5; cx++) {
+					const { data } = ctx.getImageData(cx * 40 + 2, cy * 40 + 2, 36, 36);
+					let lo = 255;
+					let hi = 0;
+					for (let i = 0; i < data.length; i += 4) {
+						lo = Math.min(lo, data[i] ?? 0);
+						hi = Math.max(hi, data[i] ?? 0);
+					}
+					if (hi - lo > 24) mixed++;
+				}
+			return mixed;
+		};
+		// The cube's edges cross cells; the pixelated scene has none mixed.
+		expect(await mixedCells(false)).toBeGreaterThan(0);
+		expect(await mixedCells(true)).toBe(0);
 	});
 });

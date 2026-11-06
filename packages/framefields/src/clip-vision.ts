@@ -11,7 +11,9 @@ import {
 	type ClipSubjectSource,
 	COCO17_KEYPOINT_NAMES,
 	type DepthMap,
+	defaultMatteBand,
 	type InstanceMask,
+	type MatteRefineOptions,
 	maskObject,
 	mergeSubjectMask,
 	VisionBundle,
@@ -60,6 +62,14 @@ export interface ClipVisionOptions {
 	 * clip tracks no pose or silhouette unless `pose` / `mask` ask for them.
 	 */
 	depth?: boolean;
+	/**
+	 * Resolve the subject's edge to soft alpha (ViTMatte Small): hair, motion
+	 * blur and see-through parts that a hard mask cuts off. `true`, or
+	 * `{ band, resolution }` (see `MatteRefineOptions`). Matte layers, `signals`
+	 * masks and `subject` read the soft alpha; each prompted track keeps its own.
+	 * Mattes persist apart from the masks, so turning this on reuses them.
+	 */
+	matting?: boolean | MatteRefineOptions;
 	/** Silhouette cell size in source pixels (default 8: a 1920×1080 clip gives a 240×135 grid). */
 	maskCell?: number;
 	/** Keypoints are averaged over ±`smoothing` frames, weighted by confidence (default 2; 0 = raw). */
@@ -107,6 +117,26 @@ interface SubjectResult {
 	scores?: number[];
 }
 
+/** A frame's soft alpha, run-length encoded, as matting resolved it. */
+interface MatteResult {
+	alpha: Runs;
+	/**
+	 * Prompted frames only: the track label map grown into the soft edge
+	 * (each edge pixel takes its nearest track's label), so every track keeps its own alpha.
+	 */
+	labels?: Runs;
+}
+
+interface Runs {
+	values: Uint8Array;
+	lengths: Uint32Array;
+}
+
+interface StoredRuns {
+	values: string;
+	lengths: string;
+}
+
 /** A subject as written to the subjects cache file. */
 interface StoredSubject {
 	category: string;
@@ -128,6 +158,8 @@ const HOLD = 24;
 
 const CACHE_VERSION = 1;
 const DEPTH_CACHE_VERSION = 1;
+const MATTE_CACHE_VERSION = 1;
+const MATTE_MODEL = "vitmatte-s";
 const DEPTH_MODEL = "depth-anything-v2-s";
 /** Depth frames held in memory when they also live on disk (each is about 1 MB). */
 const DEPTH_MEMORY = 48;
@@ -204,6 +236,10 @@ export class ClipVision implements ClipSubjectSource {
 	private readonly subjects = new Map<number, SubjectResult | null>();
 	private wantSubjects = false;
 	private subjectsLoaded?: Promise<void>;
+	/** Soft alpha per source frame (`matting`); null when the frame holds no subject. */
+	private readonly mattes = new Map<number, MatteResult | null>();
+	private mattesLoaded?: Promise<void>;
+	private unsavedMattes = 0;
 	/** Depth per source frame; null when the frame did not decode. Bounded when on disk. */
 	private readonly depths = new Map<number, StoredDepth | null>();
 	/** Source frames whose depth is on disk. */
@@ -264,7 +300,8 @@ export class ClipVision implements ClipSubjectSource {
 			Math.round(options.smoothing ?? (options.sam2 || options.sam3 ? 0 : 2)),
 		);
 		this.cell = Math.max(1, Math.round(options.maskCell ?? 8));
-		if (options.sam2 || options.sam3) this.wantSubjects = true;
+		if (options.sam2 || options.sam3 || this.tracksMatting)
+			this.wantSubjects = true;
 	}
 
 	/** @internal Explicit selections must never fall back to another detected subject. */
@@ -374,9 +411,11 @@ export class ClipVision implements ClipSubjectSource {
 		if (s === null || !this.sourceWidth) return null;
 		const width = this.sourceWidth;
 		const height = this.sourceHeight;
+		const mask = this.alpha(sourceFrame, s);
+		if (!mask) return undefined;
 		return {
 			category: s.category,
-			mask: subjectAlpha(s, width * height),
+			mask,
 			width,
 			height,
 			area: s.area,
@@ -419,6 +458,43 @@ export class ClipVision implements ClipSubjectSource {
 	/** Whether frames carry the person's silhouette: on by default, off for depth clips. */
 	get tracksMask(): boolean {
 		return this.options.mask ?? !this.tracksDepth;
+	}
+
+	/** Whether subjects are matted to soft alpha. */
+	get tracksMatting(): boolean {
+		return this.options.matting !== undefined && this.options.matting !== false;
+	}
+
+	private get matteSettings(): Required<MatteRefineOptions> | undefined {
+		const m = this.options.matting;
+		if (!m) return undefined;
+		const o = m === true ? {} : m;
+		const band =
+			o.band ??
+			(this.sourceWidth
+				? defaultMatteBand(this.sourceWidth, this.sourceHeight)
+				: 0);
+		return { band, resolution: o.resolution ?? 1024 };
+	}
+
+	/**
+	 * A stored subject's alpha at a source frame: the matte when the clip mattes
+	 * (undefined until matted), else the mask. With `id`, that track only.
+	 */
+	private alpha(
+		c: number,
+		stored: SubjectResult,
+		id?: number,
+	): Uint8Array | undefined {
+		const size = this.sourceWidth * this.sourceHeight;
+		if (!this.tracksMatting) return subjectAlpha(stored, size, id);
+		const matte = this.mattes.get(c);
+		if (!matte) return undefined;
+		const alpha = decodeRuns(matte.alpha, size);
+		if (id === undefined || !matte.labels) return alpha;
+		const labels = decodeRuns(matte.labels, size);
+		for (let i = 0; i < size; i++) if (labels[i] !== id) alpha[i] = 0;
+		return alpha;
 	}
 
 	/** Whether frames carry relative depth. */
@@ -512,7 +588,11 @@ export class ClipVision implements ClipSubjectSource {
 	}
 
 	private analysed(c: number): boolean {
-		return this.analysedSubject(c) && (!this.tracksDepth || this.hasDepth(c));
+		return (
+			this.analysedSubject(c) &&
+			(!this.tracksDepth || this.hasDepth(c)) &&
+			(!this.tracksMatting || this.mattes.has(c))
+		);
 	}
 
 	/** Everything but depth, which is a pass of its own. */
@@ -539,6 +619,12 @@ export class ClipVision implements ClipSubjectSource {
 			await this.subjectsLoaded;
 		}
 		if (this.tracksDepth) await this.computeDepth(from, to);
+		await this.computeSubjects(from, to);
+		if (this.tracksMatting) await this.computeMattes(from, to);
+	}
+
+	/** Pose, silhouette and subject of every frame in `from…to` not analysed yet. */
+	private async computeSubjects(from: number, to: number): Promise<void> {
 		let missing = false;
 		for (let c = from; c <= to; c++)
 			if (!this.analysedSubject(c)) missing = true;
@@ -632,6 +718,60 @@ export class ClipVision implements ClipSubjectSource {
 			}),
 		});
 		return this.runner;
+	}
+
+	/**
+	 * The soft alpha of every subject in `from…to` not matted yet: one
+	 * ViTMatte pass per frame over every track's edge. Prompted label maps grow
+	 * into the soft edge, so each track keeps its own alpha.
+	 */
+	private async computeMattes(from: number, to: number): Promise<void> {
+		// The default band, and so the cache key, depends on the frame size.
+		if (!this.sourceWidth) return;
+		this.mattesLoaded ??= this.loadMattes();
+		await this.mattesLoaded;
+		let decoder: ReturnType<typeof mediaDecoderCache.getVideo> | undefined;
+		for (let c = from; c <= to; c++) {
+			if (this.mattes.has(c)) continue;
+			const stored = this.subjects.get(c);
+			if (stored === undefined) continue;
+			if (stored === null) {
+				this.mattes.set(c, null);
+				continue;
+			}
+			decoder ??= this.decoder();
+			const image = await decodedPixels(await decoder.getFrame(c / this.fps));
+			if (!image) {
+				this.mattes.set(c, null);
+				continue;
+			}
+			const size = image.width * image.height;
+			const values = decodeRuns(stored, size);
+			const hard = stored.scores
+				? values.map((label) => (label ? 255 : 0))
+				: values;
+			const matte = await this.visionRunner().refineMatte(
+				image,
+				hard,
+				this.matteSettings,
+			);
+			let labels: Uint8Array | undefined;
+			if (stored.scores) {
+				labels = new Uint8Array(size);
+				for (let i = 0; i < size; i++) {
+					const nearest = matte.nearest[i] as number;
+					if (matte.mask[i] && nearest >= 0)
+						labels[i] = values[nearest] as number;
+				}
+			}
+			this.mattes.set(c, {
+				alpha: encodeRuns(matte.mask),
+				...(labels && { labels: encodeRuns(labels) }),
+			});
+			this.signalMaskFrame = -1;
+			if (++this.unsavedMattes >= 24) await this.saveMattes();
+		}
+		if (this.unsavedMattes > 0) await this.saveMattes();
 	}
 
 	/** Depth of every source frame in `from…to` not analysed yet, saved one file per frame. */
@@ -984,7 +1124,9 @@ export class ClipVision implements ClipSubjectSource {
 		if (!this.results.has(c) || !this.sourceWidth) return undefined;
 		const stored = this.subjects.get(c);
 		const size = this.sourceWidth * this.sourceHeight;
-		const data = stored ? subjectAlpha(stored, size, id) : new Uint8Array(size);
+		const alpha = stored ? this.alpha(c, stored, id) : new Uint8Array(size);
+		if (!alpha) return undefined;
+		const data = alpha;
 		let area = stored?.area ?? 0;
 		if (id !== undefined && stored?.scores) {
 			area = 0;
@@ -1296,6 +1438,87 @@ export class ClipVision implements ClipSubjectSource {
 		} catch {
 			// A damaged cache is recomputed.
 		}
+	}
+
+	/**
+	 * Mattes live beside the subjects they refine, keyed by the matting model
+	 * and settings, so toggling matting never recomputes the masks.
+	 */
+	private async mattesPath(): Promise<string | null> {
+		const file = await this.cachePath();
+		const node = await nodeModules();
+		const settings = this.matteSettings;
+		if (!file || !node || !settings) return null;
+		const hash = node.crypto
+			.createHash("sha256")
+			.update(
+				JSON.stringify([
+					MATTE_CACHE_VERSION,
+					MATTE_MODEL,
+					settings.band,
+					settings.resolution,
+				]),
+			)
+			.digest("hex")
+			.slice(0, 12);
+		return file.replace(/\.json$/, `.matte-${hash}.json`);
+	}
+
+	private async loadMattes(): Promise<void> {
+		const file = await this.mattesPath();
+		if (!file) return;
+		try {
+			const fs = await import("node:fs");
+			if (!fs.existsSync(file)) return;
+			const json = JSON.parse(fs.readFileSync(file, "utf8")) as {
+				width: number;
+				height: number;
+				frames: Record<
+					string,
+					{ alpha: StoredRuns; labels?: StoredRuns } | null
+				>;
+			};
+			if (json.width !== this.sourceWidth || json.height !== this.sourceHeight)
+				return;
+			for (const [c, m] of Object.entries(json.frames)) {
+				this.mattes.set(
+					Number(c),
+					m && {
+						alpha: fromStoredRuns(m.alpha),
+						...(m.labels && { labels: fromStoredRuns(m.labels) }),
+					},
+				);
+			}
+		} catch {
+			// A damaged cache is recomputed.
+		}
+	}
+
+	private async saveMattes(): Promise<void> {
+		this.unsavedMattes = 0;
+		const file = await this.mattesPath();
+		if (!file || !this.sourceWidth) return;
+		const frames: Record<
+			string,
+			{ alpha: StoredRuns; labels?: StoredRuns } | null
+		> = {};
+		for (const [c, m] of this.mattes) {
+			frames[c] = m && {
+				alpha: toStoredRuns(m.alpha),
+				...(m.labels && { labels: toStoredRuns(m.labels) }),
+			};
+		}
+		const fs = await import("node:fs");
+		const tmp = `${file}.${process.pid}.tmp`;
+		fs.writeFileSync(
+			tmp,
+			JSON.stringify({
+				width: this.sourceWidth,
+				height: this.sourceHeight,
+				frames,
+			}),
+		);
+		fs.renameSync(tmp, file);
 	}
 
 	private async saveSubjects(): Promise<void> {
@@ -1620,6 +1843,30 @@ function downsampleMean(
 	}
 }
 
+function toStoredRuns(runs: Runs): StoredRuns {
+	return {
+		values: Buffer.from(runs.values).toString("base64"),
+		lengths: Buffer.from(
+			runs.lengths.buffer,
+			runs.lengths.byteOffset,
+			runs.lengths.byteLength,
+		).toString("base64"),
+	};
+}
+
+function fromStoredRuns(stored: StoredRuns): Runs {
+	const lengths = Buffer.from(stored.lengths, "base64");
+	return {
+		values: new Uint8Array(Buffer.from(stored.values, "base64")),
+		lengths: new Uint32Array(
+			lengths.buffer.slice(
+				lengths.byteOffset,
+				lengths.byteOffset + lengths.byteLength,
+			),
+		),
+	};
+}
+
 /** A mask as (value, run length) pairs: long flat runs with soft edges. */
 function encodeRuns(mask: Uint8Array): {
 	values: Uint8Array;
@@ -1701,6 +1948,8 @@ type SeedFrame = {
 	mask: Uint8Array | null;
 	/** Source-sized subject mask for render-time mattes; null = no subject. */
 	subject?: Uint8Array | null;
+	/** Prompted frames: a source-sized track label map (track ID per pixel, 0 for none). */
+	tracks?: Uint8Array;
 };
 
 /** @internal Test hook: a clip whose results are given instead of computed. */
@@ -1735,6 +1984,21 @@ export function seedClipVision(
 			kp: f.kp ? Float32Array.from(f.kp) : null,
 			mask: f.mask,
 		});
+		if (f.tracks) {
+			let area = 0;
+			let count = 0;
+			for (const id of f.tracks) {
+				if (id) area++;
+				if (id > count) count = id;
+			}
+			c.subjects.set(i, {
+				category: "object",
+				area,
+				scores: Array.from({ length: count }, () => 1),
+				...encodeRuns(f.tracks),
+			});
+			return;
+		}
 		if (f.subject === undefined) return;
 		let area = 0;
 		for (const v of f.subject ?? []) area += v;

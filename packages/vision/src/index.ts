@@ -7,6 +7,8 @@ export * from "./decode/selfie.js";
 export * from "./gpu/frame-tensor.js";
 export * from "./gpu/pose-skeleton-renderer.js";
 export * from "./gpu/segmentation-texture-pool.js";
+export * from "./matting/trimap.js";
+export * from "./matting/vitmatte.js";
 export * from "./model/model-store.js";
 export * from "./model/onnx-proto.js";
 export * from "./model/registry.js";

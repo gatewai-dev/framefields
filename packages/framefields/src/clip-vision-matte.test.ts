@@ -5,9 +5,14 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { CLIP_SUBJECT } from "@framefields/vision";
+import {
+	CLIP_SUBJECT,
+	type InstanceMask,
+	trimapFromMask,
+	type VisionRunner,
+} from "@framefields/vision";
 import { describe, expect, it } from "vitest";
-import { seedClipVision } from "./clip-vision.js";
+import { type ClipVision, seedClipVision } from "./clip-vision.js";
 import { Composition, HeadlessMediaRenderer, Layer } from "./index.js";
 import { decodePngPixels, getPixel } from "./test-utils/pixels.js";
 
@@ -250,5 +255,130 @@ describe("matte reuses comp.vision", () => {
 		expect(linked(classes as never)).toBe(false);
 		expect(linked(keyed as never)).toBe(false);
 		expect(linked(other as never)).toBe(false);
+	});
+});
+
+/** Stands in for ViTMatte: every pixel of the trimap's unknown band gets alpha 128. */
+function stubMatting(clip: ClipVision): { calls: number } {
+	const count = { calls: 0 };
+	const runner: Pick<VisionRunner, "refineMatte" | "close"> = {
+		refineMatte: async (image, mask, options) => {
+			count.calls++;
+			const trimap = trimapFromMask(
+				mask,
+				image.width,
+				image.height,
+				options?.band ?? 4,
+			);
+			return {
+				mask: trimap.data,
+				width: image.width,
+				height: image.height,
+				nearest: trimap.nearest,
+			};
+		},
+		close: () => undefined,
+	};
+	(clip as unknown as { runner: typeof runner }).runner = runner;
+	return count;
+}
+
+const maskAt = (clip: ClipVision, frame: number, id?: number) =>
+	(
+		clip as unknown as {
+			maskAt(frame: number, id?: number): InstanceMask | undefined;
+		}
+	).maskAt(frame, id);
+
+describe("matting", () => {
+	/** Track 1: x < 50; track 2: x ≥ 150. */
+	function twoTracks(): Uint8Array {
+		const labels = new Uint8Array(SIZE * SIZE);
+		for (let y = 0; y < SIZE; y++) {
+			labels.fill(1, y * SIZE, y * SIZE + 50);
+			labels.fill(2, y * SIZE + 150, y * SIZE + SIZE);
+		}
+		return labels;
+	}
+
+	const prompted = (cacheDir: string) => ({
+		cacheDir,
+		matting: { band: 4 },
+		sam2: { prompts: [{ frame: 0, points: [{ x: 0.1, y: 0.5, label: 1 }] }] },
+	});
+
+	it("gives each track its own soft edge, and caches mattes apart from masks", async () => {
+		const file = await greenClip();
+		const cacheDir = await fs.mkdtemp(path.join(os.tmpdir(), "ff-matting-"));
+		const seed = (clip: ClipVision) =>
+			seedClipVision(
+				clip,
+				{ width: SIZE, height: SIZE },
+				Array.from({ length: 10 }, () => ({
+					kp: null,
+					mask: null,
+					tracks: twoTracks(),
+				})),
+			);
+		const clip = seed(stage().vision(file, prompted(cacheDir)));
+		const stub = stubMatting(clip);
+		await clip.ready(0, 3);
+		expect(stub.calls).toBe(4);
+		expect(clip.isReady(3)).toBe(true);
+		expect(clip.isReady(4)).toBe(false);
+
+		const row = 100 * SIZE;
+		const subject = clip.subject(0, FPS)?.mask;
+		expect(subject?.[row + 10]).toBe(255);
+		expect(subject?.[row + 52]).toBe(128);
+		expect(subject?.[row + 100]).toBe(0);
+		// The band past track 1's edge belongs to track 1 only, and likewise for track 2.
+		expect(maskAt(clip, 0, 1)?.mask[row + 52]).toBe(128);
+		expect(maskAt(clip, 0, 1)?.mask[row + 148]).toBe(0);
+		expect(maskAt(clip, 0, 2)?.mask[row + 148]).toBe(128);
+		expect(maskAt(clip, 0, 2)?.mask[row + 52]).toBe(0);
+
+		// A second run reads the mattes from disk.
+		const again = seed(stage().vision(file, prompted(cacheDir)));
+		const rerun = stubMatting(again);
+		await again.ready(0, 3);
+		expect(rerun.calls).toBe(0);
+		expect(again.subject(0, FPS)?.mask[row + 52]).toBe(128);
+
+		// Without matting the same clip keeps its hard masks.
+		const hard = seed(
+			stage().vision(file, { ...prompted(cacheDir), matting: false }),
+		);
+		await hard.ready(0, 3);
+		expect(hard.subject(0, FPS)?.mask[row + 52]).toBe(0);
+	});
+
+	it("cuts a matte layer out with the soft edge", async () => {
+		const file = await greenClip();
+		const c = stage("#0000ff");
+		const layer = cutout(file);
+		c.add(layer);
+		const clip = c.vision(layer, {
+			cacheDir: false,
+			smoothing: 0,
+			matting: { band: 4 },
+		});
+		seedClipVision(
+			clip,
+			{ width: SIZE, height: SIZE },
+			Array.from({ length: 40 }, () => ({
+				kp: null,
+				mask: null,
+				subject: leftHalf(),
+			})),
+		);
+		stubMatting(clip);
+		const image = await decodePngPixels(await c.renderFrame({ frame: 0 }));
+		expect(getPixel(image, 50, 100).g).toBeGreaterThan(240);
+		const edge = getPixel(image, 101, 100);
+		expect(edge.g).toBeGreaterThan(90);
+		expect(edge.g).toBeLessThan(170);
+		expect(edge.b).toBeGreaterThan(90);
+		expect(getPixel(image, 150, 100).b).toBeGreaterThan(240);
 	});
 });

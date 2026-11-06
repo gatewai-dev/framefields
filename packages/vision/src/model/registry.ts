@@ -34,6 +34,7 @@ export type VisionModelKey =
 	| "selfie-square"
 	| "selfie-landscape"
 	| "depth-anything-v2-s"
+	| "vitmatte-s"
 	| (string & {});
 
 /** Which decoder a model's outputs feed (see runner/vision-runner.ts). */
@@ -42,6 +43,7 @@ export type VisionModelFamily =
 	| "rtmo"
 	| "selfie"
 	| "depth-anything"
+	| "vitmatte"
 	| (string & {});
 
 export interface VisionModelDescriptor {
@@ -75,6 +77,8 @@ const SELFIE_SOURCE =
 	"MediaPipe Selfie Segmenter (Google, Apache-2.0), ONNX export";
 const DEPTH_SOURCE =
 	"Depth Anything V2 Small (TikTok / HKU, Apache-2.0), ONNX export";
+const VITMATTE_SOURCE =
+	"ViTMatte Small, Distinctions-646 (HUST Vision Lab, code MIT, weights Apache-2.0), ONNX export";
 
 const models: Record<VisionModelKey, VisionModelDescriptor> = {
 	// ── Detection + instance segmentation (COCO 80) ─────────────────────
@@ -208,6 +212,23 @@ const models: Record<VisionModelKey, VisionModelDescriptor> = {
 		sha256: "afb6a5c28f3b6bf1618c6e43f02073ef9dfdc70e937502d51603e57b0a1df10c",
 		input: [518, 518],
 		source: DEPTH_SOURCE,
+	},
+	// ── Alpha matting (a trimap from a mask → soft alpha) ───────────────
+	// The graph takes any size in multiples of 32; `input` is the longest
+	// side a matting window is scaled to.
+	"vitmatte-s": {
+		key: "vitmatte-s",
+		family: "vitmatte",
+		filename: "vitmatte-s.onnx",
+		url: hf(
+			"Xenova/vitmatte-small-distinctions-646",
+			"358d428c452e5e0cd52955011a8b51944731d28e",
+			"onnx/model.onnx",
+		),
+		bytes: 103_885_865,
+		sha256: "a1cf48234c369faa3ea1711981d961fe1ec71f51e593f9d6553aa5a0e7d557e3",
+		input: [1024, 1024],
+		source: VITMATTE_SOURCE,
 	},
 };
 

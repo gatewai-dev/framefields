@@ -61,6 +61,31 @@ export interface DepthMap {
 	readonly height: number;
 }
 
+/** How {@link VisionRunner.refineMatte} resolves a mask's edge. */
+export interface MatteRefineOptions {
+	/**
+	 * Pixels either side of the mask's edge the model may change (default about
+	 * 1.2% of the frame's short side: 13 px at 1080p). Wider reaches loose hair
+	 * the mask missed; narrower keeps more of the mask's own edge.
+	 */
+	readonly band?: number;
+	/** Longest side, in model px, the region around the edge is scaled to (default 1024). */
+	readonly resolution?: number;
+}
+
+/** A mask with its edge resolved to soft alpha, aligned to the source frame. */
+export interface RefinedMatte {
+	/** Frame-sized alpha, 0..255. */
+	readonly mask: Uint8Array;
+	readonly width: number;
+	readonly height: number;
+	/**
+	 * Per pixel, the index of the nearest pixel inside the input mask (−1 when
+	 * the mask is empty), so alpha past the edge can follow labelled objects.
+	 */
+	readonly nearest: Int32Array;
+}
+
 /** Person-vs-background alpha (Selfie Segmenter), aligned to the ORIGINAL source frame. */
 export interface PersonMatte {
 	readonly mask: Uint8Array; // frame-sized, continuous alpha 0..255

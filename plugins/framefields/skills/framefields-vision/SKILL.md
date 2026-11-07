@@ -1,6 +1,6 @@
 ---
 name: framefields-vision
-description: On-device computer vision in framefields — object detection and tracking, instance segmentation, pose, person mattes and cutouts (RTMDet-Ins, RTMO, Selfie Segmenter), and prompted video tracking of a specific object or several people with SAM 2.1 Tiny or Small (point/box prompts) and SAM 3 (text prompts such as "man in white shirt", multiple objects at once). Covers which API to use (withVision, comp.vision, analyzeVisionSequence), every pinned ONNX model with sizes and licenses, GPU/CUDA/CPU backends, model downloads and caching, performance, and troubleshooting. Use when a framefields composition needs to know where people or objects are, cut a subject out, follow someone through a clip, or select one person in a crowd.
+description: On-device computer vision in framefields — object detection and tracking, instance segmentation, pose, person mattes and cutouts (RTMDet-Ins, RTMO, Selfie Segmenter), soft alpha matting of hair and motion blur (ViTMatte), and prompted video tracking of a specific object or several people with SAM 2.1 Tiny or Small (point/box prompts) and SAM 3 (text prompts such as "man in white shirt", multiple objects at once). Covers which API to use (withVision, comp.vision, analyzeVisionSequence), every pinned ONNX model with sizes and licenses, GPU/CUDA/CPU backends, model downloads and caching, performance, and troubleshooting. Use when a framefields composition needs to know where people or objects are, cut a subject out, follow someone through a clip, or select one person in a crowd.
 ---
 
 # framefields-vision
@@ -27,8 +27,9 @@ Vision runs ONNX models locally from [`framefields`](https://www.npmjs.com/packa
 | Pose, 17 COCO keypoints | RTMO | 27 MB (416²) | 40 MB | 89 MB | 640² |
 | Person matte | MediaPipe Selfie Segmenter | square 0.5 MB (256²), landscape 0.5 MB (256×144) for wide frames | | | |
 | Relative depth (`depth: true`) | Depth Anything V2 Small | 99 MB, one size | | | short side 518, frame aspect |
+| Alpha matting (`matting: true`) | ViTMatte Small (Distinctions-646) | 104 MB, one size | | | the subject's edge, long side ≤ 1024 |
 
-About 480 MB for all of them. `variant: "t" | "s" | "m"` picks the size.
+About 585 MB for all of them. `variant: "t" | "s" | "m"` picks the size.
 
 ### SAM 2.1 Tiny and Small (`sam2`, Apache-2.0)
 Meta SAM 2.1 Hiera checkpoints (Diffusion Studio fp16 video exports; memory of the prompted frame, the 6 latest frames, 16 object pointers). Point and box prompts only. `sam2: { model }`:
@@ -126,6 +127,7 @@ await dancer.ready(0);             // analyse a frame (or ready(0, 120)) to read
 - Each frame is analysed just before it draws, in every render path and the preview; nothing runs up front. Results persist, keyed by file and settings (`cacheDir: false` opts out), so later renders are instant.
 - Options: `startFrame` / `trimStartSec` (where the clip plays; pass `trimStartSec` yourself when you give a path instead of the layer), `fps` (analysis rate), `pose`, `mask`, `maskCell` (silhouette grid, default 8 px), `smoothing` (frames, default 2), `variant`. A lost person's last pose is held for up to a second.
 - `depth: true` adds each frame's relative depth (Depth Anything V2 Small; 0 far … 1 near, per-frame range, not metric) at about 924×518 for 16:9. A depth clip tracks no pose or silhouette unless `pose` / `mask` ask. Read it with `clip.depthMap(frame)` (`{ data, width, height }`), or draw it with `withVision({ mode: "depth" })` and lift a 3D layer with it via `withRelief` (framefields-compose). Depth frames persist one file each, keyed by the file only, so other options never invalidate them. About 0.4 s per frame on an M1 Pro GPU.
+- `matting: true` resolves the subject's edge to soft alpha with ViTMatte Small: hair, motion blur and see-through parts that a hard mask cuts off. It refines whatever the clip selects (the automatic subject, or the `sam2` / `sam3` tracks), so it never picks a subject itself. Each frame's mask becomes a trimap: certain inside and outside, plus an unknown band of `band` px either side of the edge (default about 1.2% of the short side, 13 px at 1080p). One model pass per frame covers the band of every track. The window around the band is scaled to `resolution` (default 1024) on its long side, and each prompted track keeps its own alpha. Matte layers, `signals` masks and the clip's subject then read the soft alpha. Mattes persist beside the masks, keyed by `band` and `resolution`, so turning matting on or off never re-runs SAM. Widen `band` when hair reaches well past the mask. Only the band changes: matting does not fix a wrong selection, and an edge more than `band` px off stays off.
 - A `withVision({ mode: "matte" })` cutout (or `mask` / `crop`) of the same clip reuses the clip's subject for the frame being drawn: segmented once, aligned with the plate. Layers with `classes`, `keyBackground`, `matteSource: "selfie"` or different model settings keep their own pass. With several `comp.vision` clips of one source, the matte links to the **first one created**.
 
 ## Prompted tracking with SAM
@@ -157,6 +159,9 @@ SAM code ships in `framefields` (Apache-2.0) and loads only when a clip uses it.
 const plate = Layer.video("assets/source.mp4", { width: 1920, height: 1080, fit: "contain" })
 	.withVision({ mode: "matte" });
 comp.add(plate);
+
+// SAM 3 + matting: hair and motion blur keep their soft edge in the cutout
+comp.vision(layer, { sam3: { text: "woman with long hair" }, acceptSamLicense: true, matting: true });
 
 // SAM 3: one person by description
 const hero = comp.vision(plate, {

@@ -16,3 +16,7 @@ Before SAM 3 weights are downloaded or run, you must accept Meta's SAM License (
 ## Depth
 
 `comp.vision(clip, { depth: true })` and `withVision({ mode: "depth" })` estimate depth with Depth Anything V2 **Small** (onnx-community export of `depth-anything/Depth-Anything-V2-Small`), whose weights are Apache-2.0. The larger Depth Anything V2 checkpoints are licensed CC-BY-NC-4.0 and are not used.
+
+## Alpha matting
+
+`comp.vision(clip, { matting: true })` and `VisionRunner.refineMatte` resolve mask edges with ViTMatte **Small** trained on Distinctions-646 (Xenova ONNX export of `hustvl/vitmatte-small-distinctions-646`). Its weights are Apache-2.0 and the ViTMatte code is MIT.

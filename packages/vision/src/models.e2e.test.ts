@@ -70,7 +70,11 @@ describe.skipIf(!enabled)("vision models (real weights)", () => {
 		const meta = session.inputMetadata[0];
 		const shape = meta?.isTensor ? meta.shape : [];
 		const [w, h] = VISION_MODELS[key].input;
-		expect(shape.slice(2)).toEqual([h, w]);
+		const spatial = shape.slice(2);
+		// Graphs with named spatial dims take any size; `input` is then the runner's choice.
+		if (spatial.every((d) => typeof d === "string"))
+			expect(spatial).toHaveLength(2);
+		else expect(spatial).toEqual([h, w]);
 		await session.release();
 	}, 600_000);
 
@@ -321,5 +325,66 @@ describe.skipIf(!enabled)("vision models (real weights)", () => {
 			expect(matte.coverage).toBeGreaterThan(0.3);
 			expect(matte.coverage).toBeLessThan(0.6);
 		}, 120_000);
+	});
+
+	describe("alpha matting (ViTMatte Small)", () => {
+		const runner = VisionRunner.create();
+		afterAll(() => runner.close());
+
+		it("recovers a soft edge a hard mask cuts off", async () => {
+			// A textured disc whose alpha falls off over 12 px, over a textured background.
+			const width = 320;
+			const height = 240;
+			const truth = new Float32Array(width * height);
+			const data = new Uint8Array(width * height * 4);
+			for (let y = 0; y < height; y++) {
+				for (let x = 0; x < width; x++) {
+					const i = y * width + x;
+					const r = Math.hypot(x - 160, y - 120);
+					const a = Math.min(1, Math.max(0, (80 - r) / 12));
+					truth[i] = a;
+					const fg = [220, 170 + 40 * Math.sin(x / 3), 60];
+					const bg = [40 + 30 * Math.sin(y / 5), 90, 200];
+					for (let c = 0; c < 3; c++)
+						data[i * 4 + c] =
+							(fg[c] as number) * a + (bg[c] as number) * (1 - a);
+					data[i * 4 + 3] = 255;
+				}
+			}
+			const hard = Uint8Array.from(truth, (a) => (a >= 0.5 ? 255 : 0));
+			const matte = await runner.refineMatte({ data, width, height }, hard, {
+				band: 12,
+			});
+			let hardError = 0;
+			let softError = 0;
+			for (let i = 0; i < truth.length; i++) {
+				hardError += Math.abs((hard[i] as number) / 255 - (truth[i] as number));
+				softError += Math.abs(
+					(matte.mask[i] as number) / 255 - (truth[i] as number),
+				);
+			}
+			expect(softError).toBeLessThan(hardError * 0.5);
+		}, 600_000);
+
+		it("softens a portrait's segmentation edge and keeps its core", async () => {
+			const frame = frames.portrait;
+			const subject = mergeSubjectMask((await runner.segment(frame)).masks);
+			if (!subject) throw new Error("no subject in the portrait");
+			const hard = Uint8Array.from(subject.mask, (v) => (v >= 128 ? 255 : 0));
+			const matte = await runner.refineMatte(frame, hard);
+			let soft = 0;
+			let inside = 0;
+			let kept = 0;
+			for (let i = 0; i < hard.length; i++) {
+				const a = matte.mask[i] as number;
+				if (a > 10 && a < 245) soft++;
+				if (hard[i]) {
+					inside++;
+					if (a >= 128) kept++;
+				}
+			}
+			expect(soft).toBeGreaterThan(frame.width);
+			expect(kept / inside).toBeGreaterThan(0.95);
+		}, 600_000);
 	});
 });

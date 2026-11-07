@@ -19,6 +19,12 @@ import {
 import { decodeRtmo } from "../decode/rtmo.js";
 import { decodeSelfie } from "../decode/selfie.js";
 import { FrameTensorPipeline, readTexturePixels } from "../gpu/frame-tensor.js";
+import { defaultMatteBand, trimapFromMask } from "../matting/trimap.js";
+import {
+	composeMatte,
+	matteWindow,
+	vitmatteInput,
+} from "../matting/vitmatte.js";
 import {
 	type ModelDownloadStatus,
 	VisionModelStore,
@@ -42,8 +48,10 @@ import {
 import {
 	type DepthMap,
 	isGpuImage,
+	type MatteRefineOptions,
 	type PersonMatte,
 	type PoseResult,
+	type RefinedMatte,
 	type SegmentationResult,
 	type VisionFrame,
 	type VisionImageInput,
@@ -296,6 +304,58 @@ export class VisionRunner {
 		);
 	}
 
+	/**
+	 * Resolves a hard mask's edge to soft alpha (ViTMatte Small): hair, motion
+	 * blur and see-through parts. `mask` is frame-sized, inside where ≥ 128.
+	 * Only a band around the edge changes; one model pass covers every part of
+	 * the mask, cropped to the band and scaled to `resolution`.
+	 */
+	public async refineMatte(
+		image: VisionFrame,
+		mask: ArrayLike<number>,
+		options: MatteRefineOptions = {},
+	): Promise<RefinedMatte> {
+		const { width, height } = image;
+		if (mask.length !== width * height)
+			throw new Error(
+				`refineMatte: the mask has ${mask.length} pixels; the frame has ${width}×${height}.`,
+			);
+		const band = Math.max(
+			1,
+			Math.round(options.band ?? defaultMatteBand(width, height)),
+		);
+		const key: VisionModelKey = "vitmatte-s";
+		const trimap = trimapFromMask(mask, width, height, band);
+		const window = matteWindow(
+			trimap,
+			// Enough of either side for the model to tell subject from background.
+			Math.max(32, band * 2),
+			options.resolution ?? VISION_MODELS[key].input[0],
+		);
+		let alphas: ArrayLike<number> = [];
+		if (window) {
+			const pixels = isGpuImage(image) ? await readTexturePixels(image) : image;
+			const outputs = await this.queued(key, async () => {
+				const session = await this.session(key);
+				const scratch = this._core.tensorScratch;
+				const data = vitmatteInput(pixels, trimap, window, scratch.get(key));
+				if (data.buffer !== scratch.get(key)?.buffer) scratch.set(key, data);
+				return session.run({
+					name: "pixel_values",
+					data,
+					dims: [1, 4, window.inputHeight, window.inputWidth],
+				});
+			});
+			alphas = output(outputs, "alphas", key).data as Float32Array;
+		}
+		return {
+			mask: composeMatte(trimap, window, alphas),
+			width,
+			height,
+			nearest: trimap.nearest,
+		};
+	}
+
 	public close(): void {
 		if (!this._ownsCore) return;
 		const core = this._core;
@@ -364,12 +424,14 @@ export class VisionRunner {
 		/** Input size for graphs that take any (default: the registry's). */
 		input?: readonly [number, number],
 	): Promise<{ outputs: VisionTensorOutputs; transform: InputTransform }> {
+		return this.queued(key, () => this.inferNow(key, image, input));
+	}
+
+	/** Runs `fn` after the model's earlier runs: one inference per session at a time. */
+	private queued<T>(key: VisionModelKey, fn: () => Promise<T>): Promise<T> {
 		const queue = this._core.runQueue;
 		const previous = queue.get(key) ?? Promise.resolve();
-		const run = previous.then(
-			() => this.inferNow(key, image, input),
-			() => this.inferNow(key, image, input),
-		);
+		const run = previous.then(fn, fn);
 		const tail = run.catch(() => undefined);
 		queue.set(key, tail);
 		void tail.then(() => {

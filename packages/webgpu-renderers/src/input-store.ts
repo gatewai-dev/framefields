@@ -1,25 +1,16 @@
+import { isLocalFilePath, localFileUrl } from "@framefields/core";
 import { ALL_FORMATS, FilePathSource, Input, UrlSource } from "mediabunny";
 import { isNodeRuntime, toLocalPath } from "./local-path.js";
 
 /**
- * In the browser (a page or a worker), local paths are served through the
- * dev server's `/@fs`.
+ * In the browser (a page or a worker), local paths are read from where the
+ * installed `LocalFileSource` serves them (the preview server's `/@fs`
+ * unless a bundle installed its own).
  */
 export function resolveInputUrl(url: string, isNode: boolean): string {
-	let resolvedUrl = url;
-	if (!isNode && typeof location !== "undefined") {
-		if (resolvedUrl.startsWith("file://")) {
-			resolvedUrl = resolvedUrl.slice(7);
-		}
-		if (
-			resolvedUrl.startsWith("/") &&
-			!resolvedUrl.startsWith("/@fs/") &&
-			!resolvedUrl.startsWith("/api/")
-		) {
-			resolvedUrl = "/@fs" + resolvedUrl;
-		}
-	}
-	return resolvedUrl;
+	if (isNode || typeof location === "undefined" || !isLocalFilePath(url))
+		return url;
+	return localFileUrl(url);
 }
 
 function safeDecode(path: string): string {
@@ -152,7 +143,12 @@ class InputStore {
 
 	release(url: string): void {
 		if (!url) return;
-		const resolvedUrl = resolveInputUrl(url, isNodeRuntime());
+		let resolvedUrl: string;
+		try {
+			resolvedUrl = resolveInputUrl(url, isNodeRuntime());
+		} catch {
+			return; // not a file this realm can read, so never acquired
+		}
 		const shared = this.store.get(resolvedUrl);
 		if (!shared) return;
 

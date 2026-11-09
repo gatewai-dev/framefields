@@ -81,6 +81,12 @@
 			"import": "./dist/preview/index.mjs",
 			"default": "./dist/preview/index.mjs"
 		},
+		"./web": {
+			"types": "./dist/web/index.d.mts",
+			"development": "./src/web/index.ts",
+			"import": "./dist/web/index.mjs",
+			"default": "./dist/web/index.mjs"
+		},
 		"./cloud": {
 			"types": "./dist/cloud/index.d.mts",
 			"development": "./src/cloud/index.ts",

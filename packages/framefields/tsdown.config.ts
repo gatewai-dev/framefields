@@ -13,6 +13,7 @@ export default defineConfig({
 		"src/renderer/index.ts",
 		"src/fonts/index.ts",
 		"src/preview/index.ts",
+		"src/web/index.ts",
 		"src/components/index.ts",
 		"src/sam/index.ts",
 		"src/cloud/index.ts",

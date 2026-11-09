@@ -1,4 +1,5 @@
 import { GetFontAssetUrl } from "@framefields/client-utils";
+import { fetchSource } from "../local-path.js";
 import type { RenderContextValue } from "../render-context.js";
 import { SlugFontCache } from "../slug/slug-font-cache.js";
 import { SlugGeometry } from "../slug/slug-geometry.js";
@@ -223,12 +224,12 @@ class SrtLoaderCache {
 							);
 							srtString = await fs.readFile(filePath, "utf-8");
 						} catch {
-							const res = await fetch(src);
+							const res = await fetchSource(src);
 							if (!res.ok) throw new Error(`Failed to fetch SRT: ${src}`);
 							srtString = await res.text();
 						}
 					} else {
-						const res = await fetch(src);
+						const res = await fetchSource(src);
 						if (!res.ok) throw new Error(`Failed to fetch SRT: ${src}`);
 						srtString = await res.text();
 					}

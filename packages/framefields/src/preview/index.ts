@@ -4,7 +4,7 @@ import fs from "node:fs";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import type { VirtualMediaData } from "@framefields/core";
 import { type AssetLocator, openAssetLocator } from "@framefields/storage";
 import { inputStore } from "@framefields/webgpu-renderers";
@@ -20,6 +20,7 @@ import {
 import { describeNote, type NewNote, NoteStore } from "./notes.js";
 import { previewPage } from "./page.js";
 import { computePeaks, PEAK_BINS, SILENT_PEAK } from "./peaks.js";
+import { loadTarget, type PreviewTarget, repoRoot } from "./project.js";
 
 /** Where the composition comes from: the module that builds it. */
 export interface PreviewSource {
@@ -30,18 +31,6 @@ export interface PreviewSource {
 	 * async), or a `Composition`. Defaults to `"default"`.
 	 */
 	export?: string;
-}
-
-/** What the server needs from the composition: its size, timing and soundtrack. */
-interface PreviewTarget {
-	toVirtualMedia?(): VirtualMediaData;
-	toVirtualMediaAsync?(): Promise<VirtualMediaData>;
-	computeDuration?(): Promise<number>;
-	prepareMediaTime?(): Promise<void>;
-	fps?: number;
-	durationMs?: number;
-	width?: number;
-	height?: number;
 }
 
 export interface PreviewOptions {
@@ -589,41 +578,6 @@ export async function startPreview(
 	}
 
 	return { url, closed, close: () => close() };
-}
-
-async function loadTarget(
-	entry: string,
-	exportName: string,
-): Promise<PreviewTarget> {
-	const mod = (await import(pathToFileURL(entry).href)) as Record<
-		string,
-		unknown
-	>;
-	const exported = mod[exportName];
-	if (exported === undefined) {
-		throw new Error(
-			`[framefields] ${entry} has no export named "${exportName}" to preview.`,
-		);
-	}
-	return (
-		typeof exported === "function"
-			? await (exported as () => unknown)()
-			: exported
-	) as PreviewTarget;
-}
-
-/**
- * The project holding `dir`: the nearest `.git`, else the nearest
- * `package.json`, else `dir` itself. A repo wins over a nested package, so a
- * monorepo's shared assets stay reachable.
- */
-function repoRoot(dir: string): string {
-	let project: string | undefined;
-	for (let d = dir; ; d = path.dirname(d)) {
-		if (fs.existsSync(path.join(d, ".git"))) return d;
-		if (!project && fs.existsSync(path.join(d, "package.json"))) project = d;
-		if (path.dirname(d) === d) return project ?? dir;
-	}
 }
 
 /** Applies one change from the page and says what it was. */

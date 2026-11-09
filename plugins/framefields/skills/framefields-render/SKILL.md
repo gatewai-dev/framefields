@@ -1,6 +1,6 @@
 ---
 name: framefields-render
-description: Render, inspect, test, preview and export WebGPU video and frame grids with the framefields headless engine. Use when verifying compositions, diagnosing blank frames, running frame grids or pixel tests, showing the user a live preview, exporting MP4/WebM, reading render progress, running video QA, naming renders in framefields.json, rendering without a GPU, or splitting a render into chunks in framefields. Cloud GPU rendering is in framefields-cloud.
+description: Render, inspect, test, preview and export WebGPU video and frame grids with the framefields headless engine. Use when verifying compositions, diagnosing blank frames, running frame grids or pixel tests, showing the user a live preview, exporting MP4/WebM, exporting on the viewer's own device (iOS app, Safari) from a web bundle, reading render progress, running video QA, naming renders in framefields.json, rendering without a GPU, or splitting a render into chunks in framefields. Cloud GPU rendering is in framefields-cloud.
 ---
 
 # framefields-render
@@ -188,6 +188,26 @@ await stitchChunks({ chunks: ["out/chunk-0.mp4", "out/chunk-1.mp4"], audio: "out
 - `planChunks({ totalFrames, samples, workers: "auto" })` picks count and cuts (adds workers while each spends ≥ 85% of its time rendering; splits at equal cost). `renderer.probeRender(comp)` measures `samples`.
 
 The cloud does all of this for you: `framefields-cloud`.
+
+## Exporting on the viewer's device (`framefields bundle`)
+
+A web bundle renders the film to MP4 in the viewer's browser (WebGPU + WebCodecs: Safari and WKWebView on iOS 26+, current Chrome), e.g. inside an iOS app, instead of on a server GPU:
+
+```bash
+npx framefields bundle film --output ios/App/Film   # engine/, project.mjs, files/, manifest.json, index.html
+```
+
+```typescript
+import { openBundle } from "framefields/web"; // or the bundle's own ./engine/web.mjs
+const bundle = await openBundle("/Film/");
+const { file } = await bundle.exportVideo({ codec: "h264", quality: "high", onProgress: (p) => show(p.message) });
+```
+
+- The bundle needs no server: open `index.html` over http(s) or a WKWebView scheme handler (WebGPU needs a secure context). Its page exports and, with a `framefields` WKScriptMessageHandler, posts progress and the result; `window.framefieldsExport(options)` starts one.
+- Files ship by project path (`/assets/clip.mp4`); `bundle` takes what the composition's tree names, its fonts, and `--include` for files read at run time (JSON it parses). A missing one fails naming the path.
+- The export measures frame costs, cuts the film into chunks of `chunkSec` render time (default 20, at most `maxChunkFrames`), writes each to OPFS and frees caches between them (`recycleDevice: true` also drops the GPU device), renders the soundtrack apart, then joins them without re-encoding, as the cloud's split render does. Stopped (app backgrounded or killed), the next `exportVideo` with the same bundle and settings resumes from the first missing chunk.
+- Same pictures as `renderVideo`, except physics: a shot whose debris or bodies collide can settle differently in Safari, as JavaScriptCore's `Math.hypot`/`sin`/`exp` round differently from Node's.
+- Vision effects are not supported on-device.
 
 ## Rendering without a GPU
 

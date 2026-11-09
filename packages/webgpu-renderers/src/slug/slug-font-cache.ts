@@ -1,6 +1,7 @@
 import * as fontkit from "fontkit";
 import { premultiplyPixels } from "../color.js";
 import { debugLog } from "../debug-log.js";
+import { fetchSource } from "../local-path.js";
 import type { FontkitFont } from "./slug-generator.js";
 import { SlugGenerator, uploadSlugTextures } from "./slug-generator.js";
 import type { SlugFont } from "./slug-loader.js";
@@ -162,7 +163,7 @@ async function loadFontBuffer(
 		) as ArrayBuffer;
 	} else {
 		// Browser/Web or remote URL environment
-		const response = await fetch(fontUrl);
+		const response = await fetchSource(fontUrl);
 		if (!response.ok) {
 			throw new Error(
 				`Failed to fetch font from ${fontUrl}: ${response.statusText}`,

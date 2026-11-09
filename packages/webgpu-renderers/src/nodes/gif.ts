@@ -1,4 +1,5 @@
 import { decompressFrames, parseGIF } from "gifuct-js";
+import { fetchSource } from "../local-path.js";
 import type { RenderContextValue } from "../render-context.js";
 import { textureCache } from "../texture-cache.js";
 import type { GifNodeProps } from "./types.js";
@@ -24,7 +25,7 @@ class GifLoader {
 		let promise = this.cache.get(src);
 		if (!promise) {
 			promise = (async () => {
-				const res = await fetch(src);
+				const res = await fetchSource(src);
 				if (!res.ok) throw new Error(`Failed to fetch GIF: ${src}`);
 				const buffer = await res.arrayBuffer();
 

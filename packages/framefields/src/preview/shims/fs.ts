@@ -4,6 +4,15 @@
 // which serves files by their absolute path; synchronous reads use a
 // synchronous request, so build-time code like `JSON.parse(readFileSync(…))`
 // runs unchanged. Writes are skipped: the preview never changes the project.
+// A web bundle installs a `LocalFileSource` (core), which then answers reads and
+// stats from the files the bundle ships.
+import {
+	getLocalFileSource,
+	localFileSize,
+	localFileUrl,
+	localPathOf,
+} from "@framefields/core";
+
 type Enc =
 	| BufferEncoding
 	| { encoding?: BufferEncoding | null }
@@ -12,9 +21,10 @@ type Enc =
 
 const toUrl = (p: string | URL): string => {
 	const s = String(p);
-	return encodeURI(
-		s.startsWith("file://") ? decodeURIComponent(new URL(s).pathname) : s,
-	);
+	// A bundle's source maps paths to its own files; the server serves them under /@fs.
+	return getLocalFileSource()
+		? localFileUrl(s)
+		: encodeURI(s.startsWith("file://") ? localPathOf(s) : s);
 };
 const encodingOf = (e: Enc) =>
 	typeof e === "string" ? e : (e?.encoding ?? null);
@@ -30,7 +40,13 @@ function enoent(p: unknown): Error {
 
 function request(method: string, p: string | URL): XMLHttpRequest {
 	const xhr = new XMLHttpRequest();
-	xhr.open(method, toUrl(p), false);
+	let url: string;
+	try {
+		url = toUrl(p);
+	} catch {
+		throw enoent(p);
+	}
+	xhr.open(method, url, false);
 	// Binary-safe text: each byte comes back as one char code.
 	xhr.overrideMimeType("text/plain; charset=x-user-defined");
 	xhr.send();
@@ -47,10 +63,9 @@ export function readFileSync(p: string | URL, enc?: Enc): string | Uint8Array {
 }
 
 function stat(p: string | URL): { exists: boolean; size: number } {
-	const s = String(p);
-	const file = s.startsWith("file://")
-		? decodeURIComponent(new URL(s).pathname)
-		: s;
+	const known = localFileSize(String(p));
+	if (known !== null) return { exists: known !== undefined, size: known ?? 0 };
+	const file = localPathOf(String(p));
 	const xhr = new XMLHttpRequest();
 	xhr.open("GET", `/@framefields/stat?path=${encodeURIComponent(file)}`, false);
 	xhr.send();
@@ -96,7 +111,13 @@ export const constants = { F_OK: 0, R_OK: 4, W_OK: 2, X_OK: 1 };
 const asyncSkip = async (): Promise<undefined> => undefined;
 export const promises = {
 	readFile: async (p: string | URL, enc?: Enc) => {
-		const res = await fetch(toUrl(p));
+		let url: string;
+		try {
+			url = toUrl(p);
+		} catch {
+			throw enoent(p);
+		}
+		const res = await fetch(url);
 		if (!res.ok) throw enoent(p);
 		const bytes = new Uint8Array(await res.arrayBuffer());
 		return encodingOf(enc) ? new TextDecoder().decode(bytes) : bytes;

@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { type ChunkPlan, planChunks } from "../chunk-plan.js";
+import {
+	type ChunkPlan,
+	planChunks,
+	planChunksByBudget,
+} from "../chunk-plan.js";
 
 const FPS = 30;
 /** Renders as fast as it plays: 33.3 ms per frame. */
@@ -116,5 +120,94 @@ describe("planChunks", () => {
 				efficiency: 1,
 			}),
 		).toThrow(/efficiency/);
+	});
+});
+
+describe("planChunksByBudget", () => {
+	const covers = (plan: ChunkPlan, total: number) => {
+		expect(plan.chunks[0].start).toBe(0);
+		expect(plan.chunks.at(-1)?.end).toBe(total);
+		for (let i = 1; i < plan.chunks.length; i++)
+			expect(plan.chunks[i].start).toBe(plan.chunks[i - 1].end);
+	};
+
+	it("keeps each chunk within the render-time budget", () => {
+		// A minute at 100 ms a frame: 180 s of work, 20 s chunks.
+		const total = 60 * FPS;
+		const plan = planChunksByBudget({
+			totalFrames: total,
+			samples: [{ frame: 0, ms: 100 }],
+			chunkSec: 20,
+		});
+		covers(plan, total);
+		expect(plan.chunks).toHaveLength(9);
+		for (const c of plan.chunks) expect(c.workSec).toBeLessThanOrEqual(20.01);
+		// One device renders them in turn: no overhead, no parallel speed-up.
+		expect(plan.workers).toBe(1);
+		expect(plan.etaSec).toBeCloseTo(180, 6);
+	});
+
+	it("gives a heavy stretch shorter chunks", () => {
+		const total = 600;
+		const plan = planChunksByBudget({
+			totalFrames: total,
+			// Cheap first half, ten times the cost in the second.
+			samples: [
+				{ frame: 0, ms: 10 },
+				{ frame: 299, ms: 10 },
+				{ frame: 300, ms: 100 },
+				{ frame: 599, ms: 100 },
+			],
+			chunkSec: 6,
+		});
+		covers(plan, total);
+		const first = plan.chunks[0];
+		const last = plan.chunks.at(-1) as (typeof plan.chunks)[number];
+		expect(first.end - first.start).toBeGreaterThan(last.end - last.start);
+	});
+
+	it("splits a chunk over maxChunkFrames evenly", () => {
+		// A cheap film fits one chunk by time; the frame cap cuts it.
+		const plan = planChunksByBudget({
+			totalFrames: 1000,
+			samples: [{ frame: 0, ms: 1 }],
+			chunkSec: 60,
+			maxChunkFrames: 300,
+		});
+		covers(plan, 1000);
+		expect(plan.chunks.map((c) => c.end - c.start)).toEqual([
+			250, 250, 250, 250,
+		]);
+	});
+
+	it("never makes a chunk shorter than minChunkFrames", () => {
+		const plan = planChunksByBudget({
+			totalFrames: 100,
+			samples: [{ frame: 0, ms: 1000 }],
+			chunkSec: 1,
+			minChunkFrames: 30,
+		});
+		covers(plan, 100);
+		expect(plan.chunks).toHaveLength(3);
+		for (const c of plan.chunks)
+			expect(c.end - c.start).toBeGreaterThanOrEqual(30);
+	});
+
+	it("rejects bad input", () => {
+		const samples = [{ frame: 0, ms: 10 }];
+		expect(() =>
+			planChunksByBudget({ totalFrames: 0, samples, chunkSec: 1 }),
+		).toThrow(/totalFrames/);
+		expect(() =>
+			planChunksByBudget({ totalFrames: 10, samples, chunkSec: 0 }),
+		).toThrow(/chunkSec/);
+		expect(() =>
+			planChunksByBudget({
+				totalFrames: 10,
+				samples,
+				chunkSec: 1,
+				maxChunkFrames: 0,
+			}),
+		).toThrow(/maxChunkFrames/);
 	});
 });

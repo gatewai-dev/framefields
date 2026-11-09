@@ -11,10 +11,11 @@
 import { pathToFileURL } from "node:url";
 import type { formatQaReport } from "../index.js";
 import type { startPreview } from "../preview/index.js";
+import type { buildWebBundle } from "../web/build.js";
 import { pickComposition } from "./pick-composition.js";
 
 export interface LocalJob {
-	mode: "render" | "preview";
+	mode: "render" | "preview" | "bundle";
 	/** Absolute module path. */
 	entry: string;
 	export: string;
@@ -26,8 +27,10 @@ export interface LocalJob {
 	outputPath?: string;
 	codec?: string;
 	quality?: string;
-	/** preview: the page's title. */
+	/** preview and bundle: the page's title. */
 	title?: string;
+	/** bundle: extra files to ship. */
+	include?: string[];
 }
 
 export type LocalResult =
@@ -47,6 +50,25 @@ async function run(job: LocalJob): Promise<LocalResult> {
 		process.stdout.write(`Preview at ${session.url}\n`);
 		await session.closed;
 		return { ok: true };
+	}
+	if (job.mode === "bundle") {
+		const engine = (await import(job.engine)) as {
+			buildWebBundle: typeof buildWebBundle;
+		};
+		const result = await engine.buildWebBundle({
+			entry: job.entry,
+			export: job.export,
+			outDir: job.outputPath as string,
+			include: job.include,
+			title: job.title,
+		});
+		const files = Object.keys(result.manifest.files).length;
+		process.stdout.write(
+			`${files} files, ${(result.bytes / 1e6).toFixed(1)} MB with the engine. Open its index.html over http(s) (WebGPU needs a secure context), or load the folder in a WKWebView.\n`,
+		);
+		for (const warning of result.warnings)
+			process.stdout.write(`warning: ${warning}\n`);
+		return { ok: true, filePath: result.outDir };
 	}
 	const mod: Record<string, unknown> = await import(
 		pathToFileURL(job.entry).href

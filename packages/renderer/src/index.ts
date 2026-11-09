@@ -8,5 +8,6 @@ export * from "./logger.js";
 export * from "./node-manifest.js";
 export type { RenderPhase, RenderProgress } from "./render-reporter.js";
 export * from "./stitch.js";
+export * from "./stitch-segments.js";
 export * from "./video-qa.js";
 export * from "./zero-copy-webcodecs-pipeline.js";

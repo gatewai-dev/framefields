@@ -1,6 +1,6 @@
 /**
- * `framefields render [name|entry]` and `framefields preview [name|entry]`
- * on this machine. They read the same named renders in framefields.json as
+ * `framefields render [name|entry]`, `framefields preview [name|entry]` and
+ * `framefields bundle [name|entry]` on this machine. They read the same named renders in framefields.json as
  * `--cloud`, so a render goes to the same file wherever it runs.
  *
  * A local render first downloads pinned assets that are missing here; a
@@ -24,6 +24,8 @@ export interface LocalCliOptions {
 	codec?: string;
 	quality?: string;
 	output?: string;
+	/** bundle: files the composition reads at run time that its tree doesn't name. */
+	include?: string[];
 	/** Project folder. Default `process.cwd()`. */
 	cwd?: string;
 }
@@ -60,23 +62,38 @@ export async function runLocal(
 		select: o.select ?? spec?.select,
 		codec,
 		quality: o.quality ?? spec?.quality,
-		outputPath: path.resolve(cwd, renderOutput(target, spec, codec, o.output)),
+		outputPath: path.resolve(
+			cwd,
+			mode === "bundle"
+				? (o.output ?? path.join("output", `${outputBase(target)}-web`))
+				: renderOutput(target, spec, codec, o.output),
+		),
 		title: spec?.title ?? target.name,
+		include: o.include,
 	};
-	if (mode === "preview" && (job.args !== undefined || job.select))
+	if (mode !== "render" && (job.args !== undefined || job.select))
 		log(
-			"The preview calls the export without args or select; it shows what the export returns by default.",
+			`The ${mode} calls the export without args or select; it shows what the export returns by default.`,
 		);
-	if (mode === "render" && !(await ensureAssets(cwd, log))) return 1;
+	if (mode !== "preview" && !(await ensureAssets(cwd, log))) return 1;
 	const result = await runWorker(job, cwd);
 	if (!result.ok) {
 		log(result.message);
 		return 1;
 	}
 	if (result.filePath)
-		log(`Rendered ${path.relative(cwd, result.filePath) || result.filePath}`);
+		log(
+			`${mode === "bundle" ? "Bundled" : "Rendered"} ${path.relative(cwd, result.filePath) || result.filePath}`,
+		);
 	// The video is written either way; failed QA fails the command.
 	return result.qaPassed === false ? 1 : 0;
+}
+
+/** A named render's name, else the entry's file name. */
+function outputBase(target: { name?: string; entry?: string }): string {
+	return (
+		target.name ?? path.basename(target.entry ?? "film").replace(/\.[^.]+$/, "")
+	);
 }
 
 /** The framefields the film imports, resolved from its module. */

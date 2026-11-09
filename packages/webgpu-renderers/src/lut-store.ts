@@ -1,4 +1,4 @@
-import { toLocalPath } from "./local-path.js";
+import { fetchSource, toLocalPath } from "./local-path.js";
 
 export interface GPUModelLut {
 	texture: GPUTexture;
@@ -535,7 +535,7 @@ async function readLutText(src: string, signal?: AbortSignal): Promise<string> {
 		const { readFile } = await import("node:fs/promises");
 		return readFile(path, { encoding: "utf8", signal });
 	}
-	const response = await fetch(src, { signal });
+	const response = await fetchSource(src, { signal });
 	if (!response.ok) {
 		throw new Error(`Failed to load LUT file: ${response.statusText}`);
 	}

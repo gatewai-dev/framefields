@@ -1,5 +1,6 @@
 /// <reference types="webgpu" />
 
+import { fetchSource } from "../local-path.js";
 import {
 	type AudioSignalComputeConfig,
 	AudioSignalComputePipeline,
@@ -583,21 +584,9 @@ export class SignalRegistry {
 						(window as unknown as { webkitAudioContext?: typeof AudioContext })
 							.webkitAudioContext;
 					if (AudioCtx) {
-						let fetchUrl = sourceUrl;
-						if (fetchUrl.startsWith("file://")) {
-							fetchUrl = fetchUrl.replace(/^file:\/\//, "");
-						}
-						if (
-							fetchUrl.startsWith("/") &&
-							!fetchUrl.startsWith("/@fs/") &&
-							!fetchUrl.startsWith("/api/")
-						) {
-							fetchUrl = `/@fs${fetchUrl}`;
-						}
-
 						const ctx = new AudioCtx();
 						try {
-							const res = await fetch(fetchUrl);
+							const res = await fetchSource(sourceUrl);
 							if (!res.ok) throw new Error(`HTTP ${res.status}`);
 							const ab = await res.arrayBuffer();
 							const decoded = await ctx.decodeAudioData(ab);
@@ -2340,7 +2329,10 @@ ${extraFn}
 		const threshold = Number(sd.threshold ?? cfg?.threshold ?? 0.5);
 		const mode = (sd.mode ?? cfg?.mode ?? "gate") as string;
 		const invert = Boolean(sd.invert ?? cfg?.invert ?? false);
-		const holdFrames = Math.max(1, Number(sd.holdFrames ?? cfg?.holdFrames ?? 4));
+		const holdFrames = Math.max(
+			1,
+			Number(sd.holdFrames ?? cfg?.holdFrames ?? 4),
+		);
 
 		const source = (sd.sourceSignal ?? cfg?.sourceSignal ?? sd.signal) as
 			| Record<string, unknown>
@@ -2541,7 +2533,10 @@ struct GateUniforms {
 		const threshold = Number(sd.threshold ?? cfg?.threshold ?? 0.5);
 		const mode = (sd.mode ?? cfg?.mode ?? "gate") as string;
 		const invert = Boolean(sd.invert ?? cfg?.invert ?? false);
-		const holdFrames = Math.max(1, Number(sd.holdFrames ?? cfg?.holdFrames ?? 4));
+		const holdFrames = Math.max(
+			1,
+			Number(sd.holdFrames ?? cfg?.holdFrames ?? 4),
+		);
 		const debounceMs = Number(sd.debounceMs ?? cfg?.debounceMs ?? 100);
 		const debounceSamples = Math.max(
 			1,

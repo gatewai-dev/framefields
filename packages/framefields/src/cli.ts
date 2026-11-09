@@ -12,6 +12,7 @@
  *   npx framefields render <name>        render on this machine's GPU
  *   npx framefields render <name> --cloud    render on api.framefields.dev
  *   npx framefields preview <name>       play it in the browser
+ *   npx framefields bundle <name>        a static folder that exports it on-device
  */
 import { existsSync, readFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
@@ -83,6 +84,11 @@ Commands:
   preview [name|entry]
                   Play it in the browser (localhost, WebGPU). Pinned assets
                   that aren't here stream from their bucket.
+  bundle [name|entry]
+                  A web bundle: a static folder (engine, the composition's
+                  code and files, an export page) that renders the film to
+                  MP4 on the viewer's device with WebGPU and WebCodecs, e.g.
+                  in an iOS app's WKWebView. No server needed.
 
 Options for check:
   --export <name>   Composition or builder export (default buildFilm).
@@ -95,6 +101,11 @@ Options for check:
 Options for render and preview:
   --export, --select, --codec, --quality and --output (render) override the
   named render's fields, locally and with --cloud.
+
+Options for bundle:
+  --output <dir>    Where the bundle goes (default output/<name>-web).
+  --include <path>  A file or folder the composition reads at run time that
+                    its tree doesn't name; repeat for more.
 
 Options for render --cloud:
   --workers <n|auto>  1 (default) renders on one GPU. auto measures the film
@@ -147,6 +158,7 @@ Examples:
   npx framefields fonts add emoji
   npx framefields assets add assets/footage
   npx framefields preview film
+  npx framefields bundle film --output ios/App/Film
   npx framefields render film
   npx framefields render film --cloud --plan
 `;
@@ -182,6 +194,7 @@ async function main(argv: string[]): Promise<number> {
 			quality: { type: "string" },
 			select: { type: "string" },
 			remote: { type: "string" },
+			include: { type: "string", multiple: true },
 			help: { type: "boolean", short: "h" },
 		},
 	});
@@ -220,7 +233,11 @@ async function main(argv: string[]): Promise<number> {
 			overwrite: values.overwrite,
 			json: values.json,
 		});
-	if (command === "preview" || (command === "render" && !values.cloud)) {
+	if (
+		command === "preview" ||
+		command === "bundle" ||
+		(command === "render" && !values.cloud)
+	) {
 		if (names.length > 1) {
 			process.stderr.write(
 				`Usage: framefields ${command} [name|entry] [--export <name>]\n`,
@@ -228,7 +245,7 @@ async function main(argv: string[]): Promise<number> {
 			return 2;
 		}
 		return runLocal(
-			command === "preview" ? "preview" : "render",
+			command === "render" ? "render" : command,
 			{
 				entry: names[0],
 				export: values.export,
@@ -236,6 +253,7 @@ async function main(argv: string[]): Promise<number> {
 				codec: values.codec,
 				quality: values.quality,
 				output: values.output,
+				include: values.include,
 			},
 			log,
 		);

@@ -1,5 +1,5 @@
 import { premultiplyPixels } from "../color.js";
-import { toLocalPath } from "../local-path.js";
+import { fetchSource, toLocalPath } from "../local-path.js";
 import type { RenderContextValue } from "../render-context.js";
 import { textureCache } from "../texture-cache.js";
 import { createImageTexture } from "./image-texture.js";
@@ -36,7 +36,7 @@ class ImageLoader {
 					src.startsWith("data:");
 
 				if (isRemote || !isHeadless) {
-					const response = await fetch(src);
+					const response = await fetchSource(src);
 					if (!response.ok) {
 						throw new Error(`Failed to fetch image: ${src}`);
 					}

@@ -4026,6 +4026,7 @@ export {
 } from "./preview/index.js";
 export {
 	type AudioQaStats,
+	type BudgetPlanOptions,
 	type ChunkPlan,
 	type ChunkPlanOptions,
 	computeGridLayout,
@@ -4040,6 +4041,7 @@ export {
 	HeadlessWebGPURenderer,
 	type PlannedChunk,
 	planChunks,
+	planChunksByBudget,
 	type QaIssue,
 	type QaSegment,
 	type RenderProgress,
@@ -4047,13 +4049,21 @@ export {
 	renderSemaphore,
 	resetRenderCaches,
 	resolveSamplePoints,
+	type StitchInput,
 	type StitchOptions,
 	type StitchResult,
+	type StitchSegmentsOptions,
 	stitchChunks,
+	stitchSegments,
 	type VideoQaOptions,
 	type VideoQaReport,
 	type VideoQaStats,
 } from "./renderer/index.js";
+export {
+	buildWebBundle,
+	type WebBundleOptions,
+	type WebBundleResult,
+} from "./web/build.js";
 
 export function section(
 	source: string | MediaNode | Composition,

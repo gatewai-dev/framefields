@@ -19,7 +19,6 @@ import {
 	clearMediaCaches,
 	ensureDevice,
 	mediaDecoderCache,
-	releaseDevice,
 	shaderStore,
 	WebGPUAudioProcessor,
 } from "@framefields/webgpu-renderers";
@@ -54,7 +53,6 @@ export interface BrowserBackendOptions {
 	vm: VirtualMediaData;
 	settings: ExportSettings;
 	durationMs: number;
-	recycleDevice: boolean;
 }
 
 export async function createBrowserBackend(
@@ -66,16 +64,10 @@ export async function createBrowserBackend(
 	const canvas = new OffscreenCanvas(width, height);
 	const bitrate = bitrateOf(settings.quality);
 
-	let device!: GPUDevice;
-	let surface!: BrowserSurfaceProvider;
-	let drawer!: FrameDrawer;
-	const attach = async () => {
-		device = await ensureDevice();
-		surface = new BrowserSurfaceProvider(device, canvas);
-		drawer = new FrameDrawer(device, surface, vm, timing);
-		await preloadCompositionFonts(vm, device);
-	};
-	await attach();
+	const device = await ensureDevice();
+	const surface = new BrowserSurfaceProvider(device, canvas);
+	const drawer = new FrameDrawer(device, surface, vm, timing);
+	await preloadCompositionFonts(vm, device);
 
 	let runs = 0;
 	const renderIdFor = (what: string) =>
@@ -91,7 +83,7 @@ export async function createBrowserBackend(
 		fps,
 		durationSec: totalFrames / fps,
 		bitrate,
-		device: () => device,
+		device,
 		renderId: () => renderIdFor("audio"),
 		release,
 	};
@@ -192,12 +184,13 @@ export async function createBrowserBackend(
 		},
 
 		async betweenChunks() {
+			// What the last chunk loaded (decoders, textures, LUTs, glyphs) goes;
+			// pipelines and pools stay. Destroying the device too would give its
+			// memory back in Node, but in WebKit the page then grows by ~400 MB a
+			// chunk (Safari 26.3), so the device stays.
 			clearMediaCaches();
-			if (options.recycleDevice) {
-				surface.destroy();
-				releaseDevice(device);
-			}
-			await attach();
+			drawer.restart();
+			await preloadCompositionFonts(vm, device);
 		},
 
 		dispose() {
@@ -212,7 +205,7 @@ interface AudioJob {
 	fps: number;
 	durationSec: number;
 	bitrate: number | Quality;
-	device: () => GPUDevice;
+	device: GPUDevice;
 	renderId: () => string;
 	release: (renderId: string) => void;
 }
@@ -231,7 +224,7 @@ async function encodeAudio(
 	signal: AbortSignal | undefined,
 ): Promise<number> {
 	const renderId = job.renderId();
-	const mix = createAudioMixer(job.target, job.fps, job.device(), renderId);
+	const mix = createAudioMixer(job.target, job.fps, job.device, renderId);
 	const output = new Output({
 		format: new Mp4OutputFormat({ fastStart: false }),
 		target: new StreamTarget(writer.stream, { chunked: true }),

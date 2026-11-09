@@ -205,8 +205,10 @@ const { file } = await bundle.exportVideo({ codec: "h264", quality: "high", onPr
 
 - The bundle needs no server: open `index.html` over http(s) or a WKWebView scheme handler (WebGPU needs a secure context). Its page exports and, with a `framefields` WKScriptMessageHandler, posts progress and the result; `window.framefieldsExport(options)` starts one.
 - Files ship by project path (`/assets/clip.mp4`); `bundle` takes what the composition's tree names, its fonts, and `--include` for files read at run time (JSON it parses). A missing one fails naming the path.
-- The export measures frame costs, cuts the film into chunks of `chunkSec` render time (default 20, at most `maxChunkFrames`), writes each to OPFS and frees caches between them (`recycleDevice: true` also drops the GPU device), renders the soundtrack apart, then joins them without re-encoding, as the cloud's split render does. Stopped (app backgrounded or killed), the next `exportVideo` with the same bundle and settings resumes from the first missing chunk.
+- The export measures frame costs, cuts the film into chunks of `chunkSec` render time (default 20, at most `maxChunkFrames`), writes each to OPFS and frees caches between them, renders the soundtrack apart, then joins them without re-encoding, as the cloud's split render does. Stopped (app backgrounded or killed), the next `exportVideo` with the same bundle and settings resumes from the first missing chunk.
 - Same pictures as `renderVideo`, except physics: a shot whose debris or bodies collide can settle differently in Safari, as JavaScriptCore's `Math.hypot`/`sin`/`exp` round differently from Node's.
+- Memory is set by resolution and the effects, not chunk length: the 1080p 3D `examples/37_lumen` holds ~1 GB in Safari's page process (half of it GPU textures) whatever the chunk size. Export phones at lower resolutions for heavy 3D.
+- A hidden page pauses (Safari suspends it); it continues when shown again, or resumes from storage if the app was killed.
 - Vision effects are not supported on-device.
 
 ## Rendering without a GPU

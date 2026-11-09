@@ -57,12 +57,6 @@ export interface WebExportOptions {
 	maxChunkFrames?: number;
 	/** Fewest frames per chunk. Default 30. */
 	minChunkFrames?: number;
-	/**
-	 * Destroy the GPU device after each chunk and start the next on a new one,
-	 * so the GPU memory the last chunk built up (pipelines, pools) is given
-	 * back too. Costs shader compiles per chunk. Default false.
-	 */
-	recycleDevice?: boolean;
 	/** Points along the timeline timed to plan chunks by cost. Default 6. */
 	probeSamples?: number;
 	/**

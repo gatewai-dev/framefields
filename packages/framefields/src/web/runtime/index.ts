@@ -160,7 +160,6 @@ async function exportVideo(
 		vm,
 		settings,
 		durationMs,
-		recycleDevice: options.recycleDevice === true,
 	});
 	try {
 		return await runExportJob({ jobId, settings, store, backend, options });

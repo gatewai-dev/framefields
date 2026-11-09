@@ -1,6 +1,6 @@
 /**
- * `releaseDevice` destroys the GPU device between jobs (the on-device
- * export's `recycleDevice`): the next render runs on a new device and must
+ * `releaseDevice` destroys the GPU device between jobs, giving back its
+ * memory: the next render runs on a new device and must
  * draw the same pixels, so no cache may keep objects of the destroyed one.
  */
 import fs from "node:fs";

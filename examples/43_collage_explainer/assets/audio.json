@@ -1,0 +1,404 @@
+{
+	"lines": {
+		"question": {
+			"duration": 4.861,
+			"words": [
+				{
+					"text": "In",
+					"start": 0,
+					"end": 0.16
+				},
+				{
+					"text": "1931,",
+					"start": 0.24,
+					"end": 1.653
+				},
+				{
+					"text": "a",
+					"start": 1.707,
+					"end": 1.76
+				},
+				{
+					"text": "city",
+					"start": 1.84,
+					"end": 2.16
+				},
+				{
+					"text": "decided",
+					"start": 2.28,
+					"end": 2.64
+				},
+				{
+					"text": "its",
+					"start": 2.76,
+					"end": 2.88
+				},
+				{
+					"text": "river",
+					"start": 2.96,
+					"end": 3.28
+				},
+				{
+					"text": "was",
+					"start": 3.36,
+					"end": 3.44
+				},
+				{
+					"text": "in",
+					"start": 3.48,
+					"end": 3.52
+				},
+				{
+					"text": "the",
+					"start": 3.6,
+					"end": 3.68
+				},
+				{
+					"text": "wrong",
+					"start": 3.76,
+					"end": 4
+				},
+				{
+					"text": "place.",
+					"start": 4.08,
+					"end": 4.8
+				}
+			]
+		},
+		"context": {
+			"duration": 5.279,
+			"words": [
+				{
+					"text": "The",
+					"start": 0,
+					"end": 0.16
+				},
+				{
+					"text": "old",
+					"start": 0.24,
+					"end": 0.48
+				},
+				{
+					"text": "river",
+					"start": 0.64,
+					"end": 0.8
+				},
+				{
+					"text": "looped",
+					"start": 0.96,
+					"end": 1.28
+				},
+				{
+					"text": "through",
+					"start": 1.4,
+					"end": 1.52
+				},
+				{
+					"text": "the",
+					"start": 1.6,
+					"end": 1.68
+				},
+				{
+					"text": "lowlands,",
+					"start": 1.8,
+					"end": 2.533
+				},
+				{
+					"text": "and",
+					"start": 2.587,
+					"end": 2.64
+				},
+				{
+					"text": "every",
+					"start": 2.72,
+					"end": 2.96
+				},
+				{
+					"text": "spring",
+					"start": 3.12,
+					"end": 3.52
+				},
+				{
+					"text": "it",
+					"start": 3.6,
+					"end": 3.76
+				},
+				{
+					"text": "flooded",
+					"start": 3.84,
+					"end": 4.16
+				},
+				{
+					"text": "the",
+					"start": 4.24,
+					"end": 4.32
+				},
+				{
+					"text": "town.",
+					"start": 4.76,
+					"end": 5.28
+				}
+			]
+		},
+		"plan": {
+			"duration": 4.078,
+			"words": [
+				{
+					"text": "So",
+					"start": 0,
+					"end": 0.16
+				},
+				{
+					"text": "they",
+					"start": 0.24,
+					"end": 0.4
+				},
+				{
+					"text": "drew",
+					"start": 0.44,
+					"end": 0.64
+				},
+				{
+					"text": "a",
+					"start": 0.68,
+					"end": 0.72
+				},
+				{
+					"text": "new",
+					"start": 0.8,
+					"end": 1.04
+				},
+				{
+					"text": "course,",
+					"start": 1.28,
+					"end": 1.84
+				},
+				{
+					"text": "straight",
+					"start": 2.04,
+					"end": 2.24
+				},
+				{
+					"text": "through",
+					"start": 2.32,
+					"end": 2.4
+				},
+				{
+					"text": "the",
+					"start": 2.44,
+					"end": 2.48
+				},
+				{
+					"text": "middle",
+					"start": 2.64,
+					"end": 2.8
+				},
+				{
+					"text": "of",
+					"start": 2.88,
+					"end": 2.96
+				},
+				{
+					"text": "the",
+					"start": 3,
+					"end": 3.04
+				},
+				{
+					"text": "city.",
+					"start": 3.12,
+					"end": 4
+				}
+			]
+		},
+		"dig": {
+			"duration": 5.279,
+			"words": [
+				{
+					"text": "Three",
+					"start": 0,
+					"end": 0.24
+				},
+				{
+					"text": "thousand",
+					"start": 0.32,
+					"end": 0.72
+				},
+				{
+					"text": "workers",
+					"start": 0.88,
+					"end": 1.28
+				},
+				{
+					"text": "dug",
+					"start": 1.36,
+					"end": 1.52
+				},
+				{
+					"text": "it",
+					"start": 1.6,
+					"end": 1.76
+				},
+				{
+					"text": "in",
+					"start": 1.84,
+					"end": 1.92
+				},
+				{
+					"text": "two",
+					"start": 2,
+					"end": 2.24
+				},
+				{
+					"text": "years,",
+					"start": 2.32,
+					"end": 3.04
+				},
+				{
+					"text": "with",
+					"start": 3.12,
+					"end": 3.2
+				},
+				{
+					"text": "shovels",
+					"start": 3.28,
+					"end": 3.68
+				},
+				{
+					"text": "and",
+					"start": 3.76,
+					"end": 3.92
+				},
+				{
+					"text": "steam",
+					"start": 4,
+					"end": 4.24
+				},
+				{
+					"text": "cranes.",
+					"start": 4.32,
+					"end": 5.28
+				}
+			]
+		},
+		"payoff": {
+			"duration": 5.436,
+			"words": [
+				{
+					"text": "In",
+					"start": 0,
+					"end": 0.16
+				},
+				{
+					"text": "1934",
+					"start": 0.24,
+					"end": 1.44
+				},
+				{
+					"text": "the",
+					"start": 1.52,
+					"end": 1.68
+				},
+				{
+					"text": "water",
+					"start": 1.88,
+					"end": 2.08
+				},
+				{
+					"text": "ran",
+					"start": 2.16,
+					"end": 2.4
+				},
+				{
+					"text": "down",
+					"start": 2.52,
+					"end": 2.64
+				},
+				{
+					"text": "the",
+					"start": 2.72,
+					"end": 2.8
+				},
+				{
+					"text": "new",
+					"start": 2.88,
+					"end": 3.04
+				},
+				{
+					"text": "channel,",
+					"start": 3.32,
+					"end": 3.653
+				},
+				{
+					"text": "and",
+					"start": 3.707,
+					"end": 3.76
+				},
+				{
+					"text": "the",
+					"start": 3.84,
+					"end": 3.92
+				},
+				{
+					"text": "floods",
+					"start": 3.96,
+					"end": 4.36
+				},
+				{
+					"text": "stopped.",
+					"start": 4.4,
+					"end": 5.44
+				}
+			]
+		},
+		"recap": {
+			"duration": 3.346,
+			"words": [
+				{
+					"text": "The",
+					"start": 0,
+					"end": 0.08
+				},
+				{
+					"text": "city",
+					"start": 0.24,
+					"end": 0.56
+				},
+				{
+					"text": "didn't",
+					"start": 0.64,
+					"end": 0.88
+				},
+				{
+					"text": "tame",
+					"start": 0.96,
+					"end": 1.2
+				},
+				{
+					"text": "its",
+					"start": 1.28,
+					"end": 1.44
+				},
+				{
+					"text": "river.",
+					"start": 1.52,
+					"end": 2.24
+				},
+				{
+					"text": "It",
+					"start": 2.32,
+					"end": 2.48
+				},
+				{
+					"text": "moved",
+					"start": 2.56,
+					"end": 2.88
+				},
+				{
+					"text": "it.",
+					"start": 2.96,
+					"end": 3.36
+				}
+			]
+		}
+	}
+}

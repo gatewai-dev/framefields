@@ -162,6 +162,23 @@ Per preset:
 Catalog:
 5. Generated tables and `framefields/styles` match the files (drift test, like `effects-catalog.md`).
 
+## Status (2026-11-11)
+
+All five phases are built; nothing is pushed or deployed.
+
+- **Phase 1, the model** (frameshop `feat/style-library`): the `framefields-styles` skill, `framefields/styles` (`combineStyles`, `styleClashes`, `resolveStyleMix`), the drift and ownership tests, and `examples/42_style_library`. The AI-generated medium is image-first: the engine moves the stills, and video is generated only when the user asks. Along the way, shape strokes stopped being cut at the layout box (a compositor fix with a render test).
+- **Phase 2, the frames service** (framefields-dev `feat/style-frames`): `scripts/publish-style-frames.mjs` encodes each frame (AVIF and WebP, at 480 and 1600 px), uploads it with wrangler to `framefields-deliverables/styles/<sha256>.<ext>`, and rewrites `api/src/styles/frames.json`. `GET /v1/styles/frames?looks=` serves srcsets, alt text, a color and a placeholder, with an ETag. Six looks are published on cdn.framefields.dev. The route goes live when the API is deployed.
+- **Phase 3, the desktop app** (framefields-desktop `feat/style-library`):
+  - The lookbook of presets, with each look's frame in its format's shape (palette swatches until frames arrive or while offline).
+  - The slate (look, format, genre, made with) and its pickers, clash hints, Surprise me, Reset and Clear.
+  - The quiet line after the first message, and the change note that reaches the agent with the next message.
+  - Old style ids map to presets.
+  - `framefields` is a build-time dependency, linked to this repo until a release ships `framefields/styles`; only that subpath is bundled.
+- **Phase 4, AI-native** (frameshop): `examples/43_collage_explainer`, a 37-second film made only from the Collage explainer preset. It uses generated stills (no video) and ElevenLabs v4 voice, with highlights cued on spoken words. Its music is missing: the gateway's `elevenlabs/music-v2.5` returned 500 for every request, minimal ones included.
+- **Phase 5, grow**: added the Swiss and Risograph looks, the Cinema and Bumper 6s formats, the Data story and UI demo genres, the Mock-up → AI edit medium (image edit only), and the Swiss data story and Zine bumper presets. The new looks have reference frames and are published.
+
+Next: release `framefields` with `framefields/styles` and pin it in the desktop app, deploy the API, more looks (crafted, retro, cinematic), components `Theme`s from look tokens, `framefields init --preset`, and a docs gallery from the endpoint.
+
 ## Roadmap
 
 **Phase 1: the model (this repo)**: done. The seed has 4 looks, 4 formats, 4 genres, 4 media and 5 presets (Motion, Collage explainer, Technical explainer, Social vertical, Launch teaser). The old desktop style ids map to presets: `motion` → `motion`, `vox` → `collage-explainer`, `technical` → `technical-explainer`, `social` → `social-vertical`. Along the way, shape strokes were fixed: the half outside the outline used to be cut at the layout box.

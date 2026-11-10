@@ -8,23 +8,22 @@
  * drawing it are one set of modules.
  */
 import { BUILTIN_NODE_RENDERERS } from "framefields-preview:renderers";
-import {
-	frameCount,
-	setLocalFileSource,
-	type VirtualMediaData,
-} from "@framefields/core";
+import { setLocalFileSource, type VirtualMediaData } from "@framefields/core";
 import type { AudioTarget } from "../../preview/audio-mixer.js";
 import { registerRenderers } from "../../preview/register.js";
 import { process } from "../../preview/shims/process.js";
 import {
 	type ExportSettings,
 	exportJobId,
+	OUTPUT_FILE,
 	runExportJob,
 } from "../export-job.js";
+import { MemoryQueueState, RenderQueue } from "../queue.js";
 import {
 	type ExportStore,
 	MemoryExportStore,
 	OpfsExportStore,
+	OpfsQueueState,
 } from "../store.js";
 import type {
 	WebBundle,
@@ -94,22 +93,100 @@ async function load(base: string): Promise<WebBundle> {
 		throw new Error(`The bundle's project has no export "${manifest.export}".`);
 	const exported = mod.composition;
 
-	let running: Promise<WebExportResult> | undefined;
+	const queue = await RenderQueue.open(
+		{
+			jobId: (options) => exportJobId(settingsFor(manifest, options)),
+			run: (render, control) =>
+				exportOnce(manifest, exported, { ...render.options, ...control }),
+			file: async (render) =>
+				OpfsExportStore.available()
+					? (await OpfsExportStore.open(render.jobId)).file(OUTPUT_FILE)
+					: undefined,
+			discard: async (render) => {
+				if (OpfsExportStore.available())
+					await OpfsExportStore.removeJob(render.jobId);
+			},
+		},
+		OpfsExportStore.available()
+			? new OpfsQueueState(`queue-${manifest.id}.json`)
+			: new MemoryQueueState(),
+	);
 	return {
 		manifest,
-		exportVideo(options = {}) {
-			if (running)
-				throw new Error("An export is already running on this page.");
-			running = exportVideo(manifest, exported, options).finally(() => {
-				running = undefined;
-			});
-			return running;
+		queue,
+		exportVideo: (options) => exportThroughQueue(queue, options),
+		async clearExports() {
+			await queue.clear();
+			await OpfsExportStore.clearAll();
 		},
-		clearExports: () => OpfsExportStore.clearAll(),
 	};
 }
 
-async function exportVideo(
+/**
+ * The single-render call: a queue of one. It enqueues (or joins the same
+ * render already in line) and waits; aborting `signal` takes it out of line
+ * but keeps its chunks, so the same call later resumes.
+ */
+async function exportThroughQueue(
+	queue: RenderQueue,
+	options: WebExportOptions = {},
+): Promise<WebExportResult> {
+	const { signal, onProgress, ...rest } = options;
+	signal?.throwIfAborted();
+	const id = await queue.enqueue(rest);
+	const unsubscribe = queue.subscribe((event) => {
+		if (event.id === id && event.type === "progress" && event.render.progress)
+			onProgress?.(event.render.progress);
+	});
+	const stop = () => void queue.cancel(id, { discard: false });
+	signal?.addEventListener("abort", stop, { once: true });
+	try {
+		const render = await queue.whenSettled(id);
+		if (render.status === "cancelled")
+			throw signal?.reason ?? new DOMException("Cancelled", "AbortError");
+		if (render.status === "failed")
+			throw new Error(render.error ?? "The render failed.");
+		const file = await queue.file(id);
+		if (!file || !render.result)
+			throw new Error("The finished file is missing from storage.");
+		if (render.progress?.phase === "done") onProgress?.(render.progress);
+		return {
+			file,
+			frames: render.result.frames,
+			durationSec: render.result.durationSec,
+			jobId: render.jobId,
+			elapsedMs: render.result.elapsedMs,
+			chunks: render.result.chunks,
+		};
+	} finally {
+		unsubscribe();
+		signal?.removeEventListener("abort", stop);
+	}
+}
+
+/**
+ * What a render's output depends on, from the manifest (the composition as
+ * the bundle built it), so a render's id is known before it is drawn.
+ */
+function settingsFor(
+	manifest: WebBundleManifest,
+	options: WebExportOptions,
+): ExportSettings {
+	return {
+		bundleId: manifest.id,
+		totalFrames: manifest.frameCount,
+		fps: manifest.fps,
+		width: even(manifest.width),
+		height: even(manifest.height),
+		codec: options.codec ?? "h264",
+		quality: options.quality ?? "very_high",
+		keyFrameIntervalSec: options.keyFrameIntervalSec ?? 5,
+		audio: options.audio !== false,
+	};
+}
+
+/** Renders one export now: builds the composition and runs the chunked job. */
+async function exportOnce(
 	manifest: WebBundleManifest,
 	exported: unknown,
 	options: WebExportOptions,
@@ -132,24 +209,25 @@ async function exportVideo(
 			: target.toVirtualMedia?.()
 	) as VirtualMediaData | undefined;
 	if (!vm) throw new Error(`"${manifest.export}" is not a composition.`);
-
-	const fps = vm.metadata?.fps ?? target.fps ?? manifest.fps;
+	const settings = settingsFor(manifest, options);
+	const built = {
+		fps: vm.metadata?.fps ?? target.fps ?? manifest.fps,
+		width: even(vm.metadata?.width ?? manifest.width),
+		height: even(vm.metadata?.height ?? manifest.height),
+	};
+	if (
+		built.fps !== settings.fps ||
+		built.width !== settings.width ||
+		built.height !== settings.height
+	)
+		throw new Error(
+			`The composition builds at ${built.width}x${built.height} ${built.fps} fps here but ${settings.width}x${settings.height} ${settings.fps} fps in the bundle's manifest; rebuild the bundle.`,
+		);
 	const durationMs =
 		vm.metadata?.durationMs && vm.metadata.durationMs > 0
 			? vm.metadata.durationMs
 			: manifest.durationMs;
 	vm.metadata.durationMs = durationMs;
-	const settings: ExportSettings = {
-		bundleId: manifest.id,
-		totalFrames: frameCount(durationMs, fps),
-		fps,
-		width: even(vm.metadata?.width ?? manifest.width),
-		height: even(vm.metadata?.height ?? manifest.height),
-		codec: options.codec ?? "h264",
-		quality: options.quality ?? "very_high",
-		keyFrameIntervalSec: options.keyFrameIntervalSec ?? 5,
-		audio: options.audio !== false,
-	};
 	const jobId = await exportJobId(settings);
 	const store: ExportStore =
 		options.storage !== "memory" && OpfsExportStore.available()

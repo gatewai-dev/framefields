@@ -80,7 +80,9 @@ export interface ExportJobState {
 const STATE = "job.json";
 const chunkName = (i: number) => `chunk-${String(i).padStart(4, "0")}.mp4`;
 const AUDIO = "audio.m4a";
-const OUTPUT = "output.mp4";
+/** The finished file in a job's folder. */
+export const OUTPUT_FILE = "output.mp4";
+const OUTPUT = OUTPUT_FILE;
 
 /** A stable id for an export of these settings. */
 export async function exportJobId(settings: ExportSettings): Promise<string> {

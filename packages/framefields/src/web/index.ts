@@ -16,6 +16,7 @@
  */
 import type { WebBundle } from "./types.js";
 
+export type * from "./queue.js";
 export type * from "./types.js";
 
 /** Opens the web bundle at `base`: the folder holding its `manifest.json`. */

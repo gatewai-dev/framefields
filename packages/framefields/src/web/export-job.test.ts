@@ -18,6 +18,7 @@ import {
 	exportJobId,
 	runExportJob,
 } from "./export-job.js";
+import { RenderQueue } from "./queue.js";
 import { MemoryExportStore, type StoreWriter } from "./store.js";
 
 const hasFfmpeg = (() => {
@@ -236,5 +237,58 @@ describe("runExportJob", () => {
 			options,
 		});
 		expect(second.drawn).toEqual([0, 12, 24]);
+	}, 120_000);
+
+	it("resumes through the queue: stopped keeping its chunks, enqueued again", async () => {
+		const dir = await fs.mkdtemp(path.join(os.tmpdir(), "ff-webjob-"));
+		// One kept store per export, as OPFS keeps one folder per job id.
+		const stores = new Map<string, MemoryExportStore>();
+		const storeOf = (jobId: string) => {
+			let store = stores.get(jobId);
+			if (!store)
+				stores.set(
+					jobId,
+					(store = new MemoryExportStore({ persistent: true })),
+				);
+			return store;
+		};
+		let queue!: RenderQueue;
+		let id = "";
+		const drawn: number[] = [];
+		const backend = nodeBackend(dir, (start) => {
+			drawn.push(start);
+			if (start === 12 && drawn.length === 2)
+				void queue.cancel(id, { discard: false });
+		}).backend;
+		queue = await RenderQueue.open({
+			jobId: async () => exportJobId(settings),
+			run: async (render, control) =>
+				runExportJob({
+					jobId: render.jobId,
+					settings,
+					store: storeOf(render.jobId),
+					backend,
+					options: { ...options, ...control },
+				}),
+			file: async () => undefined,
+			discard: async (render) => {
+				stores.delete(render.jobId);
+			},
+		});
+		id = await queue.enqueue({ quality: "high" });
+		expect((await queue.whenSettled(id)).status).toBe("cancelled");
+		expect(drawn).toEqual([0, 12]);
+
+		const again = await queue.enqueue({ quality: "high" });
+		const done = await queue.whenSettled(again);
+		expect(done.status).toBe("done");
+		// Only the missing chunk was drawn again.
+		expect(drawn).toEqual([0, 12, 24]);
+		expect(done.result?.chunks.map((c) => c.resumed)).toEqual([
+			true,
+			true,
+			false,
+		]);
+		expect(done.result?.frames).toBe(FRAMES);
 	}, 120_000);
 });

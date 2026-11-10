@@ -6,6 +6,7 @@
  * memory, or memory when OPFS is missing.
  */
 import type { StreamTargetChunk } from "mediabunny";
+import type { QueuedRender } from "./queue.js";
 
 /** A file being written: positioned writes, as mediabunny's `StreamTarget` makes them. */
 export interface StoreWriter {
@@ -57,6 +58,15 @@ export class OpfsExportStore implements ExportStore {
 		});
 		const dir = await parent.getDirectoryHandle(jobId, { create: true });
 		return new OpfsExportStore(parent, dir);
+	}
+
+	/** Removes one job's folder and everything in it. */
+	static async removeJob(jobId: string): Promise<void> {
+		const root = await navigator.storage.getDirectory();
+		const parent = await root.getDirectoryHandle(EXPORTS_DIR, {
+			create: true,
+		});
+		await parent.removeEntry(jobId, { recursive: true }).catch(() => {});
 	}
 
 	/** Removes every export's folder, finished or not. */
@@ -198,4 +208,32 @@ function assemble(
 	const out = new Uint8Array(size);
 	for (const { position, data } of parts) out.set(data, position);
 	return out;
+}
+
+/** A render queue's saved line: one JSON file beside the export folders. */
+export class OpfsQueueState {
+	constructor(private readonly name: string) {}
+
+	async load(): Promise<QueuedRender[] | undefined> {
+		try {
+			const dir = await exportsDir();
+			const file = await (await dir.getFileHandle(this.name)).getFile();
+			return JSON.parse(await file.text()) as QueuedRender[];
+		} catch {
+			return undefined; // none yet, or torn by a kill mid-write
+		}
+	}
+
+	async save(renders: readonly QueuedRender[]): Promise<void> {
+		const dir = await exportsDir();
+		const handle = await dir.getFileHandle(this.name, { create: true });
+		const writable = await handle.createWritable();
+		await writable.write(JSON.stringify(renders));
+		await writable.close();
+	}
+}
+
+async function exportsDir(): Promise<FileSystemDirectoryHandle> {
+	const root = await navigator.storage.getDirectory();
+	return root.getDirectoryHandle(EXPORTS_DIR, { create: true });
 }

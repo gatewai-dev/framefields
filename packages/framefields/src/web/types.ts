@@ -2,6 +2,7 @@
  * Types shared by the web bundle builder (Node), the loader (`framefields/web`)
  * and the export runtime inside a bundle (`engine/web.mjs`).
  */
+import type { RenderQueue } from "./queue.js";
 
 /** Written by `framefields bundle` as `manifest.json` at the bundle's root. */
 export interface WebBundleManifest {
@@ -114,8 +115,17 @@ export interface WebExportResult {
 /** A web bundle, opened: what it renders, and the export of it. */
 export interface WebBundle {
 	manifest: WebBundleManifest;
-	/** Renders the composition to MP4 on this device, chunk by chunk. */
+	/**
+	 * Renders waiting in line, run one after another on this page's GPU and
+	 * saved across reloads: `enqueue(options)` returns at once; `subscribe`
+	 * reports progress and results.
+	 */
+	queue: RenderQueue;
+	/**
+	 * Renders the composition to MP4 on this device, chunk by chunk, and
+	 * waits for it: a queue of one, behind whatever is already in line.
+	 */
 	exportVideo(options?: WebExportOptions): Promise<WebExportResult>;
-	/** Deletes every export kept in this origin's storage (finished files included). */
+	/** Cancels the queue and deletes every export kept in this origin's storage (finished files included). */
 	clearExports(): Promise<void>;
 }

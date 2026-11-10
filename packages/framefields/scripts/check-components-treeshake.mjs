@@ -155,7 +155,7 @@ for (const marker of [CONTRACT, STROKES, TARGETS, GLYPHS, ...OWN]) {
 const walk = (dir) =>
 	readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
 		e.isDirectory()
-			? e.name === "registry" || e.name === "preview-engine"
+			? ["registry", "preview-engine", "preview-page"].includes(e.name)
 				? []
 				: walk(join(dir, e.name))
 			: e.name.endsWith(".mjs")

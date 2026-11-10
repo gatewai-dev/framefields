@@ -63,8 +63,22 @@ describe("startPreview", () => {
 		expect(audio).toEqual({ state: "none" });
 
 		const page = await (await fetch(session.url)).text();
-		expect(page).toContain('id="canvas"');
-		expect(page).toContain("/@framefields/player.js");
+		expect(page).toContain("<ff-preview>");
+		// The page's script runs first, so it hears the player announce itself.
+		expect(page.indexOf("/@framefields/ui/main.js")).toBeGreaterThan(0);
+		expect(page.indexOf("/@framefields/player.js")).toBeGreaterThan(
+			page.indexOf("/@framefields/ui/main.js"),
+		);
+		const script = await fetch(`${session.url}@framefields/ui/main.js`);
+		expect(script.headers.get("content-type")).toContain("javascript");
+		expect(script.headers.get("cache-control")).toBe("no-store");
+		expect(await script.text()).toContain("ff-preview");
+		const styles = await fetch(`${session.url}@framefields/ui/main.css`);
+		expect(styles.headers.get("content-type")).toContain("text/css");
+		expect(await styles.text()).toContain(".stage");
+		expect((await fetch(`${session.url}@framefields/ui/app.ts`)).status).toBe(
+			404,
+		);
 
 		const player = await fetch(`${session.url}@framefields/player.js`);
 		expect(player.headers.get("content-type")).toContain("javascript");

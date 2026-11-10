@@ -15,11 +15,27 @@ import {
 	ENGINE_URL,
 	engineDir,
 	onnxRuntimeWeb,
+	PAGE_URL,
+	pageDir,
 	visionModelsDir,
 } from "./bundle.js";
 import { describeNote, type NewNote, NoteStore } from "./notes.js";
-import { previewPage } from "./page.js";
 import { computePeaks, PEAK_BINS, SILENT_PEAK } from "./peaks.js";
+import type {
+	AudioStatus,
+	NoteRequest,
+	PreviewMeta,
+	PreviewMetaReply,
+} from "./protocol.js";
+
+/** A notes request as received: a `NoteRequest`, unchecked. */
+type NoteBody = {
+	op?: NoteRequest["op"];
+	id?: number;
+	done?: boolean;
+	text?: string;
+	note?: NewNote;
+};
 
 /** Where the composition comes from: the module that builds it. */
 export interface PreviewSource {
@@ -110,25 +126,6 @@ export interface PreviewSession {
 	/** Resolves with the reason when the server stops. */
 	closed: Promise<PreviewCloseReason>;
 }
-
-interface PreviewMeta {
-	session: string;
-	/** Where notes are kept; null when they are off. */
-	notesDir: string | null;
-	title: string;
-	fps: number;
-	frameCount: number;
-	width: number;
-	height: number;
-}
-
-type AudioStatus =
-	/** The page mixes it (the default); the server only when the page asks. */
-	| { state: "browser" }
-	| { state: "mixing" }
-	| { state: "ready"; durationSec: number; peaks: number[] }
-	| { state: "none" }
-	| { state: "error"; error: string };
 
 /** Requests carrying this header come from another preview process, not a page. */
 const TAKEOVER_HEADER = "x-framefields-preview";
@@ -233,6 +230,8 @@ export async function startPreview(
 	};
 	const engine = engineDir();
 	engine.catch(() => {});
+	const page = pageDir();
+	page.catch(() => {});
 
 	// ── Audio: the page mixes it with the export's mixer, reading sources
 	// itself (straight from their bucket, for pinned assets). The server mixes
@@ -322,29 +321,29 @@ export async function startPreview(
 		res.setHeader("cross-origin-opener-policy", "same-origin");
 		res.setHeader("cross-origin-embedder-policy", "credentialless");
 		try {
+			// The page: its HTML here, its script and styles under PAGE_URL.
 			if (req.method === "GET" && url.pathname === "/") {
-				res.writeHead(200, {
-					"content-type": "text/html; charset=utf-8",
-					"cache-control": "no-store",
-				});
-				res.end(previewPage);
+				await sendFile(req, res, path.join(await page, "index.html"), true);
 				return;
 			}
 			if (req.method === "GET" && url.pathname === "/meta") {
-				sendJson(res, 200, { ...meta, audio });
+				sendJson(res, 200, { ...meta, audio } satisfies PreviewMetaReply);
 				return;
 			}
-			if (req.method === "GET" && url.pathname.startsWith(`${ENGINE_URL}/`)) {
-				const dir = await engine;
+			for (const [prefix, dir] of [
+				[ENGINE_URL, engine],
+				[PAGE_URL, page],
+			] as const) {
+				if (req.method !== "GET" || !url.pathname.startsWith(`${prefix}/`))
+					continue;
+				const root = await dir;
 				const file = path.resolve(
-					dir,
-					`.${url.pathname.slice(ENGINE_URL.length)}`,
+					root,
+					`.${url.pathname.slice(prefix.length)}`,
 				);
-				if (isInside(dir, file) && (await isFile(file))) {
-					await sendFile(req, res, file);
-					return;
-				}
-				sendJson(res, 404, { error: "not found" });
+				if (isInside(root, file) && (await isFile(file)))
+					await sendFile(req, res, file, prefix === PAGE_URL);
+				else sendJson(res, 404, { error: "not found" });
 				return;
 			}
 			if (req.method === "GET" && url.pathname === PLAYER_PATH) {
@@ -455,13 +454,9 @@ export async function startPreview(
 					req.method === "POST" &&
 					req.headers["content-type"] === "application/json"
 				) {
-					const body = JSON.parse(await readBody(req, 16 * 1024 * 1024)) as {
-						op?: string;
-						id?: number;
-						done?: boolean;
-						text?: string;
-						note?: NewNote;
-					};
+					const body = JSON.parse(
+						await readBody(req, 16 * 1024 * 1024),
+					) as NoteBody;
 					const change = noteQueue.then(() =>
 						changeNote(notes, body, meta.fps, say),
 					);
@@ -629,13 +624,7 @@ function repoRoot(dir: string): string {
 /** Applies one change from the page and says what it was. */
 async function changeNote(
 	notes: NoteStore,
-	body: {
-		op?: string;
-		id?: number;
-		done?: boolean;
-		text?: string;
-		note?: NewNote;
-	},
+	body: NoteBody,
 	fps: number,
 	say: (line: string) => void,
 ) {
@@ -715,6 +704,9 @@ const CONTENT_TYPES: Record<string, string> = {
 	".woff": "font/woff",
 	".woff2": "font/woff2",
 	".json": "application/json",
+	".html": "text/html; charset=utf-8",
+	".css": "text/css; charset=utf-8",
+	".map": "application/json",
 	".js": "text/javascript; charset=utf-8",
 	".mjs": "text/javascript; charset=utf-8",
 	".wasm": "application/wasm",
@@ -757,6 +749,8 @@ async function sendFile(
 	req: http.IncomingMessage,
 	res: http.ServerResponse,
 	file: string,
+	/** The page's own files: always fetched fresh, as a newer framefields may serve them. */
+	noStore = false,
 ) {
 	const { size } = await fs.promises.stat(file);
 	const type =
@@ -782,7 +776,7 @@ async function sendFile(
 		"content-type": type,
 		"content-length": end - start + 1,
 		"accept-ranges": "bytes",
-		"cache-control": "no-cache",
+		"cache-control": noStore ? "no-store" : "no-cache",
 		...(range && { "content-range": `bytes ${start}-${end}/${size}` }),
 	});
 	if (req.method === "HEAD") {

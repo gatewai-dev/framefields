@@ -1,0 +1,186 @@
+/* ── Timeline ── */
+.timeline {
+	flex: none;
+	border: 1px solid var(--line);
+	border-radius: var(--radius);
+	background: var(--surface);
+	padding: 0 14px;
+	user-select: none;
+	-webkit-user-select: none;
+	touch-action: none;
+	cursor: pointer;
+}
+.tl-inner {
+	position: relative;
+}
+.ruler {
+	position: relative;
+	height: 22px;
+	border-bottom: 1px solid var(--line);
+}
+.tick {
+	position: absolute;
+	bottom: 0;
+	width: 1px;
+	height: 4px;
+	background: var(--line-2);
+}
+.tick.major {
+	height: 8px;
+	background: var(--ink-3);
+}
+.tick span {
+	position: absolute;
+	bottom: 9px;
+	left: 4px;
+	font-size: 10.5px;
+	line-height: 1;
+	color: var(--ink-3);
+	white-space: nowrap;
+	font-variant-numeric: tabular-nums;
+}
+.wave-lane {
+	position: relative;
+	height: 48px;
+}
+@media (max-height: 600px) {
+	.wave-lane {
+		height: 30px;
+	}
+}
+.wave-lane canvas {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+}
+.wave-state {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+	color: var(--ink-3);
+	font-size: 12px;
+}
+.wave-state.shimmer {
+	background: linear-gradient(
+		90deg,
+		transparent 0%,
+		color-mix(in srgb, var(--ink) 6%, transparent) 50%,
+		transparent 100%
+	);
+	background-size: 200% 100%;
+	animation: shimmer 1.4s linear infinite;
+}
+@keyframes shimmer {
+	from {
+		background-position: 100% 0;
+	}
+	to {
+		background-position: -100% 0;
+	}
+}
+.playhead {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	width: 0;
+	pointer-events: none;
+	z-index: 3;
+}
+.playhead::before {
+	content: "";
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	left: -0.5px;
+	width: 1px;
+	background: var(--ink);
+}
+.playhead::after {
+	content: "";
+	position: absolute;
+	top: 0;
+	left: -5px;
+	width: 10px;
+	height: 11px;
+	background: var(--ink);
+	clip-path: polygon(0 0, 100% 0, 100% 55%, 50% 100%, 0 55%);
+}
+.hover-line {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	width: 1px;
+	background: var(--line-2);
+	display: none;
+	pointer-events: none;
+}
+.hover-time {
+	position: absolute;
+	top: -28px;
+	transform: translateX(-50%);
+	display: none;
+	pointer-events: none;
+	font-size: 11px;
+	line-height: 1;
+	background: var(--surface-3);
+	color: var(--ink);
+	padding: 5px 7px;
+	border-radius: 5px;
+	white-space: nowrap;
+	z-index: 4;
+	font-variant-numeric: tabular-nums;
+}
+.note-marks {
+	position: absolute;
+	left: 0;
+	right: 0;
+	top: 22px;
+	bottom: 0;
+	pointer-events: none;
+	z-index: 2;
+}
+.note-mark {
+	position: absolute;
+	top: 5px;
+	width: 14px;
+	height: 14px;
+	margin-left: -7px;
+	padding: 0;
+	border: 0;
+	border-radius: 50%;
+	display: grid;
+	place-items: center;
+	pointer-events: auto;
+	cursor: pointer;
+	background: var(--brand);
+	color: #fff;
+	font-size: 8.5px;
+	font-weight: 700;
+	box-shadow: 0 0 0 2px var(--surface);
+}
+.note-mark::after {
+	content: "";
+	position: absolute;
+	top: 14px;
+	left: 6.5px;
+	width: 1px;
+	height: 30px;
+	background: var(--brand);
+	opacity: 0.45;
+}
+.note-mark.done {
+	background: var(--ink-3);
+}
+.note-mark.stacked::after {
+	display: none;
+}
+.note-mark.done::after {
+	background: var(--ink-3);
+}
+.note-mark:hover {
+	transform: scale(1.2);
+}

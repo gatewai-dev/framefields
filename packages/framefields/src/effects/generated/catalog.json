@@ -2792,6 +2792,31 @@
 			]
 		},
 		{
+			"name": "Shader",
+			"op": "Shader",
+			"kind": "effect",
+			"factory": "shader",
+			"node": "node-shader",
+			"aliases": [],
+			"custom": null,
+			"props": [
+				{
+					"name": "fragment",
+					"type": "string",
+					"signal": false,
+					"default": "",
+					"description": "WGSL that defines `fn shade(uv: vec2<f32>) -> vec4<f32>`: the layer's premultiplied color at `uv` (0,0 top-left to 1,1 bottom-right). It reads `u.time` (seconds since the layer started), `u.frame`, `u.resolution` (px) and one `u.<name>` per uniform."
+				},
+				{
+					"name": "uniforms",
+					"type": "Partial<ShaderUniforms>",
+					"signal": false,
+					"default": {},
+					"description": "Named f32 uniforms, each a number, a signal or a `(ctx) => number` function sampled every frame; `u.<name>` in the shader."
+				}
+			]
+		},
+		{
 			"name": "StereoPanning",
 			"op": "StereoPanning",
 			"kind": "audio",

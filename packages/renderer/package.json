@@ -104,6 +104,7 @@
 		"@framefields/node-rotate": "workspace:*",
 		"@framefields/node-sdk": "workspace:*",
 		"@framefields/node-selective-color": "workspace:*",
+		"@framefields/node-shader": "workspace:*",
 		"@framefields/node-shadows-highlights": "workspace:*",
 		"@framefields/node-shape-generator": "workspace:*",
 		"@framefields/node-signal-gate": "workspace:*",

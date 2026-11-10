@@ -3,7 +3,7 @@
 // Regenerate with `pnpm run generate:effects`.
 
 import { Effect } from "@framefields/core";
-import type { EffectProp } from "../types.js";
+import type { EffectProp, ShaderUniforms } from "../types.js";
 import { withDefaults } from "../with-defaults.js";
 import { effectMeta } from "./meta.js";
 
@@ -3464,6 +3464,36 @@ export class Rotate extends Effect<RotateProps, "Rotate", "visual"> {
 
 	constructor(config: RotateProps = {}) {
 		super(withDefaults("Rotate", rotateDefaults, config, effectMeta.Rotate));
+	}
+}
+
+export interface ShaderProps {
+	/**
+	 * WGSL that defines `fn shade(uv: vec2<f32>) -> vec4<f32>`: the layer's premultiplied color at `uv` (0,0 top-left to 1,1 bottom-right). It reads `u.time` (seconds since the layer started), `u.frame`, `u.resolution` (px) and one `u.<name>` per uniform.
+	 * @default ""
+	 */
+	fragment?: string;
+	/**
+	 * Named f32 uniforms, each a number, a signal or a `(ctx) => number` function sampled every frame; `u.<name>` in the shader.
+	 * @default {}
+	 */
+	uniforms?: Partial<ShaderUniforms>;
+}
+
+const shaderDefaults: ShaderProps = {
+	fragment: "",
+	uniforms: {},
+};
+
+export class Shader extends Effect<ShaderProps, "Shader", "visual"> {
+	public readonly op = "Shader" as const;
+	public override readonly domain = "visual" as const;
+
+	public declare fragment: string;
+	public declare uniforms: Partial<ShaderUniforms>;
+
+	constructor(config: ShaderProps = {}) {
+		super(withDefaults("Shader", shaderDefaults, config, effectMeta.Shader));
 	}
 }
 

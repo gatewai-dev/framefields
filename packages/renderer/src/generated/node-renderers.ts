@@ -307,6 +307,11 @@ export const BUILTIN_NODE_RENDERERS: readonly BuiltinNodeRenderer[] = [
 		load: () => import("@framefields/node-selective-color/renderer"),
 	},
 	{
+		packageName: "@framefields/node-shader",
+		ops: ["Shader"],
+		load: () => import("@framefields/node-shader/renderer"),
+	},
+	{
 		packageName: "@framefields/node-shadows-highlights",
 		ops: ["ShadowsHighlights"],
 		load: () => import("@framefields/node-shadows-highlights/renderer"),

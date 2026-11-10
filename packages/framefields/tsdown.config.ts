@@ -2,7 +2,7 @@ import { cpSync, existsSync } from "node:fs";
 import { defineConfig } from "tsdown";
 import { writeApiCatalog } from "./scripts/build-api-catalog.ts";
 import { fixDtsAliases } from "./scripts/fix-dts-aliases.mjs";
-import { buildEngine } from "./src/preview/bundle.ts";
+import { buildEngine, buildPage } from "./src/preview/bundle.ts";
 
 export default defineConfig({
 	entry: [
@@ -26,6 +26,8 @@ export default defineConfig({
 	onSuccess: async () => {
 		// The live preview's browser engine, shipped prebuilt in dist/preview-engine.
 		await buildEngine("dist/preview-engine");
+		// Its page (the Lit UI), as static files in dist/preview-page.
+		await buildPage("dist/preview-page");
 		// The component registry `framefields add` installs from.
 		const registry = "../components/dist/registry";
 		if (!existsSync(registry))

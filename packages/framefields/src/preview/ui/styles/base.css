@@ -1,0 +1,205 @@
+:root {
+	--bg: #0e0f11;
+	--surface: #16171a;
+	--surface-2: #1d1e22;
+	--surface-3: #26282d;
+	--line: #2a2c31;
+	--line-2: #3a3c43;
+	--ink: #ededf0;
+	--ink-2: #a6a8b0;
+	--ink-3: #74777f;
+	--stage: #060607;
+	--primary-bg: #ededf0;
+	--primary-ink: #0e0f11;
+	--brand: #3b82f6;
+	--focus: #5eaefc;
+	--ok: #4fbf7a;
+	--bad: #f27d8d;
+	--wave: #4b4e57;
+	--radius: 10px;
+	--font:
+		"Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+	color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+	:root {
+		--bg: #f5f5f6;
+		--surface: #ffffff;
+		--surface-2: #f0f0f2;
+		--surface-3: #e6e6e9;
+		--line: #e2e2e6;
+		--line-2: #cfcfd5;
+		--ink: #15161a;
+		--ink-2: #53555d;
+		--ink-3: #85878f;
+		--stage: #0b0b0c;
+		--primary-bg: #15161a;
+		--primary-ink: #ffffff;
+		--brand: #2563eb;
+		--focus: #1c74cc;
+		--ok: #23874a;
+		--bad: #cf4057;
+		--wave: #c2c3ca;
+		color-scheme: light;
+	}
+}
+* {
+	box-sizing: border-box;
+}
+html,
+body {
+	height: 100%;
+	margin: 0;
+	overflow: hidden;
+	background: var(--bg);
+	color: var(--ink);
+}
+body {
+	display: flex;
+	flex-direction: column;
+	height: 100dvh;
+	font: 13.5px / 1.45 var(--font);
+	-webkit-font-smoothing: antialiased;
+	font-feature-settings: "cv11", "ss03";
+}
+button,
+input {
+	font: inherit;
+	color: inherit;
+}
+button {
+	cursor: pointer;
+}
+button:focus-visible,
+input:focus-visible {
+	outline: 2px solid var(--focus);
+	outline-offset: 2px;
+}
+.tnum {
+	font-variant-numeric: tabular-nums;
+}
+.grow {
+	flex: 1;
+}
+.spinner {
+	width: 12px;
+	height: 12px;
+	border-radius: 50%;
+	flex: none;
+	border: 1.5px solid var(--line-2);
+	border-top-color: var(--ink);
+	animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+.dot {
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	background: currentColor;
+	flex: none;
+}
+
+/* Spinning arcs: the picture's buffering mark and the play button's. */
+@keyframes yt-rotate {
+	to {
+		transform: rotate(360deg);
+	}
+}
+@keyframes yt-dash {
+	0% {
+		stroke-dasharray: 1 150;
+		stroke-dashoffset: 0;
+	}
+	50% {
+		stroke-dasharray: 90 150;
+		stroke-dashoffset: -35;
+	}
+	100% {
+		stroke-dasharray: 90 150;
+		stroke-dashoffset: -124;
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.buffering circle,
+	.play-btn .spin circle {
+		animation: none;
+		stroke-dasharray: 70 150;
+	}
+}
+
+/* Shared by the notes panel and popover. */
+.badge {
+	min-width: 18px;
+	height: 18px;
+	padding: 0 5px;
+	border-radius: 9px;
+	display: inline-grid;
+	place-items: center;
+	flex: none;
+	background: var(--brand);
+	color: #fff;
+	font-size: 10.5px;
+	font-weight: 600;
+}
+.badge.done {
+	background: var(--ink-3);
+}
+.btn {
+	height: 26px;
+	padding: 0 10px;
+	border-radius: 7px;
+	border: 0;
+	font-size: 12px;
+	font-weight: 500;
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	background: transparent;
+	color: var(--ink-2);
+	white-space: nowrap;
+}
+.btn:hover:not(:disabled) {
+	background: var(--surface-2);
+	color: var(--ink);
+}
+.btn.primary {
+	background: var(--primary-bg);
+	color: var(--primary-ink);
+}
+.btn.primary:hover:not(:disabled) {
+	background: var(--primary-bg);
+	filter: brightness(0.9);
+}
+.btn.danger:hover:not(:disabled) {
+	color: var(--bad);
+}
+.btn:disabled {
+	opacity: 0.4;
+	cursor: default;
+}
+.btn svg {
+	width: 13px;
+	height: 13px;
+}
+.x-btn {
+	width: 22px;
+	height: 22px;
+	padding: 0;
+	justify-content: center;
+	margin-right: -4px;
+}
+
+/* The page's elements render into the light DOM and lay out as their contents. */
+ff-preview,
+ff-header,
+ff-stage,
+ff-transport,
+ff-timeline,
+ff-notes-panel,
+ff-note-editor {
+	display: contents;
+}

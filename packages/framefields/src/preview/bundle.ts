@@ -9,6 +9,9 @@
  *    preview. Its `framefields` imports point at the engine's files, so the
  *    composition and the player share one engine (signals, clock, caches).
  *
+ * The page around them (`buildPage`) is its own small bundle: the Lit UI in
+ * `ui/`, shipped prebuilt in `dist/preview-page`, or built on first use.
+ *
  * Node APIs that compositions use at build time are shimmed: `path`, `url`,
  * `os`, `import.meta.url` (each file keeps its own `file://` URL), and `fs`
  * reads, which fetch the file from the preview server. Absolute file paths
@@ -29,6 +32,9 @@ const require = createRequire(import.meta.url);
 
 /** URL prefix the server serves the engine's files under. */
 export const ENGINE_URL = "/@framefields/engine";
+
+/** URL prefix the server serves the page's script and styles under. */
+export const PAGE_URL = "/@framefields/ui";
 
 /** Public entry points a composition may import, and their sources. */
 const ENTRIES: Record<string, string> = {
@@ -196,41 +202,103 @@ export async function bundleProject(options: {
 	return { code: result.outputFiles[0].text, inputs };
 }
 
-let engineBuild: Promise<string> | undefined;
-
 /**
- * The prebuilt engine shipped beside a compiled bundle, if there is one. The
- * bundle lands either at the package's dist root or beside dist/preview,
- * depending on how the bundler splits it, so both are checked.
+ * Builds the preview page into `outDir`: `index.html`, and `main.js` and
+ * `main.css` from the UI's sources (Lit included; nothing else of the page
+ * reaches a project's code). `dev` keeps it readable, with a source map.
  */
-export function prebuiltEngineDir(here: string): string | undefined {
-	return [here, path.join(here, "..")]
-		.map((base) => path.join(base, "preview-engine"))
-		.find((dir) => fs.existsSync(path.join(dir, "player.mjs")));
+export async function buildPage(
+	outDir: string,
+	{ dev = false }: { dev?: boolean } = {},
+): Promise<void> {
+	const { build } = await import("esbuild");
+	const ui = path.join(HERE, "ui");
+	await fs.promises.rm(outDir, { recursive: true, force: true });
+	await build({
+		...BROWSER,
+		entryPoints: { main: path.join(ui, "main.ts") },
+		outdir: outDir,
+		minify: !dev,
+		sourcemap: dev ? "inline" : false,
+		// Lit's production build: its development one warns in the console.
+		conditions: ["browser", "import"],
+		// Types the page shares with the server are erased; nothing of Node may remain.
+		plugins: [
+			{
+				name: "framefields-page",
+				setup(b) {
+					b.onResolve({ filter: /^(node:|@framefields\/)/ }, (args) => ({
+						errors: [
+							{
+								text: `the preview page may not import ${args.path} (from ${args.importer})`,
+							},
+						],
+					}));
+				},
+			},
+		],
+	});
+	await fs.promises.copyFile(
+		path.join(ui, "index.html"),
+		path.join(outDir, "index.html"),
+	);
 }
 
 /**
- * The engine to serve: prebuilt in the package's dist, or, running from
- * source, built once per process (so engine edits show without a rebuild).
+ * A prebuilt folder shipped beside a compiled bundle (`dist/<name>`), if
+ * there is one. The bundle lands either at the package's dist root or beside
+ * dist/preview, depending on how the bundler splits it, so both are checked.
  */
-export function engineDir(): Promise<string> {
-	// From source HERE is src/preview, so this misses and the engine is built.
-	const prebuilt = prebuiltEngineDir(HERE);
-	if (prebuilt) {
-		return Promise.resolve(prebuilt);
+function prebuiltDir(here: string, name: string, marker: string) {
+	return [here, path.join(here, "..")]
+		.map((base) => path.join(base, name))
+		.find((dir) => fs.existsSync(path.join(dir, marker)));
+}
+
+/** The prebuilt engine shipped beside a compiled bundle, if there is one. */
+export function prebuiltEngineDir(here: string): string | undefined {
+	return prebuiltDir(here, "preview-engine", "player.mjs");
+}
+
+const builds = new Map<string, Promise<string>>();
+
+/**
+ * `name` prebuilt in the package's dist or, running from source (where HERE
+ * is src/preview, so the lookup misses), built once per process into a
+ * temporary folder, so edits show without a package build.
+ */
+function prebuiltOrBuild(
+	prebuilt: string | undefined,
+	name: string,
+	build: (dir: string) => Promise<void>,
+): Promise<string> {
+	if (prebuilt) return Promise.resolve(prebuilt);
+	let pending = builds.get(name);
+	if (!pending) {
+		const dir = path.join(os.tmpdir(), `framefields-${name}-${process.pid}`);
+		pending = build(dir).then(() => dir);
+		builds.set(name, pending);
+		pending.catch(() => builds.delete(name));
 	}
-	engineBuild ??= (async () => {
-		const dir = path.join(
-			os.tmpdir(),
-			`framefields-preview-engine-${process.pid}`,
-		);
-		await buildEngine(dir);
-		return dir;
-	})();
-	engineBuild.catch(() => {
-		engineBuild = undefined;
-	});
-	return engineBuild;
+	return pending;
+}
+
+/** The browser engine to serve. */
+export function engineDir(): Promise<string> {
+	return prebuiltOrBuild(
+		prebuiltEngineDir(HERE),
+		"preview-engine",
+		buildEngine,
+	);
+}
+
+/** The preview page to serve. */
+export function pageDir(): Promise<string> {
+	return prebuiltOrBuild(
+		prebuiltDir(HERE, "preview-page", "main.js"),
+		"preview-page",
+		(dir) => buildPage(dir, { dev: true }),
+	);
 }
 
 /** Where vision models are cached, as `@framefields/vision` resolves it. */

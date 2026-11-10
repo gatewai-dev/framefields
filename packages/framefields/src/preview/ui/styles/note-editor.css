@@ -1,0 +1,57 @@
+.pop {
+	position: fixed;
+	z-index: 20;
+	width: 280px;
+	display: none;
+	padding: 10px 10px 8px;
+	background: var(--surface);
+	border: 1px solid var(--line-2);
+	border-radius: 12px;
+	box-shadow: 0 12px 32px rgb(0 0 0 / 0.35);
+}
+.pop.on {
+	display: block;
+}
+.pop-head {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-size: 11.5px;
+	color: var(--ink-3);
+	margin-bottom: 6px;
+}
+.pop textarea {
+	display: block;
+	width: 100%;
+	min-height: 54px;
+	max-height: 180px;
+	resize: none;
+	padding: 2px 2px 0;
+	border: 0;
+	outline: none;
+	background: transparent;
+	color: var(--ink);
+	font: inherit;
+	line-height: 1.45;
+}
+.pop textarea::placeholder {
+	color: var(--ink-3);
+}
+.pop-text {
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	padding: 0 2px;
+	max-height: 200px;
+	overflow: auto;
+}
+.pop-foot {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin-top: 8px;
+	font-size: 11.5px;
+	color: var(--ink-3);
+}
+.pop-foot .err {
+	color: var(--bad);
+}

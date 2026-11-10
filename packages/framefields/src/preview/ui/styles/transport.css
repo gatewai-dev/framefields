@@ -1,0 +1,250 @@
+/* ── Transport ── */
+.transport {
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	flex-wrap: wrap;
+	row-gap: 6px;
+}
+.icon-btn {
+	width: 32px;
+	height: 32px;
+	display: inline-grid;
+	place-items: center;
+	border-radius: 8px;
+	border: 0;
+	background: transparent;
+	color: var(--ink-2);
+	flex: none;
+}
+.icon-btn:hover:not(:disabled) {
+	background: var(--surface-2);
+	color: var(--ink);
+}
+.icon-btn:disabled {
+	opacity: 0.35;
+	cursor: default;
+}
+.icon-btn svg {
+	width: 16px;
+	height: 16px;
+}
+.play-btn {
+	width: 36px;
+	height: 36px;
+	border-radius: 50%;
+	border: 0;
+	display: inline-grid;
+	place-items: center;
+	flex: none;
+	background: var(--primary-bg);
+	color: var(--primary-ink);
+	margin: 0 2px;
+}
+.play-btn:hover:not(:disabled) {
+	filter: brightness(0.9);
+}
+.play-btn:disabled {
+	opacity: 0.4;
+	cursor: default;
+}
+.play-btn svg {
+	width: 14px;
+	height: 14px;
+}
+.play-btn .spin {
+	display: none;
+	width: 20px;
+	height: 20px;
+	animation: yt-rotate 1.4s linear infinite;
+}
+.play-btn .spin circle {
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 5;
+	stroke-linecap: round;
+	stroke-dasharray: 1 150;
+	animation: yt-dash 1.4s ease-in-out infinite;
+}
+.play-btn.loading .spin {
+	display: block;
+}
+.play-btn.loading svg:not(.spin) {
+	display: none;
+}
+.timecode {
+	display: flex;
+	align-items: baseline;
+	gap: 5px;
+	margin-left: 8px;
+	font-size: 13px;
+	white-space: nowrap;
+}
+.timecode .dim {
+	color: var(--ink-3);
+}
+.timecode .frame {
+	color: var(--ink-3);
+	font-size: 11.5px;
+	margin-left: 6px;
+}
+.fps {
+	margin-left: 10px;
+	color: var(--ink-3);
+	font-size: 11.5px;
+	white-space: nowrap;
+}
+input[type="range"].slider {
+	-webkit-appearance: none;
+	appearance: none;
+	width: 72px;
+	height: 4px;
+	border-radius: 2px;
+	background: var(--line-2);
+	margin: 0 8px 0 0;
+}
+input[type="range"].slider::-webkit-slider-thumb {
+	-webkit-appearance: none;
+	width: 12px;
+	height: 12px;
+	border-radius: 50%;
+	background: var(--ink);
+	border: 0;
+}
+input[type="range"].slider::-moz-range-thumb {
+	width: 12px;
+	height: 12px;
+	border-radius: 50%;
+	background: var(--ink);
+	border: 0;
+}
+input[type="range"].slider:disabled {
+	opacity: 0.35;
+}
+
+.transport {
+	position: relative;
+}
+.notes-btn {
+	height: 32px;
+	padding: 0 9px 0 8px;
+	margin-right: 6px;
+	font-size: 12.5px;
+}
+.notes-btn svg {
+	width: 15px;
+	height: 15px;
+}
+.notes-btn .badge {
+	background: var(--surface-3);
+	color: var(--ink-2);
+}
+.notes-btn .badge.open {
+	background: var(--brand);
+	color: #fff;
+}
+.notes-panel {
+	position: absolute;
+	right: 0;
+	bottom: calc(100% + 8px);
+	z-index: 15;
+	width: min(360px, calc(100vw - 24px));
+	max-height: min(440px, 62vh);
+	display: none;
+	flex-direction: column;
+	overflow: hidden;
+	background: var(--surface);
+	border: 1px solid var(--line-2);
+	border-radius: 12px;
+	box-shadow: 0 12px 32px rgb(0 0 0 / 0.35);
+}
+.notes-panel.on {
+	display: flex;
+}
+.np-head {
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 8px 8px 14px;
+	border-bottom: 1px solid var(--line);
+}
+.np-head h2 {
+	margin: 0;
+	font-size: 13px;
+	font-weight: 600;
+}
+.np-list {
+	overflow: auto;
+	padding: 4px;
+}
+.np-empty {
+	padding: 22px 18px;
+	text-align: center;
+	color: var(--ink-3);
+	font-size: 12.5px;
+}
+.np-foot {
+	flex: none;
+	padding: 8px 14px;
+	border-top: 1px solid var(--line);
+	color: var(--ink-3);
+	font-size: 11.5px;
+	overflow-wrap: anywhere;
+}
+.note-row {
+	display: grid;
+	grid-template-columns: auto 1fr auto;
+	gap: 10px;
+	align-items: start;
+	padding: 8px 8px 8px 10px;
+	border-radius: 8px;
+	cursor: pointer;
+}
+.note-row:hover {
+	background: var(--surface-2);
+}
+.note-row .badge {
+	margin-top: 1px;
+}
+.note-row .when {
+	font-size: 11.5px;
+	color: var(--ink-3);
+}
+.note-row .text {
+	display: -webkit-box;
+	-webkit-line-clamp: 2;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+	overflow-wrap: anywhere;
+}
+.note-row.done .text {
+	color: var(--ink-3);
+	text-decoration: line-through;
+}
+.check {
+	width: 20px;
+	height: 20px;
+	border-radius: 50%;
+	padding: 0;
+	display: grid;
+	place-items: center;
+	margin-top: 1px;
+	border: 1.5px solid var(--line-2);
+	background: transparent;
+	color: transparent;
+}
+.check:hover {
+	border-color: var(--ok);
+	color: var(--ok);
+}
+.check.on {
+	background: var(--ok);
+	border-color: var(--ok);
+	color: #fff;
+}
+.check svg {
+	width: 11px;
+	height: 11px;
+}

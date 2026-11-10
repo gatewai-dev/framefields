@@ -49,12 +49,16 @@ When a medium uses AI generation, it generates images (video only if the user as
 | [Collage](looks/collage.md) | Paper collage, highlighted documents and slow pushes on archival images. | editorial, texture, documentary |
 | [Keynote](looks/keynote.md) | A product on black, slow light across it, one line of type at a time. | product, premium, cinematic, 3d |
 | [Motion](looks/motion.md) | Kinetic type, bold flat shapes and snappy easing, cut to the beat. | type, graphic, music |
+| [Risograph](looks/risograph.md) | Two-ink zine printing; misregistered blue and pink, grain and big cut-out shapes. | print, texture, graphic, playful |
+| [Swiss](looks/swiss.md) | The International Typographic Style; a strict grid, flush-left type and one red. | type, graphic, grid, clean |
 
 ### Formats
 
 | Format | Frame | Length | What it is |
 |---|---|---|---|
 | [Ad spot](formats/ad-spot.md) | 1920×1080, 30 fps | 15–30 s | A 15 or 30 second spot with a fixed shape; hook, one message, brand, call to action. |
+| [Bumper 6s](formats/bumper.md) | 1920×1080, 30 fps | 6–6 s | A six-second unskippable spot: one image, one line, the name. |
+| [Cinema](formats/cinema.md) | 1920×1080, 24 fps | 30–180 s | 2.39:1 widescreen with letterbox bars: trailers, title sequences and film-like pieces. |
 | [Square](formats/square.md) | 1080×1080, 30 fps | 6–60 s | 1:1 for feeds and ads that play muted; centered and self-explaining. |
 | [Vertical](formats/vertical.md) | 1080×1920, 30 fps | 10–60 s | 9:16 for Reels, Shorts and TikTok; a hook first, big captions, quick cuts. |
 | [Widescreen](formats/widescreen.md) | 1920×1080, 30 fps | 30–600 s | 16:9 for YouTube, sites and presentations; room for a story to breathe. |
@@ -64,9 +68,11 @@ When a medium uses AI generation, it generates images (video only if the user as
 | Genre | Beats | Audio |
 |---|---|---|
 | [Brand film](genres/brand-film.md) | Open → Build → Peak → Resolve → Name | music, sound |
+| [Data story](genres/data-story.md) | Claim → Context → Build → Turn → Takeaway | voice, music |
 | [Explainer](genres/explainer.md) | Question → Context → Steps → Payoff → Recap | voice, music |
 | [Lyric video](genres/lyric-video.md) | Intro → Verse → Chorus → Bridge → Outro | lyrics, music |
 | [Product launch](genres/product-launch.md) | Tease → Reveal → Features → Name → Call to action | music, sound |
+| [UI demo](genres/ui-demo.md) | Problem → Open → Do → Result → Next | voice, music, sound |
 
 ### Media
 
@@ -76,16 +82,19 @@ When a medium uses AI generation, it generates images (video only if the user as
 | [AI-generated](media/ai-generated.md) | Images, music and voice made through the framefields AI gateway, matched to the look and moved by the engine. | yes |
 | [Code-drawn](media/code-drawn.md) | Everything drawn by the engine: type, shapes, charts, components. Free, exact and editable. | no |
 | [Footage](media/footage.md) | The user's own clips and photos, cut, graded and annotated, with on-device vision. | no |
+| [Mock-up → AI edit](media/mockup-edit.md) | Build the shot in the engine for exact layout, then let an image model make it real. | yes |
 
 ### Presets
 
 | Preset | Look | Format | Genre | Media |
 |---|---|---|---|---|
 | [Collage explainer](presets/collage-explainer.md) | collage | widescreen | explainer | code-drawn, ai-generated |
+| [Swiss data story](presets/data-story.md) | swiss | widescreen | data-story | code-drawn |
 | [Launch teaser](presets/launch-teaser.md) | keynote | ad-spot | product-launch | 3d, ai-generated |
 | [Motion](presets/motion.md) | motion | widescreen | brand-film | code-drawn |
 | [Social vertical](presets/social-vertical.md) | motion | vertical | brand-film | code-drawn |
 | [Technical explainer](presets/technical-explainer.md) | blueprint | widescreen | explainer | code-drawn |
+| [Zine bumper](presets/zine-bumper.md) | risograph | bumper | brand-film | code-drawn |
 
 <!-- style-library:end -->
 

@@ -191,6 +191,103 @@
 					"body": "Drop shadows, bevels, more than one accent, centered body text in paragraphs, and anything that moves without a reason."
 				}
 			]
+		},
+		{
+			"kind": "look",
+			"id": "risograph",
+			"name": "Risograph",
+			"summary": "Two-ink zine printing; misregistered blue and pink, grain and big cut-out shapes.",
+			"tags": ["print", "texture", "graphic", "playful"],
+			"pairsWell": [
+				"format/square",
+				"format/vertical",
+				"genre/brand-film",
+				"genre/lyric-video"
+			],
+			"clashes": ["look/keynote", "format/cinema"],
+			"palette": ["#F4EFE4", "#1D3FBB", "#FF5FA2", "#2A2A2A"],
+			"fonts": {
+				"display": "Archivo",
+				"body": "Archivo",
+				"mono": "JetBrains Mono"
+			},
+			"ai": {
+				"direction": "risograph print, two spot inks (blue and fluorescent pink) on cream paper, visible grain and slight misregistration, flat shapes, halftone shading",
+				"avoid": "photorealism, gradients, glossy surfaces, more than two inks, text in the image",
+				"motion": "stepped, two frames per drawing; shapes jump rather than glide"
+			},
+			"sections": [
+				{
+					"title": "Look",
+					"body": "A zine printed in two spot inks: federal blue and fluorescent pink on cream paper, with their overlap making a deep purple. Big flat cut-out shapes, halftone shading, slightly misregistered layers (the pink a few pixels off the blue), and paper grain over everything. Loud, handmade and a little imperfect."
+				},
+				{
+					"title": "Type",
+					"body": "A heavy grotesque (Archivo, wide or condensed) set big and tightly, often overlapping shapes, in one ink at a time. Small text in a monospace, like a stamp. Words can tilt a few degrees."
+				},
+				{
+					"title": "Motion",
+					"body": "Stepped: everything animates on twos (`LayerAnimation.stepped(2)`), so shapes jump between poses like a flip book. Quick pops on the beat, the misregistration jittering a pixel or two between frames."
+				},
+				{
+					"title": "Grade",
+					"body": "`Styles.risograph` over the whole frame with the look's inks and paper, plus `FilmGrain`, applied with `comp.apply`."
+				},
+				{
+					"title": "Build it with",
+					"body": "- `Styles.risograph` and `HalftoneScreen` for the print; `Layer.shape` for cut-outs, duplicated in the second ink and offset for misregistration.\n- `TextAnimator.wordPop` on twos for type hits."
+				},
+				{
+					"title": "Avoid",
+					"body": "Smooth tweens, photorealism, gradients, a third ink, perfectly aligned layers."
+				}
+			]
+		},
+		{
+			"kind": "look",
+			"id": "swiss",
+			"name": "Swiss",
+			"summary": "The International Typographic Style; a strict grid, flush-left type and one red.",
+			"tags": ["type", "graphic", "grid", "clean"],
+			"pairsWell": [
+				"genre/data-story",
+				"genre/explainer",
+				"format/widescreen",
+				"format/square"
+			],
+			"clashes": ["genre/lyric-video"],
+			"palette": ["#F2F0EB", "#111111", "#E3241B", "#BDB8AE"],
+			"fonts": {
+				"display": "Inter",
+				"body": "Inter"
+			},
+			"ai": {
+				"direction": "modernist graphic photograph, strong geometry, hard daylight, high contrast black and white with one red element, generous negative space, objective and calm",
+				"avoid": "ornament, soft focus, gradients, busy texture, text in the image",
+				"motion": "straight lines only: slide on the grid axes, never on a curve; holds between moves"
+			},
+			"sections": [
+				{
+					"title": "Look",
+					"body": "Objective and ordered. A twelve-column grid with a visible baseline, everything flush left on it, generous white margins. Off-white ground, near-black type, one red used sparingly for the single thing that matters, and a warm gray for rules and secondary marks. Photography, when used, is black and white and cropped hard to the grid."
+				},
+				{
+					"title": "Type",
+					"body": "One neo-grotesque (Inter) in two weights: regular for text, bold for the headline. Flush left, ragged right, tight leading for display (0.95), never centered. Size contrast does the work: a huge number or word against small captions. Numbers in tabular figures."
+				},
+				{
+					"title": "Motion",
+					"body": "Moves along the grid axes only: elements slide in horizontally or vertically by whole columns, with `power3.inOut` over 10–16 frames, and hold. Rules draw on. No rotation, no scale bounce, no fades without movement."
+				},
+				{
+					"title": "Build it with",
+					"body": "- `Layer.flex` and fixed column math in `theme.ts` (column width, gutter, baseline) for the grid.\n- `Layer.shape` rects and rules with `trimEnd`; `Layer.chart` with the red as the only series color that matters.\n- `components/counter` for big numbers; `TextAnimator.wordPop` sparingly."
+				},
+				{
+					"title": "Avoid",
+					"body": "Centered layouts, more than one accent, drop shadows, rounded corners, script or display faces, decoration that carries no information."
+				}
+			]
 		}
 	],
 	"formats": [
@@ -231,6 +328,82 @@
 				{
 					"title": "Build it with",
 					"body": "`components/title-card` and `components/logo-reveal` for the end card; check the total with `calculateTimeline().totalFrames`."
+				}
+			]
+		},
+		{
+			"kind": "format",
+			"id": "bumper",
+			"name": "Bumper 6s",
+			"summary": "A six-second unskippable spot: one image, one line, the name.",
+			"tags": ["ads", "short", "social"],
+			"pairsWell": ["look/motion", "look/swiss"],
+			"clashes": ["genre/explainer"],
+			"width": 1920,
+			"height": 1080,
+			"fps": 30,
+			"durationSec": {
+				"min": 6,
+				"max": 6
+			},
+			"safeArea": {
+				"top": 54,
+				"right": 96,
+				"bottom": 54,
+				"left": 96
+			},
+			"sections": [
+				{
+					"title": "Frame",
+					"body": "1920×1080 at 30 fps (or vertical when the user asks). One idea fills the frame; no secondary elements."
+				},
+				{
+					"title": "Timing",
+					"body": "Exactly 180 frames. The image or line lands in the first second, the brand by second four, and the last 1.5 seconds hold the name still. One cut at most."
+				},
+				{
+					"title": "Safe areas",
+					"body": "Broadcast title safe: 5 % in from every edge."
+				}
+			]
+		},
+		{
+			"kind": "format",
+			"id": "cinema",
+			"name": "Cinema",
+			"summary": "2.39:1 widescreen with letterbox bars: trailers, title sequences and film-like pieces.",
+			"tags": ["film", "trailer", "cinematic"],
+			"pairsWell": ["look/keynote", "genre/brand-film"],
+			"clashes": ["look/risograph"],
+			"width": 1920,
+			"height": 1080,
+			"fps": 24,
+			"durationSec": {
+				"min": 30,
+				"max": 180
+			},
+			"safeArea": {
+				"top": 138,
+				"right": 96,
+				"bottom": 138,
+				"left": 96
+			},
+			"sections": [
+				{
+					"title": "Frame",
+					"body": "A 2.39:1 picture inside a 1920×1080 file: black bars of 138 px top and bottom, so it plays anywhere 16:9 does. 24 fps for the film cadence (motion blur on fast moves). Compose for the wide frame: subjects off-center, room to look into."
+				},
+				{
+					"title": "Timing",
+					"body": "Slower than web video: shots of 2–6 seconds, cuts on action, a title card holds for at least 3 seconds. Builds in acts: a quiet open, rising cuts, a hard stop to black before the title."
+				},
+				{
+					"title": "Safe areas",
+					"body": "Everything (type included) inside the 2.39 picture, 96 px in from the sides."
+				},
+				{
+					"title": "Build it with",
+					"body": "Two `Layer.box` bars in black over everything (or the picture area as a clipped box); `Transition.fadeThrough` to black between acts."
 				}
 			]
 		},
@@ -379,6 +552,35 @@
 		},
 		{
 			"kind": "genre",
+			"id": "data-story",
+			"name": "Data story",
+			"summary": "One finding from real numbers, built up chart by chart until it's obvious.",
+			"tags": ["data", "charts", "explainer"],
+			"pairsWell": ["look/swiss", "look/blueprint", "format/widescreen"],
+			"clashes": [],
+			"beats": ["Claim", "Context", "Build", "Turn", "Takeaway"],
+			"audio": ["voice", "music"],
+			"sections": [
+				{
+					"title": "Beats",
+					"body": "1. **Claim**: the finding as one sentence and one big number.\n2. **Context**: where the numbers come from and what normal looks like.\n3. **Build**: the chart draws itself, one series or one period at a time.\n4. **Turn**: the moment the data does something surprising, highlighted.\n5. **Takeaway**: the claim again, now earned, with the source."
+				},
+				{
+					"title": "Audio",
+					"body": "A calm voiceover carries it, timed to the chart's build; quiet music under. Without a voice, every point is a line of on-screen text that stays long enough to read twice."
+				},
+				{
+					"title": "On screen",
+					"body": "Real data from the user (or clearly labeled as illustrative). One chart at a time, axes labeled with units, the highlighted series in the look's accent and everything else muted. The source on screen at the end."
+				},
+				{
+					"title": "Build it with",
+					"body": "`Layer.chart` with `animate`, `components/counter` for the big numbers, `components/callout` and `components/annotate` for the turn."
+				}
+			]
+		},
+		{
+			"kind": "genre",
 			"id": "explainer",
 			"name": "Explainer",
 			"summary": "One question answered clearly, step by step, led by a voice.",
@@ -461,6 +663,40 @@
 				{
 					"title": "Build it with",
 					"body": "`components/device-frame` and `components/app-frame` for software; `components/logo-reveal` for the name; `AudioSignal` for hits."
+				}
+			]
+		},
+		{
+			"kind": "genre",
+			"id": "ui-demo",
+			"name": "UI demo",
+			"summary": "A product walkthrough on screen; a pointer does the task, zooms show what matters.",
+			"tags": ["software", "product", "tutorial"],
+			"pairsWell": [
+				"look/keynote",
+				"look/swiss",
+				"format/widescreen",
+				"medium/code-drawn"
+			],
+			"clashes": [],
+			"beats": ["Problem", "Open", "Do", "Result", "Next"],
+			"audio": ["voice", "music", "sound"],
+			"sections": [
+				{
+					"title": "Beats",
+					"body": "1. **Problem**: the task the viewer has, in one line.\n2. **Open**: the app in its window, at rest.\n3. **Do**: the pointer performs the task in real steps, each step a beat; zoom in on the control being used.\n4. **Result**: what the task produced, held long enough to see.\n5. **Next**: where to get it, or the next thing it can do."
+				},
+				{
+					"title": "Audio",
+					"body": "A voice explains each step as it happens; soft clicks and whooshes on interactions; music low."
+				},
+				{
+					"title": "On screen",
+					"body": "The real UI (a screenshot or the user's own build, framed), never a fake one when the real one exists. One action at a time; the pointer moves in natural curves and pauses before clicking. Zoom with `focus-zoom` rather than cutting."
+				},
+				{
+					"title": "Build it with",
+					"body": "`components/app-frame` or `components/device-frame` for the window, `components/mouse-pointer` and `components/touch-point` for input, `components/focus-zoom` and `components/callout` for detail, `components/toasts` for feedback."
 				}
 			]
 		}
@@ -592,6 +828,42 @@
 					"body": "`Layer.video`, `Layer.image`, `comp.vision`, `Curves`, `ApplyLUT`."
 				}
 			]
+		},
+		{
+			"kind": "medium",
+			"id": "mockup-edit",
+			"name": "Mock-up → AI edit",
+			"summary": "Build the shot in the engine for exact layout, then let an image model make it real.",
+			"tags": ["ai", "gateway", "3d", "photoreal"],
+			"pairsWell": [],
+			"clashes": [],
+			"credit": true,
+			"models": {
+				"edit": "seedream/5.0-pro/edit",
+				"edit-draft": "seedream/5.0-flash/edit"
+			},
+			"sections": [
+				{
+					"title": "Pipeline",
+					"body": "For shots where the layout must be exact (a product at a set angle, people in specific places, a screen showing the user's real UI) but the result should look photographed.\n\n1. **Mock-up**: build the shot in the engine with primitives, 3D or the user's assets: positions, camera, framing and light direction right, materials rough. Render one frame (`renderFrame`) at the shot's size.\n2. **Estimate, then ask**: price the edits with `estimate_generation_cost` and tell the user before running them.\n3. **Edit**: send the frame as the reference image (`image_urls`) to the edit model with a prompt that says what each mock-up element becomes (\"the gray box becomes a walnut speaker; the two capsules become two people talking\"), then the look's art direction word for word. Draft first, then the final.\n4. **Use it as a still**: the edited image goes back into the composition as a `Layer.image`; the engine moves it (push, pan, parallax from a cutout) and draws type over it."
+				},
+				{
+					"title": "Cost",
+					"body": "One edit per shot; drafts first. No video."
+				},
+				{
+					"title": "Consistency",
+					"body": "Keep the mock-up's camera and light identical across shots of the same scene, and reuse the first approved edit as a second reference image for the rest."
+				},
+				{
+					"title": "Verify",
+					"body": "Overlay the edit on the mock-up (difference blend) to check that nothing moved that must stay put: the product's silhouette, a screen's contents, where people stand."
+				},
+				{
+					"title": "Build it with",
+					"body": "`Layer3D`, `Layer.model`, `Layer.image`, and `ai.subscribe` from `framefields` with a gateway key."
+				}
+			]
 		}
 	],
 	"presets": [
@@ -606,6 +878,18 @@
 			"genre": "explainer",
 			"media": ["code-drawn", "ai-generated"],
 			"note": "The \"archival\" photos are generated stills: black-and-white press photography of the period, never video. The collage moves by pushing and layering paper."
+		},
+		{
+			"kind": "preset",
+			"id": "data-story",
+			"name": "Swiss data story",
+			"summary": "One finding from real numbers, on a strict grid with one red line.",
+			"featured": true,
+			"look": "swiss",
+			"format": "widescreen",
+			"genre": "data-story",
+			"media": ["code-drawn"],
+			"note": ""
 		},
 		{
 			"kind": "preset",
@@ -654,6 +938,18 @@
 			"genre": "explainer",
 			"media": ["code-drawn"],
 			"note": ""
+		},
+		{
+			"kind": "preset",
+			"id": "zine-bumper",
+			"name": "Zine bumper",
+			"summary": "A six-second two-ink print ad that jumps on twos.",
+			"featured": false,
+			"look": "risograph",
+			"format": "bumper",
+			"genre": "brand-film",
+			"media": ["code-drawn"],
+			"note": "One cut-out shape, one line, the name; misregistration jitters on every hit."
 		}
 	]
 }

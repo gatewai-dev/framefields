@@ -176,6 +176,7 @@ process.exit(0);
 ```
 
 - **Models and inputs come from the catalog** (https://framefields.dev/models or `get_model_schema`). Output shapes differ (`images[0].url`, `video.url`, `audio.url` …): read the schema or log `data` once.
+- **Audio:** `elevenlabs/v4` (or the cheaper `elevenlabs/v4-turbo`) for voiceover takes `{ text, voice_id? }` and returns `audio.url`, plus `alignment`: per-character start and end seconds, which you can use for captions and lip sync without transcribing. `elevenlabs/music-v2.5` takes `{ prompt, music_length_ms?, force_instrumental? }` or a section-by-section `composition_plan`. `elevenlabs/sound-effects-v3` takes `{ text, duration_seconds?, loop? }`. Each returns an MP3 at `audio.url`, with its length in `audio.duration`.
 - **Many long jobs:** `ai.queue.submit` each, keep the `request_id`s, collect with `ai.queue.result`. Status and result reads are free and retried; submits never retry, so nothing bills twice.
 - **Costs:** quote the estimate tool or catalog rate; don't invent a total from a unit rate. Use a fixed `seed` and keep prompts in `generate.ts`.
 - Generated clips rarely match the film's fps or aspect: `fit: "cover"`, check real durations.

@@ -1,6 +1,6 @@
 /**
- * The film's sound. ElevenLabs v3 reads the narration (through fal, with
- * the repo's FAL_API_KEY), and the music bed is synthesized in bed.ts.
+ * The film's sound. ElevenLabs v4 reads the narration through the framefields
+ * AI gateway, and the music bed is synthesized in bed.ts.
  * `pnpm audio` makes the files (media stays out of git) and records what it
  * measured in assets/audio.json, which is committed so the film can be timed
  * without them.
@@ -14,11 +14,15 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { ASSETS } from "./theme.js";
 
-export const VOICE_MODEL = "fal-ai/elevenlabs/tts/eleven-v3";
+export const VOICE_MODEL = "elevenlabs/v4";
 export const TRANSCRIBER = "elevenlabs/speech-to-text/scribe-v2";
 
 /** A warm narrator with a light English accent. */
 export const VOICE = "George";
+/** George's ElevenLabs voice id. */
+export const VOICE_IDS: Record<string, string> = {
+	George: "JBFqnCBsd6RMkjVDRZzb",
+};
 
 /** The narration, in the order it is heard. */
 export const LINES = {

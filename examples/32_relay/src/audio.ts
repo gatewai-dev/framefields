@@ -1,7 +1,7 @@
 /**
  * The film's generated sound, all through the framefields AI gateway: Gemini
- * 3.8 Flash TTS reads the narration, Lyria 3.5 writes the music, and Seed
- * Audio 1.0 makes the mouse click. `pnpm audio` makes the files (media stays
+ * 3.8 Flash TTS reads the narration, Lyria 3.5 writes the music, and
+ * ElevenLabs Sound Effects v3 makes the mouse click. `pnpm audio` makes the files (media stays
  * out of git) and records what it measured in assets/audio.json, which is
  * committed so the film can be timed without them.
  */
@@ -11,7 +11,7 @@ import { ASSETS } from "./theme.js";
 
 export const VOICE_MODEL = "google/gemini-3.8-flash-tts";
 export const MUSIC_MODEL = "google/lyria-3.5";
-export const CLICK_MODEL = "seed-audio/1.0";
+export const CLICK_MODEL = "elevenlabs/sound-effects-v3";
 export const TRANSCRIBER = "elevenlabs/speech-to-text/scribe-v2";
 
 /** Gemini's warm female voice. */
@@ -54,8 +54,8 @@ Calm, optimistic and modern at 100 BPM in D major: warm felt piano, a soft pluck
 [0:20-0:26] It resolves on one sustained, warm final chord that rings out.
 [0:26-0:30] Silence.`;
 
-export const CLICK_PROMPT = `Generate sound effects only. No voice, no music.
-One single crisp click of a computer mouse button, recorded close and dry in a quiet room, then silence.`;
+export const CLICK_PROMPT =
+	"One single crisp click of a computer mouse button, recorded close and dry in a quiet room, then silence.";
 
 export interface AudioManifest {
 	voice: Record<

@@ -105,7 +105,7 @@ Container styles (flex/block/box with children):
 - **`justify`** (flex only): `start` (default) | `center` | `end` | `space-between` | `space-around`.
 - **`align`** (flex/block): `start` (default) | `center` | `end` | `stretch`.
 - **`wrap`** (flex only, boolean): Allow main-axis wrapping.
-- **`overflow`** (`"visible"` (default) | `"hidden"`): Children draw past the container's edges unless it is `hidden`, which clips them to its bounds (a rounded card that must keep a square header or image inside its corners needs `hidden`). A text node's own outside stroke and shadows are never cut at its box. A hidden container with a `borderRadius` clips to its rounded corners, animated radius and size included (an iris mask is a box closing its `width`, `height` and `borderRadius`).
+- **`overflow`** (`"visible"` (default) | `"hidden"`): Children draw past the container's edges unless it is `hidden`, which clips them to its bounds (a rounded card that must keep a square header or image inside its corners needs `hidden`). A text node's own outside stroke and shadows, and the half of a shape's stroke that lies outside its outline, are never cut at the node's box. A hidden container with a `borderRadius` clips to its rounded corners, animated radius and size included (an iris mask is a box closing its `width`, `height` and `borderRadius`).
 - **`staggerFrames`** (number, optional, default 0): Automatic frame offset sequentially applied to child nodes.
 - **`staggerDirection`** (`"forward"` | `"reverse"` | `"center-out"`, default `"forward"`): Traversal order when computing child stagger delays.
 

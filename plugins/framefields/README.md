@@ -6,6 +6,7 @@ Agent skills for [framefields](https://github.com/gatewai-dev/framefields), a co
 | --- | --- |
 | `framefields` | Starting a project: install from npm, scaffold a composition and render script, first verified render; generating images, video and audio with AI models (`ai`) |
 | `framefields-compose` | Compositions, layer trees, layout, animation and easing, beat grids, film structure |
+| `framefields-styles` | Creative direction: looks, formats (16:9, 9:16, square, ads), genres (explainer, product launch, lyric video) and media (code-drawn, 3D, footage, AI-generated), combined, or from a preset |
 | `framefields-effects` | Post-processing effects, color grading, VFX |
 | `framefields-vision` | On-device vision: detection, segmentation, pose, cutouts, and prompted tracking with SAM 2.1 / SAM 3 |
 | `framefields-render` | Headless rendering, frame-grid inspection, pixel probes, live preview, MP4 delivery checks |

@@ -1,0 +1,659 @@
+{
+	"looks": [
+		{
+			"kind": "look",
+			"id": "blueprint",
+			"name": "Blueprint",
+			"summary": "Diagrams that build step by step on a quiet grid, with labels, arrows and code.",
+			"tags": ["technical", "diagram", "clean"],
+			"pairsWell": [
+				"genre/explainer",
+				"medium/code-drawn",
+				"format/widescreen"
+			],
+			"clashes": ["genre/lyric-video"],
+			"palette": ["#0F1B2D", "#16263D", "#E8EEF6", "#5AA9FF", "#FFB547"],
+			"fonts": {
+				"display": "Inter",
+				"body": "Inter",
+				"mono": "JetBrains Mono"
+			},
+			"ai": {
+				"direction": "clean technical illustration, flat blueprint style, thin white linework on deep navy, isometric or orthographic view, precise and uncluttered",
+				"avoid": "photographic textures, dramatic lighting, people, decorative flourishes, text in the image",
+				"motion": "precise, mechanical, constant speed; camera moves only to focus a detail"
+			},
+			"sections": [
+				{
+					"title": "Look",
+					"body": "Clarity first: every element earns its place. A deep navy ground with a faint grid (24 px minor, 120 px major), thin off-white linework, and two functional accents: blue for \"this\" or data flow, amber for the part being discussed. What isn't being discussed dims to 35 %."
+				},
+				{
+					"title": "Type",
+					"body": "A neutral sans for labels and callouts (28–40 px), weight changes rather than size changes for hierarchy. Numbers, code and units in a monospace. Labels sit on the grid, aligned to its lines, with short leader lines to what they name."
+				},
+				{
+					"title": "Motion",
+					"body": "Calm and precise: `power2.inOut` over 12–20 frames. Diagrams build in the order the explanation needs them: boxes appear, then the connectors draw on (`trimEnd`), then the arrowheads. Highlight moves rather than cuts. A running step marker (1 / 4) so the viewer always knows where they are."
+				},
+				{
+					"title": "Build it with",
+					"body": "- `Layer.shape` with `trimEnd` for lines that draw on; `Layer.flex` for aligned boxes.\n- `components/code-block` and `components/terminal` revealed line by line; `components/callout` for labels; `components/focus-zoom` and `components/spotlight` to direct attention.\n- `Layer.chart` for numbers."
+				},
+				{
+					"title": "Avoid",
+					"body": "Gradients, glow, drop shadows, decorative 3D, more than two accents, motion that doesn't explain anything."
+				}
+			]
+		},
+		{
+			"kind": "look",
+			"id": "collage",
+			"name": "Collage",
+			"summary": "Paper collage, highlighted documents and slow pushes on archival images.",
+			"tags": ["editorial", "texture", "documentary"],
+			"pairsWell": [
+				"genre/explainer",
+				"format/widescreen",
+				"medium/ai-generated"
+			],
+			"clashes": ["format/ad-spot"],
+			"palette": ["#D9CCB4", "#F4EEE2", "#3B3A36", "#F5E300", "#B5452F"],
+			"fonts": {
+				"display": "Libre Franklin",
+				"body": "Libre Franklin",
+				"mono": "JetBrains Mono"
+			},
+			"ai": {
+				"direction": "black-and-white archival press photograph, period-accurate, printed on matte newsprint, coarse grain and slight ink bleed, soft overcast daylight, documentary framing",
+				"avoid": "glossy CGI, neon, lens flare, modern UI, text in the image",
+				"motion": "slow push-in or gentle pan, almost still; no fast camera moves"
+			},
+			"sections": [
+				{
+					"title": "Look",
+					"body": "A documentary told through layered paper and archival material, in the video-essay tradition. Textured paper grounds, cut-out photos with soft drop shadows and slightly rough edges, layered so the collage builds over time. Muted warm palette with one bright accent: the highlighter yellow. A rust red for marks and arrows."
+				},
+				{
+					"title": "Type",
+					"body": "A clean grotesque for labels and source captions (small, set in the margin), and the same face, bold, for the one headline per scene. Quotes sit on paper cards, set like a newspaper clipping. Monospace only for dates and sources."
+				},
+				{
+					"title": "Motion",
+					"body": "Slow and steady: every still pushes in or pans (scale 1.0 → 1.06 over the shot, `sine.inOut`); nothing is ever static. Pieces of paper land with a small settle and a 1–2° rotation. The highlighter sweeps across the key words exactly as the narration says them. Pacing follows the voiceover, one idea per beat."
+				},
+				{
+					"title": "Grade",
+					"body": "Warm, slightly lifted blacks, light film grain (`FilmGrain`) and a soft vignette (`Vignette`), applied over everything with `comp.apply`, so generated stills and drawn paper share one surface."
+				},
+				{
+					"title": "Build it with",
+					"body": "- `Layer.box` paper cards with `LayerStyle` drop shadows; torn edges as `Layer.shape` paths.\n- `HalftoneScreen` on photos for the printed look; `components/annotate` and `components/callout` for marks.\n- `components/lower-third` for sources; `Layer.chart` for simple charts that draw themselves."
+				},
+				{
+					"title": "Avoid",
+					"body": "Glossy surfaces, neon, perfect vector edges on photos, fast cuts, more than one highlight color."
+				}
+			]
+		},
+		{
+			"kind": "look",
+			"id": "keynote",
+			"name": "Keynote",
+			"summary": "A product on black, slow light across it, one line of type at a time.",
+			"tags": ["product", "premium", "cinematic", "3d"],
+			"pairsWell": [
+				"genre/product-launch",
+				"medium/3d",
+				"medium/ai-generated",
+				"format/ad-spot"
+			],
+			"clashes": ["genre/explainer"],
+			"palette": ["#000000", "#0B0B0D", "#F5F5F7", "#86868B", "#2997FF"],
+			"fonts": {
+				"display": "Inter",
+				"body": "Inter"
+			},
+			"ai": {
+				"direction": "premium product photography, single object on pure black, soft rim light and one slow light sweep, glossy reflections, shallow depth of field, very clean",
+				"avoid": "busy backgrounds, props, people, harsh flash, text or logos in the image",
+				"motion": "slow orbit or slow dolly, the light moves more than the camera"
+			},
+			"sections": [
+				{
+					"title": "Look",
+					"body": "The product is the only thing on screen. Pure black ground, one object lit by a soft key and a rim light, a slow highlight that travels across its surface. Off-white type, a cool gray for secondary lines, and blue only for the call to action. Huge amounts of negative space."
+				},
+				{
+					"title": "Type",
+					"body": "One sans, light to semibold. Short lines (2–5 words), large (120–200 px), centered, one at a time. Secondary lines in gray at half the size. A number or a spec, when it appears, gets the whole frame."
+				},
+				{
+					"title": "Motion",
+					"body": "Slow and expensive: the light moves more than the camera. Orbits over 3–6 seconds (`sine.inOut`), type fades and rises 20 px over 18 frames, then holds. Reveals come out of black. Cuts to black between ideas."
+				},
+				{
+					"title": "Grade",
+					"body": "Deep blacks, a little bloom on highlights from the 3D environment, no grain."
+				},
+				{
+					"title": "Build it with",
+					"body": "- `Layer3D` primitives or `Layer.model` for the product; `Layer.environment` with a studio preset; `CameraAnimation` orbits.\n- `components/logo-reveal` and `components/title-card` for the end; `components/device-frame` for screens."
+				},
+				{
+					"title": "Avoid",
+					"body": "Fast cuts, more than one line of type at a time, colored backgrounds, busy UI on screens, music that's louder than the room."
+				}
+			]
+		},
+		{
+			"kind": "look",
+			"id": "motion",
+			"name": "Motion",
+			"summary": "Kinetic type, bold flat shapes and snappy easing, cut to the beat.",
+			"tags": ["type", "graphic", "music"],
+			"pairsWell": [
+				"genre/brand-film",
+				"genre/product-launch",
+				"genre/lyric-video",
+				"format/vertical"
+			],
+			"clashes": [],
+			"palette": ["#0E0D0C", "#F2EFE8", "#FF4D1F", "#2B2A28"],
+			"fonts": {
+				"display": "Archivo",
+				"body": "Inter"
+			},
+			"ai": {
+				"direction": "bold flat graphic shapes, high contrast, clean studio light, saturated orange accent on near-black, minimal composition with strong negative space",
+				"avoid": "clutter, busy textures, soft pastel tones, text rendered in the image",
+				"motion": "fast, decisive moves that settle; locked camera or one clean push"
+			},
+			"sections": [
+				{
+					"title": "Look",
+					"body": "Type and graphic shapes carry the piece. Two neutrals and one accent, used the same way throughout: near-black ground, warm off-white for type, the orange accent for the one thing that matters in each shot. Flat shapes, rules and grids as the supporting cast. No gradients, except a very slight vignette."
+				},
+				{
+					"title": "Type",
+					"body": "One family in one or two weights, large and set tight: display at 160–280 px on 1080p, with negative tracking (-2 to -4 %). Condensed widths (`wdth` 68–80) when it has to fit. Words arrive and leave with purpose: staggered per word or letter, masks and wipes rather than plain fades. One idea per screen."
+				},
+				{
+					"title": "Motion",
+					"body": "Fast in, soft settle (`expo.out`, `power3.out`) over 8–14 frames. Hold each idea long enough to read it twice, then move. Nothing drifts linearly, except a deliberate background loop. With music, entrances and cuts land on beats or onsets. Transitions are part of the motion (a shape sweeps across, type scales into the next scene), not crossfades."
+				},
+				{
+					"title": "Build it with",
+					"body": "- `TextAnimator.wordPop`, `TextAnimator.waveRise` with `LayerAnimation` sweeps for the type; `components/text-reveal` and `components/word-cycle` for ready-made beats.\n- `Layer.shape` rects and rules for wipes. `Transition.wipe`, `Transition.push` between scenes.\n- A beat grid in `theme.ts` (`BEAT`), and `AudioSignal` onsets to place hits."
+				},
+				{
+					"title": "Avoid",
+					"body": "Drop shadows, bevels, more than one accent, centered body text in paragraphs, and anything that moves without a reason."
+				}
+			]
+		}
+	],
+	"formats": [
+		{
+			"kind": "format",
+			"id": "ad-spot",
+			"name": "Ad spot",
+			"summary": "A 15 or 30 second spot with a fixed shape; hook, one message, brand, call to action.",
+			"tags": ["ads", "commercial", "broadcast"],
+			"pairsWell": ["genre/product-launch", "look/keynote"],
+			"clashes": ["look/collage"],
+			"width": 1920,
+			"height": 1080,
+			"fps": 30,
+			"durationSec": {
+				"min": 15,
+				"max": 30
+			},
+			"safeArea": {
+				"top": 54,
+				"right": 96,
+				"bottom": 54,
+				"left": 96
+			},
+			"sections": [
+				{
+					"title": "Frame",
+					"body": "1920×1080 at 30 fps (or the vertical size when the user wants it for social; the timing below still holds)."
+				},
+				{
+					"title": "Timing",
+					"body": "Exactly 15 or 30 seconds; never a frame over. Hook in the first 3 seconds, one message (not three), the brand by the halfway mark, and the last 3 seconds for the end card: logo, line and call to action, held still. On a 30-second spot the middle is two or three proof beats."
+				},
+				{
+					"title": "Safe areas",
+					"body": "Broadcast title safe: 5 % in from every edge. Legal lines in the bottom safe area, at least 28 px and on screen for 3 seconds or more."
+				},
+				{
+					"title": "Build it with",
+					"body": "`components/title-card` and `components/logo-reveal` for the end card; check the total with `calculateTimeline().totalFrames`."
+				}
+			]
+		},
+		{
+			"kind": "format",
+			"id": "square",
+			"name": "Square",
+			"summary": "1:1 for feeds and ads that play muted; centered and self-explaining.",
+			"tags": ["social", "feed", "ads"],
+			"pairsWell": [],
+			"clashes": [],
+			"width": 1080,
+			"height": 1080,
+			"fps": 30,
+			"durationSec": {
+				"min": 6,
+				"max": 60
+			},
+			"safeArea": {
+				"top": 60,
+				"right": 60,
+				"bottom": 60,
+				"left": 60
+			},
+			"sections": [
+				{
+					"title": "Frame",
+					"body": "1080×1080 at 30 fps. Centered compositions; one subject, one line of type. The frame reads at thumbnail size, so shapes and type are bold."
+				},
+				{
+					"title": "Timing",
+					"body": "Most views are muted and scrolled past: the first frame works as a still, and the message reads without sound (on-screen text for every spoken line). Cuts every 2–4 seconds. 6–30 seconds is the sweet spot."
+				},
+				{
+					"title": "Safe areas",
+					"body": "60 px in from every edge; feeds crop corners into rounded tiles."
+				}
+			]
+		},
+		{
+			"kind": "format",
+			"id": "vertical",
+			"name": "Vertical",
+			"summary": "9:16 for Reels, Shorts and TikTok; a hook first, big captions, quick cuts.",
+			"tags": ["social", "mobile", "reels", "shorts", "tiktok"],
+			"pairsWell": ["look/motion", "genre/product-launch", "genre/lyric-video"],
+			"clashes": [],
+			"width": 1080,
+			"height": 1920,
+			"fps": 30,
+			"durationSec": {
+				"min": 10,
+				"max": 60
+			},
+			"safeArea": {
+				"top": 250,
+				"right": 120,
+				"bottom": 400,
+				"left": 60
+			},
+			"sections": [
+				{
+					"title": "Frame",
+					"body": "1080×1920 at 30 fps. The subject stays in the center column; stack elements top to bottom rather than side by side. Captions are large (64–96 px), high contrast, two short lines at most."
+				},
+				{
+					"title": "Timing",
+					"body": "The hook comes in the first 2 seconds: the most striking image or line goes first, before any logo. Cut every 1–3 seconds, with punch-in zooms and movement in every shot. 15–45 seconds total; end on a clear payoff, or on a frame that loops back into the first."
+				},
+				{
+					"title": "Safe areas",
+					"body": "Platform UI covers the top 250 px and the bottom 400 px, and the right 120 px holds the like and share buttons. Keep type and faces out of those."
+				},
+				{
+					"title": "Build it with",
+					"body": "`new Composition({ width: 1080, height: 1920, fps: 30 })`; `components/captions` for synced captions; `components/focus-zoom` for punch-ins."
+				}
+			]
+		},
+		{
+			"kind": "format",
+			"id": "widescreen",
+			"name": "Widescreen",
+			"summary": "16:9 for YouTube, sites and presentations; room for a story to breathe.",
+			"tags": ["youtube", "web", "presentation"],
+			"pairsWell": ["genre/explainer", "genre/brand-film"],
+			"clashes": [],
+			"width": 1920,
+			"height": 1080,
+			"fps": 30,
+			"durationSec": {
+				"min": 30,
+				"max": 600
+			},
+			"safeArea": {
+				"top": 54,
+				"right": 96,
+				"bottom": 54,
+				"left": 96
+			},
+			"sections": [
+				{
+					"title": "Frame",
+					"body": "1920×1080 at 30 fps (24 for a film feel, 60 for UI and screen recordings). Compose on thirds; the wide frame can hold a subject and its label side by side."
+				},
+				{
+					"title": "Timing",
+					"body": "Scenes of 3–8 seconds; a new visual idea every 5–10 seconds keeps attention without rushing. An open of under 10 seconds before the first real content. End with 2–4 seconds of hold (logo, title or call to action)."
+				},
+				{
+					"title": "Safe areas",
+					"body": "Keep type and key detail 5 % in from each edge (96 px left and right, 54 px top and bottom). Player controls cover the bottom 10 % when paused: no captions there."
+				},
+				{
+					"title": "Build it with",
+					"body": "`new Composition({ width: 1920, height: 1080, fps: 30 })`; scenes in `Layer.sequence` with `Transition`s."
+				}
+			]
+		}
+	],
+	"genres": [
+		{
+			"kind": "genre",
+			"id": "brand-film",
+			"name": "Brand film",
+			"summary": "A mood, not a manual; images and words that leave one feeling and the name.",
+			"tags": ["brand", "mood", "music"],
+			"pairsWell": ["look/motion", "look/keynote"],
+			"clashes": [],
+			"beats": ["Open", "Build", "Peak", "Resolve", "Name"],
+			"audio": ["music", "sound"],
+			"sections": [
+				{
+					"title": "Beats",
+					"body": "1. **Open**: an image or a word that sets the mood, with no explanation.\n2. **Build**: images and short lines that add up, faster as the music builds.\n3. **Peak**: the strongest image or line, on the music's peak.\n4. **Resolve**: slower; the meaning lands.\n5. **Name**: the brand name alone, then black."
+				},
+				{
+					"title": "Audio",
+					"body": "Music carries it: choose (or generate) the track first and cut to it. Sound design is sparse and deliberate. A voice, if any, is a few lines, not a narration."
+				},
+				{
+					"title": "On screen",
+					"body": "Few words (a line every few seconds, never a paragraph). The name appears once, at the end. No features, no prices."
+				}
+			]
+		},
+		{
+			"kind": "genre",
+			"id": "explainer",
+			"name": "Explainer",
+			"summary": "One question answered clearly, step by step, led by a voice.",
+			"tags": ["education", "voiceover", "diagram"],
+			"pairsWell": ["look/blueprint", "look/collage"],
+			"clashes": [],
+			"beats": ["Question", "Context", "Steps", "Payoff", "Recap"],
+			"audio": ["voice", "music"],
+			"sections": [
+				{
+					"title": "Beats",
+					"body": "1. **Question**: the one thing this answers, in the first 5 seconds, as a line on screen and in the voice.\n2. **Context**: why it matters, in one or two images.\n3. **Steps**: three to five, each one visual idea, numbered on screen.\n4. **Payoff**: the answer, shown, not just said.\n5. **Recap**: one line, then the end card."
+				},
+				{
+					"title": "Audio",
+					"body": "The voiceover leads; write the script first and time every visual to it (generate voice, then transcribe it with word timings, then place cues on words). Music sits 18–24 dB under the voice, ducked further under dense lines."
+				},
+				{
+					"title": "On screen",
+					"body": "Every spoken idea has a visual; key terms appear as on-screen labels when they're said. Captions when it will play muted. Nothing on screen the voice doesn't explain."
+				},
+				{
+					"title": "Build it with",
+					"body": "`components/captions` from the transcript; `components/callout`, `components/annotate` and `components/counter` for the steps."
+				}
+			]
+		},
+		{
+			"kind": "genre",
+			"id": "lyric-video",
+			"name": "Lyric video",
+			"summary": "The song's words, timed to the syllable, as the picture.",
+			"tags": ["music", "typography", "sync"],
+			"pairsWell": ["look/motion", "format/vertical"],
+			"clashes": ["look/blueprint"],
+			"beats": ["Intro", "Verse", "Chorus", "Bridge", "Outro"],
+			"audio": ["lyrics", "music"],
+			"sections": [
+				{
+					"title": "Beats",
+					"body": "Follow the song's own sections: intro, verses, choruses, bridge, outro. Each section gets its own treatment (layout, color or motion), and every chorus returns to the same one, so the structure is visible."
+				},
+				{
+					"title": "Audio",
+					"body": "The song is the clock. Get word timings by transcribing the vocal stem (separate stems first, then speech-to-text on the vocals), check them by ear, and drive every word from them. Never place lyrics by hand-timed guesses."
+				},
+				{
+					"title": "On screen",
+					"body": "Every sung word appears as it's sung and leaves when the line ends; the current word is emphasized. Lines break where the singer breathes. Big hits (drums, drops) move the whole frame."
+				},
+				{
+					"title": "Build it with",
+					"body": "`TextAnimator.wordPop` driven by word timings; `AudioSignal` beat and energy for the frame; `components/captions` for a simpler karaoke line."
+				}
+			]
+		},
+		{
+			"kind": "genre",
+			"id": "product-launch",
+			"name": "Product launch",
+			"summary": "Tension, reveal, the three things it does, the name; built to make people want it.",
+			"tags": ["product", "marketing", "launch"],
+			"pairsWell": ["look/keynote", "look/motion", "format/ad-spot"],
+			"clashes": [],
+			"beats": ["Tease", "Reveal", "Features", "Name", "Call to action"],
+			"audio": ["music", "sound"],
+			"sections": [
+				{
+					"title": "Beats",
+					"body": "1. **Tease**: a detail, a silhouette or the problem, never the whole product.\n2. **Reveal**: the product in full, on the music's first big hit.\n3. **Features**: three, no more; each one a shot and three to five words.\n4. **Name**: the product name alone, held.\n5. **Call to action**: when, where, or the price, then out."
+				},
+				{
+					"title": "Audio",
+					"body": "Music-led: a track that builds to the reveal and drops out for the name. Sound design on every move (whooshes on reveals, a soft hit on each feature). A voice only if the user asks; then very few words."
+				},
+				{
+					"title": "On screen",
+					"body": "The product in every shot after the reveal. Feature lines short and concrete (\"All-day battery\", not \"Unleash your potential\"). The name and call to action are the last two things on screen."
+				},
+				{
+					"title": "Build it with",
+					"body": "`components/device-frame` and `components/app-frame` for software; `components/logo-reveal` for the name; `AudioSignal` for hits."
+				}
+			]
+		}
+	],
+	"media": [
+		{
+			"kind": "medium",
+			"id": "3d",
+			"name": "3D",
+			"summary": "Real 3D scenes: products, objects and type with cameras, lights and materials.",
+			"tags": ["3d", "product", "lighting"],
+			"pairsWell": [],
+			"clashes": [],
+			"credit": false,
+			"models": {},
+			"sections": [
+				{
+					"title": "Pipeline",
+					"body": "1. Block the scene with primitives first (`Layer3D`), camera and one light; check the framing on a frame.\n2. Then materials, then `Layer.environment` for image-based light, then the camera animation.\n3. A user's own model (`.glb`) replaces the primitive once the framing works.\n4. Type stays 2D on top unless the look asks for 3D type."
+				},
+				{
+					"title": "Cost",
+					"body": "Free, but renders slower than 2D: draft at a low resolution, and keep shadows and depth of field for the final pass."
+				},
+				{
+					"title": "Verify",
+					"body": "Frames at the start, middle and end of each camera move; check that nothing clips the near plane and that the product's silhouette reads against the ground."
+				},
+				{
+					"title": "Build it with",
+					"body": "`Layer3D`, `Layer.model`, `Layer.environment`, `Layer.camera`, `CameraAnimation`."
+				}
+			]
+		},
+		{
+			"kind": "medium",
+			"id": "ai-generated",
+			"name": "AI-generated",
+			"summary": "Images, music and voice made through the framefields AI gateway, matched to the look and moved by the engine.",
+			"tags": ["ai", "gateway", "generative"],
+			"pairsWell": [],
+			"clashes": [],
+			"credit": true,
+			"models": {
+				"still": "seedream/5.0-pro",
+				"still-draft": "seedream/5.0-flash",
+				"edit": "seedream/5.0-pro/edit",
+				"cutout": "birefnet/v2",
+				"upscale": "seedvr/upscale/image",
+				"music": "elevenlabs/music-v2.5",
+				"voice": "elevenlabs/v4",
+				"transcribe": "elevenlabs/speech-to-text/scribe-v2",
+				"stems": "demucs",
+				"image-to-video": "seedance/2.5/image-to-video"
+			},
+			"sections": [
+				{
+					"title": "Pipeline",
+					"body": "Images, not video: generate stills and let framefields move them. Push-ins, pans, parallax and layering are exact, cheap and editable; a generated clip is none of these.\n\n1. **Shot list from the genre's beats**: what each shot shows, how long it holds (from the format), and which ones need a generated image (the rest stay code-drawn).\n2. **Estimate, then ask**: price the list with `estimate_generation_cost` and tell the user the total before generating anything.\n3. **Prompts**: describe the picture like a photographer or illustrator would (subject, setting, era, lens and framing, light, medium), then end every prompt with the look's art direction, word for word: its direction, then \"avoid: …\". Ask for the aspect ratio the shot needs.\n4. **Drafts, then finals**: draft with the still-draft model, two or three candidates per shot; show them to the user; make finals with the still model only for the approved ones.\n5. **Move them in the engine**: a slow push or pan on every still, using the look's motion words. For depth, cut the subject out (cutout model) and move it against its background at a different speed.\n6. **Audio**: music and voice from the gateway when the genre needs them; transcribe the voice for word timings.\n7. **Composite**: framefields draws the type, captions and transitions, and applies the look's grade over everything (`comp.apply`), so generated and drawn parts share one surface.\n\nVideo generation (image-to-video) only when the user asks for real motion inside a shot, and only from an approved still.\n\nAll generation runs once, in its own script (`src/generate.ts`), into `assets/generated/`, pinned with `npx framefields assets add`; the composition reads local files and never calls the gateway."
+				},
+				{
+					"title": "Cost",
+					"body": "Every call spends credit. Drafts are cheap; finals cost more; video costs far more than either, which is one more reason to move stills in the engine."
+				},
+				{
+					"title": "Consistency",
+					"body": "One reference image (the character, product or place) generated first and passed as a reference image (`image_urls`) to every later still. The same art direction text in every prompt."
+				},
+				{
+					"title": "Verify",
+					"body": "Look at every image before it goes in; check that no text, logos or watermarks were invented, and that hands and faces hold up at the size they're shown."
+				},
+				{
+					"title": "Build it with",
+					"body": "`ai.subscribe` from `framefields` with a gateway key (`FRAMEFIELDS_API_KEY`); `Layer.video` and `Layer.image` for the results."
+				}
+			]
+		},
+		{
+			"kind": "medium",
+			"id": "code-drawn",
+			"name": "Code-drawn",
+			"summary": "Everything drawn by the engine: type, shapes, charts, components. Free, exact and editable.",
+			"tags": ["vector", "type", "components"],
+			"pairsWell": [],
+			"clashes": [],
+			"credit": false,
+			"models": {},
+			"sections": [
+				{
+					"title": "Pipeline",
+					"body": "1. `theme.ts` first: the look's palette, fonts and eases as constants, and the format's size and beat grid.\n2. One file per scene; each returns a full-frame box with its own window.\n3. Reach for registry components (`npx framefields add`) before building a beat from scratch, and theme them from the look.\n4. Fonts pinned and registered before any text is built."
+				},
+				{
+					"title": "Verify",
+					"body": "`npm run check`, then frames at each beat (`npm run frames -- …`) and a grid for motion. Look at type sizes on the real frame size, not a scaled preview."
+				},
+				{
+					"title": "Build it with",
+					"body": "`Layer.text`, `Layer.shape`, `Layer.flex`, `Layer.chart`, `LayerAnimation`, `TextAnimator`."
+				}
+			]
+		},
+		{
+			"kind": "medium",
+			"id": "footage",
+			"name": "Footage",
+			"summary": "The user's own clips and photos, cut, graded and annotated, with on-device vision.",
+			"tags": ["video", "photos", "vision"],
+			"pairsWell": [],
+			"clashes": [],
+			"credit": false,
+			"models": {},
+			"sections": [
+				{
+					"title": "Pipeline",
+					"body": "1. Pin the files (`npx framefields assets add`), then watch them: pick the moments before writing any scene.\n2. Cut on movement and on the music; trim with `trimStartSec`, retime with `timeRemap`.\n3. Vision for anything that follows a subject: mattes to put type behind people, tracking for labels and blurs.\n4. The look's grade over everything with `comp.apply`, so clips shot on different days match."
+				},
+				{
+					"title": "Consistency",
+					"body": "Grade first, style second: match exposure and white balance across clips (`Curves`) before the look's grade goes on top."
+				},
+				{
+					"title": "Verify",
+					"body": "Frames at every cut; audio levels across clips; check mattes on frames with fast movement."
+				},
+				{
+					"title": "Build it with",
+					"body": "`Layer.video`, `Layer.image`, `comp.vision`, `Curves`, `ApplyLUT`."
+				}
+			]
+		}
+	],
+	"presets": [
+		{
+			"kind": "preset",
+			"id": "collage-explainer",
+			"name": "Collage explainer",
+			"summary": "A video essay in paper and archival images, highlighted as it's narrated.",
+			"featured": true,
+			"look": "collage",
+			"format": "widescreen",
+			"genre": "explainer",
+			"media": ["code-drawn", "ai-generated"],
+			"note": "The \"archival\" photos are generated stills: black-and-white press photography of the period, never video. The collage moves by pushing and layering paper."
+		},
+		{
+			"kind": "preset",
+			"id": "launch-teaser",
+			"name": "Launch teaser",
+			"summary": "A 30 second product reveal: lit in 3D on black, ending on the name.",
+			"featured": true,
+			"look": "keynote",
+			"format": "ad-spot",
+			"genre": "product-launch",
+			"media": ["3d", "ai-generated"],
+			"note": "Build the product in 3D; use generated stills only for the tease (texture, light, the world it lives in), moved with slow pushes. End on the product name alone, held for 2 seconds."
+		},
+		{
+			"kind": "preset",
+			"id": "motion",
+			"name": "Motion",
+			"summary": "Kinetic type and bold shapes, cut to music, for a brand or an idea.",
+			"featured": true,
+			"look": "motion",
+			"format": "widescreen",
+			"genre": "brand-film",
+			"media": ["code-drawn"],
+			"note": ""
+		},
+		{
+			"kind": "preset",
+			"id": "social-vertical",
+			"name": "Social vertical",
+			"summary": "9:16 for Reels, Shorts and TikTok: a hook first, big captions, quick cuts.",
+			"featured": true,
+			"look": "motion",
+			"format": "vertical",
+			"genre": "brand-film",
+			"media": ["code-drawn"],
+			"note": ""
+		},
+		{
+			"kind": "preset",
+			"id": "technical-explainer",
+			"name": "Technical explainer",
+			"summary": "How something works, as a diagram that builds step by step with code.",
+			"featured": true,
+			"look": "blueprint",
+			"format": "widescreen",
+			"genre": "explainer",
+			"media": ["code-drawn"],
+			"note": ""
+		}
+	]
+}

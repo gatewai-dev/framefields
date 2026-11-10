@@ -42,10 +42,3 @@ export interface LogLine {
 	level: "error" | "warning";
 	message: string;
 }
-
-/** Sent to the embedding page once the preview shows its first frame. */
-export interface PreviewReadyMessage {
-	type: "framefields-preview:ready";
-	/** The page seeks when its address fragment (`#t=`, `#frame=`) changes. */
-	seekByHash: true;
-}

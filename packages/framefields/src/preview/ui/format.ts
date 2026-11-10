@@ -121,7 +121,17 @@ export function openNotesText(
 	return lines.join("\n");
 }
 
-/** The last two parts of the notes folder, for the panel's footer. */
-export function shortDir(dir: string | null): string {
-	return dir ? dir.split("/").slice(-2).join("/") : "";
+/** How the transport shows the position: as time, or as frames. */
+export type PositionMode = "time" | "frames";
+
+/** The position readout: "0:01.50 / 0:02.97", or "45 / 89" (current / last frame). */
+export function positionText(
+	mode: PositionMode,
+	frame: number,
+	lastFrame: number,
+	fps: number,
+): { now: string; end: string } {
+	return mode === "frames"
+		? { now: String(frame), end: String(lastFrame) }
+		: { now: timecode(frame, fps), end: timecode(lastFrame, fps) };
 }

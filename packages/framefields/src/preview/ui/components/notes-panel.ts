@@ -1,5 +1,5 @@
 import { html } from "lit";
-import { byFrame, openNotesText, shortDir, timecode } from "../format.js";
+import { byFrame, openNotesText, timecode } from "../format.js";
 import { PreviewElement } from "./base.js";
 import * as icon from "./icons.js";
 
@@ -71,10 +71,6 @@ export class PreviewNotesPanel extends PreviewElement {
 								moment. Drag to mark an area.
 							</div>`
 				}
-			</div>
-			<div class="np-foot">
-				Saved in ${shortDir(app.meta?.notesDir ?? null)} with a picture of each
-				spot. Ask your agent to go through them.
 			</div>
 		</div>`;
 	}

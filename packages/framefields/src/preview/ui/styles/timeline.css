@@ -1,22 +1,32 @@
-/* ── Timeline ── */
 .timeline {
+	--lane: 20px;
+	--wave-h: 48px;
 	flex: none;
-	border: 1px solid var(--line);
 	border-radius: var(--radius);
 	background: var(--surface);
-	padding: 0 14px;
+	padding: 0 16px 8px;
 	user-select: none;
 	-webkit-user-select: none;
 	touch-action: none;
 	cursor: pointer;
 }
+:root[data-embed] .timeline {
+	--wave-h: 36px;
+	padding: 0 8px 4px;
+}
+@media (max-height: 600px) {
+	.timeline {
+		--wave-h: 28px;
+	}
+}
 .tl-inner {
 	position: relative;
 }
+
+/* Ruler: minor and major ticks, labels on the majors. */
 .ruler {
 	position: relative;
-	height: 22px;
-	border-bottom: 1px solid var(--line);
+	height: 24px;
 }
 .tick {
 	position: absolute;
@@ -31,28 +41,74 @@
 }
 .tick span {
 	position: absolute;
-	bottom: 9px;
-	left: 4px;
+	bottom: 10px;
+	left: 0;
+	transform: translateX(-50%);
 	font-size: 10.5px;
 	line-height: 1;
 	color: var(--ink-3);
 	white-space: nowrap;
 	font-variant-numeric: tabular-nums;
 }
-.wave-lane {
+.tick:first-child span {
+	transform: none;
+}
+
+/* Notes: numbered markers on their own lane, close ones stacked. */
+.marks {
 	position: relative;
-	height: 48px;
+	z-index: 4;
+	height: calc(var(--lanes, 1) * var(--lane));
 }
-@media (max-height: 600px) {
-	.wave-lane {
-		height: 30px;
-	}
+.note-mark {
+	position: absolute;
+	width: 18px;
+	height: 18px;
+	margin: 1px 0 0 -9px;
+	padding: 0 4px;
+	border: 0;
+	border-radius: 9px;
+	display: grid;
+	place-items: center;
+	cursor: pointer;
+	background: var(--ink);
+	color: var(--bg);
+	font-size: 10px;
+	font-weight: 700;
+	font-variant-numeric: tabular-nums;
+	box-shadow: 0 0 0 2px var(--surface);
+	z-index: 2;
 }
-.wave-lane canvas {
+.note-mark.done {
+	background: var(--surface-3);
+	color: var(--ink-3);
+}
+.note-mark.active {
+	background: var(--signal);
+	color: var(--signal-ink);
+}
+.note-mark:hover {
+	transform: scale(1.12);
+}
+
+/* The soundtrack as a filled shape; the part already played is darker ink. */
+.wave {
+	position: relative;
+	height: var(--wave-h);
+}
+.wave canvas {
 	position: absolute;
 	inset: 0;
 	width: 100%;
 	height: 100%;
+}
+.wave-played {
+	position: absolute;
+	inset: 0 auto 0 0;
+	overflow: hidden;
+}
+.wave-played canvas {
+	width: var(--track-w, 100%);
 }
 .wave-state {
 	position: absolute;
@@ -82,105 +138,55 @@
 		background-position: -100% 0;
 	}
 }
-.playhead {
-	position: absolute;
-	top: 0;
-	bottom: 0;
-	width: 0;
-	pointer-events: none;
-	z-index: 3;
-}
-.playhead::before {
-	content: "";
-	position: absolute;
-	top: 0;
-	bottom: 0;
-	left: -0.5px;
-	width: 1px;
-	background: var(--ink);
-}
-.playhead::after {
-	content: "";
-	position: absolute;
-	top: 0;
-	left: -5px;
-	width: 10px;
-	height: 11px;
-	background: var(--ink);
-	clip-path: polygon(0 0, 100% 0, 100% 55%, 50% 100%, 0 55%);
-}
+
+/* Where the pointer is, and its time. */
 .hover-line {
 	position: absolute;
-	top: 0;
+	top: 24px;
 	bottom: 0;
 	width: 1px;
-	background: var(--line-2);
-	display: none;
+	background: var(--ink-3);
+	pointer-events: none;
+	opacity: 0.6;
+}
+.hover-time,
+.playhead-time {
+	position: absolute;
+	top: 2px;
+	width: 64px;
+	margin-left: -32px;
+	height: 20px;
+	display: grid;
+	place-items: center;
+	border-radius: 4px;
+	font-size: 11px;
+	font-weight: 500;
+	font-variant-numeric: tabular-nums;
 	pointer-events: none;
 }
 .hover-time {
-	position: absolute;
-	top: -28px;
-	transform: translateX(-50%);
-	display: none;
-	pointer-events: none;
-	font-size: 11px;
-	line-height: 1;
 	background: var(--surface-3);
 	color: var(--ink);
-	padding: 5px 7px;
-	border-radius: 5px;
-	white-space: nowrap;
 	z-index: 4;
-	font-variant-numeric: tabular-nums;
 }
-.note-marks {
+
+/* The playhead: signal yellow, with its time on the ruler. */
+.playhead {
 	position: absolute;
-	left: 0;
-	right: 0;
 	top: 22px;
 	bottom: 0;
+	width: 2px;
+	margin-left: -1px;
+	background: var(--signal);
 	pointer-events: none;
-	z-index: 2;
+	z-index: 3;
+	box-shadow: 0 0 0 0.5px rgb(0 0 0 / 0.35);
 }
-.note-mark {
-	position: absolute;
-	top: 5px;
-	width: 14px;
-	height: 14px;
-	margin-left: -7px;
-	padding: 0;
-	border: 0;
-	border-radius: 50%;
-	display: grid;
-	place-items: center;
-	pointer-events: auto;
-	cursor: pointer;
-	background: var(--brand);
-	color: #fff;
-	font-size: 8.5px;
-	font-weight: 700;
-	box-shadow: 0 0 0 2px var(--surface);
+.playhead-time {
+	background: var(--signal);
+	color: var(--signal-ink);
+	z-index: 3;
 }
-.note-mark::after {
-	content: "";
-	position: absolute;
-	top: 14px;
-	left: 6.5px;
-	width: 1px;
-	height: 30px;
-	background: var(--brand);
-	opacity: 0.45;
-}
-.note-mark.done {
-	background: var(--ink-3);
-}
-.note-mark.stacked::after {
-	display: none;
-}
-.note-mark.done::after {
-	background: var(--ink-3);
-}
-.note-mark:hover {
-	transform: scale(1.2);
+.timeline:focus-visible {
+	outline-offset: 0;
 }

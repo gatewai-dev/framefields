@@ -70,7 +70,7 @@ export class PreviewNoteEditor extends PreviewElement {
 				? "Couldn't save. Is the preview running?"
 				: "Enter to add";
 		return html`<div class="pop-head">
-				<span class="badge">+</span>
+				<span class="badge new">+</span>
 				<span class="tnum"
 					>${timecode(draft.frame, fps)} · ${draft.w != null ? "area" : "spot"}</span
 				>

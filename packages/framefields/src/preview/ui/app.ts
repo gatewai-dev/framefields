@@ -3,15 +3,16 @@
  * The preview page's state and logic, without its looks: what is shown,
  * playback on the player's clock, notes, the soundtrack, the server's events
  * and the address fragment. The page's elements render from it and call it;
- * it says when anything changed with a `change` event.
+ * it says when anything changed with a `change` event, and tells an embedding
+ * app's channel (channel.ts) what happened with `ready`, `position` and
+ * `build` events.
  */
-import type { PreviewPlayer } from "../player.js";
 import type {
-	AudioStatus,
-	PreviewMeta,
-	PreviewNote,
-	PreviewReadyMessage,
-} from "../protocol.js";
+	PreviewBuildMessage,
+	PreviewPosition,
+} from "../embed-protocol.js";
+import type { PreviewPlayer } from "../player.js";
+import type { AudioStatus, PreviewMeta, PreviewNote } from "../protocol.js";
 import { captureNote } from "./capture.js";
 import { clampFrame, frameFromHash, hashForFrame } from "./format.js";
 import { FpsMeter, type MeterReading } from "./meter.js";
@@ -86,11 +87,27 @@ export interface PreviewAppOptions {
 	/** The window the page runs in. */
 	win?: Window;
 	/**
-	 * The page embedding this one, told when the preview is ready. Defaults
-	 * to `window.parent` when the page is in a frame.
+	 * The compact layout for a page shown inside an app (no header). Defaults
+	 * to the address asking for it: `?embed=1`.
 	 */
-	embedder?: Window | null;
+	embedded?: boolean;
 }
+
+/** What the app tells an embedding app's channel, besides `change`. */
+export interface PreviewAppEvents {
+	/** The first frame is drawn. */
+	ready: undefined;
+	/** Played, paused, a seek finished, or a frame shown while playing. */
+	position: PreviewPosition;
+	/** A rebuild is coming (the page reloads into it), or a build or frame failed. */
+	build: Omit<PreviewBuildMessage, "type">;
+}
+
+/** What the keyboard does; true when the key was the page's. */
+export type PreviewKey = {
+	key: string;
+	shiftKey?: boolean;
+};
 
 /** The draft a press on the picture makes: an area when dragged far enough, else a spot. */
 export function draftAt(
@@ -106,6 +123,8 @@ export function draftAt(
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export class PreviewApp extends EventTarget {
+	/** Shown inside an app: no header, tighter chrome. */
+	readonly embedded: boolean;
 	meta: PreviewMeta | null = null;
 	player: PreviewPlayer | null = null;
 	pageState: PageState = "loading";
@@ -136,7 +155,6 @@ export class PreviewApp extends EventTarget {
 	readonly server: PreviewServer;
 
 	readonly #win: Window;
-	readonly #embedder: Window | null;
 	readonly #meter: FpsMeter;
 	#session: string | null = null;
 	#drawing = false;
@@ -154,12 +172,9 @@ export class PreviewApp extends EventTarget {
 		super();
 		this.server = options.server ?? httpServer();
 		this.#win = options.win ?? window;
-		this.#embedder =
-			options.embedder !== undefined
-				? options.embedder
-				: this.#win.parent !== this.#win
-					? this.#win.parent
-					: null;
+		this.embedded =
+			options.embedded ??
+			new URLSearchParams(this.#win.location.search).get("embed") === "1";
 		this.report = createReporter((line) => this.server.log(line));
 		this.#meter = new FpsMeter(() => this.meta?.fps ?? Infinity);
 		this.soundtrack = new Soundtrack({
@@ -206,6 +221,38 @@ export class PreviewApp extends EventTarget {
 	subscribe(listener: () => void): () => void {
 		this.addEventListener("change", listener);
 		return () => this.removeEventListener("change", listener);
+	}
+
+	/** Listens for one of `PreviewAppEvents`; returns a function that stops. */
+	on<K extends keyof PreviewAppEvents>(
+		type: K,
+		listener: (detail: PreviewAppEvents[K]) => void,
+	): () => void {
+		const handler = (e: Event) =>
+			listener((e as CustomEvent<PreviewAppEvents[K]>).detail);
+		this.addEventListener(type, handler);
+		return () => this.removeEventListener(type, handler);
+	}
+
+	#emit<K extends keyof PreviewAppEvents>(
+		type: K,
+		detail: PreviewAppEvents[K],
+	): void {
+		this.dispatchEvent(new CustomEvent(type, { detail }));
+	}
+
+	/** Where the page is, as the embedding app sees it. */
+	get position(): PreviewPosition {
+		const fps = this.meta?.fps ?? 30;
+		return {
+			frame: this.frame,
+			time: Number((this.frame / fps).toFixed(3)),
+			playing: this.playing,
+		};
+	}
+
+	#positionChanged(): void {
+		this.#emit("position", this.position);
 	}
 
 	// ── Start ──
@@ -281,6 +328,7 @@ export class PreviewApp extends EventTarget {
 		pending.then(
 			(p) => {
 				this.player = p;
+				p.onFrameError = (frame, err) => this.#frameFailed(frame, err);
 				this.soundtrack.attach(p, this.frame);
 				this.changed();
 				void this.#show(this.frame).then(() => this.#ready());
@@ -299,13 +347,7 @@ export class PreviewApp extends EventTarget {
 		this.#settleReady();
 		this.#scheduleWarm();
 		this.changed();
-		this.#embedder?.postMessage(
-			{
-				type: "framefields-preview:ready",
-				seekByHash: true,
-			} satisfies PreviewReadyMessage,
-			"*",
-		);
+		this.#emit("ready", undefined);
 	}
 
 	whenReady(): Promise<void> {
@@ -329,6 +371,18 @@ export class PreviewApp extends EventTarget {
 		this.pageState = "error";
 		this.error = String((err as Error | undefined)?.message ?? err);
 		this.changed();
+		this.#emit("build", { status: "error", message: this.error });
+	}
+
+	#frameErrors = new Set<string>();
+
+	// A frame that threw: the player shows the frame before it and goes on.
+	#frameFailed(frame: number, err: unknown): void {
+		const message = `frame ${frame}: ${String((err as Error | undefined)?.message ?? err)}`;
+		const key = message.replace(/\d+/g, "#");
+		if (this.#frameErrors.has(key) || this.#frameErrors.size > 100) return;
+		this.#frameErrors.add(key);
+		this.#emit("build", { status: "error", message });
 	}
 
 	// ── Server events ──
@@ -338,6 +392,8 @@ export class PreviewApp extends EventTarget {
 	// with a new session, and this tab reloads into it.
 	#hello(session: string): void {
 		if (this.#session && session !== this.#session) {
+			// A rebuilt preview took over: `ready` after the reload says it's done.
+			this.#emit("build", { status: "building" });
 			this.#win.location.reload();
 			return;
 		}
@@ -384,7 +440,7 @@ export class PreviewApp extends EventTarget {
 		const done = this.#show(clampFrame(frame, this.meta?.frameCount ?? 1));
 		this.#keepPosition();
 		this.#scheduleWarm();
-		return done;
+		return done.then(() => this.#positionChanged());
 	}
 
 	step(by: number): Promise<void> {
@@ -467,6 +523,7 @@ export class PreviewApp extends EventTarget {
 		if (this.draft && !this.draft.text.trim()) this.cancelDraft();
 		if (this.frame >= this.lastFrame) this.frame = 0;
 		this.changed();
+		this.#positionChanged();
 		this.#playFrames(this.player, alive)
 			.catch((err: unknown) => this.report("error", [err]))
 			.finally(() => {
@@ -487,6 +544,7 @@ export class PreviewApp extends EventTarget {
 	}
 
 	#stop(): void {
+		const was = this.playing;
 		this.playing = false;
 		this.soundtrack.stopClock();
 		this.stalled = false;
@@ -494,6 +552,7 @@ export class PreviewApp extends EventTarget {
 		clearInterval(this.#fpsTimer);
 		this.#fpsTimer = undefined;
 		this.#readFps();
+		if (was) this.#positionChanged();
 	}
 
 	#readFps(): void {
@@ -540,6 +599,7 @@ export class PreviewApp extends EventTarget {
 				continue;
 			}
 			this.#setTime(due);
+			this.#positionChanged();
 			// Each frame is drawn once; caching it would cost a texture and a copy per frame.
 			const drawn = await player.render(due, { cache: false });
 			if (!alive()) return;
@@ -691,6 +751,34 @@ export class PreviewApp extends EventTarget {
 			this.changed();
 		}, 2200);
 		this.changed();
+	}
+
+	// ── Keyboard: ←/→ a frame, ⇧←/→ a second, Space plays or pauses,
+	// Home/End the first and last frame ──
+
+	/** Handles a key for the page; true when it was one of its keys. */
+	key({ key, shiftKey = false }: PreviewKey): boolean {
+		if (!this.meta || !this.player) return false;
+		const second = Math.round(this.meta.fps);
+		switch (key) {
+			case "ArrowLeft":
+			case "ArrowRight": {
+				const by = (shiftKey ? second : 1) * (key === "ArrowLeft" ? -1 : 1);
+				void this.step(by);
+				return true;
+			}
+			case " ":
+				this.togglePlay();
+				return true;
+			case "Home":
+				void this.seek(0);
+				return true;
+			case "End":
+				void this.seek(this.lastFrame);
+				return true;
+			default:
+				return false;
+		}
 	}
 
 	// ── For scripts and agents ──

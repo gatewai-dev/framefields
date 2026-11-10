@@ -91,7 +91,6 @@ const SCHEMAS = {
 		look: id,
 		format: id,
 		genre: id,
-		media: z.array(id).min(1),
 	}),
 } as const;
 
@@ -185,12 +184,7 @@ function checkRefs(library: StyleLibrary) {
 		for (const r of [...part.pairsWell, ...part.clashes].filter(missing))
 			throw new Error(`${part.kind}/${part.id}: unknown part ${r}`);
 	for (const p of library.presets) {
-		const refs = [
-			`look/${p.look}`,
-			`format/${p.format}`,
-			`genre/${p.genre}`,
-			...p.media.map((m) => `medium/${m}`),
-		];
+		const refs = [`look/${p.look}`, `format/${p.format}`, `genre/${p.genre}`];
 		for (const r of refs.filter(missing))
 			throw new Error(`preset/${p.id}: unknown part ${r}`);
 	}
@@ -264,13 +258,12 @@ export function renderSkillTables(library: StyleLibrary): string {
 		),
 		"### Presets",
 		table(
-			["Preset", "Look", "Format", "Genre", "Media"],
+			["Preset", "Look", "Format", "Genre"],
 			library.presets.map((p) => [
 				link("presets", p),
 				p.look,
 				p.format,
 				p.genre,
-				p.media.join(", "),
 			]),
 		),
 	].join("\n\n");

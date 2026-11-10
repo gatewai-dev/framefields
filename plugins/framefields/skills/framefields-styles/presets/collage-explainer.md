@@ -6,7 +6,6 @@ featured: true
 look: collage
 format: widescreen
 genre: explainer
-media: [code-drawn, ai-generated]
 ---
 
 ## Note

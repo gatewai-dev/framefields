@@ -876,7 +876,6 @@
 			"look": "collage",
 			"format": "widescreen",
 			"genre": "explainer",
-			"media": ["code-drawn", "ai-generated"],
 			"note": "The \"archival\" photos are generated stills: black-and-white press photography of the period, never video. The collage moves by pushing and layering paper."
 		},
 		{
@@ -888,7 +887,6 @@
 			"look": "swiss",
 			"format": "widescreen",
 			"genre": "data-story",
-			"media": ["code-drawn"],
 			"note": ""
 		},
 		{
@@ -900,7 +898,6 @@
 			"look": "keynote",
 			"format": "ad-spot",
 			"genre": "product-launch",
-			"media": ["3d", "ai-generated"],
 			"note": "Build the product in 3D; use generated stills only for the tease (texture, light, the world it lives in), moved with slow pushes. End on the product name alone, held for 2 seconds."
 		},
 		{
@@ -912,7 +909,6 @@
 			"look": "motion",
 			"format": "widescreen",
 			"genre": "brand-film",
-			"media": ["code-drawn"],
 			"note": ""
 		},
 		{
@@ -924,7 +920,6 @@
 			"look": "motion",
 			"format": "vertical",
 			"genre": "brand-film",
-			"media": ["code-drawn"],
 			"note": ""
 		},
 		{
@@ -936,7 +931,6 @@
 			"look": "blueprint",
 			"format": "widescreen",
 			"genre": "explainer",
-			"media": ["code-drawn"],
 			"note": ""
 		},
 		{
@@ -948,7 +942,6 @@
 			"look": "risograph",
 			"format": "bumper",
 			"genre": "brand-film",
-			"media": ["code-drawn"],
 			"note": "One cut-out shape, one line, the name; misregistration jitters on every hit."
 		}
 	]

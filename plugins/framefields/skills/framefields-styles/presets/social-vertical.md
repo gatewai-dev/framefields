@@ -6,5 +6,4 @@ featured: true
 look: motion
 format: vertical
 genre: brand-film
-media: [code-drawn]
 ---

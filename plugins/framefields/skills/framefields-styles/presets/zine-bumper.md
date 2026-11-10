@@ -6,7 +6,6 @@ featured: false
 look: risograph
 format: bumper
 genre: brand-film
-media: [code-drawn]
 ---
 
 ## Note

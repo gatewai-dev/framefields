@@ -174,7 +174,7 @@ All five phases are built; nothing is pushed or deployed.
   - The quiet line after the first message, and the change note that reaches the agent with the next message.
   - Old style ids map to presets.
   - `framefields` is a build-time dependency, linked to this repo until a release ships `framefields/styles`; only that subpath is bundled.
-- **Phase 4, AI-native** (frameshop): `examples/43_collage_explainer`, a 37-second film made only from the Collage explainer preset. It uses generated stills (no video) and ElevenLabs v4 voice, with highlights cued on spoken words. Its music is missing: the gateway's `elevenlabs/music-v2.5` returned 500 for every request, minimal ones included.
+- **Phase 4, AI-native**: the AI-generated medium is image-first, and Mock-up → AI edit (image edit) is in the library. Media are no longer part of presets or the desktop's picker: the agent chooses them from the request unless the user says.
 - **Phase 5, grow**: added the Swiss and Risograph looks, the Cinema and Bumper 6s formats, the Data story and UI demo genres, the Mock-up → AI edit medium (image edit only), and the Swiss data story and Zine bumper presets. The new looks have reference frames and are published.
 
 Next: release `framefields` with `framefields/styles` and pin it in the desktop app, deploy the API, more looks (crafted, retro, cinematic), components `Theme`s from look tokens, `framefields init --preset`, and a docs gallery from the endpoint.

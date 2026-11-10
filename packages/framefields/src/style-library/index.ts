@@ -27,7 +27,9 @@ export { presetMix, type ResolvedMix, type StyleClash } from "./combine.js";
 export type * from "./types.js";
 
 /** Every look, format, genre, medium and preset. */
-export const styleLibrary = catalog as StyleLibrary;
+// The schemas in build.ts check every field when catalog.json is written; TypeScript's
+// inferred JSON types are only looser unions of the same shape.
+export const styleLibrary = catalog as unknown as StyleLibrary;
 
 /** Looks a mix's ids up; null when one is unknown to this version of the library. */
 export function resolveStyleMix(mix: StyleMix): ResolvedMix | null {

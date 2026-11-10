@@ -1,6 +1,7 @@
 /**
  * The style library's model: a video's direction is one look, one format, one
- * genre and one or more media. Each part owns its own sections, so parts
+ * genre, and the media it's made with (chosen per request, or left to the
+ * agent). Each part owns its own sections, so parts
  * combine without overriding each other. Presets name good combinations.
  */
 
@@ -84,7 +85,6 @@ export interface Preset {
 	look: string;
 	format: string;
 	genre: string;
-	media: string[];
 	/** Guidance this combination adds, if any. */
 	note: string;
 }
@@ -104,7 +104,11 @@ export interface StyleMix {
 	look: string;
 	format: string;
 	genre: string;
-	media: string[];
+	/**
+	 * How it's made (code-drawn, 3D, footage, AI-generated). Left out, the brief lists the
+	 * options and the agent picks from the request.
+	 */
+	media?: string[];
 	/** The preset the mix started from; it adds its note while the mix still matches it. */
 	preset?: string;
 }

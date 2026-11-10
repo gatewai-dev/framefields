@@ -6,5 +6,4 @@ featured: true
 look: motion
 format: widescreen
 genre: brand-film
-media: [code-drawn]
 ---

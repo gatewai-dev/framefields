@@ -6,5 +6,4 @@ featured: true
 look: swiss
 format: widescreen
 genre: data-story
-media: [code-drawn]
 ---

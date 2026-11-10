@@ -10,15 +10,16 @@ A video's direction is four parts, each a short file in this skill:
 - **Look**: what it looks like (palette, type, texture, motion character, grade, and art direction for generated media).
 - **Format**: where it plays (size, fps, length, safe areas, cut rhythm).
 - **Genre**: what kind of video it is (the beats, what the audio does, what's on screen).
-- **Medium**: where the pixels come from (code-drawn, 3D, footage, AI-generated). A film can use several.
+- **Medium**: where the pixels come from (code-drawn, 3D, footage, AI-generated). A film can use several. Media are decided per piece: by the user when they say, otherwise by you from the request.
 
-A **preset** names a good combination of the four.
+A **preset** names a good combination of a look, a format and a genre.
 
 ## Choosing
 
 1. If the user named a preset or parts, use them.
 2. Otherwise, infer the format (from the platform or length they mention) and the genre (from what the video is for), then offer two or three looks that pair well, by name and one line each. Ask only what you can't infer.
-3. Read only the files you use: one look, one format, one genre, and each medium.
+3. Pick the media from what the request needs (say which), unless the user named them.
+4. Read only the files you use: one look, one format, one genre, and each medium.
 
 ## Combining
 
@@ -31,7 +32,7 @@ Each part writes only in its own area, so they combine without overriding each o
 
 A slow look in a short format keeps its visuals with fewer elements; it does not slow the format down. `clashes` in a part's frontmatter mark pairs to handle with care, never pairs to refuse.
 
-From code, `framefields/styles` has the same library: `combineStyles({ look, format, genre, media })` returns the brief these rules produce, `styleClashes(mix)` the pairs to watch, and `styleLibrary` every part.
+From code, `framefields/styles` has the same library: `combineStyles({ look, format, genre, media? })` returns the brief these rules produce, `styleClashes(mix)` the pairs to watch, and `styleLibrary` every part.
 
 ## Generated media matches the look
 
@@ -86,15 +87,15 @@ When a medium uses AI generation, it generates images (video only if the user as
 
 ### Presets
 
-| Preset | Look | Format | Genre | Media |
-|---|---|---|---|---|
-| [Collage explainer](presets/collage-explainer.md) | collage | widescreen | explainer | code-drawn, ai-generated |
-| [Swiss data story](presets/data-story.md) | swiss | widescreen | data-story | code-drawn |
-| [Launch teaser](presets/launch-teaser.md) | keynote | ad-spot | product-launch | 3d, ai-generated |
-| [Motion](presets/motion.md) | motion | widescreen | brand-film | code-drawn |
-| [Social vertical](presets/social-vertical.md) | motion | vertical | brand-film | code-drawn |
-| [Technical explainer](presets/technical-explainer.md) | blueprint | widescreen | explainer | code-drawn |
-| [Zine bumper](presets/zine-bumper.md) | risograph | bumper | brand-film | code-drawn |
+| Preset | Look | Format | Genre |
+|---|---|---|---|
+| [Collage explainer](presets/collage-explainer.md) | collage | widescreen | explainer |
+| [Swiss data story](presets/data-story.md) | swiss | widescreen | data-story |
+| [Launch teaser](presets/launch-teaser.md) | keynote | ad-spot | product-launch |
+| [Motion](presets/motion.md) | motion | widescreen | brand-film |
+| [Social vertical](presets/social-vertical.md) | motion | vertical | brand-film |
+| [Technical explainer](presets/technical-explainer.md) | blueprint | widescreen | explainer |
+| [Zine bumper](presets/zine-bumper.md) | risograph | bumper | brand-film |
 
 <!-- style-library:end -->
 

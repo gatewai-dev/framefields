@@ -6,7 +6,6 @@ featured: true
 look: keynote
 format: ad-spot
 genre: product-launch
-media: [3d, ai-generated]
 ---
 
 ## Note

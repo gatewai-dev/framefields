@@ -1,5 +1,5 @@
 /**
- * Turns a mix (look + format + genre + media) into one brief an agent can
+ * Turns a mix (look + format + genre, and media when chosen) into one brief an agent can
  * follow. Parts are written in precedence order: the format decides the frame
  * and timing, the genre the structure and audio, the look everything visual,
  * the media how it is produced.
@@ -22,7 +22,10 @@ export interface ResolvedMix {
 	look: Look;
 	format: Format;
 	genre: Genre;
+	/** The media chosen; empty means the agent picks from {@link ResolvedMix.mediaChoices}. */
 	media: Medium[];
+	/** Every medium in the library, for a mix that leaves the choice open. */
+	mediaChoices: Medium[];
 	/** Set only while the mix still matches the preset it started from. */
 	preset: Preset | null;
 }
@@ -46,17 +49,18 @@ export function presetMix(preset: Preset): StyleMix {
 		look: preset.look,
 		format: preset.format,
 		genre: preset.genre,
-		media: [...preset.media],
 		preset: preset.id,
 	};
 }
+
+const sameMedia = (a: string[] = [], b: string[] = []) =>
+	a.length === b.length && a.every((m) => b.includes(m));
 
 const sameMix = (a: StyleMix, b: StyleMix) =>
 	a.look === b.look &&
 	a.format === b.format &&
 	a.genre === b.genre &&
-	a.media.length === b.media.length &&
-	a.media.every((m) => b.media.includes(m));
+	sameMedia(a.media, b.media);
 
 /**
  * Looks every id up. Returns null when one is unknown (a mix saved by a newer
@@ -69,8 +73,8 @@ export function resolveMix(
 	const look = byId(library.looks, mix.look);
 	const format = byId(library.formats, mix.format);
 	const genre = byId(library.genres, mix.genre);
-	const media = mix.media.map((id) => byId(library.media, id));
-	if (!look || !format || !genre || media.length === 0) return null;
+	const media = (mix.media ?? []).map((id) => byId(library.media, id));
+	if (!look || !format || !genre) return null;
 	if (media.some((m) => m === null)) return null;
 	const preset = mix.preset ? byId(library.presets, mix.preset) : null;
 	return {
@@ -78,6 +82,7 @@ export function resolveMix(
 		format,
 		genre,
 		media: media as Medium[],
+		mediaChoices: library.media,
 		preset: preset && sameMix(presetMix(preset), mix) ? preset : null,
 	};
 }
@@ -128,7 +133,9 @@ Add these to every image and video prompt, so generated material matches the dra
 function lookBlock(mix: ResolvedMix): string {
 	const { look } = mix;
 	const head = `### Look: ${look.name}\n\n${look.summary} Palette: ${look.palette.join(", ")}. Type: ${look.fonts.display} (display), ${look.fonts.body} (body)${look.fonts.mono ? `, ${look.fonts.mono} (mono)` : ""}.`;
-	const ai = mix.media.some((m) => m.credit) ? `\n\n${artDirection(look)}` : "";
+	// Open media may still mean generated pictures, so the art direction goes with it.
+	const generates = mix.media.length === 0 || mix.media.some((m) => m.credit);
+	const ai = generates ? `\n\n${artDirection(look)}` : "";
 	return `${head}\n\n${sections(look.sections)}${ai}`;
 }
 
@@ -136,9 +143,22 @@ const names = (media: Medium[]) => media.map((m) => m.name).join(" + ");
 
 function intro(mix: ResolvedMix): string {
 	const from = mix.preset ? `, from the ${mix.preset.name} preset` : "";
-	return `This piece is directed as: ${mix.look.name} look, ${mix.format.name} format, ${mix.genre.name}, made with ${names(mix.media)}${from}.
+	const made = mix.media.length ? `, made with ${names(mix.media)}` : "";
+	return `This piece is directed as: ${mix.look.name} look, ${mix.format.name} format, ${mix.genre.name}${made}${from}.
 
 Each part decides its own area: the format the frame and timing, the genre the structure and audio, the look everything visual, the media how it is produced. When two pull against each other, keep each one's rules in its own area.`;
+}
+
+/** No medium chosen: the options, so the agent picks from the request (or follows the user's). */
+function openMedia(choices: Medium[]): string {
+	const list = choices.map((m) => `- **${m.name}**: ${m.summary}`).join("\n");
+	return `### Media
+
+Not set for this piece: decide how to make each shot from what the user asks (and follow them when they say), then say which you chose. The options:
+
+${list}
+
+Anything generated (images, voice, music) spends credit: estimate it and ask first, and generate images, not video, unless the user asks for video.`;
 }
 
 /** The whole direction as one brief, in precedence order. */
@@ -148,9 +168,12 @@ export function combineResolved(mix: ResolvedMix): string {
 		`### Format: ${mix.format.name}\n\n${formatLine(mix.format)}.\n\n${sections(mix.format.sections)}`,
 		`### Genre: ${mix.genre.name}\n\nBeats: ${mix.genre.beats.join(" → ")}.\n\n${sections(mix.genre.sections)}`,
 		lookBlock(mix),
-		...mix.media.map(
-			(m) => `### Medium: ${m.name}\n\n${m.summary}\n\n${sections(m.sections)}`,
-		),
+		...(mix.media.length
+			? mix.media.map(
+					(m) =>
+						`### Medium: ${m.name}\n\n${m.summary}\n\n${sections(m.sections)}`,
+				)
+			: [openMedia(mix.mediaChoices)]),
 	];
 	if (mix.preset?.note)
 		blocks.push(`### ${mix.preset.name}\n\n${mix.preset.note}`);

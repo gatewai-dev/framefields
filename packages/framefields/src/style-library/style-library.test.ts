@@ -138,19 +138,31 @@ describe("combineStyles", () => {
 	const teaser = presetMix(preset);
 
 	it("writes the parts in precedence order", () => {
-		const brief = combineStyles(teaser);
+		const brief = combineStyles({ ...teaser, media: ["3d", "ai-generated"] });
 		const order = [
 			"### Format:",
 			"### Genre:",
 			"### Look:",
 			"### Medium: 3D",
 			"### Medium: AI-generated",
-			"### Launch teaser",
 		];
 		const at = order.map((h) => brief.indexOf(h));
 		expect(at.every((i) => i >= 0)).toBe(true);
 		expect([...at].sort((a, b) => a - b)).toEqual(at);
+		// Media aren't part of a preset, so choosing them makes the mix custom.
+		expect(brief).not.toContain("from the Launch teaser preset");
+	});
+
+	it("leaves media to the agent when the mix doesn't set them", () => {
+		const brief = combineStyles(teaser);
 		expect(brief).toContain("from the Launch teaser preset");
+		expect(brief).toContain("### Media\n\nNot set for this piece");
+		for (const m of styleLibrary.media)
+			expect(brief).toContain(`**${m.name}**`);
+		expect(brief).not.toContain("### Medium:");
+		expect(brief.indexOf("### Media")).toBeLessThan(
+			brief.indexOf("### Launch teaser"),
+		);
 	});
 
 	it("adds the look's art direction only when a medium generates", () => {
@@ -183,7 +195,7 @@ describe("combineStyles", () => {
 
 	it("returns null for ids this version doesn't know", () => {
 		expect(resolveStyleMix({ ...teaser, look: "from-the-future" })).toBeNull();
-		expect(() => combineStyles({ ...teaser, media: [] })).toThrow(
+		expect(() => combineStyles({ ...teaser, media: ["hologram"] })).toThrow(
 			/Unknown style/,
 		);
 	});

@@ -6,5 +6,4 @@ featured: true
 look: blueprint
 format: widescreen
 genre: explainer
-media: [code-drawn]
 ---

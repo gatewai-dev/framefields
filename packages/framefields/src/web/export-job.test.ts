@@ -244,12 +244,9 @@ describe("runExportJob", () => {
 		// One kept store per export, as OPFS keeps one folder per job id.
 		const stores = new Map<string, MemoryExportStore>();
 		const storeOf = (jobId: string) => {
-			let store = stores.get(jobId);
-			if (!store)
-				stores.set(
-					jobId,
-					(store = new MemoryExportStore({ persistent: true })),
-				);
+			const store =
+				stores.get(jobId) ?? new MemoryExportStore({ persistent: true });
+			stores.set(jobId, store);
 			return store;
 		};
 		let queue!: RenderQueue;

@@ -28,6 +28,7 @@ import {
 	MUSIC_VERSION,
 	type SpokenWord,
 	TRANSCRIBER,
+	VOICE_IDS,
 	VOICE_LEAD,
 	VOICE_MODEL,
 	voiceInput,
@@ -60,22 +61,18 @@ const takePath = (
 
 let spent = 0;
 
-/** Runs `model` on fal and saves the audio it returns to `dest`. */
+/** Reads one line with the gateway's ElevenLabs voice and saves the MP3 it returns to `dest`. */
 async function generate(
-	model: string,
-	input: Record<string, unknown>,
+	input: ReturnType<typeof voiceInput>,
 	dest: string,
 ): Promise<void> {
-	const run = await fetch(`https://fal.run/${model}`, {
-		method: "POST",
-		headers: {
-			Authorization: `Key ${process.env.FAL_API_KEY}`,
-			"Content-Type": "application/json",
+	const { data } = await ai.subscribe<{ audio: { url: string } }>(VOICE_MODEL, {
+		input: {
+			text: input.text,
+			voice_id: VOICE_IDS[input.voice],
+			voice_settings: { stability: input.stability },
 		},
-		body: JSON.stringify(input),
 	});
-	if (!run.ok) throw new Error(`${model} → ${run.status} ${await run.text()}`);
-	const data = (await run.json()) as { audio: { url: string } };
 	const res = await fetch(data.audio.url);
 	if (!res.ok) throw new Error(`GET ${data.audio.url} → ${res.status}`);
 	await fs.mkdir(path.dirname(dest), { recursive: true });
@@ -204,9 +201,13 @@ async function voiceLine(id: LineId): Promise<AudioManifest["voice"][LineId]> {
 	const text = LINES[id];
 	for (let take = 1; take <= MAX_TAKES; take++) {
 		const input = voiceInput(id);
-		const raw = takePath(`voice-${id}`, input, take);
+		// Takes read on fal are WAV; the gateway's are MP3. Either one is kept.
+		const wav = takePath(`voice-${id}`, input, take);
+		const raw = existsSync(wav)
+			? wav
+			: takePath(`voice-${id}`, input, take, "mp3");
 		if (!existsSync(raw)) {
-			await generate(VOICE_MODEL, input, raw);
+			await generate(input, raw);
 			spent += (PER_1000_CHARACTERS * text.length) / 1000;
 		}
 		const heard = await transcribe(raw);
@@ -274,10 +275,8 @@ async function save(manifest: Partial<AudioManifest>): Promise<void> {
 
 async function main(): Promise<void> {
 	process.loadEnvFile(new URL("../../../.env", import.meta.url).pathname);
-	if (!process.env.FRAMEFIELDS_API_KEY || !process.env.FAL_API_KEY)
-		throw new Error(
-			"FRAMEFIELDS_API_KEY and FAL_API_KEY are needed in the repo root .env",
-		);
+	if (!process.env.FRAMEFIELDS_API_KEY)
+		throw new Error("FRAMEFIELDS_API_KEY is needed in the repo root .env");
 	const manifest = await readPartial();
 	const voice: Partial<AudioManifest["voice"]> = {};
 	for (const id of LINE_IDS) {

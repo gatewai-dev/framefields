@@ -41,7 +41,7 @@ import { ASSETS } from "./theme.js";
  * The gateway's rates (November 2026: fal's price plus 25 %): per minute of
  * audio, per 1000 characters read, and per music track.
  */
-const PER_MINUTE = { [CLICK_MODEL]: 0.234375, [TRANSCRIBER]: 0.0125 };
+const PER_MINUTE = { [CLICK_MODEL]: 0.15, [TRANSCRIBER]: 0.0125 };
 const PER_1000_CHARACTERS = 0.05625;
 const PER_TRACK = 0.125;
 const SAMPLE_RATE = 48000;
@@ -297,14 +297,10 @@ function strike(x: Float32Array): { onset: number; gainDb: number } {
 
 async function click(): Promise<AudioManifest["click"]> {
 	for (let take = 1; take <= MAX_TAKES; take++) {
-		const input = { prompt: CLICK_PROMPT };
-		const raw = takePath("click", input, take);
+		const input = { text: CLICK_PROMPT, duration_seconds: 1 };
+		const raw = takePath("click", input, take, "mp3");
 		if (!existsSync(raw)) {
-			await generate(
-				CLICK_MODEL,
-				{ output_format: "wav", sample_rate: SAMPLE_RATE, ...input },
-				raw,
-			);
+			await generate(CLICK_MODEL, input, raw);
 			spent += (PER_MINUTE[CLICK_MODEL] * duration(raw)) / 60;
 		}
 		const { onset, gainDb } = strike(decode(raw));
@@ -374,7 +370,7 @@ if (process.argv[2] === "cost") {
 	const usd =
 		(PER_1000_CHARACTERS * characters) / 1000 +
 		PER_TRACK +
-		(PER_MINUTE[CLICK_MODEL] * 5) / 60 +
+		PER_MINUTE[CLICK_MODEL] / 60 +
 		(PER_MINUTE[TRANSCRIBER] * (speech + 30)) / 60;
 	console.log(
 		`estimate $${usd.toFixed(2)} per pass (${characters} characters of narration, a ${MUSIC_SECONDS} s music track, a click), up to ${MAX_TAKES}× with retries`,

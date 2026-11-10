@@ -120,8 +120,3 @@ export function openNotesText(
 	}
 	return lines.join("\n");
 }
-
-/** The last two parts of the notes folder, for the panel's footer. */
-export function shortDir(dir: string | null): string {
-	return dir ? dir.split("/").slice(-2).join("/") : "";
-}

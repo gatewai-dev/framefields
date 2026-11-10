@@ -185,14 +185,6 @@ input[type="range"].slider:disabled {
 	color: var(--ink-3);
 	font-size: 12.5px;
 }
-.np-foot {
-	flex: none;
-	padding: 8px 14px;
-	border-top: 1px solid var(--line);
-	color: var(--ink-3);
-	font-size: 11.5px;
-	overflow-wrap: anywhere;
-}
 .note-row {
 	display: grid;
 	grid-template-columns: auto 1fr auto;

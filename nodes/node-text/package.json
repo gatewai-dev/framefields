@@ -1,6 +1,6 @@
 {
 	"name": "@framefields/node-text",
-	"version": "2.14.0",
+	"version": "2.15.0",
 	"private": false,
 	"framefields": {
 		"type": "Text",

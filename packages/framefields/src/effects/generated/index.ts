@@ -86,6 +86,8 @@ import type {
 	RGBSplitProps,
 	Rotate,
 	RotateProps,
+	Shader,
+	ShaderProps,
 	StereoPanning,
 	StereoPanningProps,
 	Toon,
@@ -195,6 +197,8 @@ export {
 	type RGBSplitProps,
 	Rotate,
 	type RotateProps,
+	Shader,
+	type ShaderProps,
 	StereoPanning,
 	type StereoPanningProps,
 	type TonalShift,
@@ -246,6 +250,7 @@ export type AnyGeneratedVisualEffect =
 	| ResizerScaler
 	| RGBSplit
 	| Rotate
+	| Shader
 	| Toon
 	| Trails
 	| Vignette;
@@ -304,6 +309,7 @@ export interface GeneratedEffectConfigMap {
 	ResizerScaler: ResizerScalerProps;
 	RGBSplit: RGBSplitProps;
 	Rotate: RotateProps;
+	Shader: ShaderProps;
 	StereoPanning: StereoPanningProps;
 	Toon: ToonProps;
 	Trails: TrailsProps;

@@ -282,6 +282,8 @@ import {
 	type Relight3DProps,
 	SelectiveColor,
 	type SelectiveColorProps,
+	Shader,
+	type ShaderUniforms,
 	ShadowsHighlights,
 	type ShadowsHighlightsProps,
 	SSAO,
@@ -894,6 +896,9 @@ export {
 	SelectiveColor,
 	type SelectiveColorAdjustment,
 	type SelectiveColorProps,
+	Shader,
+	type ShaderProps,
+	type ShaderUniforms,
 	ShadowsHighlights,
 	type ShadowsHighlightsProps,
 	SSAO,
@@ -2970,6 +2975,22 @@ function bindMaterialSignals<T extends LayoutNode, TCap extends NodeCapability>(
 	if (anim) target.animate(anim);
 }
 
+/** Options of {@link Layer.shader}. */
+export interface ShaderLayerOptions {
+	/** WGSL defining `fn shade(uv: vec2<f32>) -> vec4<f32>` (premultiplied color). */
+	fragment: string;
+	/** Named f32 uniforms, read as `u.<name>`; values, signals or `(ctx) => number`. */
+	uniforms?: ShaderUniforms;
+	x?: number;
+	y?: number;
+	width: number;
+	height: number;
+	id?: string;
+	startFrame?: number;
+	durationFrames?: number;
+	zIndex?: number;
+}
+
 export const Layer = {
 	video: (
 		src: string,
@@ -3222,6 +3243,43 @@ export const Layer = {
 		};
 		return withAnimation({
 			id: id ?? autoId("vfx"),
+			kind: "media",
+			dataType: "Video",
+			src: source,
+			position: "absolute",
+			x: x ?? 0,
+			y: y ?? 0,
+			width: options.width,
+			height: options.height,
+			...(startFrame !== undefined && { startFrame }),
+			...(durationFrames !== undefined && { durationFrames }),
+			...(zIndex !== undefined && { zIndex }),
+		} as unknown as MediaNode);
+	},
+	/**
+	 * A layer drawn by your own WGSL: `fragment` defines
+	 * `fn shade(uv: vec2<f32>) -> vec4<f32>`, the premultiplied color at `uv`
+	 * (0,0 top-left to 1,1 bottom-right). The shader reads `u.time` (seconds
+	 * since the layer started), `u.frame`, `u.resolution` (px) and one
+	 * `u.<name>` f32 per entry of `uniforms`, each a number, a signal or a
+	 * `(ctx) => number` function sampled every frame. Composited like any
+	 * clip; a fragment that does not compile throws with its line numbers.
+	 */
+	shader: (options: ShaderLayerOptions): AnimatableNode<MediaNode> => {
+		const { fragment, uniforms, x, y, id, startFrame, durationFrames, zIndex } =
+			options;
+		const shader = new Shader({ fragment, uniforms: uniforms ?? {} });
+		const source = {
+			metadata: { width: options.width, height: options.height },
+			operation: {
+				...shader.toOperation(),
+				effect: shader,
+				dataType: "Video",
+			},
+			children: [],
+		};
+		return withAnimation({
+			id: id ?? autoId("shader"),
 			kind: "media",
 			dataType: "Video",
 			src: source,

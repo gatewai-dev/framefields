@@ -41,6 +41,11 @@ Every frame is rendered by framefields directly from TypeScript in [`examples/`]
 <table>
   <tr>
     <td width="33.33%" align="center">
+      <a href="https://youtu.be/Mi3Ly2t2rSY"><img src="assets/showcase/hawking-radiation.jpg" alt="Fable 5.2 &amp; Framefields - What is Hawking Radiation ?" width="100%"></a>
+      <br><a href="https://youtu.be/Mi3Ly2t2rSY"><b>Fable 5.2 &amp; Framefields - What is Hawking Radiation ?</b></a>
+      <br><sub><a href="examples/41_hawking_radiation"><code>41_hawking_radiation</code></a></sub>
+    </td>
+    <td width="33.33%" align="center">
       <a href="https://youtu.be/tR_j_twU4p4"><img src="assets/showcase/news-explainer.jpg" alt="News explainer film about the Palm Beach County jet crash" width="100%"></a>
       <br><a href="https://youtu.be/tR_j_twU4p4"><b>News explainer</b></a>
       <br><sub><a href="examples/33_news_explainer"><code>33_news_explainer</code></a></sub>
@@ -50,13 +55,13 @@ Every frame is rendered by framefields directly from TypeScript in [`examples/`]
       <br><a href="https://youtu.be/3lrQdiXjlnY"><b>Relay</b></a>
       <br><sub><a href="examples/32_relay"><code>32_relay</code></a></sub>
     </td>
+  </tr>
+  <tr>
     <td width="33.33%" align="center">
       <a href="https://youtu.be/xSowU7X48J8"><img src="assets/showcase/shard-storm.jpg" alt="Shard storm vision dancer showcase film" width="100%"></a>
       <br><a href="https://youtu.be/xSowU7X48J8"><b>Shard storm</b></a>
       <br><sub><a href="examples/31_shard_storm"><code>31_shard_storm</code></a></sub>
     </td>
-  </tr>
-  <tr>
     <td width="33.33%" align="center">
       <a href="https://youtu.be/POC7rKnuoE4"><img src="assets/showcase/physics-dancer.jpg" alt="Physics dancer showcase film" width="100%"></a>
       <br><a href="https://youtu.be/POC7rKnuoE4"><b>Physics dancer</b></a>
@@ -67,13 +72,13 @@ Every frame is rendered by framefields directly from TypeScript in [`examples/`]
       <br><a href="https://youtu.be/k2lgbdL6_TA"><b>Mac Keyboard</b></a>
       <br><sub><a href="examples/26_mac_keyboard_from_3d_primitives"><code>26_mac_keyboard_from_3d_primitives</code></a></sub>
     </td>
+  </tr>
+  <tr>
     <td width="33.33%" align="center">
       <a href="https://youtu.be/FVXTqAozAv8"><img src="assets/showcase/framefields-launch.jpg" alt="Framefields launch film" width="100%"></a>
       <br><a href="https://youtu.be/FVXTqAozAv8"><b>Framefields launch</b></a>
       <br><sub><a href="examples/22_framefields_launch"><code>22_framefields_launch</code></a></sub>
     </td>
-  </tr>
-  <tr>
     <td width="33.33%" align="center">
       <a href="https://youtu.be/9BF1snfmg3o"><img src="assets/showcase/full-circle.jpg" alt="Full Circle film" width="100%"></a>
       <br><a href="https://youtu.be/9BF1snfmg3o"><b>Full Circle</b></a>

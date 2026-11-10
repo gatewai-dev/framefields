@@ -1,0 +1,1801 @@
+{
+	"voice": {
+		"hole": {
+			"text": "This is a black hole. Its gravity is so strong that nothing crossing its edge, the event horizon, can ever come back. Not even light.",
+			"input": {
+				"text": "This is a black hole. Its gravity is so strong that nothing crossing its edge, the event horizon, can ever come back. Not even light.",
+				"voice": "George",
+				"stability": 0.5
+			},
+			"heard": "This is a black hole. Its gravity is so strong that nothing crossing its edge, the event horizon, can ever come back, not even light",
+			"seconds": 8.554,
+			"words": [
+				{
+					"text": "This",
+					"start": 0.06,
+					"end": 0.28
+				},
+				{
+					"text": "is",
+					"start": 0.44,
+					"end": 0.52
+				},
+				{
+					"text": "a",
+					"start": 0.58,
+					"end": 0.64
+				},
+				{
+					"text": "black",
+					"start": 0.66,
+					"end": 0.94
+				},
+				{
+					"text": "hole.",
+					"start": 0.98,
+					"end": 1.3
+				},
+				{
+					"text": "Its",
+					"start": 1.8,
+					"end": 1.94
+				},
+				{
+					"text": "gravity",
+					"start": 1.98,
+					"end": 2.36
+				},
+				{
+					"text": "is",
+					"start": 2.4,
+					"end": 2.5
+				},
+				{
+					"text": "so",
+					"start": 2.56,
+					"end": 2.76
+				},
+				{
+					"text": "strong",
+					"start": 2.84,
+					"end": 3.16
+				},
+				{
+					"text": "that",
+					"start": 3.379,
+					"end": 3.52
+				},
+				{
+					"text": "nothing",
+					"start": 3.58,
+					"end": 3.88
+				},
+				{
+					"text": "crossing",
+					"start": 3.98,
+					"end": 4.3
+				},
+				{
+					"text": "its",
+					"start": 4.34,
+					"end": 4.52
+				},
+				{
+					"text": "edge,",
+					"start": 4.62,
+					"end": 4.88
+				},
+				{
+					"text": "the",
+					"start": 5.2,
+					"end": 5.28
+				},
+				{
+					"text": "event",
+					"start": 5.32,
+					"end": 5.6
+				},
+				{
+					"text": "horizon,",
+					"start": 5.64,
+					"end": 6.18
+				},
+				{
+					"text": "can",
+					"start": 6.5,
+					"end": 6.58
+				},
+				{
+					"text": "ever",
+					"start": 6.62,
+					"end": 6.82
+				},
+				{
+					"text": "come",
+					"start": 6.86,
+					"end": 7.06
+				},
+				{
+					"text": "back,",
+					"start": 7.1,
+					"end": 7.4
+				},
+				{
+					"text": "not",
+					"start": 7.72,
+					"end": 7.88
+				},
+				{
+					"text": "even",
+					"start": 7.94,
+					"end": 8.16
+				},
+				{
+					"text": "light",
+					"start": 8.24,
+					"end": 8.5
+				}
+			]
+		},
+		"grow": {
+			"text": "For a long time, physicists were sure that black holes could only grow.",
+			"input": {
+				"text": "For a long time, physicists were sure that black holes could only grow.",
+				"voice": "George",
+				"stability": 0.5
+			},
+			"heard": "For a long time, physicists were sure that black holes could only grow",
+			"seconds": 3.987021,
+			"words": [
+				{
+					"text": "For",
+					"start": 0.06,
+					"end": 0.14
+				},
+				{
+					"text": "a",
+					"start": 0.18,
+					"end": 0.22
+				},
+				{
+					"text": "long",
+					"start": 0.26,
+					"end": 0.42
+				},
+				{
+					"text": "time,",
+					"start": 0.52,
+					"end": 0.8
+				},
+				{
+					"text": "physicists",
+					"start": 1.12,
+					"end": 1.72
+				},
+				{
+					"text": "were",
+					"start": 1.78,
+					"end": 1.92
+				},
+				{
+					"text": "sure",
+					"start": 1.96,
+					"end": 2.24
+				},
+				{
+					"text": "that",
+					"start": 2.28,
+					"end": 2.42
+				},
+				{
+					"text": "black",
+					"start": 2.46,
+					"end": 2.72
+				},
+				{
+					"text": "holes",
+					"start": 2.76,
+					"end": 3.06
+				},
+				{
+					"text": "could",
+					"start": 3.12,
+					"end": 3.22
+				},
+				{
+					"text": "only",
+					"start": 3.28,
+					"end": 3.52
+				},
+				{
+					"text": "grow",
+					"start": 3.56,
+					"end": 3.9
+				}
+			]
+		},
+		"hawking": {
+			"text": "Then, half a century ago, Stephen Hawking showed something astonishing. Black holes glow. And slowly, they evaporate.",
+			"input": {
+				"text": "Then, half a century ago, Stephen Hawking showed something astonishing. Black holes glow. And slowly, they evaporate.",
+				"voice": "George",
+				"stability": 0.5
+			},
+			"heard": "Then half a century ago, Stephen Hawking showed something astonishing. Black holes glow, and slowly they evaporate",
+			"seconds": 7.422,
+			"words": [
+				{
+					"text": "Then",
+					"start": 0.06,
+					"end": 0.28
+				},
+				{
+					"text": "half",
+					"start": 0.38,
+					"end": 0.58
+				},
+				{
+					"text": "a",
+					"start": 0.62,
+					"end": 0.68
+				},
+				{
+					"text": "century",
+					"start": 0.72,
+					"end": 1.04
+				},
+				{
+					"text": "ago,",
+					"start": 1.1,
+					"end": 1.36
+				},
+				{
+					"text": "Stephen",
+					"start": 1.68,
+					"end": 1.96
+				},
+				{
+					"text": "Hawking",
+					"start": 2.06,
+					"end": 2.42
+				},
+				{
+					"text": "showed",
+					"start": 2.52,
+					"end": 2.76
+				},
+				{
+					"text": "something",
+					"start": 2.8,
+					"end": 3.1
+				},
+				{
+					"text": "astonishing.",
+					"start": 3.14,
+					"end": 3.78
+				},
+				{
+					"text": "Black",
+					"start": 4.28,
+					"end": 4.58
+				},
+				{
+					"text": "holes",
+					"start": 4.62,
+					"end": 4.98
+				},
+				{
+					"text": "glow,",
+					"start": 5.06,
+					"end": 5.42
+				},
+				{
+					"text": "and",
+					"start": 5.74,
+					"end": 5.82
+				},
+				{
+					"text": "slowly",
+					"start": 5.94,
+					"end": 6.32
+				},
+				{
+					"text": "they",
+					"start": 6.54,
+					"end": 6.64
+				},
+				{
+					"text": "evaporate",
+					"start": 6.68,
+					"end": 7.3
+				}
+			]
+		},
+		"zoom": {
+			"text": "To see why, we have to zoom in, far beyond anything our eyes can see.",
+			"input": {
+				"text": "To see why, we have to zoom in, far beyond anything our eyes can see.",
+				"voice": "George",
+				"stability": 0.5
+			},
+			"heard": "To see why, we have to zoom in far beyond anything our eyes can see",
+			"seconds": 4.492667,
+			"words": [
+				{
+					"text": "To",
+					"start": 0.06,
+					"end": 0.18
+				},
+				{
+					"text": "see",
+					"start": 0.22,
+					"end": 0.34
+				},
+				{
+					"text": "why,",
+					"start": 0.46,
+					"end": 0.78
+				},
+				{
+					"text": "we",
+					"start": 1.02,
+					"end": 1.1
+				},
+				{
+					"text": "have",
+					"start": 1.14,
+					"end": 1.28
+				},
+				{
+					"text": "to",
+					"start": 1.32,
+					"end": 1.44
+				},
+				{
+					"text": "zoom",
+					"start": 1.5,
+					"end": 1.76
+				},
+				{
+					"text": "in",
+					"start": 1.84,
+					"end": 2.06
+				},
+				{
+					"text": "far",
+					"start": 2.32,
+					"end": 2.54
+				},
+				{
+					"text": "beyond",
+					"start": 2.58,
+					"end": 2.94
+				},
+				{
+					"text": "anything",
+					"start": 3,
+					"end": 3.36
+				},
+				{
+					"text": "our",
+					"start": 3.4,
+					"end": 3.54
+				},
+				{
+					"text": "eyes",
+					"start": 3.64,
+					"end": 3.86
+				},
+				{
+					"text": "can",
+					"start": 3.92,
+					"end": 4.08
+				},
+				{
+					"text": "see",
+					"start": 4.14,
+					"end": 4.42
+				}
+			]
+		},
+		"atom": {
+			"text": "Past a single atom, and the cloud of electrons around it. Past its tiny nucleus of protons and neutrons.",
+			"input": {
+				"text": "Past a single atom, and the cloud of electrons around it. Past its tiny nucleus of protons and neutrons.",
+				"voice": "George",
+				"stability": 0.5
+			},
+			"heard": "Past a single atom and the cloud of electrons around it, past its tiny nucleus of protons and neutrons",
+			"seconds": 6.678,
+			"words": [
+				{
+					"text": "Past",
+					"start": 0.06,
+					"end": 0.38
+				},
+				{
+					"text": "a",
+					"start": 0.4,
+					"end": 0.5
+				},
+				{
+					"text": "single",
+					"start": 0.56,
+					"end": 0.88
+				},
+				{
+					"text": "atom",
+					"start": 0.96,
+					"end": 1.28
+				},
+				{
+					"text": "and",
+					"start": 1.54,
+					"end": 1.62
+				},
+				{
+					"text": "the",
+					"start": 1.66,
+					"end": 1.74
+				},
+				{
+					"text": "cloud",
+					"start": 1.78,
+					"end": 2.06
+				},
+				{
+					"text": "of",
+					"start": 2.08,
+					"end": 2.14
+				},
+				{
+					"text": "electrons",
+					"start": 2.16,
+					"end": 2.7
+				},
+				{
+					"text": "around",
+					"start": 2.78,
+					"end": 3.08
+				},
+				{
+					"text": "it,",
+					"start": 3.14,
+					"end": 3.26
+				},
+				{
+					"text": "past",
+					"start": 3.58,
+					"end": 3.861
+				},
+				{
+					"text": "its",
+					"start": 3.921,
+					"end": 4.121
+				},
+				{
+					"text": "tiny",
+					"start": 4.161,
+					"end": 4.521
+				},
+				{
+					"text": "nucleus",
+					"start": 4.581,
+					"end": 5.041
+				},
+				{
+					"text": "of",
+					"start": 5.101,
+					"end": 5.161
+				},
+				{
+					"text": "protons",
+					"start": 5.261,
+					"end": 5.801
+				},
+				{
+					"text": "and",
+					"start": 5.841,
+					"end": 5.921
+				},
+				{
+					"text": "neutrons",
+					"start": 5.981,
+					"end": 6.601
+				}
+			]
+		},
+		"empty": {
+			"text": "Down to the emptiest thing there is: empty space itself.",
+			"input": {
+				"text": "Down to the emptiest thing there is: empty space itself.",
+				"voice": "George",
+				"stability": 0.5
+			},
+			"heard": "Down to the emptiest thing there is, empty space itself",
+			"seconds": 3.585729,
+			"words": [
+				{
+					"text": "Down",
+					"start": 0.06,
+					"end": 0.36
+				},
+				{
+					"text": "to",
+					"start": 0.42,
+					"end": 0.48
+				},
+				{
+					"text": "the",
+					"start": 0.52,
+					"end": 0.58
+				},
+				{
+					"text": "emptiest",
+					"start": 0.7,
+					"end": 1.18
+				},
+				{
+					"text": "thing",
+					"start": 1.2,
+					"end": 1.4
+				},
+				{
+					"text": "there",
+					"start": 1.46,
+					"end": 1.62
+				},
+				{
+					"text": "is,",
+					"start": 1.72,
+					"end": 1.92
+				},
+				{
+					"text": "empty",
+					"start": 2.24,
+					"end": 2.52
+				},
+				{
+					"text": "space",
+					"start": 2.66,
+					"end": 2.92
+				},
+				{
+					"text": "itself",
+					"start": 2.98,
+					"end": 3.5
+				}
+			]
+		},
+		"never": {
+			"text": "But empty space is never truly empty.",
+			"input": {
+				"text": "But empty space is never truly empty.",
+				"voice": "George",
+				"stability": 0.5
+			},
+			"heard": "But empty space is never truly empty",
+			"seconds": 2.349,
+			"words": [
+				{
+					"text": "But",
+					"start": 0.06,
+					"end": 0.22
+				},
+				{
+					"text": "empty",
+					"start": 0.26,
+					"end": 0.54
+				},
+				{
+					"text": "space",
+					"start": 0.68,
+					"end": 0.98
+				},
+				{
+					"text": "is",
+					"start": 1.04,
+					"end": 1.14
+				},
+				{
+					"text": "never",
+					"start": 1.22,
+					"end": 1.46
+				},
+				{
+					"text": "truly",
+					"start": 1.5,
+					"end": 1.86
+				},
+				{
+					"text": "empty",
+					"start": 1.92,
+					"end": 2.28
+				}
+			]
+		},
+		"pairs": {
+			"text": "Quantum fields are always flickering. One way to picture it is as pairs of particles that pop into existence, and vanish again an instant later. It happens everywhere, all the time.",
+			"input": {
+				"text": "Quantum fields are always flickering. One way to picture it is as pairs of particles that pop into existence, and vanish again an instant later. It happens everywhere, all the time.",
+				"voice": "George",
+				"stability": 0.5
+			},
+			"heard": "Quantum fields are always flickering. One way to picture it is as pairs of particles that pop into existence and vanish again an instant later. It happens everywhere all the time",
+			"seconds": 10.802,
+			"words": [
+				{
+					"text": "Quantum",
+					"start": 0.06,
+					"end": 0.4
+				},
+				{
+					"text": "fields",
+					"start": 0.54,
+					"end": 0.88
+				},
+				{
+					"text": "are",
+					"start": 0.9,
+					"end": 1
+				},
+				{
+					"text": "always",
+					"start": 1.06,
+					"end": 1.36
+				},
+				{
+					"text": "flickering.",
+					"start": 1.4,
+					"end": 1.84
+				},
+				{
+					"text": "One",
+					"start": 2.34,
+					"end": 2.5
+				},
+				{
+					"text": "way",
+					"start": 2.54,
+					"end": 2.7
+				},
+				{
+					"text": "to",
+					"start": 2.74,
+					"end": 2.84
+				},
+				{
+					"text": "picture",
+					"start": 2.88,
+					"end": 3.18
+				},
+				{
+					"text": "it",
+					"start": 3.24,
+					"end": 3.34
+				},
+				{
+					"text": "is",
+					"start": 3.6,
+					"end": 3.68
+				},
+				{
+					"text": "as",
+					"start": 3.72,
+					"end": 3.84
+				},
+				{
+					"text": "pairs",
+					"start": 3.9,
+					"end": 4.18
+				},
+				{
+					"text": "of",
+					"start": 4.22,
+					"end": 4.32
+				},
+				{
+					"text": "particles",
+					"start": 4.38,
+					"end": 4.96
+				},
+				{
+					"text": "that",
+					"start": 5,
+					"end": 5.16
+				},
+				{
+					"text": "pop",
+					"start": 5.2,
+					"end": 5.38
+				},
+				{
+					"text": "into",
+					"start": 5.42,
+					"end": 5.62
+				},
+				{
+					"text": "existence",
+					"start": 5.66,
+					"end": 6.24
+				},
+				{
+					"text": "and",
+					"start": 6.5,
+					"end": 6.6
+				},
+				{
+					"text": "vanish",
+					"start": 6.68,
+					"end": 6.94
+				},
+				{
+					"text": "again",
+					"start": 7.02,
+					"end": 7.32
+				},
+				{
+					"text": "an",
+					"start": 7.36,
+					"end": 7.42
+				},
+				{
+					"text": "instant",
+					"start": 7.48,
+					"end": 7.86
+				},
+				{
+					"text": "later.",
+					"start": 7.92,
+					"end": 8.32
+				},
+				{
+					"text": "It",
+					"start": 8.82,
+					"end": 8.88
+				},
+				{
+					"text": "happens",
+					"start": 8.92,
+					"end": 9.3
+				},
+				{
+					"text": "everywhere",
+					"start": 9.36,
+					"end": 9.8
+				},
+				{
+					"text": "all",
+					"start": 10.06,
+					"end": 10.2
+				},
+				{
+					"text": "the",
+					"start": 10.22,
+					"end": 10.32
+				},
+				{
+					"text": "time",
+					"start": 10.38,
+					"end": 10.74
+				}
+			]
+		},
+		"edge": {
+			"text": "At the very edge of a black hole, though, something different can happen.",
+			"input": {
+				"text": "At the very edge of a black hole, though, something different can happen.",
+				"voice": "George",
+				"stability": 0.5
+			},
+			"heard": "At the very edge of a black hole, though, something different can happen",
+			"seconds": 3.431,
+			"words": [
+				{
+					"text": "At",
+					"start": 0.06,
+					"end": 0.16
+				},
+				{
+					"text": "the",
+					"start": 0.2,
+					"end": 0.26
+				},
+				{
+					"text": "very",
+					"start": 0.3,
+					"end": 0.48
+				},
+				{
+					"text": "edge",
+					"start": 0.6,
+					"end": 0.84
+				},
+				{
+					"text": "of",
+					"start": 0.88,
+					"end": 0.94
+				},
+				{
+					"text": "a",
+					"start": 0.98,
+					"end": 1.04
+				},
+				{
+					"text": "black",
+					"start": 1.06,
+					"end": 1.32
+				},
+				{
+					"text": "hole,",
+					"start": 1.36,
+					"end": 1.58
+				},
+				{
+					"text": "though,",
+					"start": 1.66,
+					"end": 1.84
+				},
+				{
+					"text": "something",
+					"start": 2.16,
+					"end": 2.44
+				},
+				{
+					"text": "different",
+					"start": 2.54,
+					"end": 2.82
+				},
+				{
+					"text": "can",
+					"start": 2.88,
+					"end": 3
+				},
+				{
+					"text": "happen",
+					"start": 3.06,
+					"end": 3.38
+				}
+			]
+		},
+		"split": {
+			"text": "A pair appears, and before the two can meet again, one partner falls in. The other escapes.",
+			"input": {
+				"text": "A pair appears, and before the two can meet again, one partner falls in. The other escapes.",
+				"voice": "George",
+				"stability": 0.5
+			},
+			"heard": "A pair appears, and before the two can meet again, one partner falls in. The other escapes",
+			"seconds": 6.14,
+			"words": [
+				{
+					"text": "A",
+					"start": 0.06,
+					"end": 0.14
+				},
+				{
+					"text": "pair",
+					"start": 0.18,
+					"end": 0.44
+				},
+				{
+					"text": "appears,",
+					"start": 0.5,
+					"end": 0.94
+				},
+				{
+					"text": "and",
+					"start": 1.26,
+					"end": 1.34
+				},
+				{
+					"text": "before",
+					"start": 1.38,
+					"end": 1.68
+				},
+				{
+					"text": "the",
+					"start": 1.72,
+					"end": 1.8
+				},
+				{
+					"text": "two",
+					"start": 1.86,
+					"end": 2
+				},
+				{
+					"text": "can",
+					"start": 2.08,
+					"end": 2.22
+				},
+				{
+					"text": "meet",
+					"start": 2.26,
+					"end": 2.42
+				},
+				{
+					"text": "again,",
+					"start": 2.48,
+					"end": 2.8
+				},
+				{
+					"text": "one",
+					"start": 3.12,
+					"end": 3.3
+				},
+				{
+					"text": "partner",
+					"start": 3.42,
+					"end": 3.8
+				},
+				{
+					"text": "falls",
+					"start": 3.84,
+					"end": 4.12
+				},
+				{
+					"text": "in.",
+					"start": 4.22,
+					"end": 4.44
+				},
+				{
+					"text": "The",
+					"start": 4.94,
+					"end": 5.02
+				},
+				{
+					"text": "other",
+					"start": 5.06,
+					"end": 5.24
+				},
+				{
+					"text": "escapes",
+					"start": 5.28,
+					"end": 5.84
+				}
+			]
+		},
+		"glow": {
+			"text": "From far away, those escaping particles look like a faint glow coming from the black hole itself. This is Hawking radiation.",
+			"input": {
+				"text": "From far away, those escaping particles look like a faint glow coming from the black hole itself. This is Hawking radiation.",
+				"voice": "George",
+				"stability": 0.5
+			},
+			"heard": "From far away, those escaping particles look like a faint glow coming from the black hole itself. This is Hawking radiation",
+			"seconds": 7.872667,
+			"words": [
+				{
+					"text": "From",
+					"start": 0.06,
+					"end": 0.2
+				},
+				{
+					"text": "far",
+					"start": 0.32,
+					"end": 0.54
+				},
+				{
+					"text": "away,",
+					"start": 0.6,
+					"end": 0.94
+				},
+				{
+					"text": "those",
+					"start": 1.26,
+					"end": 1.46
+				},
+				{
+					"text": "escaping",
+					"start": 1.52,
+					"end": 2.02
+				},
+				{
+					"text": "particles",
+					"start": 2.14,
+					"end": 2.68
+				},
+				{
+					"text": "look",
+					"start": 2.88,
+					"end": 3.02
+				},
+				{
+					"text": "like",
+					"start": 3.06,
+					"end": 3.18
+				},
+				{
+					"text": "a",
+					"start": 3.22,
+					"end": 3.32
+				},
+				{
+					"text": "faint",
+					"start": 3.36,
+					"end": 3.6
+				},
+				{
+					"text": "glow",
+					"start": 3.72,
+					"end": 4.04
+				},
+				{
+					"text": "coming",
+					"start": 4.16,
+					"end": 4.42
+				},
+				{
+					"text": "from",
+					"start": 4.46,
+					"end": 4.58
+				},
+				{
+					"text": "the",
+					"start": 4.62,
+					"end": 4.7
+				},
+				{
+					"text": "black",
+					"start": 4.74,
+					"end": 5
+				},
+				{
+					"text": "hole",
+					"start": 5.06,
+					"end": 5.24
+				},
+				{
+					"text": "itself.",
+					"start": 5.3,
+					"end": 5.84
+				},
+				{
+					"text": "This",
+					"start": 6.34,
+					"end": 6.44
+				},
+				{
+					"text": "is",
+					"start": 6.5,
+					"end": 6.62
+				},
+				{
+					"text": "Hawking",
+					"start": 6.68,
+					"end": 7.06
+				},
+				{
+					"text": "radiation",
+					"start": 7.14,
+					"end": 7.82
+				}
+			]
+		},
+		"negative": {
+			"text": "But that energy is not free. The partner that falls in carries negative energy, which makes the black hole a tiny bit lighter.",
+			"input": {
+				"text": "But that energy is not free. The partner that falls in carries negative energy, which makes the black hole a tiny bit lighter.",
+				"voice": "George",
+				"stability": 0.5
+			},
+			"heard": "But that energy is not free. The partner that falls in carries negative energy, which makes the black hole a tiny bit lighter",
+			"seconds": 7.046021,
+			"words": [
+				{
+					"text": "But",
+					"start": 0.06,
+					"end": 0.16
+				},
+				{
+					"text": "that",
+					"start": 0.2,
+					"end": 0.36
+				},
+				{
+					"text": "energy",
+					"start": 0.42,
+					"end": 0.74
+				},
+				{
+					"text": "is",
+					"start": 0.78,
+					"end": 0.88
+				},
+				{
+					"text": "not",
+					"start": 0.92,
+					"end": 1.14
+				},
+				{
+					"text": "free.",
+					"start": 1.18,
+					"end": 1.52
+				},
+				{
+					"text": "The",
+					"start": 2.02,
+					"end": 2.1
+				},
+				{
+					"text": "partner",
+					"start": 2.14,
+					"end": 2.46
+				},
+				{
+					"text": "that",
+					"start": 2.5,
+					"end": 2.64
+				},
+				{
+					"text": "falls",
+					"start": 2.7,
+					"end": 2.96
+				},
+				{
+					"text": "in",
+					"start": 3.02,
+					"end": 3.22
+				},
+				{
+					"text": "carries",
+					"start": 3.28,
+					"end": 3.579
+				},
+				{
+					"text": "negative",
+					"start": 3.7,
+					"end": 4.06
+				},
+				{
+					"text": "energy,",
+					"start": 4.12,
+					"end": 4.48
+				},
+				{
+					"text": "which",
+					"start": 4.8,
+					"end": 4.96
+				},
+				{
+					"text": "makes",
+					"start": 5.02,
+					"end": 5.24
+				},
+				{
+					"text": "the",
+					"start": 5.28,
+					"end": 5.34
+				},
+				{
+					"text": "black",
+					"start": 5.38,
+					"end": 5.62
+				},
+				{
+					"text": "hole",
+					"start": 5.68,
+					"end": 5.9
+				},
+				{
+					"text": "a",
+					"start": 5.96,
+					"end": 6.04
+				},
+				{
+					"text": "tiny",
+					"start": 6.1,
+					"end": 6.38
+				},
+				{
+					"text": "bit",
+					"start": 6.4,
+					"end": 6.56
+				},
+				{
+					"text": "lighter",
+					"start": 6.62,
+					"end": 6.98
+				}
+			]
+		},
+		"mass": {
+			"text": "So with every particle that escapes, the black hole loses a little mass.",
+			"input": {
+				"text": "So with every particle that escapes, the black hole loses a little mass.",
+				"voice": "George",
+				"stability": 0.5
+			},
+			"heard": "So with every particle that escapes, the black hole loses a little mass",
+			"seconds": 4.42,
+			"words": [
+				{
+					"text": "So",
+					"start": 0.06,
+					"end": 0.36
+				},
+				{
+					"text": "with",
+					"start": 0.4,
+					"end": 0.5
+				},
+				{
+					"text": "every",
+					"start": 0.56,
+					"end": 0.82
+				},
+				{
+					"text": "particle",
+					"start": 0.88,
+					"end": 1.32
+				},
+				{
+					"text": "that",
+					"start": 1.34,
+					"end": 1.44
+				},
+				{
+					"text": "escapes,",
+					"start": 1.48,
+					"end": 2
+				},
+				{
+					"text": "the",
+					"start": 2.32,
+					"end": 2.38
+				},
+				{
+					"text": "black",
+					"start": 2.42,
+					"end": 2.68
+				},
+				{
+					"text": "hole",
+					"start": 2.72,
+					"end": 2.94
+				},
+				{
+					"text": "loses",
+					"start": 3.04,
+					"end": 3.36
+				},
+				{
+					"text": "a",
+					"start": 3.4,
+					"end": 3.44
+				},
+				{
+					"text": "little",
+					"start": 3.48,
+					"end": 3.66
+				},
+				{
+					"text": "mass",
+					"start": 3.76,
+					"end": 4.12
+				}
+			]
+		},
+		"hotter": {
+			"text": "And here is the strange part: the smaller a black hole is, the hotter it glows.",
+			"input": {
+				"text": "And here is the strange part: the smaller a black hole is, the hotter it glows.",
+				"voice": "George",
+				"stability": 0.5
+			},
+			"heard": "And here is the strange part. The smaller a black hole is, the hotter it glows",
+			"seconds": 4.887021,
+			"words": [
+				{
+					"text": "And",
+					"start": 0.06,
+					"end": 0.18
+				},
+				{
+					"text": "here",
+					"start": 0.22,
+					"end": 0.38
+				},
+				{
+					"text": "is",
+					"start": 0.42,
+					"end": 0.5
+				},
+				{
+					"text": "the",
+					"start": 0.54,
+					"end": 0.62
+				},
+				{
+					"text": "strange",
+					"start": 0.7,
+					"end": 0.98
+				},
+				{
+					"text": "part.",
+					"start": 1.08,
+					"end": 1.42
+				},
+				{
+					"text": "The",
+					"start": 1.92,
+					"end": 2.02
+				},
+				{
+					"text": "smaller",
+					"start": 2.1,
+					"end": 2.44
+				},
+				{
+					"text": "a",
+					"start": 2.5,
+					"end": 2.52
+				},
+				{
+					"text": "black",
+					"start": 2.58,
+					"end": 2.84
+				},
+				{
+					"text": "hole",
+					"start": 2.88,
+					"end": 3.1
+				},
+				{
+					"text": "is,",
+					"start": 3.26,
+					"end": 3.44
+				},
+				{
+					"text": "the",
+					"start": 3.76,
+					"end": 3.821
+				},
+				{
+					"text": "hotter",
+					"start": 3.881,
+					"end": 4.161
+				},
+				{
+					"text": "it",
+					"start": 4.181,
+					"end": 4.301
+				},
+				{
+					"text": "glows",
+					"start": 4.341,
+					"end": 4.801
+				}
+			]
+		},
+		"sun": {
+			"text": "One as heavy as our Sun is barely warmer than absolute zero, and would take far longer than the age of the universe to disappear.",
+			"input": {
+				"text": "One as heavy as our Sun is barely warmer than absolute zero, and would take far longer than the age of the universe to disappear.",
+				"voice": "George",
+				"stability": 0.5
+			},
+			"heard": "One as heavy as our sun is barely warmer than absolute zero and would take far longer than the age of the universe to disappear",
+			"seconds": 7.231,
+			"words": [
+				{
+					"text": "One",
+					"start": 0.06,
+					"end": 0.22
+				},
+				{
+					"text": "as",
+					"start": 0.28,
+					"end": 0.4
+				},
+				{
+					"text": "heavy",
+					"start": 0.46,
+					"end": 0.68
+				},
+				{
+					"text": "as",
+					"start": 0.74,
+					"end": 0.82
+				},
+				{
+					"text": "our",
+					"start": 0.86,
+					"end": 1.04
+				},
+				{
+					"text": "sun",
+					"start": 1.1,
+					"end": 1.36
+				},
+				{
+					"text": "is",
+					"start": 1.62,
+					"end": 1.74
+				},
+				{
+					"text": "barely",
+					"start": 1.76,
+					"end": 2.06
+				},
+				{
+					"text": "warmer",
+					"start": 2.12,
+					"end": 2.4
+				},
+				{
+					"text": "than",
+					"start": 2.42,
+					"end": 2.6
+				},
+				{
+					"text": "absolute",
+					"start": 2.68,
+					"end": 3.12
+				},
+				{
+					"text": "zero",
+					"start": 3.2,
+					"end": 3.58
+				},
+				{
+					"text": "and",
+					"start": 3.84,
+					"end": 3.92
+				},
+				{
+					"text": "would",
+					"start": 3.94,
+					"end": 4.08
+				},
+				{
+					"text": "take",
+					"start": 4.12,
+					"end": 4.36
+				},
+				{
+					"text": "far",
+					"start": 4.4,
+					"end": 4.62
+				},
+				{
+					"text": "longer",
+					"start": 4.66,
+					"end": 4.98
+				},
+				{
+					"text": "than",
+					"start": 5,
+					"end": 5.12
+				},
+				{
+					"text": "the",
+					"start": 5.14,
+					"end": 5.26
+				},
+				{
+					"text": "age",
+					"start": 5.36,
+					"end": 5.54
+				},
+				{
+					"text": "of",
+					"start": 5.58,
+					"end": 5.66
+				},
+				{
+					"text": "the",
+					"start": 5.7,
+					"end": 5.8
+				},
+				{
+					"text": "universe",
+					"start": 5.88,
+					"end": 6.38
+				},
+				{
+					"text": "to",
+					"start": 6.42,
+					"end": 6.5
+				},
+				{
+					"text": "disappear",
+					"start": 6.54,
+					"end": 7.12
+				}
+			]
+		},
+		"shrink": {
+			"text": "But as it shrinks, it heats up, and shrinks even faster.",
+			"input": {
+				"text": "But as it shrinks, it heats up, and shrinks even faster.",
+				"voice": "George",
+				"stability": 0.5
+			},
+			"heard": "But as it shrinks, it heats up and shrinks even faster",
+			"seconds": 3.56775,
+			"words": [
+				{
+					"text": "But",
+					"start": 0.06,
+					"end": 0.18
+				},
+				{
+					"text": "as",
+					"start": 0.24,
+					"end": 0.34
+				},
+				{
+					"text": "it",
+					"start": 0.38,
+					"end": 0.5
+				},
+				{
+					"text": "shrinks,",
+					"start": 0.58,
+					"end": 0.98
+				},
+				{
+					"text": "it",
+					"start": 1.26,
+					"end": 1.36
+				},
+				{
+					"text": "heats",
+					"start": 1.4,
+					"end": 1.64
+				},
+				{
+					"text": "up",
+					"start": 1.76,
+					"end": 1.94
+				},
+				{
+					"text": "and",
+					"start": 2.2,
+					"end": 2.3
+				},
+				{
+					"text": "shrinks",
+					"start": 2.36,
+					"end": 2.64
+				},
+				{
+					"text": "even",
+					"start": 2.72,
+					"end": 2.98
+				},
+				{
+					"text": "faster",
+					"start": 3.02,
+					"end": 3.48
+				}
+			]
+		},
+		"flash": {
+			"text": "Until, in its final moment, it vanishes in a burst of radiation.",
+			"input": {
+				"text": "Until, in its final moment, it vanishes in a burst of radiation.",
+				"voice": "George",
+				"stability": 0.5
+			},
+			"heard": "Until in its final moment, it vanishes in a burst of radiation",
+			"seconds": 3.948979,
+			"words": [
+				{
+					"text": "Until",
+					"start": 0.06,
+					"end": 0.46
+				},
+				{
+					"text": "in",
+					"start": 0.6,
+					"end": 0.66
+				},
+				{
+					"text": "its",
+					"start": 0.7,
+					"end": 0.88
+				},
+				{
+					"text": "final",
+					"start": 0.92,
+					"end": 1.18
+				},
+				{
+					"text": "moment,",
+					"start": 1.26,
+					"end": 1.6
+				},
+				{
+					"text": "it",
+					"start": 1.92,
+					"end": 2.04
+				},
+				{
+					"text": "vanishes",
+					"start": 2.08,
+					"end": 2.58
+				},
+				{
+					"text": "in",
+					"start": 2.62,
+					"end": 2.7
+				},
+				{
+					"text": "a",
+					"start": 2.74,
+					"end": 2.8
+				},
+				{
+					"text": "burst",
+					"start": 2.84,
+					"end": 3.12
+				},
+				{
+					"text": "of",
+					"start": 3.16,
+					"end": 3.22
+				},
+				{
+					"text": "radiation",
+					"start": 3.26,
+					"end": 3.88
+				}
+			]
+		},
+		"unseen": {
+			"text": "Hawking radiation has never been seen directly. It is far too faint.",
+			"input": {
+				"text": "Hawking radiation has never been seen directly. It is far too faint.",
+				"voice": "George",
+				"stability": 0.5
+			},
+			"heard": "Hawking radiation has never been seen directly. It is far too faint",
+			"seconds": 4.5,
+			"words": [
+				{
+					"text": "Hawking",
+					"start": 0.06,
+					"end": 0.4
+				},
+				{
+					"text": "radiation",
+					"start": 0.5,
+					"end": 1.06
+				},
+				{
+					"text": "has",
+					"start": 1.1,
+					"end": 1.24
+				},
+				{
+					"text": "never",
+					"start": 1.28,
+					"end": 1.46
+				},
+				{
+					"text": "been",
+					"start": 1.5,
+					"end": 1.72
+				},
+				{
+					"text": "seen",
+					"start": 1.8,
+					"end": 2.02
+				},
+				{
+					"text": "directly.",
+					"start": 2.1,
+					"end": 2.66
+				},
+				{
+					"text": "It",
+					"start": 3.16,
+					"end": 3.22
+				},
+				{
+					"text": "is",
+					"start": 3.26,
+					"end": 3.38
+				},
+				{
+					"text": "far",
+					"start": 3.44,
+					"end": 3.62
+				},
+				{
+					"text": "too",
+					"start": 3.66,
+					"end": 3.84
+				},
+				{
+					"text": "faint",
+					"start": 3.9,
+					"end": 4.2
+				}
+			]
+		},
+		"forever": {
+			"text": "But it tells us something profound. Even black holes do not last forever.",
+			"input": {
+				"text": "But it tells us something profound. Even black holes do not last forever.",
+				"voice": "George",
+				"stability": 0.5
+			},
+			"heard": "But it tells us something profound. Even black holes do not last forever",
+			"seconds": 4.297563,
+			"words": [
+				{
+					"text": "But",
+					"start": 0.06,
+					"end": 0.14
+				},
+				{
+					"text": "it",
+					"start": 0.18,
+					"end": 0.28
+				},
+				{
+					"text": "tells",
+					"start": 0.32,
+					"end": 0.54
+				},
+				{
+					"text": "us",
+					"start": 0.58,
+					"end": 0.68
+				},
+				{
+					"text": "something",
+					"start": 0.72,
+					"end": 1
+				},
+				{
+					"text": "profound.",
+					"start": 1.08,
+					"end": 1.74
+				},
+				{
+					"text": "Even",
+					"start": 2.24,
+					"end": 2.5
+				},
+				{
+					"text": "black",
+					"start": 2.52,
+					"end": 2.78
+				},
+				{
+					"text": "holes",
+					"start": 2.84,
+					"end": 3.18
+				},
+				{
+					"text": "do",
+					"start": 3.2,
+					"end": 3.3
+				},
+				{
+					"text": "not",
+					"start": 3.34,
+					"end": 3.5
+				},
+				{
+					"text": "last",
+					"start": 3.54,
+					"end": 3.82
+				},
+				{
+					"text": "forever",
+					"start": 3.86,
+					"end": 4.24
+				}
+			]
+		}
+	},
+	"music": {
+		"version": "bed-1",
+		"seconds": 180
+	}
+}

@@ -17,7 +17,7 @@ import type {
 	GeneratedEffectConfigMap,
 } from "./generated/index.js";
 
-export type { EffectProp } from "./types.js";
+export type { EffectProp, ShaderUniforms } from "./types.js";
 
 export interface LevelChannel {
 	inBlack?: number;

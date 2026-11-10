@@ -85,6 +85,7 @@ All `Layer.*` builders return `AnimatableNode<T>` instances with chainable `.ani
 | `Layer.shape(type, options)` | `"shape"` | Parametric vector graphics (`"rect"`, `"circle"`, `"ellipse"`, `"polygon"`, `"star"`, `"arrow"`, `"path"`). Options: `fill` (a color or CSS gradient), `d` (SVG path data with arcs; several subpaths fill by the nonzero rule, so holes and islands work; keyframe it to morph shapes), `strokeWidth`, `strokeColor`, `strokeDashArray` (SVG syntax, `"12 8"`), `trimStart`, `trimEnd`. |
 | `Layer.particles(options)` | `"media"` | GPU particle system (see *GPU Particles*). |
 | `Layer.vfx(options)` | `"media"` | Procedural full-frame VFX: smoke, fire, rain, snow, aurora… (see *Procedural VFX*). |
+| `Layer.shader(options)` | `"media"` | A layer drawn by your own WGSL fragment (see *Custom Shaders*). |
 | `Layer.caption(src, options)` | `"media"` | SRT-driven synchronized subtitle engine. Bottom-anchored auto-wrapping cues. |
 | `Layer.chart(options, props)` | `"box"` | Charts built from native nodes (d3 scales and geometry). `type`: `"line" \| "area" \| "bar" \| "scatter" \| "candlestick" \| "pie" \| "donut"`. Options: `width`, `height`, `series: [{ name, data, color, type, curve, pointRadius }]` or `data`, `categories`, `stacked`, `xAxis`/`yAxis` (`min`, `max`, `ticks`, `grid`, `format`: a d3-format string like `"$,.0f"`), `legend`, `valueLabels`, `fontFamily`, `fontSize`, `colors`, `animate: { start, duration, stagger, ease } \| false`. `props` positions the chart box. Children get ids `<id>-bar-<series>-<i>`, `<id>-line-<series>`, `<id>-slice-<i>`. Keep scatter charts to a few hundred points: each point is a node. |
 | `Layer.camera(options)` | `"camera"` | 3D scene camera with FOV, lens rack focus, and orbital coordinates. |
@@ -646,6 +647,28 @@ comp.add(Layer.particles({
 - For 3D debris, tumbling rocks, and glowing sparks interacting with a floor plane and 3D vortex forces, use `Layer3D.swarm` to simulate and render polyhedral shards directly on the GPU.
 
 ---
+
+## Custom Shaders (`Layer.shader`)
+
+When no layer or effect draws what you need (ray marching, a simulation, a procedural field), write the fragment yourself. `fragment` is WGSL that defines `shade`; the layer supplies the vertex stage and a uniform block `u`:
+
+```typescript
+Layer.shader({
+  width: W, height: H,                       // x, y, id, startFrame, durationFrames, zIndex as usual
+  uniforms: { zoom: 2, pulse: kick, sweep: (ctx) => ctx.frame / 90 },  // number | Signal | (ctx) => number
+  fragment: `
+fn shade(uv : vec2<f32>) -> vec4<f32> {     // uv: 0,0 top-left → 1,1 bottom-right
+  let p = (uv - 0.5) * vec2<f32>(u.resolution.x / u.resolution.y, 1.0) * u.zoom;
+  let ring = smoothstep(0.02, 0.0, abs(length(p) - 0.3 - 0.1 * u.pulse));
+  return vec4<f32>(vec3<f32>(ring) * u.sweep, 1.0);   // premultiplied RGBA
+}`,
+});
+```
+
+- `u.time` is seconds since the layer started, `u.frame` its frame, `u.resolution` its size in px; every entry of `uniforms` is one `f32` read as `u.<name>` (signals and functions are sampled at the composition frame).
+- Return premultiplied color in display space (apply your own tone mapping and gamma); alpha below 1 lets layers underneath show.
+- A fragment that does not compile throws with line numbers counted in your own source.
+- It is a media layer: animate `opacity`, position it, add effects, use it as a matte. `examples/41_hawking_radiation` ray traces a black hole this way.
 
 ## Procedural VFX (`Layer.vfx`)
 

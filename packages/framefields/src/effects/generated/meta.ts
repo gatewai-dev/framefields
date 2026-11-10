@@ -1189,6 +1189,10 @@ export const effectMeta = {
 			max: 20,
 		},
 	},
+	Shader: {
+		fragment: {},
+		uniforms: {},
+	},
 	StereoPanning: {
 		pan: {
 			min: -1,

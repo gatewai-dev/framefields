@@ -4,12 +4,17 @@
 type Process = ReturnType<typeof createProcess>;
 
 function createProcess() {
+	let cwd = "/";
 	const p = {
 		env: { NODE_ENV: "production" } as Record<string, string | undefined>,
 		argv: [] as string[],
 		platform: "browser",
 		browser: true,
-		cwd: () => "/",
+		cwd: () => cwd,
+		// A web bundle runs the composition from the folder it was built in.
+		chdir: (dir: string) => {
+			cwd = dir;
+		},
 		nextTick: (fn: (...a: unknown[]) => void, ...args: unknown[]) =>
 			queueMicrotask(() => fn(...args)),
 		on: (): unknown => p,

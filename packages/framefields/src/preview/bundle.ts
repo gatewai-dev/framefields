@@ -72,6 +72,9 @@ const NODE_ONLY = new Set([
 	"framefields/preview",
 ]);
 
+/** Subpaths of node-only packages that run in a browser. */
+const BROWSER_SAFE = new Set(["@framefields/renderer/split"]);
+
 // Reported as an ES module so named imports (`import { homedir } from "os"`)
 // read through the proxy instead of being copied off it.
 const STUB = `
@@ -94,6 +97,8 @@ export async function buildEngine(outDir: string): Promise<void> {
 	const shims = path.join(HERE, "shims");
 	const entryPoints: Record<string, string> = {
 		player: path.join(HERE, "player.ts"),
+		// The on-device export (framefields/web loads it from a web bundle).
+		web: path.join(src, "web", "runtime", "index.ts"),
 	};
 	for (const [spec, file] of Object.entries(ENTRIES)) {
 		entryPoints[engineName(spec)] = path.join(src, file);
@@ -143,20 +148,103 @@ export async function bundleProject(options: {
 	modelsDir: string;
 	ortBase: string;
 }): Promise<ProjectBundle> {
-	const { build } = await import("esbuild");
 	const entry = path.resolve(options.entry);
+	const settings = { modelsDir: options.modelsDir, ortBase: options.ortBase };
+	return buildProject({
+		entry,
+		code: [
+			`import { startAudioMixer, startPlayer } from ${JSON.stringify(`${ENGINE_URL}/player.mjs`)};`,
+			`import * as mod from ${JSON.stringify(entry)};`,
+			// The page loads it as the player; a worker it starts, as the soundtrack's mixer.
+			`if (typeof document === "undefined") startAudioMixer(mod, ${JSON.stringify(options.exportName)});`,
+			`else startPlayer(mod, ${JSON.stringify(options.exportName)}, ${JSON.stringify(settings)});`,
+		].join("\n"),
+		engine: (file) => `${ENGINE_URL}/${file}.mjs`,
+		fileUrl: (file) => pathToFileURL(file).href,
+		sourcemap: "inline",
+	});
+}
+
+/**
+ * Bundles the composition's module for a web bundle (`buildWebBundle`): an
+ * ES module beside the engine folder whose `composition` export is the
+ * entry's export. Files keep URLs relative to `root` (`file:///src/film.ts`),
+ * so paths the composition builds from `import.meta.url` name the bundle's
+ * copies, not the machine it was built on.
+ */
+export async function bundleWebProject(options: {
+	entry: string;
+	exportName: string;
+	/** The project folder; becomes `/` for the composition's paths. */
+	root: string;
+	/** The engine folder, relative to the bundled module. */
+	engineDir: string;
+}): Promise<ProjectBundle> {
+	const entry = path.resolve(options.entry);
+	const name = options.exportName;
+	return buildProject({
+		entry,
+		code: `export { ${name === "default" ? "default" : JSON.stringify(name)} as composition } from ${JSON.stringify(entry)};`,
+		engine: (file) => `./${options.engineDir}/${file}.mjs`,
+		fileUrl: (file) => virtualFileUrl(options.root, file),
+		minify: true,
+	});
+}
+
+/** The `file://` URL a file of the project has inside a web bundle: its path from `root`. */
+export function virtualFileUrl(root: string, file: string): string {
+	return pathToFileURL(virtualPath(root, file)).href;
+}
+
+/**
+ * Where a project file sits in a web bundle's file tree: its path from `root`,
+ * as an absolute POSIX path (`/assets/clip.mp4`). Files outside `root` keep
+ * their absolute path.
+ */
+export function virtualPath(root: string, file: string): string {
+	if (!isInsideRoot(root, file)) return file.split(path.sep).join("/");
+	const rel = path.relative(realPath(root), realPath(file));
+	return `/${rel.split(path.sep).join("/")}`;
+}
+
+/** Whether `file` is in `root` (or is it), symlinks resolved: esbuild reports real paths (/private/var, not /var). */
+export function isInsideRoot(root: string, file: string): boolean {
+	const rel = path.relative(realPath(root), realPath(file));
+	return !rel.startsWith("..") && !path.isAbsolute(rel);
+}
+
+/** `p` with symlinks resolved, or as given when it doesn't exist. */
+function realPath(p: string): string {
+	try {
+		return fs.realpathSync(p);
+	} catch {
+		return p;
+	}
+}
+
+async function buildProject(options: {
+	entry: string;
+	/** The bundle's entry module. */
+	code: string;
+	/** The URL an engine file (`framefields`, `shims/fs`) is imported from. */
+	engine: (file: string) => string;
+	/** The `import.meta.url` a project file sees. */
+	fileUrl: (file: string) => string;
+	sourcemap?: "inline";
+	minify?: boolean;
+}): Promise<ProjectBundle> {
+	const { build } = await import("esbuild");
 	const fromEngine = (file: string) => ({
-		path: `${ENGINE_URL}/${file}.mjs`,
+		path: options.engine(file),
 		external: true,
 	});
-	const settings = { modelsDir: options.modelsDir, ortBase: options.ortBase };
-
 	const result = await build({
 		...BROWSER,
 		entryPoints: ["framefields-preview:entry"],
 		write: false,
 		metafile: true,
-		sourcemap: "inline",
+		sourcemap: options.sourcemap,
+		minify: options.minify,
 		plugins: [
 			{
 				name: "framefields-project",
@@ -166,14 +254,8 @@ export async function bundleProject(options: {
 						namespace: "framefields-preview",
 					}));
 					b.onLoad({ filter: /.*/, namespace: "framefields-preview" }, () => ({
-						contents: [
-							`import { startAudioMixer, startPlayer } from ${JSON.stringify(`${ENGINE_URL}/player.mjs`)};`,
-							`import * as mod from ${JSON.stringify(entry)};`,
-							// The page loads it as the player; a worker it starts, as the soundtrack's mixer.
-							`if (typeof document === "undefined") startAudioMixer(mod, ${JSON.stringify(options.exportName)});`,
-							`else startPlayer(mod, ${JSON.stringify(options.exportName)}, ${JSON.stringify(settings)});`,
-						].join("\n"),
-						resolveDir: path.dirname(entry),
+						contents: options.code,
+						resolveDir: path.dirname(options.entry),
 						loader: "js",
 					}));
 					b.onResolve({ filter: /^\/@framefields\/engine\// }, (args) => ({
@@ -184,7 +266,7 @@ export async function bundleProject(options: {
 						ENTRIES[args.path] ? fromEngine(engineName(args.path)) : undefined,
 					);
 					resolveNode(b, (name) => fromEngine(`shims/${name}`));
-					rewriteMetaUrl(b);
+					rewriteMetaUrl(b, options.fileUrl);
 				},
 			},
 		],
@@ -296,6 +378,7 @@ function resolveNode(
 	});
 	b.onResolve({ filter: /.*/ }, (args) => {
 		const pkg = packageName(args.path);
+		if (BROWSER_SAFE.has(args.path)) return undefined;
 		if (pkg && (NODE_ONLY.has(pkg) || NODE_ONLY.has(args.path)))
 			return { path: args.path, namespace: "framefields-stub" };
 		return undefined;
@@ -307,14 +390,17 @@ function resolveNode(
 }
 
 /** Each project file keeps its own URL, as `fileURLToPath(import.meta.url)` expects. */
-function rewriteMetaUrl(b: PluginBuild): void {
+function rewriteMetaUrl(
+	b: PluginBuild,
+	fileUrl: (file: string) => string,
+): void {
 	b.onLoad({ filter: /\.[cm]?[jt]sx?$/ }, async (args) => {
 		if (args.path.includes(`${path.sep}node_modules${path.sep}`))
 			return undefined;
 		const source = await fs.promises.readFile(args.path, "utf8");
 		if (!source.includes(META_URL)) return undefined;
 		return {
-			contents: `const __framefieldsFileUrl = ${JSON.stringify(pathToFileURL(args.path).href)};\n${source.replaceAll(META_URL, "__framefieldsFileUrl")}`,
+			contents: `const __framefieldsFileUrl = ${JSON.stringify(fileUrl(args.path))};\n${source.replaceAll(META_URL, "__framefieldsFileUrl")}`,
 			loader: loaderFor(args.path),
 		};
 	});

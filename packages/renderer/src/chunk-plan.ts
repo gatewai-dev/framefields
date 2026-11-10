@@ -9,6 +9,10 @@
  * film stays on one worker and a long one spreads out until `maxWorkers`.
  * Chunks are cut at equal render cost, not equal frame counts, so a heavy
  * stretch (3D, vision) gets shorter chunks.
+ *
+ * `planChunksByBudget` plans for one device rendering its chunks in turn
+ * (a phone exporting on its own GPU): chunks sized by render time and frame
+ * count, so a stop loses little and caches are freed between chunks.
  */
 
 /** A measured render time for one frame. */
@@ -109,6 +113,89 @@ function workerCount(
 	return minChunkSec > 0
 		? Math.max(1, Math.floor(workSec / minChunkSec))
 		: Number.POSITIVE_INFINITY;
+}
+
+export interface BudgetPlanOptions {
+	/** Frames in the composition. */
+	totalFrames: number;
+	/** Measured frame times; between samples the cost is interpolated linearly. */
+	samples: readonly FrameCostSample[];
+	/**
+	 * The longest a chunk may take to render, in seconds of estimated work.
+	 * What a device can lose when it stops mid-chunk (backgrounded, killed),
+	 * and how often its caches are freed.
+	 */
+	chunkSec: number;
+	/** No chunk holds more frames than this (a memory bound). Default: no cap. */
+	maxChunkFrames?: number;
+	/**
+	 * No chunk is shorter than this many frames (each starts on a keyframe),
+	 * unless `maxChunkFrames` is below twice it. Default 30.
+	 */
+	minChunkFrames?: number;
+}
+
+/**
+ * Plans a render that one device makes chunk after chunk, each chunk within
+ * a budget of render time and frames, instead of across workers. Chunks are
+ * cut at equal render cost, as `planChunks` cuts them; one that would hold
+ * more than `maxChunkFrames` is split evenly. `etaSec` is the whole render
+ * on the one device: every chunk in turn, without overhead.
+ */
+export function planChunksByBudget(options: BudgetPlanOptions): ChunkPlan {
+	const total = options.totalFrames;
+	if (!Number.isInteger(total) || total < 1)
+		throw new Error(
+			`planChunksByBudget: totalFrames must be a positive integer, got ${total}.`,
+		);
+	if (!(options.chunkSec > 0))
+		throw new Error(
+			`planChunksByBudget: chunkSec must be above 0, got ${options.chunkSec}.`,
+		);
+	const maxFrames = Math.floor(
+		options.maxChunkFrames ?? Number.POSITIVE_INFINITY,
+	);
+	if (!(maxFrames >= 1))
+		throw new Error(
+			`planChunksByBudget: maxChunkFrames must be at least 1, got ${options.maxChunkFrames}.`,
+		);
+	const minFrames = Math.max(
+		1,
+		Math.min(Math.floor(options.minChunkFrames ?? 30), maxFrames),
+	);
+	const cost = frameCosts(total, options.samples);
+	const workSec = cost.reduce((sum, ms) => sum + ms, 0) / 1000;
+	const count = Math.max(
+		1,
+		Math.min(
+			Math.ceil(workSec / options.chunkSec),
+			Math.floor(total / minFrames),
+		),
+	);
+	const chunks = splitByCost(cost, count, minFrames).flatMap((chunk) =>
+		splitEvenly(chunk, cost, maxFrames),
+	);
+	return { workers: 1, workSec, etaSec: workSec, chunks };
+}
+
+/** A chunk longer than `maxFrames`, cut into the fewest parts of about equal length that fit. */
+function splitEvenly(
+	chunk: PlannedChunk,
+	cost: Float64Array,
+	maxFrames: number,
+): PlannedChunk[] {
+	const length = chunk.end - chunk.start;
+	const parts = Math.ceil(length / maxFrames);
+	if (parts <= 1) return [chunk];
+	const out: PlannedChunk[] = [];
+	for (let i = 0; i < parts; i++) {
+		const start = chunk.start + Math.round((i * length) / parts);
+		const end = chunk.start + Math.round(((i + 1) * length) / parts);
+		let ms = 0;
+		for (let f = start; f < end; f++) ms += cost[f];
+		out.push({ start, end, workSec: ms / 1000 });
+	}
+	return out;
 }
 
 /** Per-frame cost in ms: linear between samples, flat beyond the first and last. */

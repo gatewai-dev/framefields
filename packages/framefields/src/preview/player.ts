@@ -7,11 +7,7 @@
  */
 
 import { BUILTIN_NODE_RENDERERS } from "framefields-preview:renderers";
-import {
-	compositionStateStore,
-	drawCompositionTree,
-} from "@framefields/compositions";
-import { updateClockSignals, type VirtualMediaData } from "@framefields/core";
+import type { VirtualMediaData } from "@framefields/core";
 import { preloadCompositionFonts } from "@framefields/renderers";
 import {
 	type OrtWebModule,
@@ -21,10 +17,6 @@ import {
 import {
 	BrowserSurfaceProvider,
 	ensureDevice,
-	getRenderer2D,
-	lutStore,
-	type RenderContextValue,
-	SlugFontCache,
 } from "@framefields/webgpu-renderers";
 import {
 	type AudioTarget,
@@ -32,6 +24,7 @@ import {
 	type PreviewMix,
 } from "./audio-mixer.js";
 import { Blitter } from "./blit.js";
+import { FrameDrawer } from "./frame-drawer.js";
 import { type BuiltinRenderer, registerRenderers } from "./register.js";
 
 export { startAudioMixer } from "./audio-mixer.js";
@@ -179,8 +172,6 @@ async function createPlayer(
 		frameCount: Math.max(1, Math.round((durationMs / 1000) * fps)),
 	};
 	const hasVision = containsOp(vm as VirtualMediaData, "Vision");
-	// As the export decides it, so text entrances play the same.
-	const isVideoMode = vm.operation?.dataType === "Video";
 
 	// One device for every player on the page: glyph, shader and LUT caches
 	// are global and keep the GPU objects of the device that made them.
@@ -194,7 +185,6 @@ async function createPlayer(
 	await preloadCompositionFonts(vm, device);
 
 	const renderId = `preview-${Math.random().toString(36).slice(2)}`;
-	let first = true;
 	let drawing: Promise<void> | null = null;
 	let wanted: number | null = null;
 	let wantedCached = true;
@@ -266,59 +256,19 @@ async function createPlayer(
 		}
 	}
 
+	const drawer = new FrameDrawer(device, surface, vm as VirtualMediaData, {
+		fps,
+		durationMs,
+	});
+
 	async function draw(
 		frame: number,
 		toScreen = true,
 		cache = toScreen,
 	): Promise<void> {
-		const renderer = getRenderer2D(device, surface.colorFormat);
-		const ctx: RenderContextValue = { device, renderer, surface };
-		const w = surface.width;
-		const h = surface.height;
-		const props = {
-			frame,
-			compositionFrame: frame,
-			fps,
-			isHeadless: false,
-			renderId,
-			virtualMedia: vm as VirtualMediaData,
-			containerWidth: w,
-			containerHeight: h,
-			isVideoMode,
-			// A drawn frame can be cached, so it waits for its LUTs
-			// and exact video frame as the export does, never a stand-in.
-			forceWait: true,
-		};
-		updateClockSignals(frame, fps, durationMs || undefined);
-
-		// Shader, LUT and glyph uploads finish on a pass whose output is dropped.
-		if (first || lutStore.hasPending(device) || SlugFontCache.hasPending()) {
-			first = false;
-			const pre = device.createCommandEncoder();
-			const tex = renderer.getTemporaryTexture(w, h);
-			const view = tex.createView();
-			renderer
-				.beginFrame(pre, view, { r: 0, g: 0, b: 0, a: 0 }, w, h, "clear")
-				.end();
-			await drawCompositionTree(
-				ctx,
-				pre,
-				view,
-				tex,
-				w,
-				h,
-				vm as VirtualMediaData,
-				props,
-			);
-			device.queue.submit([pre.finish()]);
-			await lutStore.awaitAllPending(device);
-		}
-
-		compositionStateStore.setState(renderId, frame, fps, true);
-		const encoder = device.createCommandEncoder();
 		if (!toScreen && !offscreen) {
 			offscreen = device.createTexture({
-				size: [w, h],
+				size: [surface.width, surface.height],
 				format: surface.colorFormat,
 				usage:
 					GPUTextureUsage.RENDER_ATTACHMENT |
@@ -329,29 +279,19 @@ async function createPlayer(
 		}
 		const tex =
 			toScreen || !offscreen ? surface.getCurrentTexture() : offscreen;
-		const view = tex.createView();
-		renderer
-			.beginFrame(encoder, view, { r: 0, g: 0, b: 0, a: 0 }, w, h, "clear")
-			.end();
-		await drawCompositionTree(
-			ctx,
-			encoder,
-			view,
-			tex,
-			w,
-			h,
-			vm as VirtualMediaData,
-			props,
-		);
 		let cacheTex: GPUTexture | undefined;
-		if (cache) {
-			cacheTex = newRenderCacheTexture();
-			encoder.copyTextureToTexture({ texture: tex }, { texture: cacheTex }, [
-				w,
-				h,
-			]);
-		}
-		device.queue.submit([encoder.finish()]);
+		if (cache) cacheTex = newRenderCacheTexture();
+		await drawer.draw(frame, renderId, {
+			texture: tex,
+			after: cacheTex
+				? (encoder) =>
+						encoder.copyTextureToTexture(
+							{ texture: tex },
+							{ texture: cacheTex },
+							[surface.width, surface.height],
+						)
+				: undefined,
+		});
 		if (toScreen) surface.present();
 		await device.queue.onSubmittedWorkDone();
 		if (cacheTex) storeRenderCache(frame, cacheTex);

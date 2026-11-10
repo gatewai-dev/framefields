@@ -1,3 +1,4 @@
+import { isLocalFilePath, localFileUrl } from "@framefields/core";
 import { registerHeadlessFont } from "@framefields/webgpu-renderers";
 
 /**
@@ -10,9 +11,14 @@ export async function preloadFont(
 	if (typeof window !== "undefined" && typeof FontFace !== "undefined") {
 		const from = typeof source === "string" ? source : "its registered bytes";
 		try {
+			// A local path loads from where this page reads local files.
+			const url =
+				typeof source === "string" && isLocalFilePath(source)
+					? localFileUrl(source)
+					: source;
 			const font = new FontFace(
 				family,
-				typeof source === "string" ? `url(${source})` : source,
+				typeof url === "string" ? `url(${url})` : url,
 			);
 			const loadedFace = await font.load();
 			(document.fonts as any).add(loadedFace);

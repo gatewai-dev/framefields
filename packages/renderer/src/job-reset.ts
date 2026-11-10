@@ -1,11 +1,6 @@
 import {
-	clearAllVideoCache,
 	clearHeadlessFonts,
-	inputStore,
-	lutStore,
-	mediaDecoderCache,
-	SlugFontCache,
-	textureCache,
+	clearMediaCaches,
 } from "@framefields/webgpu-renderers";
 
 /**
@@ -15,11 +10,6 @@ import {
  * GPU device and compiled pipelines stay warm.
  */
 export function resetRenderCaches(): void {
-	clearAllVideoCache();
-	mediaDecoderCache.destroy();
-	textureCache.destroy();
-	inputStore.clear();
-	lutStore.destroy();
-	SlugFontCache.destroy();
+	clearMediaCaches();
 	void clearHeadlessFonts();
 }

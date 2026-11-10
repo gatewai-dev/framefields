@@ -14,6 +14,12 @@
 			"import": "./dist/index.mjs",
 			"default": "./dist/index.mjs"
 		},
+		"./split": {
+			"types": "./dist/split.d.mts",
+			"development": "./src/split.ts",
+			"import": "./dist/split.mjs",
+			"default": "./dist/split.mjs"
+		},
 		"./offscreen-gl-polyfill": {
 			"types": "./dist/offscreen-canvas.d.mts",
 			"development": "./src/offscreen-canvas.ts",

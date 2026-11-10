@@ -1,3 +1,4 @@
+import { isLocalFilePath, localFileUrl } from "@framefields/core";
 export const isNodeRuntime = () =>
 	typeof process !== "undefined" && Boolean(process.versions?.node);
 
@@ -26,4 +27,19 @@ export async function toLocalPath(src: string): Promise<string | null> {
 		/* webpackIgnore: true */ /* @vite-ignore */ "node:path"
 	);
 	return resolve(src);
+}
+
+/**
+ * `fetch` for a source a composition names: in a browser, a local path or
+ * `file://` URL is fetched from where the installed `LocalFileSource` (or the
+ * preview server's `/@fs`) serves it; anything else, and everything in Node,
+ * as is.
+ */
+export function fetchSource(
+	src: string,
+	...init: [RequestInit?]
+): Promise<Response> {
+	const url =
+		isNodeRuntime() || !isLocalFilePath(src) ? src : localFileUrl(src);
+	return fetch(url, ...init);
 }

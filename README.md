@@ -248,6 +248,7 @@ Everything else—including full API references, interactive tutorials, and guid
 - **[Audio & Procedural SFX](https://framefields.dev/docs)** — BeatGrids, procedural whooshes/impacts, and audio-reactive signals
 - **[On-Device Vision](https://framefields.dev/docs/guides/vision/)** — ONNX models for detection, pose and cutouts (Apache-2.0), and prompted SAM 2.1 / SAM 3 video tracking (optional, Meta SAM License)
 - **[Live Browser Preview](https://framefields.dev/docs)** — Localhost WebGPU player with scrubbing, waveform timeline, and frame-stepping
+- **[On-Device Export](https://framefields.dev/docs)** — `framefields bundle` makes a static folder that renders the film to MP4 on the viewer's own GPU (Safari and iOS 26 WKWebView, Chrome), chunked into OPFS and resumable
 
 ---
 

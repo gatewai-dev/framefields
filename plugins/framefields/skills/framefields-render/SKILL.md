@@ -1,6 +1,6 @@
 ---
 name: framefields-render
-description: Render, inspect, test, preview and export WebGPU video and frame grids with the framefields headless engine. Use when verifying compositions, diagnosing blank frames, running frame grids or pixel tests, showing the user a live preview, exporting MP4/WebM, reading render progress, running video QA, naming renders in framefields.json, rendering without a GPU, or splitting a render into chunks in framefields. Cloud GPU rendering is in framefields-cloud.
+description: Render, inspect, test, preview and export WebGPU video and frame grids with the framefields headless engine. Use when verifying compositions, diagnosing blank frames, running frame grids or pixel tests, showing the user a live preview, exporting MP4/WebM, exporting on the viewer's own device (iOS app, Safari) from a web bundle, reading render progress, running video QA, naming renders in framefields.json, rendering without a GPU, or splitting a render into chunks in framefields. Cloud GPU rendering is in framefields-cloud.
 ---
 
 # framefields-render
@@ -188,6 +188,29 @@ await stitchChunks({ chunks: ["out/chunk-0.mp4", "out/chunk-1.mp4"], audio: "out
 - `planChunks({ totalFrames, samples, workers: "auto" })` picks count and cuts (adds workers while each spends ≥ 85% of its time rendering; splits at equal cost). `renderer.probeRender(comp)` measures `samples`.
 
 The cloud does all of this for you: `framefields-cloud`.
+
+## Exporting on the viewer's device (`framefields bundle`)
+
+A web bundle renders the film to MP4 in the viewer's browser (WebGPU + WebCodecs: Safari and WKWebView on iOS 26+, current Chrome), e.g. inside an iOS app, instead of on a server GPU:
+
+```bash
+npx framefields bundle film --output ios/App/Film   # engine/, project.mjs, files/, manifest.json, index.html
+```
+
+```typescript
+import { openBundle } from "framefields/web"; // or the bundle's own ./engine/web.mjs
+const bundle = await openBundle("/Film/");
+const { file } = await bundle.exportVideo({ codec: "h264", quality: "high", onProgress: (p) => show(p.message) });
+```
+
+- Queued rendering: `bundle.queue.enqueue(options)` returns an id at once; renders run one after another on the page's one GPU device; `queue.subscribe(listener)` gets `{ type, text, id, render }` events (`queued`, `started`, `progress`, `done`, `failed`, `cancelled`, `removed`), plain JSON to forward to a native bridge as is; `queue.list()`, `get(id)`, `cancel(id)` (a running render stops; `{ discard: false }` keeps its chunks), `file(id)`, `remove(id)`, `whenSettled(id)`. The line is saved in OPFS: after a reload or an app kill the queue reopens and runs the interrupted render first, from its last finished chunk. A failed render never blocks the next. The same options give the same id (no render twice). `exportVideo(options)` is a queue of one: it enqueues and waits; aborting its `signal` takes the render out of line but keeps its chunks.
+- The bundle needs no server: open `index.html` over http(s) or a WKWebView scheme handler (WebGPU needs a secure context). Its page lists the queue and, with a `framefields` WKScriptMessageHandler, posts every queue event to it; an app calls `window.framefieldsEnqueue(options)`, `framefieldsCancel(id)`, `framefieldsQueue()` or `framefieldsExport(options)`.
+- Files ship by project path (`/assets/clip.mp4`); `bundle` takes what the composition's tree names, its fonts, and `--include` for files read at run time (JSON it parses). A missing one fails naming the path.
+- The export measures frame costs, cuts the film into chunks of `chunkSec` render time (default 20, at most `maxChunkFrames`), writes each to OPFS and frees caches between them, renders the soundtrack apart, then joins them without re-encoding, as the cloud's split render does. Stopped (app backgrounded or killed), the next `exportVideo` with the same bundle and settings resumes from the first missing chunk.
+- Same pictures as `renderVideo`, except physics: a shot whose debris or bodies collide can settle differently in Safari, as JavaScriptCore's `Math.hypot`/`sin`/`exp` round differently from Node's.
+- Memory is set by resolution and the effects, not chunk length: the 1080p 3D `examples/37_lumen` holds ~1 GB in Safari's page process (half of it GPU textures) whatever the chunk size. Export phones at lower resolutions for heavy 3D.
+- A hidden page pauses (Safari suspends it); it continues when shown again, or resumes from storage if the app was killed.
+- Vision effects are not supported on-device.
 
 ## Rendering without a GPU
 

@@ -18,3 +18,8 @@ export {
 	type VideoQaReport,
 	type VideoQaStats,
 } from "./renderer/index.js";
+export {
+	buildWebBundle,
+	type WebBundleOptions,
+	type WebBundleResult,
+} from "./web/build.js";

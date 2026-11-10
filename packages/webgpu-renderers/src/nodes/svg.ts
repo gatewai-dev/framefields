@@ -1,3 +1,4 @@
+import { fetchSource } from "../local-path.js";
 import type { RenderContextValue } from "../render-context.js";
 import { transformScale } from "../renderer2d/transform-stack.js";
 import { textureCache } from "../texture-cache.js";
@@ -33,7 +34,7 @@ class SvgLoader {
 					src.startsWith("data:");
 
 				if (isRemote || !isHeadless) {
-					const res = await fetch(src);
+					const res = await fetchSource(src);
 					if (!res.ok) throw new Error(`Failed to fetch SVG: ${src}`);
 					text = await res.text();
 				} else {
@@ -49,7 +50,7 @@ class SvgLoader {
 						const fs = await import(/* webpackIgnore: true */ "fs/promises");
 						text = await fs.readFile(filePath, "utf-8");
 					} catch {
-						const res = await fetch(src);
+						const res = await fetchSource(src);
 						if (!res.ok) throw new Error(`Failed to fetch SVG: ${src}`);
 						text = await res.text();
 					}

@@ -17,12 +17,12 @@ export class BrowserSurfaceProvider implements SurfaceProvider {
 	readonly colorFormat: GPUTextureFormat;
 	private context: GPUCanvasContext;
 	private device: GPUDevice;
-	private canvas: HTMLCanvasElement;
+	private canvas: HTMLCanvasElement | OffscreenCanvas;
 	private renderTarget!: GPUTexture;
 	private stagingBuffer: GPUBuffer | null = null;
 	private stagingBufferSize = 0;
 
-	constructor(device: GPUDevice, canvas: HTMLCanvasElement) {
+	constructor(device: GPUDevice, canvas: HTMLCanvasElement | OffscreenCanvas) {
 		this.device = device;
 		this.canvas = canvas;
 		this.colorFormat =

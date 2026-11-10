@@ -71,24 +71,32 @@
 .play-btn.loading svg:not(.spin) {
 	display: none;
 }
-.timecode {
-	display: flex;
+/* The position: time or frames, a click switches. */
+.position {
+	height: 32px;
+	padding: 0 8px;
+	margin-left: 4px;
+	border: 0;
+	border-radius: var(--radius);
+	background: transparent;
+	display: inline-flex;
 	align-items: baseline;
-	gap: 8px;
-	margin-left: 8px;
+	gap: 0;
 	white-space: nowrap;
 	font-variant-numeric: tabular-nums;
+	line-height: 32px;
 }
-.timecode .now {
+.position:hover {
+	background: var(--surface-2);
+}
+.position .now {
 	font-size: 14px;
 	font-weight: 500;
+	color: var(--ink);
 }
-.timecode .dim {
+.position .dim {
 	color: var(--ink-3);
-}
-.timecode .frame {
-	color: var(--ink-3);
-	font-size: 12px;
+	white-space: pre;
 }
 .fps {
 	color: var(--ink-3);
@@ -107,7 +115,7 @@ input[type="range"].slider {
 		var(--ink-2) var(--level, 90%),
 		var(--line-2) var(--level, 90%)
 	);
-	margin: 0 8px 0 0;
+	margin: 0;
 }
 input[type="range"].slider::-webkit-slider-thumb {
 	-webkit-appearance: none;
@@ -126,6 +134,68 @@ input[type="range"].slider::-moz-range-thumb {
 }
 input[type="range"].slider:disabled {
 	opacity: 0.35;
+}
+/* Sound: the speaker toggles mute; the slider opens beside it on hover or
+   focus (above it when the bar is narrow), and stays at wide widths. */
+.volume {
+	position: relative;
+	display: flex;
+	align-items: center;
+	flex: none;
+}
+.slider-wrap {
+	display: flex;
+	align-items: center;
+	overflow: hidden;
+	width: 0;
+	opacity: 0;
+	transition:
+		width 0.15s,
+		opacity 0.15s;
+}
+.slider-wrap .slider {
+	margin: 0 8px 0 4px;
+}
+.volume:hover .slider-wrap,
+.volume:focus-within .slider-wrap {
+	width: 92px;
+	opacity: 1;
+}
+@media (min-width: 960px) {
+	.slider-wrap {
+		width: 92px;
+		opacity: 1;
+	}
+}
+@media (max-width: 520px) {
+	.slider-wrap,
+	.volume:hover .slider-wrap,
+	.volume:focus-within .slider-wrap {
+		position: absolute;
+		right: 0;
+		/* Touching the speaker, so the pointer can cross over. */
+		bottom: 100%;
+		width: auto;
+		height: 32px;
+		padding: 0 4px;
+		border-radius: var(--radius);
+		background: var(--surface);
+		border: 1px solid var(--line-2);
+		box-shadow: var(--shadow);
+		visibility: hidden;
+	}
+	.volume:hover .slider-wrap,
+	.volume:focus-within .slider-wrap {
+		visibility: visible;
+	}
+}
+.volume .icon-btn[aria-disabled="true"] {
+	cursor: default;
+	opacity: 0.5;
+}
+.volume.problem .icon-btn {
+	opacity: 1;
+	color: var(--ink-3);
 }
 .notes-btn {
 	padding: 0 8px;
@@ -148,21 +218,15 @@ input[type="range"].slider:disabled {
 }
 /* Narrow: the essentials only. */
 @media (max-width: 520px) {
-	.timecode .frame,
-	.fps,
-	.slider,
-	.notes-btn .label {
+	.fps {
 		display: none;
-	}
-	.timecode {
-		margin-left: 0;
 	}
 	.transport {
 		gap: 4px;
 	}
 }
-@media (max-width: 400px) {
-	.timecode .dim {
+@media (max-width: 380px) {
+	.position .dim {
 		display: none;
 	}
 }

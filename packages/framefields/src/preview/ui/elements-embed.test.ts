@@ -55,9 +55,18 @@ describe("the embedded page (?embed=1)", () => {
 		expect(document.documentElement.hasAttribute("data-embed")).toBe(true);
 		expect(page.querySelector("ff-header")).toBeNull();
 		expect(page.querySelector(".top")).toBeNull();
-		// The soundtrack is still mixing: with no header, the transport says so.
+		// Mixing isn't a problem: no status text, the speaker just waits.
+		expect(page.querySelector(".chip")).toBeNull();
+		expect(page.querySelector(".volume .icon-btn")?.getAttribute("title")).toBe(
+			"Mixing audio…",
+		);
+		// The preview command stopping is: with no header, the transport says so.
+		app.offline = true;
+		app.changed();
+		await new Promise((r) => setTimeout(r, 0));
+		await page.querySelector("ff-transport")?.updateComplete;
 		expect(page.querySelector(".transport .chip")?.textContent).toContain(
-			"Mixing audio",
+			"Preview stopped",
 		);
 		expect(page.querySelector("canvas#canvas")).not.toBeNull();
 		expect(app.frame).toBe(10);

@@ -7,6 +7,7 @@ import {
 	hashForFrame,
 	markLanes,
 	openNotesText,
+	positionText,
 	rulerTicks,
 	timecode,
 	whereText,
@@ -50,6 +51,17 @@ describe("time", () => {
 		expect(timecode(0, 30)).toBe("0:00.00");
 		expect(timecode(95, 10)).toBe("0:09.50");
 		expect(timecode(3725, 50)).toBe("1:14.50");
+	});
+
+	it("reads the position as time or as frames", () => {
+		expect(positionText("time", 45, 89, 30)).toEqual({
+			now: "0:01.50",
+			end: "0:02.97",
+		});
+		expect(positionText("frames", 45, 89, 30)).toEqual({
+			now: "45",
+			end: "89",
+		});
 	});
 
 	it("labels the ruler's majors at least 80 px apart", () => {

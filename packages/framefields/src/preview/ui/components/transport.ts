@@ -1,20 +1,24 @@
 import { html, nothing } from "lit";
-import { timecode } from "../format.js";
+import { type PositionMode, positionText } from "../format.js";
+import { readPref, writePref } from "../prefs.js";
+import { AUDIO_LABEL } from "../soundtrack.js";
 import { PreviewElement } from "./base.js";
-import { statusChip } from "./header.js";
+import { offlineChip } from "./header.js";
 import * as icon from "./icons.js";
 
-/** Frame stepping, play/pause, the time, the frame rate reached, notes and sound. */
+const MODES: readonly PositionMode[] = ["time", "frames"];
+
+/**
+ * Frame stepping, play/pause, the position (as time or frames: click to
+ * switch), the frame rate reached, notes, and sound.
+ */
 export class PreviewTransport extends PreviewElement {
+	#mode: PositionMode = readPref("position", MODES, "time");
+
 	override render() {
 		const app = this.app;
-		const fps = app?.meta?.fps ?? 30;
 		const playing = !!app?.playing;
-		const audio = app?.soundtrack;
-		const usable = !!audio?.usable;
-		const isMuted = !!audio?.muted;
 		const playLabel = playing ? "Pause" : "Play";
-		const muteLabel = isMuted ? "Unmute" : "Mute";
 		return html`<div class="transport">
 			<button
 				class="icon-btn"
@@ -41,44 +45,40 @@ export class PreviewTransport extends PreviewElement {
 			>
 				${icon.next}
 			</button>
-			<div class="timecode tnum">
-				<span class="now">${timecode(app?.frame ?? 0, fps)}</span><span class="dim">/</span
-				><span class="dim">${timecode(app?.lastFrame ?? 0, fps)}</span>
-				<span class="frame">frame ${app?.frame ?? 0}</span>
-			</div>
-			${this.#fps()}
+			${this.#position()} ${this.#fps()}
 			<span class="grow"></span>
-			${
-				// Embedded there is no header: say so here when sound isn't ready.
-				app?.embedded && (app.offline || app.soundtrack.state !== "ready")
-					? statusChip(app)
-					: nothing
-			}
+			${app?.embedded ? offlineChip(app) : nothing}
 			${app?.notesOn ? this.#notesButton() : nothing}
 			<ff-notes-panel .app=${app}></ff-notes-panel>
-			<button
-				class="icon-btn"
-				title=${muteLabel}
-				aria-label=${muteLabel}
-				?disabled=${!usable}
-				@click=${() => audio?.setMuted(!audio.muted)}
-			>
-				${isMuted ? icon.muted : icon.volume}
-			</button>
-			<input
-				class="slider"
-				type="range"
-				min="0"
-				max="1"
-				step="0.01"
-				.value=${String(audio?.volume ?? 0.9)}
-				style="--level:${(isMuted ? 0 : (audio?.volume ?? 0.9)) * 100}%"
-				aria-label="Volume"
-				?disabled=${!usable}
-				@input=${(e: Event) =>
-					audio?.setVolume(Number((e.target as HTMLInputElement).value))}
-			/>
+			${this.#sound()}
 		</div>`;
+	}
+
+	/** Mode the position readout shows; persisted per viewer. */
+	get positionMode(): PositionMode {
+		return this.#mode;
+	}
+
+	#position() {
+		const app = this.app;
+		const fps = app?.meta?.fps ?? 30;
+		const frame = app?.frame ?? 0;
+		const last = app?.lastFrame ?? 0;
+		const { now, end } = positionText(this.#mode, frame, last, fps);
+		const other = this.#mode === "time" ? "frames" : "time";
+		const label = `${this.#mode === "time" ? `Time ${now} of ${end}` : `Frame ${now} of ${end}`}. Click to show ${other}.`;
+		return html`<button
+			class="position tnum"
+			title="Click to show ${other}"
+			aria-label=${label}
+			@click=${() => {
+				this.#mode = other;
+				writePref("position", other);
+				this.requestUpdate();
+			}}
+		>
+			<span class="now">${now}</span><span class="dim"> / ${end}</span>
+		</button>`;
 	}
 
 	// Distinct frames shown per second while playing; the last playback's while paused.
@@ -100,15 +100,68 @@ export class PreviewTransport extends PreviewElement {
 		const app = this.app;
 		if (!app) return nothing;
 		const open = app.openCount;
+		const label = `Notes: ${open} open of ${app.notes.length}`;
 		return html`<button
 			class="btn notes-btn"
-			title="${open} open of ${app.notes.length}"
+			title=${label}
+			aria-label=${label}
 			aria-haspopup="dialog"
 			aria-expanded=${String(app.panelOpen)}
 			@click=${() => app.setPanel(!app.panelOpen)}
 		>
-			${icon.notes}<span class="label">Notes</span>
+			${icon.notes}
 			<span class="badge ${open > 0 ? "open" : ""}">${open || app.notes.length}</span>
 		</button>`;
+	}
+
+	/**
+	 * The speaker toggles mute; its slider opens on hover or focus (always
+	 * shown at wide widths). When there's no sound, or it failed, the speaker
+	 * is crossed out and says why; while it mixes it waits.
+	 */
+	#sound() {
+		const audio = this.app?.soundtrack;
+		if (!audio) return nothing;
+		const usable = audio.usable;
+		const isMuted = audio.muted;
+		const problem =
+			audio.state === "none"
+				? "No audio in this composition"
+				: audio.state === "error"
+					? `Audio failed${audio.error ? `: ${audio.error}` : ""}`
+					: null;
+		const label =
+			problem ??
+			(usable ? (isMuted ? "Unmute" : "Mute") : `${AUDIO_LABEL[audio.state]}…`);
+		const level = (isMuted ? 0 : audio.volume) * 100;
+		return html`<div class="volume ${usable ? "usable" : ""} ${problem ? "problem" : ""}">
+			<button
+				class="icon-btn"
+				title=${label}
+				aria-label=${label}
+				aria-disabled=${String(!usable)}
+				@click=${() => {
+					if (usable) audio.setMuted(!audio.muted);
+				}}
+			>
+				${problem || isMuted ? icon.muted : icon.volume}
+			</button>
+			${
+				usable
+					? html`<span class="slider-wrap"><input
+							class="slider"
+							type="range"
+							min="0"
+							max="1"
+							step="0.01"
+							.value=${String(audio.volume)}
+							style="--level:${level}%"
+							aria-label="Volume"
+							@input=${(e: Event) =>
+								audio.setVolume(Number((e.target as HTMLInputElement).value))}
+						/></span>`
+					: nothing
+			}
+		</div>`;
 	}
 }

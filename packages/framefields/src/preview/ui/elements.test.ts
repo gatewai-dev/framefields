@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { PreviewPlayer } from "../player.js";
 import type { PreviewNote } from "../protocol.js";
 import { PreviewApp } from "./app.js";
@@ -98,6 +98,12 @@ describe("the preview page's elements", () => {
 	let app: PreviewApp;
 
 	beforeAll(async () => {
+		// Node's own (file-less) localStorage would shadow the page's.
+		const stored = new Map<string, string>();
+		vi.stubGlobal("localStorage", {
+			getItem: (k: string) => stored.get(k) ?? null,
+			setItem: (k: string, v: string) => stored.set(k, v),
+		});
 		globalThis.ResizeObserver =
 			NoResize as unknown as typeof globalThis.ResizeObserver;
 		Element.prototype.setPointerCapture = () => {};
@@ -117,6 +123,7 @@ describe("the preview page's elements", () => {
 	});
 
 	afterAll(() => {
+		vi.unstubAllGlobals();
 		app.close();
 		document.body.replaceChildren();
 	});
@@ -127,9 +134,15 @@ describe("the preview page's elements", () => {
 		expect(document.querySelector(".spec")?.textContent).toBe(
 			"64×36 · 10 fps · 0:04.90",
 		);
-		expect(document.querySelector(".chip")?.getAttribute("data-state")).toBe(
-			"none",
-		);
+		// Nothing says "no audio" in words: the speaker is crossed out and says why.
+		expect(document.querySelector(".chip")).toBeNull();
+		const speaker = document.querySelector(".volume .icon-btn");
+		expect(speaker?.getAttribute("title")).toBe("No audio in this composition");
+		expect(speaker?.getAttribute("aria-disabled")).toBe("true");
+		expect(document.querySelector(".volume .slider")).toBeNull();
+		const notes = document.querySelector(".notes-btn");
+		expect(notes?.getAttribute("aria-label")).toBe("Notes: 2 open of 3");
+		expect(notes?.textContent?.replace(/\s+/g, "")).toBe("2");
 		const stage = document.querySelector<HTMLElement>(".stage");
 		expect(stage?.style.getPropertyValue("--ar")).toBe("64 / 36");
 		expect(document.querySelector(".play-btn")?.hasAttribute("disabled")).toBe(
@@ -218,12 +231,22 @@ describe("the preview page's elements", () => {
 	it("seeks from the timeline and the transport", async () => {
 		await app.seek(10);
 		await settle(app);
-		expect(document.querySelector(".timecode")?.textContent).toContain(
-			"0:01.00",
+		const position = document.querySelector<HTMLElement>(".position");
+		expect(position?.textContent?.replace(/\s+/g, "")).toBe("0:01.00/0:04.90");
+		expect(position?.getAttribute("aria-label")).toBe(
+			"Time 0:01.00 of 0:04.90. Click to show frames.",
 		);
-		expect(document.querySelector(".timecode .frame")?.textContent).toBe(
-			"frame 10",
+		// A click shows frames instead, and the page remembers it.
+		position?.click();
+		await settle(app);
+		expect(position?.textContent?.replace(/\s+/g, "")).toBe("10/49");
+		expect(position?.getAttribute("aria-label")).toBe(
+			"Frame 10 of 49. Click to show time.",
 		);
+		expect(localStorage.getItem("framefields-preview:position")).toBe("frames");
+		position?.click();
+		await settle(app);
+		expect(localStorage.getItem("framefields-preview:position")).toBe("time");
 		document
 			.querySelector<HTMLElement>(".icon-btn[aria-label='Next frame']")
 			?.click();

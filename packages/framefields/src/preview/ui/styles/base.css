@@ -1,46 +1,60 @@
+/* framefields' palette: graphite (dark) or paper and ink (light), one signal
+   yellow for the playhead and what is active. Blue is the brand mark only.
+   Spacing runs on an 8px grid. */
 :root {
-	--bg: #0e0f11;
-	--surface: #16171a;
-	--surface-2: #1d1e22;
-	--surface-3: #26282d;
-	--line: #2a2c31;
-	--line-2: #3a3c43;
-	--ink: #ededf0;
-	--ink-2: #a6a8b0;
-	--ink-3: #74777f;
-	--stage: #060607;
-	--primary-bg: #ededf0;
-	--primary-ink: #0e0f11;
+	--bg: #111214;
+	--surface: #18191c;
+	--surface-2: #1f2024;
+	--surface-3: #2a2b30;
+	--line: #25262a;
+	--line-2: #35363c;
+	--ink: #f1f0ea;
+	--ink-2: #a8a7a0;
+	--ink-3: #6f6e69;
+	--stage: #08080a;
+	--signal: #f5e300;
+	--signal-ink: #111214;
 	--brand: #3b82f6;
-	--focus: #5eaefc;
-	--ok: #4fbf7a;
+	--ok: #5cc48a;
 	--bad: #f27d8d;
-	--wave: #4b4e57;
-	--radius: 10px;
+	--wave: #34353b;
+	--wave-played: #8f8e88;
+	--focus: var(--signal);
+	--shadow: 0 12px 32px rgb(0 0 0 / 0.4);
+	--radius: 8px;
 	--font:
 		"Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+	--pad: 24px;
 	color-scheme: dark;
 }
 @media (prefers-color-scheme: light) {
 	:root {
-		--bg: #f5f5f6;
-		--surface: #ffffff;
-		--surface-2: #f0f0f2;
-		--surface-3: #e6e6e9;
-		--line: #e2e2e6;
-		--line-2: #cfcfd5;
-		--ink: #15161a;
-		--ink-2: #53555d;
-		--ink-3: #85878f;
+		--bg: #f3f1eb;
+		--surface: #faf9f5;
+		--surface-2: #eceae3;
+		--surface-3: #e2dfd6;
+		--line: #e0ddd3;
+		--line-2: #ccc8bc;
+		--ink: #151515;
+		--ink-2: #54524c;
+		--ink-3: #8b887f;
 		--stage: #0b0b0c;
-		--primary-bg: #15161a;
-		--primary-ink: #ffffff;
-		--brand: #2563eb;
-		--focus: #1c74cc;
+		--wave: #d2cec3;
+		--wave-played: #54524c;
 		--ok: #23874a;
 		--bad: #cf4057;
-		--wave: #c2c3ca;
+		--focus: var(--ink);
+		--shadow: 0 12px 32px rgb(40 36 20 / 0.16);
 		color-scheme: light;
+	}
+}
+/* Inside an app: no header, tighter chrome. */
+:root[data-embed] {
+	--pad: 8px;
+}
+@media (max-width: 640px) {
+	:root {
+		--pad: 8px;
 	}
 }
 * {
@@ -58,20 +72,20 @@ body {
 	display: flex;
 	flex-direction: column;
 	height: 100dvh;
-	font: 13.5px / 1.45 var(--font);
+	font: 13px / 1.45 var(--font);
 	-webkit-font-smoothing: antialiased;
 	font-feature-settings: "cv11", "ss03";
 }
 button,
-input {
+input,
+textarea {
 	font: inherit;
 	color: inherit;
 }
 button {
 	cursor: pointer;
 }
-button:focus-visible,
-input:focus-visible {
+:focus-visible {
 	outline: 2px solid var(--focus);
 	outline-offset: 2px;
 }
@@ -104,12 +118,12 @@ input:focus-visible {
 }
 
 /* Spinning arcs: the picture's buffering mark and the play button's. */
-@keyframes yt-rotate {
+@keyframes arc-rotate {
 	to {
 		transform: rotate(360deg);
 	}
 }
-@keyframes yt-dash {
+@keyframes arc-dash {
 	0% {
 		stroke-dasharray: 1 150;
 		stroke-dashoffset: 0;
@@ -131,7 +145,8 @@ input:focus-visible {
 	}
 }
 
-/* Shared by the notes panel and popover. */
+/* A note's number, as on its pin: ink when open, muted when done, signal
+   when it's the one open in the popover. */
 .badge {
 	min-width: 18px;
 	height: 18px;
@@ -140,24 +155,31 @@ input:focus-visible {
 	display: inline-grid;
 	place-items: center;
 	flex: none;
-	background: var(--brand);
-	color: #fff;
+	background: var(--ink);
+	color: var(--bg);
 	font-size: 10.5px;
 	font-weight: 600;
+	font-variant-numeric: tabular-nums;
 }
 .badge.done {
-	background: var(--ink-3);
+	background: var(--surface-3);
+	color: var(--ink-3);
 }
+.badge.new {
+	background: var(--signal);
+	color: var(--signal-ink);
+}
+
 .btn {
-	height: 26px;
-	padding: 0 10px;
-	border-radius: 7px;
+	height: 32px;
+	padding: 0 12px;
+	border-radius: var(--radius);
 	border: 0;
-	font-size: 12px;
+	font-size: 12.5px;
 	font-weight: 500;
 	display: inline-flex;
 	align-items: center;
-	gap: 6px;
+	gap: 8px;
 	background: transparent;
 	color: var(--ink-2);
 	white-space: nowrap;
@@ -167,12 +189,13 @@ input:focus-visible {
 	color: var(--ink);
 }
 .btn.primary {
-	background: var(--primary-bg);
-	color: var(--primary-ink);
+	background: var(--ink);
+	color: var(--bg);
 }
 .btn.primary:hover:not(:disabled) {
-	background: var(--primary-bg);
-	filter: brightness(0.9);
+	background: var(--ink);
+	color: var(--bg);
+	opacity: 0.88;
 }
 .btn.danger:hover:not(:disabled) {
 	color: var(--bad);
@@ -182,15 +205,36 @@ input:focus-visible {
 	cursor: default;
 }
 .btn svg {
-	width: 13px;
-	height: 13px;
+	width: 14px;
+	height: 14px;
+}
+.btn.small {
+	height: 24px;
+	padding: 0 8px;
+	font-size: 12px;
 }
 .x-btn {
-	width: 22px;
-	height: 22px;
+	width: 24px;
+	height: 24px;
 	padding: 0;
 	justify-content: center;
-	margin-right: -4px;
+}
+
+.chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	height: 24px;
+	padding: 0 8px;
+	white-space: nowrap;
+	color: var(--ink-3);
+	font-size: 12px;
+}
+.chip[data-state="ready"] .dot {
+	color: var(--ok);
+}
+.chip[data-state="error"] {
+	color: var(--bad);
 }
 
 /* The page's elements render into the light DOM and lay out as their contents. */

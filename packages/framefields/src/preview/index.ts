@@ -37,6 +37,9 @@ type NoteBody = {
 	note?: NewNote;
 };
 
+// The message channel an app embedding the page talks over (protocol 1).
+export * from "./embed-protocol.js";
+
 /** Where the composition comes from: the module that builds it. */
 export interface PreviewSource {
 	/** Path or file URL of the module, e.g. `new URL("./film.ts", import.meta.url)`. */

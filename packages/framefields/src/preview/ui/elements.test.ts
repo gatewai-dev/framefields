@@ -103,7 +103,7 @@ describe("the preview page's elements", () => {
 		Element.prototype.setPointerCapture = () => {};
 		defineElements();
 		window.framefieldsPlayer = Promise.resolve(player);
-		app = new PreviewApp({ server, embedder: null });
+		app = new PreviewApp({ server, embedded: false });
 		const page = document.createElement("ff-preview");
 		page.app = app;
 		document.body.append(page);
@@ -234,5 +234,41 @@ describe("the preview page's elements", () => {
 		);
 		// No pins at a frame without notes.
 		expect(document.querySelectorAll(".overlay .pin")).toHaveLength(0);
+	});
+
+	it("takes the keyboard, except while typing", async () => {
+		await app.seek(20);
+		await settle(app);
+		document.body.dispatchEvent(
+			new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }),
+		);
+		await settle(app);
+		expect(app.frame).toBe(21);
+		document.body.dispatchEvent(
+			new KeyboardEvent("keydown", {
+				key: "ArrowLeft",
+				shiftKey: true,
+				bubbles: true,
+			}),
+		);
+		await settle(app);
+		expect(app.frame).toBe(11);
+		const input = document.querySelector<HTMLInputElement>(".slider");
+		input?.dispatchEvent(
+			new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }),
+		);
+		await settle(app);
+		expect(app.frame).toBe(11);
+		const timeline = document.querySelector(".timeline");
+		expect(timeline?.getAttribute("role")).toBe("slider");
+		expect(timeline?.getAttribute("aria-valuetext")).toBe("0:01.10, frame 11");
+		expect(document.querySelector(".playhead-time")?.textContent?.trim()).toBe(
+			"0:01.10",
+		);
+	});
+
+	it("shows its header when it isn't embedded", () => {
+		expect(document.querySelector("ff-header .top")).not.toBeNull();
+		expect(document.documentElement.hasAttribute("data-embed")).toBe(false);
 	});
 });

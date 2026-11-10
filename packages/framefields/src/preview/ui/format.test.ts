@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { PreviewNote } from "../protocol.js";
 import { draftAt } from "./app.js";
+import { waveformPath } from "./components/waveform.js";
 import {
 	frameFromHash,
 	hashForFrame,
@@ -126,5 +127,30 @@ describe("notes", () => {
 				"- Note 2 at 0:02.00 (frame 20), spot 25%,50%: note 2 [picture: /n/note-2.jpg]",
 			].join("\n"),
 		);
+	});
+});
+
+describe("the waveform", () => {
+	it("is one closed shape, mirrored about the middle, as loud as its peaks", () => {
+		const path = waveformPath([0, 1, 0.5, 0.25], 8, 20, 2);
+		expect(path.startsWith("M0 10")).toBe(true);
+		expect(path.endsWith("Z")).toBe(true);
+		const points = [...path.matchAll(/L([\d.]+) ([\d.]+)/g)].map((m) => [
+			Number(m[1]),
+			Number(m[2]),
+		]);
+		// Top edge left to right, bottom edge back: x 0..8 by 2, twice.
+		expect(points.map(([x]) => x)).toEqual([0, 2, 4, 6, 8, 8, 6, 4, 2, 0]);
+		const top = points.slice(0, 5).map(([, y]) => 10 - y);
+		const bottom = points
+			.slice(5)
+			.reverse()
+			.map(([, y]) => y - 10);
+		expect(top).toEqual(bottom);
+		// Silence keeps a hairline; the loudest bin reaches the edge less 2px.
+		expect(top[0]).toBe(0.5);
+		expect(top[1]).toBe(8);
+		expect(top[2]).toBe(4);
+		expect(waveformPath([], 100, 20)).toBe("");
 	});
 });

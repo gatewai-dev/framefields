@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { PreviewMessage } from "../embed-protocol.js";
 import type { PreviewPlayer } from "../player.js";
 import type {
 	AudioStatus,
@@ -8,6 +9,7 @@ import type {
 	PreviewNote,
 } from "../protocol.js";
 import { PreviewApp } from "./app.js";
+import { connectEmbedder, STATE_INTERVAL_MS } from "./channel.js";
 import type { PreviewServer, ServerEvents } from "./server.js";
 
 const META: PreviewMetaReply = {
@@ -77,19 +79,21 @@ const tick = () => new Promise((r) => setTimeout(r, 0));
 
 /** A page with its player ready, as the composition's bundle announces it. */
 async function startApp(
-	options: { embedder?: Window | null; notes?: PreviewNote[] } = {},
+	options: {
+		notes?: PreviewNote[];
+		/** Runs before the app starts, e.g. to connect an embedder. */
+		connect?: (app: PreviewApp) => void;
+	} = {},
 ) {
 	const { player, rendered } = fakePlayer();
 	window.framefieldsPlayer = Promise.resolve(player);
 	const server = fakeServer(options.notes);
-	const app = new PreviewApp({
-		server: server.server,
-		embedder: options.embedder,
-	});
+	const app = new PreviewApp({ server: server.server });
+	options.connect?.(app);
 	await app.start();
 	await app.whenReady();
 	await tick();
-	return { app, rendered, ...server };
+	return { app, rendered, player, ...server };
 }
 
 describe("PreviewApp", () => {
@@ -118,28 +122,6 @@ describe("PreviewApp", () => {
 			connected: true,
 			meta: { title: "Film", fps: 10, frameCount: 50, duration: 4.9 },
 		});
-		app.close();
-	});
-
-	it("tells the page embedding it that it seeks by fragment", async () => {
-		const postMessage = vi.fn();
-		const { app } = await startApp({
-			embedder: { postMessage } as unknown as Window,
-		});
-		expect(postMessage).toHaveBeenCalledTimes(1);
-		expect(postMessage).toHaveBeenCalledWith(
-			{ type: "framefields-preview:ready", seekByHash: true },
-			"*",
-		);
-		app.close();
-	});
-
-	it("posts nothing when it isn't embedded", async () => {
-		// In this window parent === window, so the default is no embedder.
-		const post = vi.spyOn(window, "postMessage");
-		const { app } = await startApp();
-		expect(post).not.toHaveBeenCalled();
-		post.mockRestore();
 		app.close();
 	});
 
@@ -275,7 +257,7 @@ describe("PreviewApp", () => {
 	it("shows a player that failed to start, and rejects waiting callers", async () => {
 		window.framefieldsPlayer = Promise.reject(new Error("no WebGPU"));
 		const { server, logs } = fakeServer();
-		const app = new PreviewApp({ server, embedder: null });
+		const app = new PreviewApp({ server });
 		await app.start();
 		await expect(app.whenReady()).rejects.toThrow("no WebGPU");
 		expect(app.pageState).toBe("error");
@@ -291,6 +273,243 @@ describe("PreviewApp", () => {
 		app.soundtrack.load(status, 0);
 		expect(app.soundtrack.mixer).toBe("server");
 		expect(app.snapshot().audioMixed).toBeNull();
+		app.close();
+	});
+});
+
+describe("the keyboard", () => {
+	afterEach(() => {
+		window.framefieldsPlayer = undefined;
+	});
+
+	it("steps a frame or a second, jumps to either end, and plays", async () => {
+		history.replaceState(null, "", "/#frame=20");
+		const { app } = await startApp();
+		const press = async (key: string, shiftKey = false) => {
+			expect(app.key({ key, shiftKey })).toBe(true);
+			await tick();
+		};
+		await press("ArrowRight");
+		expect(app.frame).toBe(21);
+		await press("ArrowLeft", true);
+		expect(app.frame).toBe(11);
+		await press("End");
+		expect(app.frame).toBe(49);
+		await press("Home");
+		expect(app.frame).toBe(0);
+		await press(" ");
+		expect(app.playing).toBe(true);
+		await press(" ");
+		expect(app.playing).toBe(false);
+		expect(app.key({ key: "a" })).toBe(false);
+		app.close();
+	});
+});
+
+describe("the embed channel", () => {
+	let frame: HTMLIFrameElement;
+	let parent: Window;
+	let posted: PreviewMessage[];
+
+	beforeEach(() => {
+		history.replaceState(null, "", "/");
+		// A real window to stand in for the embedding app.
+		frame = document.createElement("iframe");
+		document.body.append(frame);
+		parent = frame.contentWindow as Window;
+		posted = [];
+		vi.spyOn(parent, "postMessage").mockImplementation((m: unknown) => {
+			posted.push(m as PreviewMessage);
+		});
+	});
+	afterEach(() => {
+		frame.remove();
+		window.framefieldsPlayer = undefined;
+	});
+
+	const send = (data: unknown, source: Window | null = parent) =>
+		window.dispatchEvent(new MessageEvent("message", { data, source }));
+	const reply = async (id: string) => {
+		await vi.waitFor(() =>
+			expect(posted.some((m) => m.type === "framefields-preview:reply")).toBe(
+				true,
+			),
+		);
+		const r = posted.find(
+			(m) => m.type === "framefields-preview:reply" && m.id === id,
+		);
+		posted = posted.filter((m) => m !== r);
+		return r;
+	};
+
+	it("says it's ready, with the film and that it seeks by fragment", async () => {
+		const { app } = await startApp({
+			connect: (a) => connectEmbedder(a, parent),
+		});
+		expect(posted).toEqual([
+			{
+				type: "framefields-preview:ready",
+				protocol: 1,
+				seekByHash: true,
+				meta: {
+					title: "Film",
+					width: 64,
+					height: 36,
+					fps: 10,
+					frames: 50,
+					duration: 4.9,
+				},
+			},
+		]);
+		app.close();
+	});
+
+	it("runs the parent's commands and replies with where it is", async () => {
+		const { app, rendered } = await startApp({
+			connect: (a) => connectEmbedder(a, parent),
+		});
+		posted = [];
+		const command = { type: "framefields-preview:command" };
+
+		send({ ...command, id: "a", command: "seek", time: 2.5 });
+		expect(await reply("a")).toEqual({
+			type: "framefields-preview:reply",
+			id: "a",
+			ok: true,
+			state: { frame: 25, time: 2.5, playing: false },
+		});
+		expect(rendered.at(-1)).toBe(25);
+		// A finished seek is also a state change.
+		expect(posted).toContainEqual({
+			type: "framefields-preview:state",
+			frame: 25,
+			time: 2.5,
+			playing: false,
+		});
+
+		send({ ...command, id: "b", command: "seekFrame", frame: 7 });
+		expect(await reply("b")).toMatchObject({
+			ok: true,
+			state: { frame: 7, time: 0.7 },
+		});
+
+		send({ ...command, id: "c", command: "play" });
+		expect(await reply("c")).toMatchObject({
+			ok: true,
+			state: { playing: true },
+		});
+		send({ ...command, id: "d", command: "pause" });
+		expect(await reply("d")).toMatchObject({
+			ok: true,
+			state: { playing: false },
+		});
+		send({ ...command, id: "e", command: "state" });
+		expect(await reply("e")).toMatchObject({ ok: true });
+		app.close();
+	});
+
+	it("takes commands only from its parent, and only well-formed ones", async () => {
+		const { app } = await startApp({
+			connect: (a) => connectEmbedder(a, parent),
+		});
+		posted = [];
+		const seek = {
+			type: "framefields-preview:command",
+			id: "x",
+			command: "seekFrame",
+			frame: 30,
+		};
+		send(seek, window);
+		send(seek, null);
+		send({ ...seek, command: "rewind" });
+		send({ ...seek, frame: "30" });
+		send({ ...seek, id: 1 });
+		send("seekFrame 30");
+		await tick();
+		await tick();
+		expect(posted).toEqual([]);
+		expect(app.frame).toBe(0);
+		app.close();
+	});
+
+	it("replies with the error when a command can't run", async () => {
+		window.framefieldsPlayer = Promise.reject(new Error("no WebGPU"));
+		const { server } = fakeServer();
+		const app = new PreviewApp({ server });
+		connectEmbedder(app, parent);
+		await app.start();
+		await expect(app.whenReady()).rejects.toThrow();
+		send({
+			type: "framefields-preview:command",
+			id: "z",
+			command: "play",
+		});
+		expect(await reply("z")).toEqual({
+			type: "framefields-preview:reply",
+			id: "z",
+			ok: false,
+			error: "no WebGPU",
+		});
+		// The failure itself went out as a build error.
+		expect(posted).toContainEqual({
+			type: "framefields-preview:build",
+			status: "error",
+			message: "no WebGPU",
+		});
+		app.close();
+	});
+
+	it("sends state on play and pause, and at most four a second while playing", async () => {
+		let now = 0;
+		const { app } = await startApp({
+			connect: (a) => connectEmbedder(a, parent, { now: () => now }),
+		});
+		posted = [];
+		const states = () =>
+			posted.filter((m) => m.type === "framefields-preview:state");
+		app.play();
+		// 10 fps on the wall clock: frames come, the channel's clock stands still.
+		await vi.waitFor(() => expect(app.frame).toBeGreaterThan(2), {
+			timeout: 2000,
+		});
+		expect(states()).toEqual([
+			{ type: "framefields-preview:state", frame: 0, time: 0, playing: true },
+		]);
+		now += STATE_INTERVAL_MS;
+		const at = app.frame;
+		await vi.waitFor(() => expect(app.frame).toBeGreaterThan(at), {
+			timeout: 2000,
+		});
+		expect(states()).toHaveLength(2);
+		expect(states()[1]).toMatchObject({ playing: true });
+		app.pause();
+		expect(states().at(-1)).toMatchObject({
+			frame: app.frame,
+			playing: false,
+		});
+		app.close();
+	});
+
+	it("says a rebuild is coming, and when a frame fails", async () => {
+		const { app, emit, player } = await startApp({
+			connect: (a) => connectEmbedder(a, parent),
+		});
+		posted = [];
+		player.onFrameError?.(5, new Error("boom"));
+		player.onFrameError?.(6, new Error("boom"));
+		expect(posted).toEqual([
+			{
+				type: "framefields-preview:build",
+				status: "error",
+				message: "frame 5: boom",
+			},
+		]);
+		// jsdom can't reload; the message goes out before it tries.
+		emit().hello("another session");
+		expect(posted.at(-1)).toEqual({
+			type: "framefields-preview:build",
+			status: "building",
+		});
 		app.close();
 	});
 });

@@ -1,6 +1,7 @@
 import { html, nothing } from "lit";
 import { timecode } from "../format.js";
 import { PreviewElement } from "./base.js";
+import { statusChip } from "./header.js";
 import * as icon from "./icons.js";
 
 /** Frame stepping, play/pause, the time, the frame rate reached, notes and sound. */
@@ -41,12 +42,18 @@ export class PreviewTransport extends PreviewElement {
 				${icon.next}
 			</button>
 			<div class="timecode tnum">
-				<span>${timecode(app?.frame ?? 0, fps)}</span><span class="dim">/</span
+				<span class="now">${timecode(app?.frame ?? 0, fps)}</span><span class="dim">/</span
 				><span class="dim">${timecode(app?.lastFrame ?? 0, fps)}</span>
 				<span class="frame">frame ${app?.frame ?? 0}</span>
 			</div>
 			${this.#fps()}
 			<span class="grow"></span>
+			${
+				// Embedded there is no header: say so here when sound isn't ready.
+				app?.embedded && (app.offline || app.soundtrack.state !== "ready")
+					? statusChip(app)
+					: nothing
+			}
 			${app?.notesOn ? this.#notesButton() : nothing}
 			<ff-notes-panel .app=${app}></ff-notes-panel>
 			<button
@@ -65,6 +72,7 @@ export class PreviewTransport extends PreviewElement {
 				max="1"
 				step="0.01"
 				.value=${String(audio?.volume ?? 0.9)}
+				style="--level:${(isMuted ? 0 : (audio?.volume ?? 0.9)) * 100}%"
 				aria-label="Volume"
 				?disabled=${!usable}
 				@input=${(e: Event) =>
@@ -99,7 +107,7 @@ export class PreviewTransport extends PreviewElement {
 			aria-expanded=${String(app.panelOpen)}
 			@click=${() => app.setPanel(!app.panelOpen)}
 		>
-			${icon.notes} Notes
+			${icon.notes}<span class="label">Notes</span>
 			<span class="badge ${open > 0 ? "open" : ""}">${open || app.notes.length}</span>
 		</button>`;
 	}

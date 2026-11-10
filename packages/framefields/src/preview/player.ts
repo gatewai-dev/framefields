@@ -57,6 +57,11 @@ export interface PreviewPlayer {
 	render(frame: number, options?: { cache?: boolean }): Promise<number>;
 	/** Milliseconds the last frame took to draw. */
 	lastRenderMs: number;
+	/**
+	 * Called when drawing a frame throws (the page reports it); the frame
+	 * before it stays on screen and playback goes on.
+	 */
+	onFrameError?: (frame: number, error: unknown) => void;
 	/** True when the program runs vision models (worth analysing ahead). */
 	hasVision: boolean;
 	/**
@@ -383,6 +388,7 @@ async function createPlayer(
 					}
 				} catch (err) {
 					console.error("[framefields] frame", f, err);
+					player.onFrameError?.(f, err);
 				}
 				player.lastRenderMs = performance.now() - started;
 				if (wanted === null) {

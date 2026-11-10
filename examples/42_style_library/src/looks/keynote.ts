@@ -201,6 +201,7 @@ function build(c: Crop): LayoutNode[] {
 
 export const keynote: Reference = {
 	look: "keynote",
+	alt: "A dark metal puck with a silver ring, lit on pure black, above the line Light, rebuilt. and Arrives this spring. in gray",
 	frames: FRAMES,
 	hero: 96,
 	build,

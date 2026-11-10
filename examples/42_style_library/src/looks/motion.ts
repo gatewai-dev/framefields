@@ -150,6 +150,7 @@ function build(c: Crop): LayoutNode[] {
 
 export const motion: Reference = {
 	look: "motion",
+	alt: "Huge off-white condensed type reading MAKE IT, with MOVE. in black on an orange block, on near-black, a ring and a dot in the corner",
 	frames: 90,
 	hero: 62,
 	build,

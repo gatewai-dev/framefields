@@ -66,6 +66,8 @@ export interface Reference {
 	frames: number;
 	/** The moment the cards show. */
 	hero: number;
+	/** What the hero frame shows, for people who can't see it. */
+	alt: string;
 	build(c: Crop): LayoutNode[] | Promise<LayoutNode[]>;
 	/** Grade over the whole frame, as the look's Grade section says. */
 	grade?(comp: Composition): void;

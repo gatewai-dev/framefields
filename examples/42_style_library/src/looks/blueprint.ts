@@ -290,6 +290,7 @@ function build(c: Crop): LayoutNode[] {
 
 export const blueprint: Reference = {
 	look: "blueprint",
+	alt: "A diagram on a navy grid: Prompt, Composition and Frames boxes joined by blue arrows, Composition outlined in amber, a line of code below",
 	frames: 90,
 	hero: 80,
 	build,

@@ -272,6 +272,7 @@ function build(c: Crop): LayoutNode[] {
 
 export const collage: Reference = {
 	look: "collage",
+	alt: "A torn newspaper clipping headlined The city that moved its river, the last words highlighted yellow and river circled in red, beside a black-and-white photo of workers digging a river channel",
 	frames: FRAMES,
 	hero: 78,
 	build,

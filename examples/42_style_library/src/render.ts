@@ -7,6 +7,7 @@
  * the look's own reference (not cut from one frame). frames.json lists what
  * was written, for the publish script in the API repo.
  */
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -27,6 +28,10 @@ if (unknown.length > 0)
 	throw new Error(`No reference for ${unknown.join(", ")}.`);
 
 const renderer = new HeadlessMediaRenderer();
+/** The commit the frames come from, so a published frame can be traced to its source. */
+const commit = execFileSync("git", ["rev-parse", "HEAD"], {
+	encoding: "utf8",
+}).trim();
 const sha256 = (data: Uint8Array) =>
 	createHash("sha256").update(data).digest("hex");
 
@@ -66,7 +71,7 @@ for (const ref of refs) {
 	}
 	await fs.writeFile(
 		path.join(dir, "frames.json"),
-		`${JSON.stringify({ look: ref.look, hero: ref.hero, fps: 30, crops }, null, "\t")}\n`,
+		`${JSON.stringify({ look: ref.look, alt: ref.alt, hero: ref.hero, fps: 30, commit, crops }, null, "\t")}\n`,
 	);
 }
 process.exit(0);

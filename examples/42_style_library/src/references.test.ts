@@ -10,8 +10,9 @@ describe("style references", () => {
 		);
 	});
 
-	it("puts every hero frame inside its clip", () => {
+	it("puts every hero frame inside its clip, and describes it", () => {
 		for (const r of REFERENCES) {
+			expect(r.alt.length).toBeGreaterThan(20);
 			expect(r.hero).toBeGreaterThanOrEqual(0);
 			expect(r.hero).toBeLessThan(r.frames);
 		}

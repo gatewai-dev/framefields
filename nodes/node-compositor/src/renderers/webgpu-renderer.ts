@@ -159,6 +159,21 @@ function textInkOutset(
 	return reach > 0 ? Math.ceil(reach) + 1 : 0;
 }
 
+/**
+ * How far a shape's stroke reaches past its layout box, in px. Strokes are
+ * centered on the outline, so a round or butt cap reaches half the width and
+ * a square cap's corner half the width times sqrt(2). One px covers antialiasing.
+ */
+function shapeInkOutset(
+	target: Record<string, unknown> | undefined,
+	lop: Record<string, unknown>,
+): number {
+	const width = target?.strokeWidth ?? lop.strokeWidth;
+	if (typeof width !== "number" || width <= 0) return 0;
+	const corner = lop.strokeLineCap === "square" ? Math.SQRT2 : 1;
+	return Math.ceil((width / 2) * corner) + 1;
+}
+
 /** Bytes of a mesh's vertex buffer: 16 floats per vertex. */
 function deformedBytes(mesh: Mesh3DData): number {
 	return (mesh.positions.length / 3) * 64;
@@ -4414,6 +4429,10 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				const ink = textInkOutset(target, lop);
 				padX = Math.max(padX, ink);
 				padY = Math.max(padY, ink);
+			} else if (kind === "shape") {
+				const ink = shapeInkOutset(target, lop);
+				padX = Math.max(padX, ink);
+				padY = Math.max(padY, ink);
 			}
 			// Path text draws into a canvas-sized layer so glyphs following a path
 			// beyond the node box aren't clipped. Path coordinates stay local to
@@ -5982,11 +6001,14 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					"load",
 				);
 
+				// The layer holds the stroke's ink past the box; geometry keeps the box.
+				const shapeW = rect.width;
+				const shapeH = rect.height;
 				const shapeType = lop.shapeType ?? lop.shape ?? "rect";
 				const shapeConfig: ShapeGeometryConfig = {
 					shapeType,
-					width: layerW,
-					height: layerH,
+					width: shapeW,
+					height: shapeH,
 					path: target?.d ?? lop.d ?? lop.path,
 					cornerRadius:
 						target?.cornerRadius ??
@@ -6023,8 +6045,8 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 					lop.gradientAngle !== undefined
 				) {
 					const rad = (lop.gradientAngle * Math.PI) / 180;
-					const cx = layerW / 2;
-					const cy = layerH / 2;
+					const cx = shapeW / 2;
+					const cy = shapeH / 2;
 					// Edge to edge along the angle (0° left→right, 90° top→bottom),
 					// matching the shape generator's SVG gradients.
 					const half =
@@ -6062,7 +6084,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				const trimEnd = target?.trimEnd ?? lop.trimEnd ?? 1;
 				const trimOffset = target?.trimOffset ?? lop.trimOffset ?? 0;
 
-				ctx.renderer.pushTransform(raster);
+				ctx.renderer.pushTransform(raster.translate(padX, padY));
 				ctx.renderer.drawShape(
 					shapePass,
 					shapeConfig,

@@ -19,7 +19,8 @@
 		"release:local:dry-run": "turbo run build && pnpm -r publish --dry-run --access public --no-git-checks",
 		"release:framefields": "turbo run build && pnpm --filter framefields publish --access public --no-git-checks",
 		"release:framefields:dry-run": "pnpm --filter framefields publish --dry-run --access public --no-git-checks",
-		"release:framefields:beta": "turbo run build --filter=framefields && pnpm --filter framefields publish --tag beta --access public --no-git-checks"
+		"release:framefields:beta": "turbo run build --filter=framefields && pnpm --filter framefields publish --tag beta --access public --no-git-checks",
+		"sync:style-library": "pnpm --filter framefields run sync:style-library"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.3.8",

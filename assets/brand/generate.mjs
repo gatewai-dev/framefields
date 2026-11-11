@@ -233,18 +233,40 @@ const SHOWCASE = (() => {
 	return `data:image/png;base64,${png.toString("base64")}`;
 })();
 
-const STYLE_IMAGES = SHOWCASE_TILES.map(
-	([name]) =>
-		`data:image/png;base64,${readFileSync(join(HERE, `style-${name}.png`)).toString("base64")}`,
-);
+/**
+ * Each look's film (the ones framefields.dev's desktop section plays: four drawn with
+ * framefields, two generated through its AI gateway) as a sheet of its first two seconds at
+ * GIF_FPS: 5 × 4 frames of 480 × 270, already cut to 256 colors, which is all a GIF holds. Sheets
+ * rather than the MP4s, which stay out of git.
+ */
+const SHEET = { columns: 5, rows: 4, width: 2400, height: 1080 };
+/** Each film's frames, cut out of its sheet once: one PNG data URI per frame. */
+const FILMS = SHOWCASE_TILES.map(([name]) => {
+	const sheet = `data:image/png;base64,${readFileSync(join(HERE, `film-${name}.png`)).toString("base64")}`;
+	const [cw, ch] = [SHEET.width / SHEET.columns, SHEET.height / SHEET.rows];
+	return Array.from({ length: SHEET.columns * SHEET.rows }, (_, cell) => {
+		const cx = (cell % SHEET.columns) * cw;
+		const cy = Math.floor(cell / SHEET.columns) * ch;
+		const png = new Resvg(
+			svg(
+				cw,
+				ch,
+				`<image href="${sheet}" x="${-cx}" y="${-cy}" width="${SHEET.width}" height="${SHEET.height}"/>`,
+			),
+			{ fitTo: { mode: "width", value: cw } },
+		)
+			.render()
+			.asPng();
+		return `data:image/png;base64,${png.toString("base64")}`;
+	});
+});
 
 /**
- * The black picture, cropped to fill: the showcase mosaic, or with `shot` one style alone with
- * its label (the animated banners cut from one to the next).
+ * The black picture, cropped to fill: the showcase mosaic, or with `shot` one look's film at
+ * `frame` with its label (the animated banners cut from one to the next).
  */
-function picture(x, y, w, h, r, shot = null) {
+function picture(x, y, w, h, r, shot = null, frame = 0) {
 	const id = `pic-${x}-${y}`;
-	const href = shot === null ? SHOWCASE : STYLE_IMAGES[shot];
 	let label = "";
 	if (shot !== null) {
 		const size = Math.max(10, h * 0.042);
@@ -256,15 +278,20 @@ function picture(x, y, w, h, r, shot = null) {
 		});
 		label = `<rect x="${(x + size * 0.9).toFixed(1)}" y="${(y + h - size * 3.2).toFixed(1)}" width="${(tag.width + size * 1.6).toFixed(1)}" height="${(size * 2.2).toFixed(1)}" rx="3" fill="#000" fill-opacity="0.72"/>${tag.svg}`;
 	}
+	const href =
+		shot === null
+			? SHOWCASE
+			: FILMS[shot][frame % (SHEET.columns * SHEET.rows)];
+	const image = `<image href="${href}" x="${x}" y="${y}" width="${w}" height="${h}" preserveAspectRatio="xMidYMid slice" clip-path="url(#${id})"/>`;
 	return `
 	<clipPath id="${id}"><rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${r}"/></clipPath>
 	<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${r}" fill="#000"/>
-	<image href="${href}" x="${x}" y="${y}" width="${w}" height="${h}" preserveAspectRatio="xMidYMid slice" clip-path="url(#${id})"/>${label}`;
+	${image}${label}`;
 }
 
 /**
- * The animated banner: one shot per style, cut in turn while `render(shot, t)` moves what plays
- * (t runs 0..1 over the loop). Frames go through resvg, then ffmpeg makes one GIF with a palette
+ * The animated banner: one shot per look, its film playing, cut in turn; `render(shot, t, frame)`
+ * gets the loop's progress (t, 0..1) and the frame of the shot's film. Frames go through resvg, then ffmpeg makes one GIF with a palette
  * shared by every frame.
  */
 const GIF_FPS = 10;
@@ -275,12 +302,15 @@ function writeGif(name, render, width, background) {
 	try {
 		for (let f = 0; f < frames; f++) {
 			const shot = Math.floor(f / (SHOT_SECONDS * GIF_FPS));
-			const png = new Resvg(render(shot, f / frames), {
-				fitTo: { mode: "width", value: width },
-				// Opaque, square corners: a transparent pixel anywhere stops the GIF encoder from
-				// keeping unchanged pixels between frames, and every frame is sent whole.
-				background,
-			})
+			const png = new Resvg(
+				render(shot, f / frames, f % (SHOT_SECONDS * GIF_FPS)),
+				{
+					fitTo: { mode: "width", value: width },
+					// Opaque, square corners: a transparent pixel anywhere stops the GIF encoder from
+					// keeping unchanged pixels between frames, and every frame is sent whole.
+					background,
+				},
+			)
 				.render()
 				.asPng();
 			writeFileSync(join(dir, `f${String(f).padStart(4, "0")}.png`), png);
@@ -430,27 +460,32 @@ function writeGif(name, render, width, background) {
 		fill: SITE.graphiteDim,
 		tracking: 0.02,
 	});
-	const monitor = (shot, t) => {
+	const monitor = (shot, t, frame) => {
 		const head = mx + 12 + pw * t;
 		return `
 	<rect x="${mx}" y="${my}" width="${mw}" height="${mh}" rx="6" fill="${SITE.graphite}"/>
-	${picture(mx + 12, my + 12, pw, ph, 3, shot)}
+	${picture(mx + 12, my + 12, pw, ph, 3, shot, frame)}
 	${scenes}
 	<line x1="${head}" y1="${tlY - 10}" x2="${head}" y2="${tlY + 20}" stroke="${SITE.signal}" stroke-width="2"/>
 	<path d="M ${head - 6} ${tlY - 6} L ${head + 6} ${tlY - 6} L ${head} ${tlY + 1} Z" fill="${SITE.signal}"/>
 	${timecode(t).svg}${fpsSvg.svg}`;
 	};
 
-	const body = (shot, t) => `
+	const body = (shot, t, frame) => `
 	<rect width="${W}" height="${H}" rx="8" fill="${SITE.paper}"/>
 	<rect x="0.5" y="0.5" width="${W - 1}" height="${H - 1}" rx="7.5" fill="none" stroke="${SITE.rule}"/>
 	${kicker.svg}
 	${mark({ x: left - 4, y: 140, size: 88, paint: SITE.ink })}
 	${word.svg}
 	${lede.svg}${sub.svg}
-	${monitor(shot, t)}`;
+	${monitor(shot, t, frame)}`;
 	writeBoth("banner", svg(W, H, body(null, 0.24)), W);
-	writeGif("banner", (shot, t) => svg(W, H, body(shot, t)), W, SITE.paper);
+	writeGif(
+		"banner",
+		(shot, t, frame) => svg(W, H, body(shot, t, frame)),
+		W,
+		SITE.paper,
+	);
 }
 
 // ── Desktop banner: the app. Graphite, as framefields.dev's desktop section, with the window
@@ -479,7 +514,7 @@ function writeGif(name, render, width, background) {
 		fill: SITE.onGraphite,
 	});
 	const sub = type(
-		"It writes the code, plays the film and renders on your GPU.",
+		"Say what you want, watch it come together, export it ready to post.",
 		{
 			size: 17,
 			x: left,
@@ -520,37 +555,37 @@ function writeGif(name, render, width, background) {
 	const PROJECTS = [
 		[
 			"Speaker launch teaser",
-			"speaker-launch",
+			"Product launch · 16:9",
 			"Slow the light sweep and land it on the logo.",
 		],
 		[
 			"Creator cut, 9:16",
-			"creator-ugc",
+			"Social · 9:16",
 			"Cut it to 9:16 with captions that pop on the beat.",
 		],
 		[
 			"Shapes bumper",
-			"motion-kit",
+			"Bumper · 16:9",
 			"Swing the bar in on the downbeat, then hold.",
 		],
 		[
 			"How the gearbox works",
-			"gearbox-explainer",
+			"Explainer · 16:9",
 			"Draw each arrow as the voice names the step.",
 		],
 		[
 			"Lighthouse brand film",
-			"brand-film",
+			"Brand film · 16:9",
 			"Let the beam cross the sea before the title.",
 		],
 		[
 			"Lyric video, verse 2",
-			"lyrics",
+			"Music · 16:9",
 			"Sync each line of verse 2 to the vocal.",
 		],
 	];
 	const header = (open) => {
-		const [name, folder] = PROJECTS[open];
+		const [name, about] = PROJECTS[open];
 		const title = type(name, {
 			size: 12.5,
 			weight: 600,
@@ -558,19 +593,17 @@ function writeGif(name, render, width, background) {
 			y: wy + 23.5,
 			fill: SITE.onGraphite,
 		});
-		const path = mono(`~/${folder}`, {
-			upper: false,
-			size: 10.5,
+		const path = type(about, {
+			size: 11.5,
 			x: wx + 76 + title.width + 10,
-			y: wy + 23,
+			y: wy + 23.5,
 			fill: SITE.graphiteDim,
-			tracking: 0,
 		});
 		return title.svg + path.svg;
 	};
 	let tx = wx + ww - 12;
 	const toggles = [
-		["Renders · 1", "busy"],
+		["Exports · 1", "busy"],
 		["Files", ""],
 		["Preview", "on"],
 	]
@@ -608,15 +641,15 @@ function writeGif(name, render, width, background) {
 		fill: SITE.onGraphite,
 	});
 	const newBtn = `<rect x="${sx - 0.5}" y="${wy + bar + 38.5}" width="${side - 24}" height="24" rx="5" fill="none" stroke="${SITE.graphiteLine}"/>${type("+ New", { size: 11.5, x: sx + 8, y: wy + bar + 55, fill: SITE.onGraphite }).svg}`;
-	const session = (name, folder, y, on) =>
+	const session = (name, about, y, on) =>
 		`${
 			on
 				? `<rect x="${sx - 4}" y="${y}" width="${side - 16}" height="34" rx="5" fill="${SITE.graphite2}"/><rect x="${sx - 4}" y="${y}" width="2" height="34" fill="${SITE.onGraphite}"/>`
 				: ""
-		}${type(name, { size: 11.5, x: sx + 4, y: y + 15, fill: SITE.onGraphite }).svg}${type(folder, { size: 10, x: sx + 4, y: y + 29, fill: SITE.graphiteDim }).svg}`;
+		}${type(name, { size: 11.5, x: sx + 4, y: y + 15, fill: SITE.onGraphite }).svg}${type(about, { size: 10, x: sx + 4, y: y + 29, fill: SITE.graphiteDim }).svg}`;
 	const sessions = (open) =>
-		PROJECTS.map(([name, folder], i) =>
-			session(name, folder, wy + bar + 76 + i * 36, i === open),
+		PROJECTS.map(([name, about], i) =>
+			session(name, about, wy + bar + 76 + i * 36, i === open),
 		).join("");
 
 	// Main: the preview, then the conversation and the render.
@@ -659,7 +692,7 @@ function writeGif(name, render, width, background) {
 	<rect x="${trackX.toFixed(1)}" y="${jy + 10}" width="${(trackW * done).toFixed(1)}" height="4" rx="2" fill="${SITE.onGraphite}"/>${pct.svg}`;
 	};
 
-	const appWindow = (shot, done) => `
+	const appWindow = (shot, done, frame) => `
 	<rect x="${wx}" y="${wy + 18}" width="${ww}" height="${wh}" rx="10" fill="#000" fill-opacity="0.5" filter="url(#app-shadow)"/>
 	<clipPath id="app-clip"><rect x="${wx}" y="${wy}" width="${ww}" height="${wh}" rx="10"/></clipPath>
 	<g clip-path="url(#app-clip)">
@@ -669,11 +702,11 @@ function writeGif(name, render, width, background) {
 		<path d="M ${wx} ${wy + bar - 0.5} H ${wx + ww} M ${mx - 0.5} ${wy + bar} V ${wy + wh}" stroke="${SITE.graphiteLine}"/>
 		${lights}${header(shot ?? 0)}${toggles}
 		${brand.svg}${newBtn}${sessions(shot ?? 0)}
-		${picture(mx, py, mw, ph, 0, shot)}${user(shot ?? 0)}${job(done)}
+		${picture(mx, py, mw, ph, 0, shot, frame)}${user(shot ?? 0)}${job(done)}
 	</g>
 	<rect x="${wx + 0.5}" y="${wy + 0.5}" width="${ww - 1}" height="${wh - 1}" rx="9.5" fill="none" stroke="${SITE.graphiteLine}"/>`;
 
-	const body = (shot, done) => `
+	const body = (shot, done, frame) => `
 	<defs>
 		<filter id="app-shadow" x="-20%" y="-20%" width="140%" height="160%"><feGaussianBlur stdDeviation="22"/></filter>
 	</defs>
@@ -681,14 +714,14 @@ function writeGif(name, render, width, background) {
 	<rect x="0.5" y="0.5" width="${W - 1}" height="${H - 1}" rx="7.5" fill="none" stroke="${SITE.graphiteLine}"/>
 	${kicker.svg}${word.svg}
 	${lede.svg}${sub.svg}${button}
-	${appWindow(shot, done)}`;
+	${appWindow(shot, done, frame)}`;
 	writeBoth("banner-desktop", svg(W, H, body(null, 0.64)), W);
 	// Each project's render runs from 8% to done while its shot plays.
 	writeGif(
 		"banner-desktop",
-		(shot, t) => {
+		(shot, t, frame) => {
 			const within = (t * SHOWCASE_TILES.length) % 1;
-			return svg(W, H, body(shot, 0.08 + 0.92 * within));
+			return svg(W, H, body(shot, 0.08 + 0.92 * within, frame));
 		},
 		W,
 		SITE.graphite,

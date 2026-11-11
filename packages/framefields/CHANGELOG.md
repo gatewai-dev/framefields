@@ -1,5 +1,19 @@
 # framefields
 
+## 3.0.0
+
+### Major Changes
+
+- framefields 3.0: shader layers, the style library and the agent guides in the package. Renders can change: shape strokes now draw their outer half instead of being cut at the layout box.
+
+### Minor Changes
+
+- 537ff30: `Layer.shader`: a layer drawn by your own WGSL fragment function, with named uniforms that take numbers, signals or per-frame functions. A fragment that does not compile throws with its own line numbers.
+- e1d20d7: The agent guides ship in the package: `node_modules/framefields/dist/skills/<skill>/SKILL.md` (framefields, compose, effects, styles, vision, render, cloud), written for that release's API, so an agent in a project reads the guides that match the framefields it has installed.
+- 0a84be9: `framefields/styles`: the style library (looks, formats, genres, media and the presets that combine them) as data, with `combineStyles(mix)` for one brief in precedence order and `styleClashes(mix)` for pairs to watch. Its source is the new `framefields-styles` agent skill.
+
+  Shape strokes are no longer cut at the shape's layout box: the half of a stroke that lies outside the outline now draws.
+
 ## 2.16.0
 
 ### Minor Changes

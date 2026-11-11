@@ -6,6 +6,15 @@
 			"outputs": ["dist/**"],
 			"inputs": ["$TURBO_DEFAULT$", ".env"]
 		},
+		"framefields#build": {
+			"dependsOn": ["^build"],
+			"outputs": ["dist/**"],
+			"inputs": [
+				"$TURBO_DEFAULT$",
+				".env",
+				"$TURBO_ROOT$/plugins/framefields/skills/**"
+			]
+		},
 		"dev": {
 			"persistent": true,
 			"inputs": ["$TURBO_DEFAULT$", ".env.development"]

@@ -7,8 +7,10 @@
  * without the fonts installed. PNGs are rasterized with resvg at 2× for crisp README display.
  */
 
-import { writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -32,10 +34,10 @@ const WHITE = "#FFFFFF";
 function textPath(
 	font,
 	text,
-	{ size, weight = 400, x = 0, y = 0, tracking = 0 },
+	{ size, weight = 400, width, x = 0, y = 0, tracking = 0 },
 ) {
 	const face = font.variationAxes?.wght
-		? font.getVariation({ wght: weight })
+		? font.getVariation({ wght: weight, ...(width && { wdth: width }) })
 		: font;
 	const scale = size / face.unitsPerEm;
 	const run = face.layout(text);
@@ -135,91 +137,562 @@ for (const [name, fg, markPaint] of [
 	);
 }
 
-// ── README banner ───────────────────────────────────────────────────────────
+// ── README banners: framefields.dev's palette ───────────────────────────────
+// Paper and ink for the room, graphite for the tools, black for the picture, and broadcast
+// yellow only where the playhead is. Archivo condensed and heavy for display, a mono for
+// kickers and timecode, small corners.
+const ARCHIVO = fontkit.openSync(join(ROOT, "assets/fonts/Archivo.ttf"));
+const MONO = fontkit.openSync(join(ROOT, "assets/fonts/JetBrainsMono.ttf"));
+const SITE = {
+	paper: "#E6E8E6",
+	ink: "#000000",
+	steel: "#4F5256",
+	rule: "#BFC2C2",
+	graphite: "#1F2022",
+	graphite2: "#2A2B2E",
+	graphiteLine: "#3A3C3F",
+	onGraphite: "#E8E9E7",
+	graphiteDim: "#9A9DA0",
+	side: "#18191A",
+	chat: "#141516",
+	signal: "#F5E300",
+	scenes: ["#8D9093", "#C4C7C7", "#5B5E61"],
+};
+/** Text as outlines: `{ svg, width }`. Display is Archivo 800 at width 68. */
+function type(
+	s,
+	{
+		font = ARCHIVO,
+		size,
+		weight = 400,
+		width,
+		x,
+		y,
+		fill,
+		opacity = 1,
+		tracking = 0,
+	},
+) {
+	const t = textPath(font, s, { size, weight, width, x, y, tracking });
+	const alpha = opacity === 1 ? "" : ` fill-opacity="${opacity}"`;
+	return { svg: `<path d="${t.d}" fill="${fill}"${alpha}/>`, width: t.width };
+}
+const display = (s, o) => type(s, { weight: 800, width: 68, ...o });
+const mono = (s, { upper = true, ...o }) =>
+	type(upper ? s.toUpperCase() : s, {
+		font: MONO,
+		size: 12.5,
+		tracking: 0.04,
+		...o,
+	});
+
+// ── Showcase: what people make with framefields, from the style library's cards (the ones
+// the desktop app shows, served by framefields.dev at /v1/styles/frames). One 16:9 picture
+// the banners and the homepage share; `showcase.png` is what the site serves.
+const SHOWCASE_TILES = [
+	["launch-teaser", "3D product"],
+	["social-vertical", "Social & UGC"],
+	["motion", "Motion graphics"],
+	["technical-explainer", "Explainer"],
+	["brand-film", "Brand film"],
+	["lyric-video", "Lyric video"],
+];
+const SHOWCASE = (() => {
+	const W = 1280;
+	const H = 720;
+	const gap = 8;
+	const cols = 3;
+	const tw = (W - gap * (cols - 1)) / cols;
+	const th = (H - gap) / 2;
+	const tiles = SHOWCASE_TILES.map(([name, label], i) => {
+		const x = (i % cols) * (tw + gap);
+		const y = Math.floor(i / cols) * (th + gap);
+		const src = readFileSync(join(HERE, `style-${name}.png`)).toString(
+			"base64",
+		);
+		const tag = mono(label, {
+			size: 22,
+			x: x + 30,
+			y: y + th - 30,
+			fill: SITE.onGraphite,
+		});
+		return `
+	<clipPath id="tile-${i}"><rect x="${x.toFixed(1)}" y="${y}" width="${tw.toFixed(1)}" height="${th}"/></clipPath>
+	<image href="data:image/png;base64,${src}" x="${x.toFixed(1)}" y="${y}" width="${tw.toFixed(1)}" height="${th}" preserveAspectRatio="xMidYMid slice" clip-path="url(#tile-${i})"/>
+	<rect x="${(x + 18).toFixed(1)}" y="${y + th - 58}" width="${(tag.width + 24).toFixed(1)}" height="40" rx="3" fill="#000" fill-opacity="0.72"/>
+	${tag.svg}`;
+	}).join("");
+	const content = svg(
+		W,
+		H,
+		`\n\t<rect width="${W}" height="${H}" fill="#000"/>${tiles}`,
+	);
+	const png = new Resvg(content, { fitTo: { mode: "width", value: W } })
+		.render()
+		.asPng();
+	writeFileSync(join(HERE, "showcase.png"), png);
+	console.log("wrote assets/brand/showcase.png");
+	return `data:image/png;base64,${png.toString("base64")}`;
+})();
+
+const STYLE_IMAGES = SHOWCASE_TILES.map(
+	([name]) =>
+		`data:image/png;base64,${readFileSync(join(HERE, `style-${name}.png`)).toString("base64")}`,
+);
+
+/**
+ * The black picture, cropped to fill: the showcase mosaic, or with `shot` one style alone with
+ * its label (the animated banners cut from one to the next).
+ */
+function picture(x, y, w, h, r, shot = null) {
+	const id = `pic-${x}-${y}`;
+	const href = shot === null ? SHOWCASE : STYLE_IMAGES[shot];
+	let label = "";
+	if (shot !== null) {
+		const size = Math.max(10, h * 0.042);
+		const tag = mono(SHOWCASE_TILES[shot][1], {
+			size,
+			x: x + size * 1.7,
+			y: y + h - size * 1.7,
+			fill: SITE.onGraphite,
+		});
+		label = `<rect x="${(x + size * 0.9).toFixed(1)}" y="${(y + h - size * 3.2).toFixed(1)}" width="${(tag.width + size * 1.6).toFixed(1)}" height="${(size * 2.2).toFixed(1)}" rx="3" fill="#000" fill-opacity="0.72"/>${tag.svg}`;
+	}
+	return `
+	<clipPath id="${id}"><rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${r}"/></clipPath>
+	<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${r}" fill="#000"/>
+	<image href="${href}" x="${x}" y="${y}" width="${w}" height="${h}" preserveAspectRatio="xMidYMid slice" clip-path="url(#${id})"/>${label}`;
+}
+
+/**
+ * The animated banner: one shot per style, cut in turn while `render(shot, t)` moves what plays
+ * (t runs 0..1 over the loop). Frames go through resvg, then ffmpeg makes one GIF with a palette
+ * shared by every frame.
+ */
+const GIF_FPS = 10;
+const SHOT_SECONDS = 2;
+function writeGif(name, render, width, background) {
+	const frames = SHOWCASE_TILES.length * SHOT_SECONDS * GIF_FPS;
+	const dir = mkdtempSync(join(tmpdir(), `${name}-`));
+	try {
+		for (let f = 0; f < frames; f++) {
+			const shot = Math.floor(f / (SHOT_SECONDS * GIF_FPS));
+			const png = new Resvg(render(shot, f / frames), {
+				fitTo: { mode: "width", value: width },
+				// Opaque, square corners: a transparent pixel anywhere stops the GIF encoder from
+				// keeping unchanged pixels between frames, and every frame is sent whole.
+				background,
+			})
+				.render()
+				.asPng();
+			writeFileSync(join(dir, `f${String(f).padStart(4, "0")}.png`), png);
+		}
+		execFileSync(
+			"ffmpeg",
+			[
+				"-loglevel",
+				"error",
+				"-y",
+				"-framerate",
+				String(GIF_FPS),
+				"-i",
+				join(dir, "f%04d.png"),
+				"-filter_complex",
+				"split[a][b];[a]palettegen=max_colors=256:stats_mode=full[p];[b][p]paletteuse=dither=sierra2_4a:diff_mode=rectangle",
+				"-loop",
+				"0",
+				join(HERE, `${name}.gif`),
+			],
+			{ stdio: "inherit" },
+		);
+		console.log(`wrote assets/brand/${name}.gif`);
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+}
+
+/**
+ * The showcase for framefields.dev's desktop section: each style alone with its label for two
+ * seconds, then the mosaic, as one animated WebP (img2webp, from libwebp). `showcase.png` is
+ * the still the site shows when motion is reduced.
+ */
+{
+	const W = 960;
+	const H = 540;
+	const dir = mkdtempSync(join(tmpdir(), "showcase-"));
+	try {
+		const shots = [...SHOWCASE_TILES.keys(), null];
+		const files = shots.map((shot, i) => {
+			const file = join(dir, `s${i}.png`);
+			const png = new Resvg(svg(W, H, picture(0, 0, W, H, 0, shot)), {
+				fitTo: { mode: "width", value: W },
+			})
+				.render()
+				.asPng();
+			writeFileSync(file, png);
+			return file;
+		});
+		execFileSync(
+			"img2webp",
+			[
+				"-loop",
+				"0",
+				"-lossy",
+				"-q",
+				"80",
+				...files.flatMap((f, i) => [
+					"-d",
+					i === files.length - 1 ? "3000" : String(SHOT_SECONDS * 1000),
+					f,
+				]),
+				"-o",
+				join(HERE, "showcase.webp"),
+			],
+			{ stdio: "ignore" },
+		);
+		console.log("wrote assets/brand/showcase.webp");
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+}
+
+// ── Main banner: the engine. Paper room, a graphite monitor with the film and its timeline.
 {
 	const W = 1280;
 	const H = 400;
-
-	// Left: lockup.
-	const word = textPath(INTER, "framefields", {
-		size: 76,
-		weight: 700,
-		tracking: -0.03,
-		x: 196,
-		y: 226,
+	const left = 80;
+	const kicker = mono("The video engine for coding agents", {
+		x: left,
+		y: 112,
+		fill: SITE.steel,
 	});
-	// Right: a strip of frames — a subject easing along a curve, locked by the reticle at the end.
-	const fw = 124;
-	const fh = 88;
-	const gap = 18;
-	const fx0 = 664;
-	const fy = 169;
-	const n = 4;
-	// ease-out positions of the subject inside each frame (0..1 of travel).
-	const ease = (p) => 1 - (1 - p) ** 3;
-	let strip = "";
-	const centers = [];
-	for (let i = 0; i < n; i++) {
-		const x = fx0 + i * (fw + gap);
-		const p = ease(i / (n - 1));
-		const cx = x + 34 + p * (fw - 68);
-		const cy = fy + fh - 24 - Math.sin(p * Math.PI) * 30;
-		centers.push([cx, cy]);
-		const last = i === n - 1;
-		strip += `
-		<rect x="${x}" y="${fy}" width="${fw}" height="${fh}" rx="10" fill="${WHITE}" fill-opacity="${last ? 0.12 : 0.06}" stroke="${WHITE}" stroke-opacity="${0.2 + i * 0.08}"/>
-		<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="11" fill="${WHITE}" fill-opacity="${last ? 1 : 0.3 + i * 0.18}"/>`;
-	}
-	// Motion path through the subjects (one smooth curve across frames).
-	const pathD = centers
-		.map(([cx, cy], i) => {
-			if (i === 0) return `M ${cx.toFixed(1)} ${cy.toFixed(1)}`;
-			const [px, py] = centers[i - 1];
-			const mx = (px + cx) / 2;
-			return `C ${mx.toFixed(1)} ${py.toFixed(1)} ${mx.toFixed(1)} ${cy.toFixed(1)} ${cx.toFixed(1)} ${cy.toFixed(1)}`;
-		})
-		.join(" ");
-	// Reticle around the last subject (the vision engine locking on).
-	const [lx, ly] = centers[n - 1];
-	const rr = 20;
-	const ra = 8;
-	const reticle = [
-		[-1, -1],
-		[1, -1],
-		[-1, 1],
-		[1, 1],
-	]
-		.map(
-			([sx, sy]) =>
-				`M ${(lx + sx * rr).toFixed(1)} ${(ly + sy * (rr - ra)).toFixed(1)} L ${(lx + sx * rr).toFixed(1)} ${(ly + sy * rr).toFixed(1)} L ${(lx + sx * (rr - ra)).toFixed(1)} ${(ly + sy * rr).toFixed(1)}`,
-		)
-		.join(" ");
-	// Playhead over the strip.
-	const timeline = `
-		<line x1="${fx0}" y1="${fy - 26}" x2="${fx0 + n * fw + (n - 1) * gap}" y2="${fy - 26}" stroke="${WHITE}" stroke-opacity="0.2" stroke-width="2" stroke-linecap="round"/>
-		<line x1="${fx0}" y1="${fy - 26}" x2="${fx0 + (n - 1) * (fw + gap) + fw / 2}" y2="${fy - 26}" stroke="${SKY}" stroke-width="2" stroke-linecap="round"/>
-		<circle cx="${fx0 + (n - 1) * (fw + gap) + fw / 2}" cy="${fy - 26}" r="5" fill="${WHITE}"/>`;
+	const word = display("framefields", {
+		size: 100,
+		x: left + 96,
+		y: 218,
+		fill: SITE.ink,
+		tracking: 0.005,
+	});
+	const lede = type(
+		"Compositing, motion graphics and 3D, written in TypeScript.",
+		{
+			size: 21,
+			weight: 500,
+			x: left,
+			y: 276,
+			fill: SITE.ink,
+		},
+	);
+	const sub = type("Rendered natively on the GPU. No headless browser.", {
+		size: 18,
+		x: left,
+		y: 306,
+		fill: SITE.steel,
+	});
 
-	const body = `
+	// The monitor: picture over a timeline of three scenes, the playhead in signal yellow.
+	const mx = 712;
+	const my = 44;
+	const mw = 492;
+	const pw = mw - 24;
+	const ph = Math.round((pw * 9) / 16);
+	const mh = ph + 24 + 44;
+	const tlY = my + 12 + ph + 16;
+	// One clip per style on the timeline.
+	const clips = SHOWCASE_TILES.length;
+	const clipW = pw / clips;
+	const scenes = SHOWCASE_TILES.map(
+		(_, i) =>
+			`<rect x="${(mx + 12 + i * clipW).toFixed(1)}" y="${tlY}" width="${(clipW - 3).toFixed(1)}" height="14" rx="2" fill="${SITE.scenes[i % SITE.scenes.length]}"/>`,
+	).join("");
+	const loopFrames = clips * SHOT_SECONDS * 30;
+	const timecode = (t) => {
+		const f = Math.round(t * loopFrames);
+		const ss = String(Math.floor(f / 30)).padStart(2, "0");
+		const ff = String(f % 30).padStart(2, "0");
+		return mono(`00:00:${ss}:${ff}`, {
+			size: 11,
+			x: mx + 12,
+			y: tlY + 33,
+			fill: SITE.graphiteDim,
+			tracking: 0.02,
+		});
+	};
+	const fps = mono("1920×1080 · 30 fps", {
+		size: 11,
+		x: 0,
+		y: 0,
+		fill: SITE.graphiteDim,
+		tracking: 0.02,
+	});
+	const fpsSvg = mono("1920×1080 · 30 fps", {
+		size: 11,
+		x: mx + 12 + pw - fps.width,
+		y: tlY + 33,
+		fill: SITE.graphiteDim,
+		tracking: 0.02,
+	});
+	const monitor = (shot, t) => {
+		const head = mx + 12 + pw * t;
+		return `
+	<rect x="${mx}" y="${my}" width="${mw}" height="${mh}" rx="6" fill="${SITE.graphite}"/>
+	${picture(mx + 12, my + 12, pw, ph, 3, shot)}
+	${scenes}
+	<line x1="${head}" y1="${tlY - 10}" x2="${head}" y2="${tlY + 20}" stroke="${SITE.signal}" stroke-width="2"/>
+	<path d="M ${head - 6} ${tlY - 6} L ${head + 6} ${tlY - 6} L ${head} ${tlY + 1} Z" fill="${SITE.signal}"/>
+	${timecode(t).svg}${fpsSvg.svg}`;
+	};
+
+	const body = (shot, t) => `
+	<rect width="${W}" height="${H}" rx="8" fill="${SITE.paper}"/>
+	<rect x="0.5" y="0.5" width="${W - 1}" height="${H - 1}" rx="7.5" fill="none" stroke="${SITE.rule}"/>
+	${kicker.svg}
+	${mark({ x: left - 4, y: 140, size: 88, paint: SITE.ink })}
+	${word.svg}
+	${lede.svg}${sub.svg}
+	${monitor(shot, t)}`;
+	writeBoth("banner", svg(W, H, body(null, 0.24)), W);
+	writeGif("banner", (shot, t) => svg(W, H, body(shot, t)), W, SITE.paper);
+}
+
+// ── Desktop banner: the app. Graphite, as framefields.dev's desktop section, with the window
+// drawn to its real layout: sessions, the preview over the conversation, a render running.
+{
+	const W = 1280;
+	const H = 400;
+	const left = 80;
+	const kicker = mono("Desktop app for macOS and Linux", {
+		x: left,
+		y: 96,
+		fill: SITE.graphiteDim,
+	});
+	const word = display("framefields", {
+		size: 92,
+		x: left,
+		y: 196,
+		fill: SITE.onGraphite,
+		tracking: 0.005,
+	});
+	const lede = type("Make videos by talking to an agent.", {
+		size: 23,
+		weight: 500,
+		x: left,
+		y: 244,
+		fill: SITE.onGraphite,
+	});
+	const sub = type(
+		"It writes the code, plays the film and renders on your GPU.",
+		{
+			size: 17,
+			x: left,
+			y: 274,
+			fill: SITE.graphiteDim,
+		},
+	);
+	const cta = type("Download for macOS and Linux", {
+		size: 17,
+		weight: 700,
+		x: left + 50,
+		y: 323,
+		fill: SITE.ink,
+	});
+	const bx = left;
+	const by = 296;
+	const ix = bx + 22;
+	const iy = by + 11;
+	const button = `
+	<rect x="${bx}" y="${by}" width="${(cta.width + 72).toFixed(1)}" height="42" rx="4" fill="${SITE.onGraphite}"/>
+	<path d="M ${ix + 8} ${iy} V ${iy + 13} M ${ix + 3} ${iy + 8} L ${ix + 8} ${iy + 13} L ${ix + 13} ${iy + 8} M ${ix + 1} ${iy + 19} H ${ix + 15}" fill="none" stroke="${SITE.ink}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+	${cta.svg}`;
+
+	// The window.
+	const wx = 652;
+	const wy = 28;
+	const ww = 556;
+	const wh = 344;
+	const bar = 38;
+	const side = 148;
+	const lights = [0, 1, 2]
+		.map(
+			(i) =>
+				`<circle cx="${wx + 18 + i * 16}" cy="${wy + bar / 2}" r="5" fill="${SITE.graphiteLine}"/>`,
+		)
+		.join("");
+	// One session per style: as the preview cuts, the session it belongs to is the open one.
+	const PROJECTS = [
+		[
+			"Speaker launch teaser",
+			"speaker-launch",
+			"Slow the light sweep and land it on the logo.",
+		],
+		[
+			"Creator cut, 9:16",
+			"creator-ugc",
+			"Cut it to 9:16 with captions that pop on the beat.",
+		],
+		[
+			"Shapes bumper",
+			"motion-kit",
+			"Swing the bar in on the downbeat, then hold.",
+		],
+		[
+			"How the gearbox works",
+			"gearbox-explainer",
+			"Draw each arrow as the voice names the step.",
+		],
+		[
+			"Lighthouse brand film",
+			"brand-film",
+			"Let the beam cross the sea before the title.",
+		],
+		[
+			"Lyric video, verse 2",
+			"lyrics",
+			"Sync each line of verse 2 to the vocal.",
+		],
+	];
+	const header = (open) => {
+		const [name, folder] = PROJECTS[open];
+		const title = type(name, {
+			size: 12.5,
+			weight: 600,
+			x: wx + 76,
+			y: wy + 23.5,
+			fill: SITE.onGraphite,
+		});
+		const path = mono(`~/${folder}`, {
+			upper: false,
+			size: 10.5,
+			x: wx + 76 + title.width + 10,
+			y: wy + 23,
+			fill: SITE.graphiteDim,
+			tracking: 0,
+		});
+		return title.svg + path.svg;
+	};
+	let tx = wx + ww - 12;
+	const toggles = [
+		["Renders · 1", "busy"],
+		["Files", ""],
+		["Preview", "on"],
+	]
+		.map(([label, state]) => {
+			const t = type(label, {
+				size: 11,
+				weight: 600,
+				x: 0,
+				y: 0,
+				fill: SITE.ink,
+			});
+			const w = t.width + 16;
+			tx -= w;
+			const x = tx;
+			tx -= 6;
+			const on = state === "on";
+			const stroke =
+				on || state === "busy" ? SITE.onGraphite : SITE.graphiteLine;
+			const label2 = type(label, {
+				size: 11,
+				weight: 600,
+				x: x + 8,
+				y: wy + 23,
+				fill: on ? SITE.ink : SITE.onGraphite,
+			});
+			return `<rect x="${x.toFixed(1)}" y="${wy + 10.5}" width="${w.toFixed(1)}" height="18" rx="4" fill="${on ? SITE.onGraphite : "none"}" stroke="${stroke}"/>${label2.svg}`;
+		})
+		.join("");
+
+	const sx = wx + 12;
+	const brand = display("framefields", {
+		size: 16,
+		x: sx,
+		y: wy + bar + 26,
+		fill: SITE.onGraphite,
+	});
+	const newBtn = `<rect x="${sx - 0.5}" y="${wy + bar + 38.5}" width="${side - 24}" height="24" rx="5" fill="none" stroke="${SITE.graphiteLine}"/>${type("+ New", { size: 11.5, x: sx + 8, y: wy + bar + 55, fill: SITE.onGraphite }).svg}`;
+	const session = (name, folder, y, on) =>
+		`${
+			on
+				? `<rect x="${sx - 4}" y="${y}" width="${side - 16}" height="34" rx="5" fill="${SITE.graphite2}"/><rect x="${sx - 4}" y="${y}" width="2" height="34" fill="${SITE.onGraphite}"/>`
+				: ""
+		}${type(name, { size: 11.5, x: sx + 4, y: y + 15, fill: SITE.onGraphite }).svg}${type(folder, { size: 10, x: sx + 4, y: y + 29, fill: SITE.graphiteDim }).svg}`;
+	const sessions = (open) =>
+		PROJECTS.map(([name, folder], i) =>
+			session(name, folder, wy + bar + 76 + i * 36, i === open),
+		).join("");
+
+	// Main: the preview, then the conversation and the render.
+	const mx = wx + side;
+	const mw = ww - side;
+	const ph = Math.round((mw * 9) / 16);
+	const py = wy + bar;
+	const cx = mx + 14;
+	const cw = mw - 28;
+	const cy = py + ph + 12;
+	const user = (open) =>
+		`<rect x="${cx}" y="${cy}" width="${cw}" height="24" rx="4" fill="${SITE.graphite2}"/>${
+			type(PROJECTS[open][2], {
+				size: 11.5,
+				x: cx + 10,
+				y: cy + 16,
+				fill: SITE.onGraphite,
+			}).svg
+		}`;
+	const jy = cy + 32;
+	const jobName = type("film", {
+		size: 11,
+		weight: 600,
+		x: cx + 10,
+		y: jy + 16,
+		fill: SITE.onGraphite,
+	});
+	const trackX = cx + 18 + jobName.width;
+	const trackW = cx + cw - 44 - trackX;
+	const job = (done) => {
+		const pct = mono(`${Math.round(done * 100)}%`, {
+			size: 10,
+			x: cx + cw - 34,
+			y: jy + 15.5,
+			fill: SITE.graphiteDim,
+			tracking: 0,
+		});
+		return `<rect x="${cx + 0.5}" y="${jy + 0.5}" width="${cw - 1}" height="23" rx="6" fill="none" stroke="${SITE.graphiteLine}"/>${jobName.svg}
+	<rect x="${trackX.toFixed(1)}" y="${jy + 10}" width="${trackW.toFixed(1)}" height="4" rx="2" fill="${SITE.graphiteLine}"/>
+	<rect x="${trackX.toFixed(1)}" y="${jy + 10}" width="${(trackW * done).toFixed(1)}" height="4" rx="2" fill="${SITE.onGraphite}"/>${pct.svg}`;
+	};
+
+	const appWindow = (shot, done) => `
+	<rect x="${wx}" y="${wy + 18}" width="${ww}" height="${wh}" rx="10" fill="#000" fill-opacity="0.5" filter="url(#app-shadow)"/>
+	<clipPath id="app-clip"><rect x="${wx}" y="${wy}" width="${ww}" height="${wh}" rx="10"/></clipPath>
+	<g clip-path="url(#app-clip)">
+		<rect x="${wx}" y="${wy}" width="${ww}" height="${wh}" fill="${SITE.graphite}"/>
+		<rect x="${wx}" y="${wy + bar}" width="${side}" height="${wh - bar}" fill="${SITE.side}"/>
+		<rect x="${mx}" y="${wy + bar}" width="${mw}" height="${wh - bar}" fill="${SITE.chat}"/>
+		<path d="M ${wx} ${wy + bar - 0.5} H ${wx + ww} M ${mx - 0.5} ${wy + bar} V ${wy + wh}" stroke="${SITE.graphiteLine}"/>
+		${lights}${header(shot ?? 0)}${toggles}
+		${brand.svg}${newBtn}${sessions(shot ?? 0)}
+		${picture(mx, py, mw, ph, 0, shot)}${user(shot ?? 0)}${job(done)}
+	</g>
+	<rect x="${wx + 0.5}" y="${wy + 0.5}" width="${ww - 1}" height="${wh - 1}" rx="9.5" fill="none" stroke="${SITE.graphiteLine}"/>`;
+
+	const body = (shot, done) => `
 	<defs>
-		<linearGradient id="banner-bg" x1="0" y1="0" x2="1" y2="1">
-			<stop offset="0" stop-color="${NAVY}"/>
-			<stop offset="0.6" stop-color="#123A9C"/>
-			<stop offset="1" stop-color="${BLUE}"/>
-		</linearGradient>
-		<radialGradient id="banner-glow" cx="0.78" cy="0.2" r="0.6">
-			<stop offset="0" stop-color="${SKY}" stop-opacity="0.28"/>
-			<stop offset="1" stop-color="${SKY}" stop-opacity="0"/>
-		</radialGradient>
+		<filter id="app-shadow" x="-20%" y="-20%" width="140%" height="160%"><feGaussianBlur stdDeviation="22"/></filter>
 	</defs>
-	<rect width="${W}" height="${H}" rx="24" fill="url(#banner-bg)"/>
-	<rect width="${W}" height="${H}" rx="24" fill="url(#banner-glow)"/>
-	<rect x="0.5" y="0.5" width="${W - 1}" height="${H - 1}" rx="23.5" fill="none" stroke="${WHITE}" stroke-opacity="0.14"/>
-	${mark({ x: 82, y: 148, size: 104, paint: WHITE })}
-	<path d="${word.d}" fill="${WHITE}"/>
-	${timeline}
-	<path d="${pathD}" fill="none" stroke="${SKY}" stroke-width="2" stroke-dasharray="2 7" stroke-linecap="round"/>
-	${strip}
-	<path d="${reticle}" fill="none" stroke="${SKY}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>`;
-	writeBoth("banner", svg(W, H, body), W);
+	<rect width="${W}" height="${H}" rx="8" fill="${SITE.graphite}"/>
+	<rect x="0.5" y="0.5" width="${W - 1}" height="${H - 1}" rx="7.5" fill="none" stroke="${SITE.graphiteLine}"/>
+	${kicker.svg}${word.svg}
+	${lede.svg}${sub.svg}${button}
+	${appWindow(shot, done)}`;
+	writeBoth("banner-desktop", svg(W, H, body(null, 0.64)), W);
+	// Each project's render runs from 8% to done while its shot plays.
+	writeGif(
+		"banner-desktop",
+		(shot, t) => {
+			const within = (t * SHOWCASE_TILES.length) % 1;
+			return svg(W, H, body(shot, 0.08 + 0.92 * within));
+		},
+		W,
+		SITE.graphite,
+	);
 }

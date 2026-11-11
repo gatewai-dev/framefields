@@ -23,10 +23,8 @@ const { Resvg } = require("@resvg/resvg-js");
 
 const INTER = fontkit.openSync(join(ROOT, "assets/fonts/Inter.ttf"));
 
-// Blue + white palette.
-const SKY = "#7DD3FC";
+// The logos' blue + white palette.
 const AZURE = "#3B82F6";
-const BLUE = "#1D4ED8";
 const NAVY = "#0B1E4D";
 const WHITE = "#FFFFFF";
 

@@ -1,5 +1,7 @@
 # @framefields/node-corner-pin
 
+## 3.0.0
+
 ## 2.16.0
 
 ## 2.15.0

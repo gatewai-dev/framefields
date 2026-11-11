@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/brand/banner.png" alt="framefields — code-first video, rendered natively on WebGPU" width="100%">
+<img src="assets/brand/banner.gif" alt="framefields — code-first video, rendered natively on WebGPU" width="100%">
 
 ### Compositing, motion graphics, and 3D for code-first video — one npm package that AI agents drive with code.
 
@@ -25,6 +25,10 @@ Teach Claude Code, Cursor, Codex, Copilot, Hermes, and 70+ others how to author,
 ```bash
 npx skills add gatewai-dev/framefields
 ```
+
+**Or use the desktop app**
+
+<a href="https://framefields.dev/#desktop"><img src="assets/brand/banner-desktop.gif" alt="framefields, the desktop app for macOS and Linux: make videos by talking to an agent. It writes the code, plays the film and renders on your GPU." width="100%"></a>
 
 ---
 

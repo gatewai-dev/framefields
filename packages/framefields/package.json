@@ -111,7 +111,7 @@
 		"NOTICE.md"
 	],
 	"scripts": {
-		"build": "tsdown && node ../../scripts/sync-readme.mjs && node scripts/check-bundled-imports.mjs && node scripts/check-components-treeshake.mjs && node scripts/check-registry-types.mjs",
+		"build": "tsdown && node scripts/copy-skills.mjs && node ../../scripts/sync-readme.mjs && node scripts/check-bundled-imports.mjs && node scripts/check-components-treeshake.mjs && node scripts/check-registry-types.mjs",
 		"dev": "tsdown --watch",
 		"gallery": "tsx --conditions=development scripts/components-gallery.ts",
 		"clean": "rm -rf dist .turbo",

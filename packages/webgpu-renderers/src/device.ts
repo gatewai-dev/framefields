@@ -84,6 +84,10 @@ export async function acquireDevice(
 	if (adapter.features.has("float32-filterable")) {
 		requiredFeatures.push("float32-filterable");
 	}
+	// The path tracer times its passes to fit interactive frames to a budget.
+	if (adapter.features.has("timestamp-query")) {
+		requiredFeatures.push("timestamp-query");
+	}
 
 	const requiredLimits: Record<string, number> = {};
 	if (

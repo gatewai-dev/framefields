@@ -193,6 +193,18 @@ await stitchChunks({ chunks: ["out/chunk-0.mp4", "out/chunk-1.mp4"], audio: "out
 
 The cloud does all of this for you: `framefields-cloud`.
 
+## Path-traced scenes (`pathTrace`)
+
+A scene with `Layer.environment(..., { pathTrace: true })` traces its 3D layers instead of rasterizing them (`framefields-compose` covers the look). What changes when rendering:
+
+- **Cost.** The default preset, `"high"`, takes 128 samples per pixel: about 3 s per 960×540 frame and 12 s per 1080p frame on an Apple M1 Pro for a character, a ball, a glowing ring and a floor; desktop GPUs are several times faster. `"standard"` (32) takes about a quarter of that, `"draft"` (8) a sixteenth. Check frames and grids on `quality: "draft"`, then render with the default.
+- **Deterministic.** A render takes exactly `samples` per pixel on any GPU, seeded by frame, so the same frame renders the same pixels every time and split renders (`stitchChunks`, `--cloud`) join without seams.
+- **Preview.** `framefields preview` fits each traced frame to `previewBudgetMs` (33) of GPU time, measured on your GPU, with fewer samples or a lower resolution; the export does not.
+- **Noise and sparkle.** A grainy frame wants more samples (`quality` or `samples`). Bright dots that move from frame to frame on matte surfaces near shiny ones (a glossy floor, a chrome ball) are light bounced off them; raise `filterGlossy` (draft 0.7, standard 0.6, high 0.45) to soften it. `"reference"` (1024 samples, no denoiser, `filterGlossy: 0`) is the unbiased answer to compare against.
+- **Dark glass.** Thick or stacked glass (a vase, a lamp globe) needs four or more passes per object; raise `transmissionBounces` (high: 16).
+- **Soft-looking video.** Usually the resolution, not the tracer: render at the delivery size, not half of it.
+- **Not traced yet:** text drawn on a 3D plane, toon, mattes, reliefs, triplanar textures, wireframes, instanced scatter/swarms/crowds, wind, audio deformation; `ssr`/`gi`, `outlines`, `volumetricFog` and cube cameras do not combine with it. The render fails naming the feature, and `framefields check` flags the combinations.
+
 ## Rendering without a GPU
 
 framefields falls back to the CPU with identical output for every feature (vision inference too).
@@ -218,3 +230,5 @@ framefields falls back to the CPU with identical output for every feature (visio
 | Jump at a chunk seam | Mismatched chunk settings, or an effect reading wall-clock time | One commit and settings for all chunks; deterministic effects. |
 | Effect shows no change | Value on the wrong scale | Look it up in the `framefields-effects` catalog. |
 | Text truncated | Box narrower than the text | Set `width` or `width: "fill"`. |
+| `pathTrace does not trace … yet` | A traced scene uses a feature the tracer lacks | Drop the feature or `pathTrace` for that scene; extruded text instead of plane text. |
+| Traced 3D sparkles or shimmers | Light bounced off shiny surfaces onto matte ones | More `samples`, or a higher `filterGlossy`. |

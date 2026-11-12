@@ -1,6 +1,6 @@
 # Notice: framefields
 
-framefields is licensed under Apache-2.0. It contains no model weights or human base assets: every vision model downloads on first use from a pinned revision into the local model cache (`~/.cache/framefields/models`) and is verified by size and SHA-256. The licenses below apply to those downloaded weights, not to framefields' code.
+framefields is licensed under Apache-2.0. It contains no model weights or human base assets: every vision model downloads on first use from a pinned revision into the local model cache (`~/.cache/framefields/models`) and is verified by size and SHA-256. The model sections below apply to those downloaded weights; the last section lists third-party code framefields includes.
 
 ## Prompted tracking (SAM)
 
@@ -20,3 +20,59 @@ Before SAM 3 weights are downloaded or run, you must accept Meta's SAM License (
 ## Alpha matting
 
 `comp.vision(clip, { matting: true })` and `VisionRunner.refineMatte` resolve mask edges with ViTMatte **Small** trained on Distinctions-646 (Xenova ONNX export of `hustvl/vitmatte-small-distinctions-646`). Its weights are Apache-2.0 and the ViTMatte code is MIT.
+
+## Third-party code: the path tracer
+
+`environment.pathTrace` (`packages/webgpu-renderers/src/pathtracer`) ports parts of MuTracer (https://github.com/pissang/mutracer): the binned SAH BVH builder (`bvh.ts`, itself a port of TinyBVH's reference builder, https://github.com/jbikker/tinybvh), and the WGSL of the Owen-scrambled Sobol sampler (Burley 2020, "Practical Hash-based Owen Scrambling") and the watertight ray/triangle test (`trace.wgsl.ts`; Woop, Benthin and Wald 2013, as implemented in pbrt-v4, https://github.com/mmp/pbrt-v4, Apache-2.0). Both projects are MIT licensed:
+
+### MuTracer
+
+```
+MIT License
+
+Copyright (c) 2022-present Yi Shen
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### TinyBVH
+
+```
+MIT License
+
+Copyright (c) 2024-2026, Jacco Bikker / Breda University of Applied Sciences.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```

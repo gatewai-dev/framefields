@@ -7,6 +7,7 @@ import {
 	floatRgbaToHalf16,
 	projectIrradianceSh,
 } from "../loaders/hdr-loader.js";
+import { buildEnvImportance } from "../pathtracer/env-importance.js";
 
 /** A captured panorama, ready for image-based lighting. */
 export interface HdrEnvironment {
@@ -19,6 +20,8 @@ export interface HdrEnvironment {
 	mipLevelCount: number;
 	/** Diffuse irradiance as 9 L2 SH coefficients (`projectIrradianceSh`). */
 	sh: Float32Array;
+	/** Luminance distribution the path tracer samples lights from (`buildEnvImportance`). */
+	importance: Float32Array;
 }
 
 /** Most environments kept resident per device; the least recently used is destroyed. */
@@ -363,6 +366,7 @@ export function getOrCreateHdrEnvironment(
 	const entry: HdrEnvironment = {
 		...prefilterCube(device, image, key),
 		sh: projectIrradianceSh(image),
+		importance: buildEnvImportance(image),
 	};
 	if (map.size >= MAX_HDR_CACHE_ENTRIES) {
 		const oldest = map.keys().next().value;

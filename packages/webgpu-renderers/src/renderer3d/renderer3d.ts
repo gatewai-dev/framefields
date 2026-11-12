@@ -48,6 +48,12 @@ import {
 	type Vec3,
 	Vector3Math,
 } from "../math3d/index.js";
+import {
+	buildEnvImportance,
+	proceduralSkyImage,
+} from "../pathtracer/env-importance.js";
+import { type PathTraceItem, PathTracer } from "../pathtracer/path-tracer.js";
+import type { PathTraceSettings } from "../pathtracer/quality.js";
 import { BufferPool } from "../renderer2d/buffer-pool.js";
 import { SamplerCache } from "../renderer2d/sampler-cache.js";
 import { UniformBindGroupCache } from "../renderer2d/uniform-bind-group-cache.js";
@@ -438,6 +444,9 @@ export class Renderer3D {
 	private screenSampler: GPUSampler | null = null;
 	private lastCameraBuffer: GPUBuffer | null = null;
 	private lensPipeline: LensRemapPipeline | null = null;
+	private pathTracer: PathTracer | null = null;
+	/** The procedural sky's light-sampling table, by the sky it was built from. */
+	private skyImportance: { key: string; table: Float32Array } | null = null;
 
 	/**
 	 * Samples per pixel in the 3D pass. Mesh silhouettes (extruded text,
@@ -3046,7 +3055,138 @@ export class Renderer3D {
 		);
 	}
 
+	/** Samples and resolution scale of the last traced frame (previews adapt them), or null. */
+	lastPathTracePlan(): { samples: number; scale: number } | null {
+		return this.pathTracer?.lastPlan ?? null;
+	}
+
+	/**
+	 * The environment's light-sampling table: the HDRI's, or one built from
+	 * the procedural sky (gradient and softboxes) it draws.
+	 */
+	private environmentImportance(
+		environment: Environment3DOptions,
+	): Float32Array {
+		if (environment.hdri)
+			return this.hdrEnvironment(environment.hdri).importance;
+		const r = resolveEnvironment(environment);
+		const sky = {
+			top: r.top,
+			horizon: r.horizon,
+			bottom: r.bottom,
+			softboxes: r.softboxes,
+		};
+		const key = JSON.stringify(sky);
+		if (this.skyImportance?.key !== key) {
+			this.skyImportance = {
+				key,
+				table: buildEnvImportance(proceduralSkyImage(sky)),
+			};
+		}
+		return this.skyImportance.table;
+	}
+
+	/**
+	 * Draws a 3D batch by path tracing into the targets a raster pass writes:
+	 * premultiplied display color into `color`, and, with `writeHdr`, the
+	 * bloom radiance that `hdrSource()` returns. Light, environment, exposure,
+	 * tone mapping and fog come from the same uniforms the raster shaders read.
+	 */
+	pathTrace(
+		encoder: GPUCommandEncoder,
+		opts: {
+			camera: Camera3DPose;
+			width: number;
+			height: number;
+			time?: number;
+			items: PathTraceItem[];
+			lights: Light3DOptions[];
+			environment: Environment3DOptions;
+			settings: PathTraceSettings;
+			frame: number;
+			interactive: boolean;
+			color: GPUTextureView;
+			writeHdr: boolean;
+			backdrop?: GPUTexture;
+			/** The camera's depth of field is on: trace it through a thin lens. */
+			depthOfField?: boolean;
+		},
+	): void {
+		const { camera, width, height, environment } = opts;
+		const cameraBuffer = this.packCameraUniforms(
+			camera,
+			width,
+			height,
+			opts.time,
+		);
+		const lightsBuffer = this.getOrCreateLightsBuffer(opts.lights, {
+			environment,
+		});
+		const direct = opts.lights.filter(
+			(l) => (l.lightType ?? l.type) !== "ambient",
+		);
+		this.envSampler ??= this.device.createSampler({
+			label: "HdrEnvironmentSampler",
+			magFilter: "linear",
+			minFilter: "linear",
+			mipmapFilter: "linear",
+			addressModeU: "repeat",
+			addressModeV: "clamp-to-edge",
+		});
+		this.placeholderEnvTexture ??= this.device.createTexture({
+			label: "HdrEnvironmentPlaceholder",
+			size: { width: 1, height: 1, depthOrArrayLayers: 6 },
+			format: "rgba16float",
+			usage: GPUTextureUsage.TEXTURE_BINDING,
+		});
+		const cube = environment.hdri
+			? this.hdrEnvironment(environment.hdri).cube
+			: this.placeholderEnvTexture;
+		const resolved = resolveEnvironment(environment);
+		// Thin lens: the far background blurs by maxBlurRadius px, as raster depth of field does at most.
+		const focusDistance = camera.focusDistance;
+		const focalPx = height / 2 / Math.tan(((camera.fov ?? 50) * Math.PI) / 360);
+		const lens =
+			opts.depthOfField &&
+			focusDistance !== undefined &&
+			(camera.maxBlurRadius ?? 32) > 0
+				? {
+						radius: ((camera.maxBlurRadius ?? 32) * focusDistance) / focalPx,
+						focusDistance,
+					}
+				: undefined;
+		this.hdrBlurred = null;
+		const hdr = opts.writeHdr
+			? this.getOrCreateHdrTexture(width, height)
+			: null;
+		this.pathTracer ??= new PathTracer(this.device);
+		this.pathTracer.render(encoder, {
+			width,
+			height,
+			items: opts.items,
+			settings: opts.settings,
+			frame: opts.frame,
+			interactive: opts.interactive,
+			lens,
+			color: opts.color,
+			colorFormat: this.format,
+			hdr: hdr?.createView(),
+			backdrop: opts.backdrop,
+			lighting: {
+				camera: cameraBuffer,
+				lights: lightsBuffer,
+				directLights: Light3D.packDirectLights(opts.lights),
+				directLightCount: direct.length,
+				envCube: cube.createView({ dimension: "cube" }),
+				envSampler: this.envSampler,
+				envImportance: this.environmentImportance(environment),
+				floor: resolved.floor,
+			},
+		});
+	}
+
 	destroy(): void {
+		this.pathTracer?.destroy();
 		this.motionBlurPipeline?.destroy();
 		this.velocityCameraPool.destroy();
 		this.quadMotionPool.destroy();

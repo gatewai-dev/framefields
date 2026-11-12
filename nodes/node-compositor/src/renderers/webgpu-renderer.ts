@@ -72,6 +72,7 @@ import {
 	parseDashArray,
 	type RenderContextValue,
 	Renderer3D,
+	resolvePathTrace,
 	resolveTextSpans,
 	ScreenSpaceRelightPipeline,
 	type ShadowCaster3D,
@@ -103,6 +104,7 @@ import { type CubeCamera, resolveCubeCamera } from "./cube-camera.js";
 import { fracturedModel, fracturePose, fractureWhole } from "./fracture.js";
 import { compatibleMeshDraws } from "./mesh-instancing.js";
 import { type MotionHistory, motionHistory } from "./motion-history.js";
+import { pathTraceCheck, pathTraceItems } from "./path-trace.js";
 import {
 	composeQuat,
 	meshWind,
@@ -1571,6 +1573,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 						outlines: lop.outlines,
 						ssr: lop.ssr,
 						gi: lop.gi,
+						pathTrace: lop.pathTrace,
 						...(volumetricFog && { volumetricFog }),
 						...(intensity !== undefined && { intensity }),
 					};
@@ -1862,11 +1865,19 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 			const screenIndirectEnabled = Boolean(
 				sceneEnvironment?.ssr || sceneEnvironment?.gi,
 			);
+			const pathTraced = pathTraceCheck(sceneEnvironment, {
+				cubeCamera: Boolean(cubeCamera),
+				outlines: Boolean(outlines),
+				volumetricFog: volumetricFogEnabled,
+				screenIndirect: screenIndirectEnabled,
+			});
+			// A traced frame takes depth of field through its lens, not from a depth buffer.
 			const geometryEnabled =
-				dofEnabled ||
-				Boolean(outlines) ||
-				volumetricFogEnabled ||
-				screenIndirectEnabled;
+				!pathTraced &&
+				(dofEnabled ||
+					Boolean(outlines) ||
+					volumetricFogEnabled ||
+					screenIndirectEnabled);
 			let linearDepthTex: GPUTexture | undefined;
 			let linearDepthView: GPUTextureView | undefined;
 			if (geometryEnabled) {
@@ -1894,7 +1905,8 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 							k === "point")
 					);
 				});
-			if (shadowLights.length > 0) {
+			// Traced shadows need no maps.
+			if (shadowLights.length > 0 && !pathTraced) {
 				const casters: ShadowCaster3D[] = [];
 				const receivers: ReturnType<typeof r3d.worldBounds>[] = [];
 				for (const item of pending3DItems) {
@@ -2226,7 +2238,24 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 			let final3dTex = scene3dTex;
 			let mainReflection: GPUTexture | null = null;
 			let mainPass: ReturnType<typeof drawView> | null = null;
-			if (cubeCamera) {
+			if (pathTraced && sceneEnvironment) {
+				r3d.pathTrace(encoder, {
+					camera,
+					width: nativeWidth,
+					height: nativeHeight,
+					time: sceneSeconds,
+					items: pathTraceItems(r3d, pending3DItems),
+					lights: sceneLights,
+					environment: sceneEnvironment,
+					settings: resolvePathTrace(pathTraced),
+					frame: shiftedFrame,
+					interactive: props.isHeadless === false,
+					color: scene3dView,
+					writeHdr: Boolean(sceneBloom),
+					backdrop: curTex,
+					depthOfField: dofEnabled,
+				});
+			} else if (cubeCamera) {
 				// Six 90° faces around the eye, then the lens's picture of them.
 				const size = cubeCamera.faceSize;
 				const cube = r3d.getOrCreateCubeTexture(size, false);

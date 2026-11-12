@@ -34,6 +34,8 @@ export interface LightingRigOptions {
 	ssr?: EnvironmentOptions["ssr"];
 	/** Screen-space diffuse GI (contact occlusion and color bleeding): `true` or settings. */
 	gi?: EnvironmentOptions["gi"];
+	/** Path trace the scene instead of rasterizing it: `true` or settings. */
+	pathTrace?: EnvironmentOptions["pathTrace"];
 	/** Glow around emissive surfaces and highlights: `true` or settings. */
 	bloom?: EnvironmentOptions["bloom"];
 	/** Prefix for the rig's node ids. */
@@ -130,6 +132,7 @@ function rig(
 			volumetricFog: options.volumetricFog,
 			ssr: options.ssr,
 			gi: options.gi,
+			pathTrace: options.pathTrace,
 			bloom: options.bloom,
 		}),
 		Light.directional({

@@ -248,6 +248,23 @@ describe("lintComposition", () => {
 		expect(lint().map((d) => d.code)).not.toContain("missing_emoji_font");
 	});
 
+	it("flags path tracing combined with passes a traced frame replaces or lacks", () => {
+		const env = { id: "env", kind: "light", lightType: "environment" };
+		expect(codes([{ ...env, pathTrace: true }])).toEqual([]);
+		expect(codes([{ ...env, pathTrace: true, gi: true }])).toContain(
+			"path_trace_screen_space",
+		);
+		expect(
+			codes([{ ...env, pathTrace: { quality: "draft" }, outlines: true }]),
+		).toContain("path_trace_unsupported");
+		expect(
+			codes([
+				{ id: "cam", kind: "camera", lens: { projection: "equirectangular" } },
+				{ ...env, pathTrace: true },
+			]),
+		).toContain("path_trace_cube_camera");
+	});
+
 	it("flags cube cameras combined with single-view effects", () => {
 		const cube = {
 			id: "cam",

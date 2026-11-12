@@ -3785,6 +3785,7 @@ export interface EnvironmentOptions
 			| "outlines"
 			| "ssr"
 			| "gi"
+			| "pathTrace"
 			| "bloom"
 			| "startFrame"
 			| "durationFrames"

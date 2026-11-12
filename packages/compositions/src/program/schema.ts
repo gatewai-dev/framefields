@@ -1706,6 +1706,39 @@ export const EnvironmentGiSchema = z
 	.strict();
 export type EnvironmentGi = z.infer<typeof EnvironmentGiSchema>;
 
+export const EnvironmentPathTraceSchema = z
+	.object({
+		/**
+		 * Preset (default "high"): "draft" 8 samples / 3 bounces, "standard"
+		 * 32 / 5, "high" 128 / 8, all denoised; "reference" 1024 / 16, unfiltered.
+		 */
+		quality: z.enum(["draft", "standard", "high", "reference"]).optional(),
+		/** Samples per pixel of every rendered frame (overrides the preset). */
+		samples: z.number().int().min(1).max(65536).optional(),
+		/** Light bounces after the first hit (overrides the preset). */
+		bounces: z.number().int().min(0).max(64).optional(),
+		/** Filter the remaining noise, guided by albedo, normals and depth. */
+		denoise: z.boolean().optional(),
+		/** Brightest indirect light per sample (luminance); 0 = no clamping. */
+		clamp: z.number().min(0).optional(),
+		/** Longest side a layer picture or material map keeps in the trace atlas, px. */
+		textureSize: z.number().int().min(16).max(8192).optional(),
+		/**
+		 * Path regularization 0..1: after a diffuse bounce, surfaces count as at
+		 * least this rough, so caustics glow instead of sparkling. 0 = unbiased.
+		 */
+		filterGlossy: z.number().min(0).max(1).optional(),
+		/**
+		 * Path regularization 0..1: after a diffuse bounce, surfaces count as at
+		 * least this rough, so caustics glow instead of sparkling. 0 = unbiased.
+		 */
+		filterGlossy: z.number().min(0).max(1).optional(),
+		/** Interactive preview only: GPU time a frame's tracing may take, ms (default 33). */
+		previewBudgetMs: z.number().min(1).max(10000).optional(),
+	})
+	.strict();
+export type EnvironmentPathTrace = z.infer<typeof EnvironmentPathTraceSchema>;
+
 export interface LightNode {
 	id: string;
 	kind: "light";
@@ -1762,6 +1795,13 @@ export interface LightNode {
 	ssr?: boolean | EnvironmentSsr;
 	/** Screen-space diffuse GI: occlusion and color bleeding from visible surfaces. */
 	gi?: boolean | EnvironmentGi;
+	/**
+	 * Path trace the scene's 3D batch instead of rasterizing it: traced
+	 * shadows, reflections, refraction, occlusion and bounce light. `true` or
+	 * settings; renders take exactly `samples` per pixel on any GPU, previews
+	 * fit their time budget.
+	 */
+	pathTrace?: boolean | EnvironmentPathTrace;
 	/** Optional depth/normal outlines, before depth of field and bloom. */
 	outlines?: boolean | GeometryOutlineOptions;
 	/** Glow around emissive surfaces and hot highlights: `true` or settings. */
@@ -1817,6 +1857,7 @@ export const LightNodeSchema: z.ZodType<LightNode> = z
 		volumetricFogNoiseStrength: z.number().min(0).max(1).optional(),
 		ssr: z.union([z.boolean(), EnvironmentSsrSchema]).optional(),
 		gi: z.union([z.boolean(), EnvironmentGiSchema]).optional(),
+		pathTrace: z.union([z.boolean(), EnvironmentPathTraceSchema]).optional(),
 		outlines: z.union([z.boolean(), GeometryOutlineOptionsSchema]).optional(),
 		bloom: z.union([z.boolean(), BloomConfigSchema]).optional(),
 		startFrame: z.number().int().min(0).default(0),

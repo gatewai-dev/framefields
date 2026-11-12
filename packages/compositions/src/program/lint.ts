@@ -178,6 +178,8 @@ export function lintComposition(
 	let directLights = 0;
 	let fogLight: string | undefined;
 	let cubeCamera: string | undefined;
+	/** The environment that path traces the scene. */
+	let tracedLight: string | undefined;
 	let screenSpaceLight: string | undefined;
 
 	const visit = (node: AnyNode, backdrop: string | null, atRoot: boolean) => {
@@ -229,6 +231,10 @@ export function lintComposition(
 			if (type === "environment" && node.volumetricFog) fogLight = id;
 			if (type === "environment" && (node.ssr || node.gi))
 				screenSpaceLight = id;
+			if (type === "environment" && node.pathTrace) {
+				lintPathTrace(node, id, push);
+				tracedLight = id;
+			}
 			if (node.castShadow) {
 				if (
 					type !== "directional" &&
@@ -433,6 +439,15 @@ export function lintComposition(
 		);
 	}
 
+	if (cubeCamera && tracedLight) {
+		push(
+			"error",
+			"path_trace_cube_camera",
+			`'${cubeCamera}' is a cube camera, and '${tracedLight}' turns on pathTrace: the tracer renders one perspective view.`,
+			tracedLight,
+		);
+	}
+
 	if (cubeCamera && screenSpaceLight) {
 		push(
 			"error",
@@ -459,4 +474,26 @@ export function lintComposition(
 		);
 	}
 	return out;
+}
+
+/** What a path-traced environment cannot also ask for: the tracer replaces those passes or does not draw them yet. */
+function lintPathTrace(node: AnyNode, id: string, push: Push): void {
+	if (node.ssr || node.gi) {
+		push(
+			"error",
+			"path_trace_screen_space",
+			`'${id}' path traces the scene and turns on ssr / gi: the tracer reflects and bounces light itself. Drop ssr and gi.`,
+			id,
+		);
+	}
+	for (const key of ["outlines", "volumetricFog"] as const) {
+		if (node[key]) {
+			push(
+				"error",
+				"path_trace_unsupported",
+				`'${id}' path traces the scene and turns on ${key}, which a traced frame does not draw yet. Drop one of them.`,
+				id,
+			);
+		}
+	}
 }

@@ -10,6 +10,7 @@ export * from "./loaders/index.js";
 export * from "./lut-store.js";
 export * from "./math3d/index.js";
 export * from "./nodes/index.js";
+export * from "./pathtracer/index.js";
 export * from "./render-context.js";
 export * from "./renderer2d/buffer-pool.js";
 export * from "./renderer2d/effect-pipeline.js";

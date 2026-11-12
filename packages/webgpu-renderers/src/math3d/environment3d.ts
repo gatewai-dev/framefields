@@ -5,6 +5,7 @@
  * Blinn-Phong look.
  */
 import { type GeometryOutlineOptions, parseCssColor } from "@framefields/core";
+import type { PathTraceOptions } from "../pathtracer/quality.js";
 
 /**
  * "neutral" (default, Khronos PBR Neutral): colors as authored, highlights
@@ -131,6 +132,12 @@ export interface Environment3DOptions {
 	ssr?: boolean | Environment3DSsrOptions;
 	/** Screen-space diffuse GI: occlusion and color bleeding from visible surfaces. */
 	gi?: boolean | Environment3DGiOptions;
+	/**
+	 * Path trace the scene's 3D batch instead of rasterizing it: shadows,
+	 * reflections, refraction, occlusion and bounce light are traced. `true`
+	 * or settings (quality preset, samples, bounces, denoise).
+	 */
+	pathTrace?: boolean | PathTraceOptions;
 }
 
 interface PresetDef {

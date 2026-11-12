@@ -7,7 +7,10 @@
  * pnpm render motion    → output/motion.mp4 (2 s, draft, motion blur and
  *   bloom), and flicker measured on a static-camera take: how much still
  *   background changes from frame to frame, draft vs standard
- * pnpm render all       → all three
+ * pnpm render glass     → output/glass.mp4: a glass still life (iridescent lamp,
+ *   vase of flowers, mosquito in amber), a seamless two-second loop at
+ *   1920×1080 and the default (high) preset
+ * pnpm render all       → character, sun and motion
  */
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -20,6 +23,7 @@ import {
 	H,
 	motionScene,
 	type PathTraceQuality,
+	stillLifeScene,
 	sunScene,
 	W,
 } from "./scenes.js";
@@ -200,8 +204,22 @@ async function motion(): Promise<void> {
 	}
 }
 
+async function glass(): Promise<void> {
+	await fs.mkdir(OUTPUT, { recursive: true });
+	const t = performance.now();
+	const result = await stillLifeScene({ scale: 2 }).renderVideo({
+		outputPath: path.join(OUTPUT, "glass.mp4"),
+		quality: "high",
+	});
+	await result.cleanup?.().catch(() => {});
+	console.log(
+		`glass: ${result.filePath} (${((performance.now() - t) / 60000).toFixed(1)} min)`,
+	);
+}
+
 const mode = process.argv[2] ?? "all";
 if (mode === "character" || mode === "all") await character();
 if (mode === "sun" || mode === "all") await sun();
 if (mode === "motion" || mode === "all") await motion();
+if (mode === "glass") await glass();
 process.exit(0);

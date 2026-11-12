@@ -19,6 +19,13 @@ describe("path trace quality", () => {
 			denoise: false,
 			clamp: 0,
 		});
+		expect(resolvePathTrace({ quality: "draft" }).transmissionBounces).toBe(8);
+		expect(
+			resolvePathTrace({ transmissionBounces: 4 }).transmissionBounces,
+		).toBe(4);
+		expect(() => resolvePathTrace({ transmissionBounces: 0 })).toThrow(
+			/transmissionBounces/,
+		);
 		const custom = resolvePathTrace({
 			quality: "draft",
 			samples: 3,

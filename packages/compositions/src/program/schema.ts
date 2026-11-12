@@ -1715,8 +1715,10 @@ export const EnvironmentPathTraceSchema = z
 		quality: z.enum(["draft", "standard", "high", "reference"]).optional(),
 		/** Samples per pixel of every rendered frame (overrides the preset). */
 		samples: z.number().int().min(1).max(65536).optional(),
-		/** Light bounces after the first hit (overrides the preset). */
+		/** Light bounces off anything but glass, after the first hit (overrides the preset). */
 		bounces: z.number().int().min(0).max(64).optional(),
+		/** Passes into, out of or off glass on top of `bounces` (draft 8, standard 12, high 16, reference 32). */
+		transmissionBounces: z.number().int().min(1).max(128).optional(),
 		/** Filter the remaining noise, guided by albedo, normals and depth. */
 		denoise: z.boolean().optional(),
 		/** Brightest indirect light per sample (luminance); 0 = no clamping. */

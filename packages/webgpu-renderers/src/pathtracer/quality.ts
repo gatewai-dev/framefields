@@ -28,8 +28,14 @@ export interface PathTraceOptions {
 	quality?: PathTraceQuality;
 	/** Samples per pixel of every rendered frame (overrides the preset). */
 	samples?: number;
-	/** Light bounces after the first hit (overrides the preset). */
+	/** Light bounces off anything but glass, after the first hit (overrides the preset). */
 	bounces?: number;
+	/**
+	 * Passes into, out of or off glass a path may take on top of `bounces`
+	 * (overrides the preset: draft 8, standard 12, high 16, reference 32).
+	 * Thick glass takes four or more per object; too few leave it dark.
+	 */
+	transmissionBounces?: number;
 	/** Filter the remaining noise, guided by albedo, normals and depth. */
 	denoise?: boolean;
 	/** Brightest indirect light per sample (luminance); 0 turns clamping off. Removes fireflies at a small energy loss. */
@@ -52,6 +58,7 @@ export interface PathTraceOptions {
 export interface PathTraceSettings {
 	samples: number;
 	bounces: number;
+	transmissionBounces: number;
 	denoise: boolean;
 	clamp: number;
 	textureSize: number;
@@ -68,6 +75,7 @@ const PRESETS: Record<
 	draft: {
 		samples: 8,
 		bounces: 3,
+		transmissionBounces: 8,
 		denoise: true,
 		clamp: 8,
 		textureSize: 1024,
@@ -78,6 +86,7 @@ const PRESETS: Record<
 		samples: 32,
 		filterGlossy: 0.6,
 		bounces: 5,
+		transmissionBounces: 12,
 		denoise: true,
 		clamp: 16,
 		textureSize: 2048,
@@ -87,6 +96,7 @@ const PRESETS: Record<
 		samples: 128,
 		filterGlossy: 0.45,
 		bounces: 8,
+		transmissionBounces: 16,
 		denoise: true,
 		clamp: 32,
 		textureSize: 2048,
@@ -95,6 +105,7 @@ const PRESETS: Record<
 	reference: {
 		samples: 1024,
 		bounces: 16,
+		transmissionBounces: 32,
 		denoise: false,
 		clamp: 0,
 		textureSize: 4096,
@@ -140,6 +151,9 @@ export function resolvePathTrace(
 		clamp: Math.max(0, o.clamp ?? preset.clamp),
 		textureSize:
 			positiveInt(o.textureSize, "textureSize") ?? preset.textureSize,
+		transmissionBounces:
+			positiveInt(o.transmissionBounces, "transmissionBounces") ??
+			preset.transmissionBounces,
 		filterGlossy: Math.max(
 			0,
 			Math.min(1, o.filterGlossy ?? preset.filterGlossy),

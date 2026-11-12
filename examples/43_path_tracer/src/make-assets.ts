@@ -1,15 +1,19 @@
 /**
- * pnpm assets: downloads the two sample models (pinned, verified by size and
+ * pnpm assets: downloads the sample models and the window-light studio HDRI (pinned, verified by size and
  * SHA-256) and generates the sun sky.
  */
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import {
+	AMBER,
 	ASSETS,
 	CESIUM_MAN,
 	type Download,
+	GLASS_VASE,
+	IRIDESCENCE_LAMP,
 	SKY,
 	WATER_BOTTLE,
+	WINDOW_STUDIO,
 } from "./paths.js";
 import { encodeRgbe, sunSky } from "./sky.js";
 
@@ -34,6 +38,10 @@ async function fetchPinned(d: Download): Promise<void> {
 await fs.mkdir(ASSETS, { recursive: true });
 await fetchPinned(CESIUM_MAN);
 await fetchPinned(WATER_BOTTLE);
+await fetchPinned(GLASS_VASE);
+await fetchPinned(IRIDESCENCE_LAMP);
+await fetchPinned(AMBER);
+await fetchPinned(WINDOW_STUDIO);
 const s = sunSky();
 await fs.writeFile(SKY, encodeRgbe(s.width, s.height, s.data));
 console.log(SKY);

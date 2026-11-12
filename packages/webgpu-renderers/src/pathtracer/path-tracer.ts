@@ -577,10 +577,9 @@ export class PathTracer {
 		const opacity = (o.opacity ?? 1) * tint[3];
 		v(0, [tint[0], tint[1], tint[2], opacity]);
 		const metallic = o.metallic ?? (o.material === "metallic" ? 1 : 0);
+		// Glass is clear unless its roughness says otherwise (a model's own, or frosted's 0.5).
 		const roughness = glass
-			? o.material === "frosted"
-				? (o.roughness ?? 0.5)
-				: 0
+			? (o.roughness ?? (o.material === "frosted" ? 0.5 : 0))
 			: (o.roughness ?? 0.5);
 		const ior =
 			item.kind === "mesh"
@@ -888,6 +887,7 @@ export class PathTracer {
 				u.set([tlasOffset, emitters.count], 24);
 				f[26] = emitters.power;
 				f[27] = settings.filterGlossy;
+				u[28] = settings.transmissionBounces;
 				f[12] = settings.clamp;
 				f[13] = frame.lens?.radius ?? 0;
 				f[14] = frame.lens?.focusDistance ?? 0;

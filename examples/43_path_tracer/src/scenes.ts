@@ -16,7 +16,15 @@ import {
 	LayerAnimation,
 	type LayoutNode,
 } from "framefields";
-import { CESIUM_MAN, SKY, WATER_BOTTLE } from "./paths.js";
+import {
+	AMBER,
+	CESIUM_MAN,
+	GLASS_VASE,
+	IRIDESCENCE_LAMP,
+	SKY,
+	WATER_BOTTLE,
+	WINDOW_STUDIO,
+} from "./paths.js";
 
 export type PathTraceQuality = "draft" | "standard" | "high" | "reference";
 
@@ -34,13 +42,17 @@ export interface SceneOptions {
 	scale?: number;
 }
 
-function composition(frames: number, scale = 1): Composition {
+function composition(
+	frames: number,
+	scale = 1,
+	backgroundColor = "#0c0e13",
+): Composition {
 	return new Composition({
 		width: W * scale,
 		height: H * scale,
 		fps: FPS,
 		durationFrames: frames,
-		backgroundColor: "#0c0e13",
+		backgroundColor,
 	});
 }
 
@@ -275,6 +287,108 @@ export function motionScene(o: SceneOptions = {}): Composition {
 				[frames - 1, 360],
 			]),
 		),
+	] as LayoutNode[]);
+	return comp;
+}
+
+/** One scale for every still-life model, so they keep their real sizes: 1 m = 1000 px. */
+const STILL_SCALE = 1000;
+const TABLE_Y = 430;
+
+export interface StillLifeOptions extends SceneOptions {
+	/** Camera position along its swing, 0..1, for stills (default: the loop). */
+	at?: number;
+}
+
+/**
+ * Glass on a quiet table: an iridescent glass lamp, a glass vase of flowers
+ * and a mosquito in amber, in soft daylight from a studio's big window. The
+ * camera swings in a seamless two-second arc (frame 60 is frame 0).
+ */
+export function stillLifeScene(o: StillLifeOptions = {}): Composition {
+	const frames = o.frames ?? 2 * FPS;
+	// A warm paper background: what glass shows of the world behind it.
+	const comp = composition(frames, o.scale, "#ece6dc");
+	const centre: [number, number, number] = [480, TABLE_Y - 195, 20];
+	const radius = 1260;
+	const eyeY = TABLE_Y - 380;
+	const eye = (deg: number) => {
+		const a = (deg * Math.PI) / 180;
+		return {
+			x: centre[0] + Math.sin(a) * radius,
+			z: centre[2] - Math.cos(a) * radius,
+		};
+	};
+	const swing = 12;
+	const from = eye(-swing);
+	const to = eye(swing);
+	const still = o.at === undefined ? null : eye(-swing + 2 * swing * o.at);
+	const camera = Layer.camera({
+		x: (still ?? from).x,
+		y: eyeY,
+		z: (still ?? from).z,
+		targetX: centre[0],
+		targetY: centre[1],
+		targetZ: centre[2],
+		fov: 30,
+		focusDistance: radius,
+		maxBlurRadius: 3,
+	} as never);
+	const model = (
+		file: string,
+		x: number,
+		z: number,
+		lift: number,
+		rotateY: number,
+	) =>
+		Layer.glb(file, {
+			x,
+			// A model's origin is its own; `lift` puts its base on the table.
+			y: TABLE_Y - lift * STILL_SCALE,
+			z,
+			scale: STILL_SCALE,
+			rotateX: 180,
+			rotateY,
+			castShadow: true,
+		}) as LayoutNode;
+	comp.add([
+		still
+			? camera
+			: camera.animate(
+					LayerAnimation.create()
+						.keys("x", [
+							[0, from.x],
+							[frames / 2, to.x, "sine.inOut"],
+							[frames, from.x, "sine.inOut"],
+						])
+						.keys("z", [
+							[0, from.z],
+							[frames / 4, centre[2] - radius, "sine.out"],
+							[frames / 2, to.z, "sine.in"],
+							[(3 * frames) / 4, centre[2] - radius, "sine.out"],
+							[frames, from.z, "sine.in"],
+						]),
+				),
+		Layer.environment({
+			hdri: WINDOW_STUDIO.file,
+			intensity: 1,
+			rotation: 200,
+			exposure: 0.2,
+			toneMapping: "agx",
+			floor: {
+				y: TABLE_Y,
+				color: "#e2dbd0",
+				reflectivity: 0.06,
+				roughness: 0.6,
+				fadeDistance: 2600,
+			},
+			...(!o.raster && {
+				pathTrace: o.quality ? { quality: o.quality } : true,
+			}),
+		}),
+		model(IRIDESCENCE_LAMP.file, 370, 150, 0, 20),
+		model(GLASS_VASE.file, 560, 10, 0, -25),
+		model(AMBER.file, 470, -150, 0.049, 35),
 	] as LayoutNode[]);
 	return comp;
 }

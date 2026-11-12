@@ -26,7 +26,7 @@ export const MATERIAL_VEC4 = 14;
 /** vec4s per pixel in the accumulation buffer. */
 export const ACCUM_VEC4 = 4;
 /** Bytes of the trace parameters uniform. */
-export const TRACE_PARAMS_BYTES = 112;
+export const TRACE_PARAMS_BYTES = 128;
 
 /** Instance flags. */
 export const INSTANCE_CASTS_SHADOW = 1;
@@ -80,6 +80,11 @@ struct TraceParams {
      * meets are at least this rough (0 = off, unbiased).
      */
     filterGlossy  : f32,
+    /** Passes through or off glass a path may take, apart from \`maxBounces\`. */
+    maxTransmission : u32,
+    _pad0         : u32,
+    _pad1         : u32,
+    _pad2         : u32,
 };
 
 @group(0) @binding(0) var<uniform> pt : TraceParams;
@@ -1381,7 +1386,11 @@ fn tracePath(ray: CameraRay) -> PathResult {
     var transmittedOnly = true;
     var regularize = false;
     let hasTable = (pt.flags & ${TRACE_ENV_TABLE}u) != 0u;
-    for (var bounce = 0u; bounce <= pt.maxBounces; bounce++) {
+    // Bounces off glass count against their own budget: crossing a thick
+    // vase takes four or more, which would starve the light of everything else.
+    var depth = 0u;
+    var glassDepth = 0u;
+    for (var bounce = 0u; bounce <= pt.maxBounces + pt.maxTransmission; bounce++) {
         exactAlpha = bounce == 0u;
         let hit = traceScene(o, d, MISS, false);
         exactAlpha = false;
@@ -1434,7 +1443,7 @@ fn tracePath(ray: CameraRay) -> PathResult {
             emitted *= powerHeuristic(lastPdf, emitterPdf(hit, d));
         }
         radiance += clampIndirect(throughput * emitted, bounce);
-        if (bounce == pt.maxBounces) {
+        if ((!s.glass && depth >= pt.maxBounces) || (s.glass && glassDepth >= pt.maxTransmission)) {
             break;
         }
         radiance += clampIndirect(throughput * directLighting(s, wo), bounce);
@@ -1455,7 +1464,12 @@ fn tracePath(ray: CameraRay) -> PathResult {
         throughput *= bs.weight;
         lastPdf = bs.pdf;
         lastMis = bs.mis;
-        if (bounce >= pt.rrDepth) {
+        if (s.glass) {
+            glassDepth += 1u;
+        } else {
+            depth += 1u;
+        }
+        if (depth >= pt.rrDepth) {
             let q = min(0.95, max(throughput.x, max(throughput.y, throughput.z)));
             if (next2D().x >= q) {
                 break;

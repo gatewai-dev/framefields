@@ -1,6 +1,6 @@
 {
 	"name": "@framefields/node-liquify",
-	"version": "3.0.0",
+	"version": "3.0.1",
 	"private": false,
 	"framefields": {
 		"type": "Liquify",

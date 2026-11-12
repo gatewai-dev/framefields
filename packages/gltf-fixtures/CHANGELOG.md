@@ -1,5 +1,7 @@
 # @framefields/gltf-fixtures
 
+## 3.0.1
+
 ## 3.0.0
 
 ## 2.16.0

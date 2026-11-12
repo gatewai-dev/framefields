@@ -1,6 +1,6 @@
 {
 	"name": "@framefields/gltf-fixtures",
-	"version": "3.0.0",
+	"version": "3.0.1",
 	"private": true,
 	"description": "Test fixtures: a GLB writer with PBR material extensions, skins, sparse morph targets and clips, and skeleton builders, for the engine's model import tests.",
 	"type": "module",

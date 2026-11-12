@@ -1728,11 +1728,6 @@ export const EnvironmentPathTraceSchema = z
 		 * least this rough, so caustics glow instead of sparkling. 0 = unbiased.
 		 */
 		filterGlossy: z.number().min(0).max(1).optional(),
-		/**
-		 * Path regularization 0..1: after a diffuse bounce, surfaces count as at
-		 * least this rough, so caustics glow instead of sparkling. 0 = unbiased.
-		 */
-		filterGlossy: z.number().min(0).max(1).optional(),
 		/** Interactive preview only: GPU time a frame's tracing may take, ms (default 33). */
 		previewBudgetMs: z.number().min(1).max(10000).optional(),
 	})

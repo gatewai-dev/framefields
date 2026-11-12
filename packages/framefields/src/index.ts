@@ -926,6 +926,17 @@ export {
 	type LightingRigOptions,
 } from "./lighting.js";
 export {
+	linearToCss,
+	type MtlxMaterial,
+	type OpenPbrMaterial,
+	type OpenPbrSurface,
+	openPBR,
+	parseMtlx,
+	type StandardSurface,
+	standardSurface,
+	standardToOpenPbr,
+} from "./openpbr.js";
+export {
 	type EmitterShape,
 	type ParticleBlend,
 	type ParticleBounds,

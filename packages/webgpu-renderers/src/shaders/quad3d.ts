@@ -7,8 +7,28 @@
 import { lighting3dWgsl, lightsBindingsWgsl } from "./lighting3d.js";
 import { matte3dWgsl } from "./matte3d.js";
 
-export const quad3dWgsl = `
+/**
+ * `multisampled`: the pass has 4 samples a pixel. A layer's outline (its
+ * rounded rectangle) is then resolved per sample, as a coverage mask, so an
+ * edge pixel is fully drawn in the samples the layer covers and untouched in
+ * the rest. Layers that share an edge meet without a gap, and an edge never
+ * hides what is drawn behind it later. In a single-sample pass the outline
+ * fades over a pixel instead.
+ */
+export const quad3dWgsl = (multisampled: boolean) => `
 ${lighting3dWgsl}
+const MULTISAMPLED : bool = ${multisampled};
+// Where the 4 samples of a pixel sit, from its center (WebGPU's fixed pattern).
+const SAMPLE_OFFSETS = array<vec2<f32>, 4>(
+    vec2<f32>(-0.125, -0.375),
+    vec2<f32>(0.375, -0.125),
+    vec2<f32>(-0.375, 0.125),
+    vec2<f32>(0.125, 0.375),
+);
+// A sample this close outside the outline (px) still counts as inside: two
+// layers sharing an edge each compute it from their own corners, and a sample
+// on the line must not fall between the two results.
+const EDGE_SLACK : f32 = 0.015625;
 // Grid cells either side a relief's normals span.
 const RELIEF_NORMAL_CELLS : f32 = 4.0;
 
@@ -170,6 +190,7 @@ fn sdRoundedRectWithNormal(p: vec2<f32>, b: vec2<f32>, r: f32) -> vec3<f32> {
 struct QuadFragment {
     color : vec4<f32>, // premultiplied display color
     hdr   : vec4<f32>, // premultiplied scene radiance (bloom source)
+    mask  : u32,       // the samples of this pixel inside the layer's outline
 };
 
 fn shadeQuad(in: VertexOutput, isFront: bool) -> QuadFragment {
@@ -182,6 +203,7 @@ fn shadeQuad(in: VertexOutput, isFront: bool) -> QuadFragment {
     }
     
     var outerAlpha = 1.0;
+    var sampleMask = 0xFFFFFFFFu;
     var borderFactor = 0.0;
     let br = model.params.y;
     let borderWidth = model.params.w;
@@ -199,9 +221,23 @@ fn shadeQuad(in: VertexOutput, isFront: bool) -> QuadFragment {
         let gradLen = max(sqrt(dPdx * dPdx + dPdy * dPdy), 0.001);
         
         let distPixel = normData.x / gradLen;
-        outerAlpha = clamp(0.5 - distPixel, 0.0, 1.0);
-        if (outerAlpha <= 0.001) {
-            discard;
+        if (MULTISAMPLED) {
+            // The outline's distance at each sample, from its slope across the pixel.
+            sampleMask = 0u;
+            for (var i = 0u; i < 4u; i++) {
+                let o = SAMPLE_OFFSETS[i];
+                if (normData.x + dPdx * o.x + dPdy * o.y <= gradLen * EDGE_SLACK) {
+                    sampleMask |= 1u << i;
+                }
+            }
+            if (sampleMask == 0u) {
+                discard;
+            }
+        } else {
+            outerAlpha = clamp(0.5 - distPixel, 0.0, 1.0);
+            if (outerAlpha <= 0.001) {
+                discard;
+            }
         }
         
         if (borderWidth > 0.0 && model.borderColor.a > 0.0) {
@@ -234,35 +270,50 @@ fn shadeQuad(in: VertexOutput, isFront: bool) -> QuadFragment {
     var out: QuadFragment;
     out.color = vec4<f32>(shaded.display * alpha, alpha);
     out.hdr = vec4<f32>(shaded.hdr * alpha, alpha);
+    out.mask = sampleMask;
     return out;
 }
+
+struct SingleOutput {
+    @location(0) color : vec4<f32>,
+    @builtin(sample_mask) mask : u32,
+};
 
 struct MrtOutput {
     @location(0) color : vec4<f32>,
     @location(1) depth : vec4<f32>,
+    @builtin(sample_mask) mask : u32,
 };
 
 struct BloomOutput {
     @location(0) color : vec4<f32>,
     @location(1) hdr   : vec4<f32>,
+    @builtin(sample_mask) mask : u32,
 };
 
 struct MrtBloomOutput {
     @location(0) color : vec4<f32>,
     @location(1) depth : vec4<f32>,
     @location(2) hdr   : vec4<f32>,
+    @builtin(sample_mask) mask : u32,
 };
 
 @fragment
-fn fs_single(in: VertexOutput, @builtin(front_facing) isFront: bool) -> @location(0) vec4<f32> {
-    return shadeQuad(in, isFront).color;
+fn fs_single(in: VertexOutput, @builtin(front_facing) isFront: bool) -> SingleOutput {
+    let f = shadeQuad(in, isFront);
+    var out: SingleOutput;
+    out.color = f.color;
+    out.mask = f.mask;
+    return out;
 }
 
 @fragment
 fn fs_mrt(in: VertexOutput, @builtin(front_facing) isFront: bool) -> MrtOutput {
+    let f = shadeQuad(in, isFront);
     var out: MrtOutput;
-    out.color = shadeQuad(in, isFront).color;
+    out.color = f.color;
     out.depth = geometryPixel(in.linearDepth, in.worldNormal, model.toonParams.y);
+    out.mask = f.mask;
     return out;
 }
 
@@ -272,6 +323,7 @@ fn fs_single_bloom(in: VertexOutput, @builtin(front_facing) isFront: bool) -> Bl
     var out: BloomOutput;
     out.color = f.color;
     out.hdr = f.hdr;
+    out.mask = f.mask;
     return out;
 }
 
@@ -282,6 +334,7 @@ fn fs_mrt_bloom(in: VertexOutput, @builtin(front_facing) isFront: bool) -> MrtBl
     out.color = f.color;
     out.depth = geometryPixel(in.linearDepth, in.worldNormal, model.toonParams.y);
     out.hdr = f.hdr;
+    out.mask = f.mask;
     return out;
 }
 

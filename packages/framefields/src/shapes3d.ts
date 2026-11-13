@@ -613,6 +613,13 @@ export interface Instances3DOptions extends Surface3DOptions {
 	/** Procedural wind sway: each instance bends downwind from its base. */
 	wind?: WindConfig;
 	/**
+	 * Base-color texture every instance wears, wrapped by the mesh's UVs: an
+	 * image path, or any layer (`Layer.video`, a layout tree with text…)
+	 * drawn once each frame and shared by all of them. Each instance's
+	 * `color` multiplies it.
+	 */
+	texture?: string | LayoutNode;
+	/**
 	 * Skinned crowd: the mesh is an animated model (`Layer.glb`, `Layer.gltf`)
 	 * and every instance plays one of `clips` at its own phase and speed,
 	 * skinned on the GPU from a palette baked once: thousands of characters,
@@ -1710,6 +1717,8 @@ export const Layer3D = {
 	},
 
 	instances(options: Instances3DOptions): AnimatableNode<Model3DNode> {
+		// The texture becomes a layer of its own; the rest is the instancing spec.
+		const { texture, ...spec } = options;
 		const primaryMesh = Array.isArray(options.mesh)
 			? options.mesh[0]
 			: options.mesh;
@@ -1735,9 +1744,12 @@ export const Layer3D = {
 			ambientIntensity: options.ambientIntensity,
 			startFrame: options.startFrame,
 			durationFrames: options.durationFrames,
-			instances3d: { ...options },
+			instances3d: spec,
 			...(options.wind && { wind: options.wind }),
 			...(options.crowd && { crowd: options.crowd }),
+			...(texture !== undefined && {
+				textureLayer: textureLayerOf(texture, (src) => Layer.image(src)),
+			}),
 			...materialProps(options),
 		};
 		if (primaryMesh) {

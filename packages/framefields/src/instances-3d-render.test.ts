@@ -102,6 +102,62 @@ describe("Layer3D.instances hardware instancing", () => {
 		expect(hasMagenta).toBeGreaterThan(100);
 	});
 
+	it("wraps one texture layer on every instance, tinted by each instance's color", async () => {
+		const comp = new Composition({
+			width: 400,
+			height: 200,
+			fps: 30,
+			durationMs: 1000,
+			backgroundColor: "#000000",
+		});
+		comp.add([
+			Layer.camera({
+				x: 200,
+				y: 100,
+				z: -400,
+				targetX: 200,
+				targetY: 100,
+				targetZ: 0,
+			}),
+			Layer3D.instances({
+				mesh: Layer3D.roundedBox({
+					width: 120,
+					height: 120,
+					depth: 4,
+					radius: 1,
+					color: "#ffffff",
+				}),
+				count: 2,
+				material: "unlit",
+				// Left half green, right half blue, on every instance.
+				texture: Layer.box({
+					width: 64,
+					height: 64,
+					background: "linear-gradient(90deg, #00ff00 0 50%, #0000ff 0)",
+				}),
+				instanceAt: (i) => ({
+					x: 110 + i * 180,
+					y: 100,
+					z: 0,
+					color: i === 0 ? [1, 1, 1, 1] : [0.25, 0.25, 0.25, 1],
+				}),
+			}),
+		]);
+
+		const { at } = await decode(await comp.renderFrame(0));
+		const first = { green: at(135, 100), blue: at(168, 100) };
+		const second = { green: at(232, 100), blue: at(265, 100) };
+		expect(first.green.g).toBeGreaterThan(200);
+		expect(first.green.b).toBeLessThan(40);
+		expect(first.blue.b).toBeGreaterThan(200);
+		expect(first.blue.g).toBeLessThan(40);
+		// The second instance wears the same picture, a quarter as bright.
+		expect(second.green.g).toBeGreaterThan(30);
+		expect(second.green.g).toBeLessThan(first.green.g / 2);
+		expect(second.blue.b).toBeGreaterThan(30);
+		expect(second.blue.b).toBeLessThan(first.blue.b / 2);
+	});
+
 	it("renders hardware instances driven by Physics.world3d rigid bodies", async () => {
 		const comp = new Composition({
 			width: 600,

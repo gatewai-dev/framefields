@@ -30,8 +30,12 @@ const GRAB_GRADIENT = 0.6111;
 const SPIN_GRADIENT = 1;
 const SPIN_DISPLACEMENT = 0.3188;
 const WINDOW_GRADIENT = 1.54;
-/** Practical bound on the gradient of the lattice noise (see `noise3`). */
-const NOISE_GRADIENT = 3;
+/**
+ * Largest gradient of one octave of the lattice noise (`noise3`), measured
+ * over 4e5 points (3.62). Octaves add as a root sum of squares: their
+ * steepest points do not line up (measured 7.15 for four, against 7.4).
+ */
+const NOISE_GRADIENT = 3.7;
 
 export interface Aabb {
 	min: V3;
@@ -389,7 +393,7 @@ function packDetail(p: Packer, o: ClayDetail): void {
 	let slope = 0;
 	for (let i = 0; i < octaves; i++) {
 		height += persistence ** i;
-		slope += (persistence * lacunarity) ** i;
+		slope += (persistence * lacunarity) ** (2 * i);
 	}
 	height *= Math.abs(o.amplitude);
 	const center = o.center ?? [0, 0, 0];
@@ -408,7 +412,7 @@ function packDetail(p: Packer, o: ClayDetail): void {
 			shift: height,
 			relief: height,
 			reliefSlope:
-				(Math.abs(o.amplitude) / o.scale) * NOISE_GRADIENT * slope +
+				(Math.abs(o.amplitude) / o.scale) * NOISE_GRADIENT * Math.sqrt(slope) +
 				(radius > 0 ? (height * WINDOW_GRADIENT) / radius : 0),
 		},
 	);

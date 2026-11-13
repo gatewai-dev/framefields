@@ -21,7 +21,7 @@ const SQRT3 = Math.sqrt(3);
 
 /** Scratch: a vector result, and the point as each run of records sees it. */
 const vec = new Float64Array(3);
-const levels = new Float64Array((MAX_WARPS + 1) * 3);
+let levels = new Float64Array((MAX_WARPS + 1) * 3);
 
 /** v rotated by the unit quaternion at `ops[q..q+3]`, into `vec`. */
 function rotate(ops: Float32Array, q: number, x: number, y: number, z: number) {
@@ -340,6 +340,9 @@ export function evalList(
 	footprint: number,
 	out: Float64Array,
 ): void {
+	// A whole program can hold more warps than a brick's list may.
+	if (levels.length < (warps + 1) * 3)
+		levels = new Float64Array((warps + 1) * 3);
 	levels[warps * 3] = symmetry & 1 ? Math.abs(x) : x;
 	levels[warps * 3 + 1] = symmetry & 2 ? Math.abs(y) : y;
 	levels[warps * 3 + 2] = symmetry & 4 ? Math.abs(z) : z;

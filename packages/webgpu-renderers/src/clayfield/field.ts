@@ -13,6 +13,7 @@ import {
 	GROUP_END,
 	isWarp,
 	MAX_WARPS,
+	OP,
 } from "./layout.js";
 import {
 	type Aabb,
@@ -88,6 +89,12 @@ interface BrickList {
 	/** How far detail can move the surface, and the bound with it. */
 	relief: number;
 	detailed: number;
+	/**
+	 * Detail records that close the list (nothing after them reads the
+	 * field), and how far the detail before them can move the surface.
+	 */
+	trailing: number;
+	buried: number;
 }
 
 /** How much a warp steepens the field in a region (Lipschitz - 1). */
@@ -103,18 +110,20 @@ function stretchIn(op: OpInfo, region: Aabb): number {
 }
 
 /**
- * The records that can change the field inside `box`, in program order.
- * Walking backwards, the box grows by what each kept record can move: an
- * earlier record matters if it reaches where the material came from.
+ * The records that can change the field inside `box`, in program order
+ * (every record for no box). Walking backwards, the box grows by what each
+ * kept record can move: an earlier record matters if it reaches where the
+ * material came from.
  */
-function gather(info: OpInfo[], box: Aabb): BrickList {
+function gather(info: OpInfo[], box: Aabb | null): BrickList {
 	const kept: number[] = [];
 	const stretch = new Map<number, number>();
 	let region = box;
 	for (let i = info.length - 1; i >= 0; i--) {
 		const op = info[i];
-		if (op.box && !overlaps(region, op.box)) continue;
+		if (region && op.box && !overlaps(region, op.box)) continue;
 		kept.push(i);
+		if (!region) continue;
 		stretch.set(i, 1 + stretchIn(op, region));
 		if (op.shift > 0) region = growBox(region, op.shift);
 	}
@@ -135,12 +144,29 @@ function gather(info: OpInfo[], box: Aabb): BrickList {
 		const ends = next === undefined || info[next].group !== op.group;
 		return ends ? (i | GROUP_END) >>> 0 : i;
 	});
-	if (warps > MAX_WARPS) {
+	if (box && warps > MAX_WARPS) {
 		throw new Error(
 			`Clay: ${warps} warp steps overlap in one region (limit ${MAX_WARPS}). Use smaller grab / twist / bulge amounts, or spread them out.`,
 		);
 	}
-	return { entries, warps, lipschitz, relief, detailed };
+	let trailing = 0;
+	let buried = relief;
+	while (
+		trailing < kept.length &&
+		info[kept[kept.length - 1 - trailing]].type === OP.detail
+	) {
+		buried -= info[kept[kept.length - 1 - trailing]].relief;
+		trailing++;
+	}
+	return {
+		entries,
+		warps,
+		lipschitz,
+		relief,
+		detailed,
+		trailing,
+		buried: Math.max(0, buried),
+	};
 }
 
 interface Sample {
@@ -167,6 +193,8 @@ export class ClayField {
 	private cellOffset: Uint32Array;
 	private cellCount: Uint32Array;
 	private cellWarps: Uint8Array;
+	/** The whole program as one list: offset, count, warps. */
+	private whole: [number, number, number];
 	private scratch = new Float64Array(5);
 
 	constructor(options: ClayGeometryOptions) {
@@ -177,7 +205,7 @@ export class ClayField {
 
 		const bounds = fitBounds(program, options);
 		const extent = bounds.max.map((v, k) => v - bounds.min[k]) as V3;
-		const along = Math.min(48, Math.max(4, Math.round(options.bricks ?? 16)));
+		const along = Math.min(48, Math.max(4, Math.round(options.bricks ?? 32)));
 		this.brickSize = Math.max(...extent) / along;
 		this.dims = extent.map((e) =>
 			Math.max(1, Math.ceil(e / this.brickSize - 1e-6)),
@@ -193,7 +221,7 @@ export class ClayField {
 		this.cellWarps = new Uint8Array(cells);
 		const lists: number[] = [];
 		const bricks: number[][] = [];
-		const cellBounds = new Float32Array(cells * 3);
+		const cellBounds = new Float32Array(cells * 5);
 		const s = this.brickSize;
 		const margin = s * BRICK_MARGIN;
 		const reach = (s / 2 + margin) * Math.sqrt(3);
@@ -207,9 +235,21 @@ export class ClayField {
 			this.cellOffset[cell] = lists.length;
 			this.cellCount[cell] = list.entries.length;
 			this.cellWarps[cell] = list.warps;
-			cellBounds.set([list.lipschitz, list.relief, list.detailed], cell * 3);
+			cellBounds.set(
+				[
+					list.lipschitz,
+					list.relief,
+					list.detailed,
+					list.buried,
+					list.trailing,
+				],
+				cell * 5,
+			);
 			for (const e of list.entries) lists.push(e);
 		}
+		const whole = gather(program.info, null);
+		this.whole = [lists.length, whole.entries.length, whole.warps];
+		for (const e of whole.entries) lists.push(e);
 		this.lists = new Uint32Array(lists);
 		this.grid = new Uint32Array(cells);
 		for (let cell = 0; cell < cells; cell++) {
@@ -220,7 +260,8 @@ export class ClayField {
 				origin[1] + s / 2,
 				origin[2] + s / 2,
 			);
-			const [lipschitz, relief, detailed] = cellBounds.subarray(cell * 3);
+			const [lipschitz, relief, detailed, buried, trailing] =
+				cellBounds.subarray(cell * 5);
 			// The surface can only cross a brick whose center is this close to
 			// it: detail moves it by `relief`, and the value there by as much.
 			if (Math.abs(d) <= lipschitz * reach + 2 * relief) {
@@ -234,6 +275,8 @@ export class ClayField {
 					1 / lipschitz,
 					relief,
 					1 / detailed,
+					buried,
+					trailing,
 				]);
 			}
 		}
@@ -245,7 +288,7 @@ export class ClayField {
 		bricks.forEach((b, i) => {
 			f.set(b.slice(0, 4), i * stride);
 			u.set(b.slice(4, 7), i * stride + 4);
-			f.set(b.slice(7, 10), i * stride + 7);
+			f.set(b.slice(7, 12), i * stride + 7);
 		});
 	}
 
@@ -295,14 +338,38 @@ export class ClayField {
 	}
 
 	/**
-	 * Signed distance bound: negative inside the clay. `footprint` is the
-	 * size of a pixel at the point (0 = full detail).
+	 * The field as a ray reads it: from the list of the brick holding the
+	 * point. It is the whole field where that brick's surface is; farther
+	 * away it leaves out what cannot reach the brick.
+	 * `footprint` is the size of a pixel at the point (0 = full detail).
 	 */
-	distance(x: number, y: number, z: number, footprint = 0): number {
+	local(x: number, y: number, z: number, footprint = 0): number {
 		return Math.min(
 			this.cellValue(this.cellAt(x, y, z), x, y, z, footprint),
 			CLAY_EMPTY,
 		);
+	}
+
+	/**
+	 * Signed distance bound from the whole program: negative inside the
+	 * clay. `footprint` is the size of a pixel at the point (0 = full detail).
+	 */
+	distance(x: number, y: number, z: number, footprint = 0): number {
+		const [offset, count, warps] = this.whole;
+		evalList(
+			this.ops,
+			this.lists,
+			offset,
+			count,
+			warps,
+			this.symmetry,
+			x,
+			y,
+			z,
+			footprint,
+			this.scratch,
+		);
+		return Math.min(this.scratch[0], CLAY_EMPTY);
 	}
 
 	sample(x: number, y: number, z: number): Sample {

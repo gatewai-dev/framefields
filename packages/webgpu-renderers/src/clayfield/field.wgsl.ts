@@ -6,8 +6,7 @@
  */
 import { GROUP_END, MAX_WARPS, OP } from "./layout.js";
 
-/** Bindings of the field's data, in bind group `group`. */
-export const clayBindingsWgsl = (group: number) => /* wgsl */ `
+export const clayStructsWgsl = /* wgsl */ `
 struct ClayBrick {
     origin    : vec3<f32>,
     size      : f32,
@@ -16,7 +15,9 @@ struct ClayBrick {
     warps     : u32,
     // 1 / the Lipschitz bound of the field without its detail.
     stepScale : f32,
-    // x = how far detail can move the surface, y = 1 / the bound with detail.
+    // x = how far detail can move the surface, y = 1 / the bound with detail,
+    // z = as x for detail that is not at the list's end, w = detail records
+    // at the list's end (nothing after them reads the field).
     detail    : vec4<f32>,
 };
 
@@ -25,14 +26,26 @@ struct ClayUniforms {
     params   : vec4<f32>, // x = symmetry bits (1 = x, 2 = y, 4 = z), y = detail filter (1 = fade octaves below a pixel, 0 = keep all)
     grid     : vec4<f32>, // xyz = the grid's corner, w = brick size
     dims     : vec4<f32>, // xyz = bricks along each axis
+    // The distance cache: x = cells along a brick's edge (0 = none),
+    // y = invocations per row of the bake dispatch, z = bricks,
+    // w = 1 while baking (the cache holds the field without its detail).
+    bake     : vec4<f32>,
 };
+`;
 
+/** Bindings of the field's data for drawing, in bind group `group`. */
+export const clayBindingsWgsl = (group: number) => /* wgsl */ `
+${clayStructsWgsl}
 @group(${group}) @binding(1) var<uniform> clay : ClayUniforms;
 @group(${group}) @binding(2) var<storage, read> clayOps : array<vec4<f32>>;
 @group(${group}) @binding(3) var<storage, read> clayLists : array<u32>;
 @group(${group}) @binding(4) var<storage, read> clayBricks : array<ClayBrick>;
 // Per grid cell: 1 + the index of its brick, 0 where the surface cannot be.
 @group(${group}) @binding(5) var<storage, read> clayGrid : array<u32>;
+// The distance cache: per brick, the field without its detail on a lattice
+// of (cells + 1)^3 points, x fastest; then, per brick, how far reading the
+// cache between lattice points can be from the field.
+@group(${group}) @binding(6) var<storage, read> clayCache : array<f32>;
 `;
 
 export const clayFieldWgsl = /* wgsl */ `
@@ -154,26 +167,36 @@ fn clayWarp(kind: i32, o: u32, p: vec3<f32>) -> vec3<f32> {
     return k * v.x * r;
 }
 
-fn clayHash(i: vec3<i32>, seed: u32) -> f32 {
-    var h = (bitcast<u32>(i.x) * 0x8da6b343u) ^ (bitcast<u32>(i.y) * 0xd8163841u) ^ (bitcast<u32>(i.z) * 0xcb1ab31fu) ^ (seed * 0x165667b1u);
-    h ^= h >> 15u;
-    h *= 0x2c1b3c6du;
-    h ^= h >> 12u;
-    h *= 0x297a2d39u;
-    h ^= h >> 15u;
-    return f32(h >> 8u) / 16777216.0 * 2.0 - 1.0;
+// Lattice values in -1..1 at four corners at once: the bits the CPU's
+// hash gives each, from products shared between the corners.
+fn clayHash4(h: vec4<u32>) -> vec4<f32> {
+    var v = h;
+    v ^= v >> vec4<u32>(15u);
+    v *= 0x2c1b3c6du;
+    v ^= v >> vec4<u32>(12u);
+    v *= 0x297a2d39u;
+    v ^= v >> vec4<u32>(15u);
+    return vec4<f32>(v >> vec4<u32>(8u)) / 16777216.0 * 2.0 - 1.0;
 }
 
 fn clayNoise(p: vec3<f32>, seed: u32) -> f32 {
     let cell = floor(p);
-    let i = vec3<i32>(cell);
+    let i = bitcast<vec3<u32>>(vec3<i32>(cell));
     let f = p - cell;
     let u = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
-    let x00 = mix(clayHash(i, seed), clayHash(i + vec3<i32>(1, 0, 0), seed), u.x);
-    let x10 = mix(clayHash(i + vec3<i32>(0, 1, 0), seed), clayHash(i + vec3<i32>(1, 1, 0), seed), u.x);
-    let x01 = mix(clayHash(i + vec3<i32>(0, 0, 1), seed), clayHash(i + vec3<i32>(1, 0, 1), seed), u.x);
-    let x11 = mix(clayHash(i + vec3<i32>(0, 1, 1), seed), clayHash(i + vec3<i32>(1, 1, 1), seed), u.x);
-    return mix(mix(x00, x10, u.y), mix(x01, x11, u.y), u.z);
+    // (i + 1) * k = i * k + k: each axis costs one product for both corners.
+    let x0 = i.x * 0x8da6b343u;
+    let y0 = i.y * 0xd8163841u;
+    let z0 = (i.z * 0xcb1ab31fu) ^ (seed * 0x165667b1u);
+    let x1 = x0 + 0x8da6b343u;
+    let y1 = y0 + 0xd8163841u;
+    let z1 = z0 ^ (i.z * 0xcb1ab31fu) ^ ((i.z * 0xcb1ab31fu) + 0xcb1ab31fu);
+    let face = vec4<u32>(x0 ^ y0, x1 ^ y0, x0 ^ y1, x1 ^ y1);
+    let near = clayHash4(face ^ vec4<u32>(z0));
+    let far = clayHash4(face ^ vec4<u32>(z1));
+    let nearRow = mix(near.xz, near.yw, vec2<f32>(u.x));
+    let farRow = mix(far.xz, far.yw, vec2<f32>(u.x));
+    return mix(mix(nearRow.x, nearRow.y, u.y), mix(farRow.x, farRow.y, u.y), u.z);
 }
 
 // How far the detail at record o raises the surface. An octave fades out
@@ -269,7 +292,9 @@ fn clayField(pIn: vec3<f32>, brick: ClayBrick, footprint: f32) -> vec4<f32> {
             let r = p - p1.xyz;
             acc.w -= clayOps[o + 2u].x * clayFade(dot(r, r), p1.w);
         } else if (kind == ${OP.detail}) {
-            acc.w -= clayDetail(o, p, footprint);
+            if (clay.bake.w < 0.5) {
+                acc.w -= clayDetail(o, p, footprint);
+            }
         } else {
             acc = clayJoin(acc, claySolid(kind, o, p), head.y, head.z, clayOps[o + 4u]);
         }
@@ -289,6 +314,28 @@ fn clayNormal(p: vec3<f32>, brick: ClayBrick, e: f32, footprint: f32) -> vec3<f3
     );
 }
 
+struct ClayShading {
+    normal : vec3<f32>,
+    color  : vec3<f32>,
+};
+
+// What shading needs at a surface point, from the same four evaluations:
+// the normal as above, and the color averaged over the pixel.
+fn clayShading(p: vec3<f32>, brick: ClayBrick, e: f32, footprint: f32) -> ClayShading {
+    let k = vec2<f32>(1.0, -1.0);
+    let a = clayField(p + k.xyy * e, brick, footprint);
+    let b = clayField(p + k.yyx * e, brick, footprint);
+    let c = clayField(p + k.yxy * e, brick, footprint);
+    let d = clayField(p + k.xxx * e, brick, footprint);
+    return ClayShading(
+        normalize(k.xyy * a.w + k.yyx * b.w + k.yxy * c.w + k.xxx * d.w),
+        0.25 * (a.rgb + b.rgb + c.rgb + d.rgb),
+    );
+}
+`;
+
+/** The ray that finds the surface; needs the drawing bindings. */
+export const clayRayWgsl = /* wgsl */ `
 struct ClayRay {
     origin    : vec3<f32>, // field space
     dir       : vec3<f32>, // field space, per unit of world distance
@@ -306,18 +353,109 @@ struct ClayHit {
 
 const CLAY_MAX_STEPS = 96;
 
-// Sphere tracing inside one brick, between t0 and t1 along the ray. Steps
-// follow the field's Lipschitz bound; a step that still lands inside is
-// bisected back to the surface.
-fn clayMarch(ray: ClayRay, brick: ClayBrick, t0: f32, t1: f32) -> ClayHit {
+// The cached smooth field at a point of a brick: trilinear between
+// the lattice points around it.
+fn clayCached(p: vec3<f32>, index: u32, brick: ClayBrick) -> f32 {
+    let cells = u32(clay.bake.x);
+    let side = cells + 1u;
+    let u = clamp((p - brick.origin) / brick.size, vec3<f32>(0.0), vec3<f32>(1.0)) * f32(cells);
+    let lo = min(vec3<u32>(u), vec3<u32>(cells - 1u));
+    let f = u - vec3<f32>(lo);
+    let at = index * side * side * side + (lo.z * side + lo.y) * side + lo.x;
+    let dy = side;
+    let dz = side * side;
+    let x00 = mix(clayCache[at], clayCache[at + 1u], f.x);
+    let x10 = mix(clayCache[at + dy], clayCache[at + dy + 1u], f.x);
+    let x01 = mix(clayCache[at + dz], clayCache[at + dz + 1u], f.x);
+    let x11 = mix(clayCache[at + dz + dy], clayCache[at + dz + dy + 1u], f.x);
+    return mix(mix(x00, x10, f.y), mix(x01, x11, f.y), f.z);
+}
+
+// The detail records that close a brick's list, summed at a point: with
+// the cache they give the field without evaluating the rest of the list.
+fn clayTrailingDetail(pIn: vec3<f32>, brick: ClayBrick, footprint: f32) -> f32 {
+    let bits = u32(clay.params.x);
+    let p = select(pIn, abs(pIn), vec3<bool>((bits & 1u) != 0u, (bits & 2u) != 0u, (bits & 4u) != 0u));
+    var sum = 0.0;
+    for (var n = 0u; n < u32(brick.detail.w); n++) {
+        let o = (clayLists[brick.offset + brick.count - 1u - n] & ~CLAY_GROUP_END) * 5u;
+        sum += clayDetail(o, p, footprint);
+    }
+    return sum;
+}
+
+// How far the cached value can be from the field in a brick: the cache's
+// own error there, and detail it holds no record of.
+fn clayCacheBlur(index: u32, brick: ClayBrick) -> f32 {
+    let side = u32(clay.bake.x) + 1u;
+    return clayCache[u32(clay.bake.z) * side * side * side + index] + brick.detail.z;
+}
+
+// The field at a point of the ray: from the cache (with the detail on top
+// of it) where that is trusted, else evaluated.
+fn clayAlong(ray: ClayRay, t: f32, index: u32, brick: ClayBrick, trusted: bool) -> f32 {
+    let p = ray.origin + ray.dir * t;
+    let footprint = max(length(ray.spread0 + ray.spread1 * t), 1e-6) * clay.params.y;
+    if (trusted) {
+        return clayCached(p, index, brick) - clayTrailingDetail(p, brick, footprint);
+    }
+    return clayField(p, brick, footprint).w;
+}
+
+// Sphere tracing inside one brick, between t0 and t1 along the ray. While
+// the cache (with the detail on top of it) shows the ray clear of the
+// surface it sets the step, for a few reads. At the surface the cache
+// decides where it places the surface within a tenth of a pixel; otherwise
+// (close up, or in a brick it fits badly) the field itself is evaluated.
+// Steps follow the field's Lipschitz bound; one that still lands inside is
+// bisected back.
+fn clayMarch(ray: ClayRay, index: u32, t0: f32, t1: f32) -> ClayHit {
+    let brick = clayBricks[index];
     let speed = length(ray.dir);
+    let cached = clay.bake.x > 0.5;
+    var blur = 0.0;
+    if (cached) {
+        blur = clayCacheBlur(index, brick);
+    }
     var t = t0;
     var before = t0;
     var best = 1e9;
     var bestT = t0;
     for (var i = 0; i < CLAY_MAX_STEPS; i++) {
         let footprint = max(length(ray.spread0 + ray.spread1 * t), 1e-6);
-        let d = clayField(ray.origin + ray.dir * t, brick, footprint * clay.params.y).w;
+        let trusted = cached && blur <= 0.1 * footprint;
+        var d : f32;
+        if (cached) {
+            let p = ray.origin + ray.dir * t;
+            let base = clayCached(p, index, brick);
+            // Outside the shell the trailing detail can reach, the smooth
+            // field alone bounds the distance: no detail to evaluate.
+            let outside = base - blur - (brick.detail.x - brick.detail.z);
+            if (outside > footprint && t < t1) {
+                before = t;
+                t = min(t + outside * brick.stepScale / speed, t1);
+                continue;
+            }
+            d = base - clayTrailingDetail(p, brick, footprint * clay.params.y);
+            let clear = d - blur;
+            // Within a pixel of the surface the distance also sets how much
+            // of the pixel an edge covers: only a trusted cache may say.
+            if (t < t1 && (clear > footprint || (trusted && clear > 0.25 * footprint))) {
+                let ratio = d / footprint;
+                if (ratio < best) {
+                    best = ratio;
+                    bestT = t;
+                }
+                before = t;
+                t = min(t + max(clear * brick.detail.y, 0.25 * footprint) / speed, t1);
+                continue;
+            }
+            if (!trusted) {
+                d = clayAlong(ray, t, index, brick, false);
+            }
+        } else {
+            d = clayAlong(ray, t, index, brick, false);
+        }
         if (d < 0.0) {
             if (i == 0) {
                 // Already inside on entry: the surface is the brick's face
@@ -328,8 +466,7 @@ fn clayMarch(ray: ClayRay, brick: ClayBrick, t0: f32, t1: f32) -> ClayHit {
             var hi = t;
             for (var j = 0; j < 6; j++) {
                 let midT = 0.5 * (lo + hi);
-                let fp = max(length(ray.spread0 + ray.spread1 * midT), 1e-6);
-                if (clayField(ray.origin + ray.dir * midT, brick, fp * clay.params.y).w < 0.0) {
+                if (clayAlong(ray, midT, index, brick, trusted) < 0.0) {
                     hi = midT;
                 } else {
                     lo = midT;
@@ -355,6 +492,23 @@ fn clayMarch(ray: ClayRay, brick: ClayBrick, t0: f32, t1: f32) -> ClayHit {
         t = min(t + max(safe, 0.25 * footprint) / speed, t1);
     }
     return ClayHit(clamp(1.0 - best, 0.0, 1.0), bestT);
+}
+
+// Which way a surface point faces, for a shadow map's depth bias: from the
+// cache where there is one (the bias needs no more), else from the field.
+fn clayFacing(p: vec3<f32>, index: u32, e: f32) -> vec3<f32> {
+    let brick = clayBricks[index];
+    if (clay.bake.x < 0.5) {
+        return clayNormal(p, brick, e, 0.0);
+    }
+    let k = vec2<f32>(1.0, -1.0);
+    let h = max(e, 0.5 * brick.size / clay.bake.x);
+    return normalize(
+        k.xyy * clayCached(p + k.xyy * h, index, brick) +
+        k.yyx * clayCached(p + k.yyx * h, index, brick) +
+        k.yxy * clayCached(p + k.yxy * h, index, brick) +
+        k.xxx * clayCached(p + k.xxx * h, index, brick) + vec3<f32>(1e-12),
+    );
 }
 
 // The ray through a fragment, in the field's space.
@@ -436,7 +590,7 @@ fn claySurface(fragXY: vec2<f32>, screen: vec2<f32>, invViewProj: mat4x4<f32>, b
         let tExit = min(min(leave.x, min(leave.y, leave.z)), span.y);
         let id = clayGrid[u32((cell.z * dims.y + cell.y) * dims.x + cell.x)];
         if (id != 0u && tExit > t) {
-            let found = clayMarch(ray, clayBricks[id - 1u], t, tExit);
+            let found = clayMarch(ray, id - 1u, t, tExit);
             if (found.cover >= 1.0) {
                 out.hit = clayPointAt(ray, found, id - 1u);
                 break;

@@ -140,7 +140,10 @@ export interface ClayGeometryOptions {
 	 * the origin. Default: fitted to the operations.
 	 */
 	bounds?: V3;
-	/** Bricks along the longest side, 4..48: more bricks, shorter work per pixel. Default 16. */
+	/**
+	 * Bricks along the longest side, 4..48. More bricks give each pixel less
+	 * to evaluate and a finer distance cache, for more memory. Default 32.
+	 */
 	bricks?: number;
 	/**
 	 * Cells along the longest side of the triangle mesh the field is turned

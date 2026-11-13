@@ -164,13 +164,15 @@ describe("ClayField", () => {
 		const fine = clay(ops, { bricks: 24 });
 		let compared = 0;
 		for (const [x, y, z] of points(4000, 150)) {
-			const a = coarse.distance(x, y, z);
-			// Away from the surface a brick's list only bounds the distance.
-			if (Math.abs(a) > 6) continue;
-			expect(fine.distance(x, y, z)).toBeCloseTo(a, 3);
+			const whole = fine.distance(x, y, z);
+			expect(coarse.distance(x, y, z)).toBeCloseTo(whole, 9);
+			// A brick's list is the whole field only near the surface.
+			if (Math.abs(whole) > 1) continue;
+			expect(fine.local(x, y, z)).toBeCloseTo(whole, 3);
+			expect(coarse.local(x, y, z)).toBeCloseTo(whole, 3);
 			compared++;
 		}
-		expect(compared).toBeGreaterThan(100);
+		expect(compared).toBeGreaterThan(20);
 	});
 
 	it("never skips a brick the surface crosses", () => {

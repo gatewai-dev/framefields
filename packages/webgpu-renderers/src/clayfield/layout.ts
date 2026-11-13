@@ -40,6 +40,7 @@ export const GROUP_END = 0x80000000;
 
 /**
  * Bytes per brick record: origin (vec3), size, list offset, count, warps,
- * step scale, then relief, detailed step scale and two unused floats.
+ * step scale, then relief, detailed step scale, the relief of detail that
+ * is not at the list's end, and the count of detail records at its end.
  */
 export const BRICK_BYTES = 48;

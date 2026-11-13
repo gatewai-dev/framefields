@@ -12,6 +12,7 @@
  *   npx framefields renders              the renders named in framefields.json
  *   npx framefields render <name>        render on this machine's GPU
  *   npx framefields render <name> --cloud    render on api.framefields.dev
+ *   npx framefields render <name> --model    the 3D scene as glTF (.glb)
  *   npx framefields preview <name>       play it in the browser
  */
 import { existsSync, readFileSync } from "node:fs";
@@ -107,6 +108,12 @@ Options for check:
 Options for render and preview:
   --export, --select, --codec, --quality and --output (render) override the
   named render's fields, locally and with --cloud.
+  --model           render: write the 3D scene as glTF 2.0 (.glb) instead of
+                    the video: meshes in their pose, materials, textures,
+                    camera and lights, 100 px to the meter, y up. Opens in
+                    Blender, Maya, Unreal, Unity and three.js. Default output
+                    is the video's path as .glb.
+  --frame <n>       render --model: the frame to export (default 0).
 
 Options for render --cloud:
   --workers <n|auto>  1 (default) renders on one GPU. auto measures the film
@@ -202,6 +209,8 @@ async function main(argv: string[]): Promise<number> {
 			timeout: { type: "string" },
 			"warnings-as-errors": { type: "boolean" },
 			cloud: { type: "boolean" },
+			model: { type: "boolean" },
+			frame: { type: "string" },
 			workers: { type: "string" },
 			"max-workers": { type: "string" },
 			plan: { type: "boolean" },
@@ -255,6 +264,20 @@ async function main(argv: string[]): Promise<number> {
 			overwrite: values.overwrite,
 			json: values.json,
 		});
+	if (command === "render" && values.model && values.cloud) {
+		process.stderr.write(
+			"render --model runs on this machine; drop --cloud.\n",
+		);
+		return 2;
+	}
+	const modelFrame = values.model ? Number(values.frame ?? 0) : undefined;
+	if (
+		modelFrame !== undefined &&
+		!(Number.isInteger(modelFrame) && modelFrame >= 0)
+	) {
+		process.stderr.write("--frame must be a frame number (0, 1, 2 …).\n");
+		return 2;
+	}
 	if (command === "preview" || (command === "render" && !values.cloud)) {
 		if (names.length > 1) {
 			process.stderr.write(
@@ -271,6 +294,7 @@ async function main(argv: string[]): Promise<number> {
 				codec: values.codec,
 				quality: values.quality,
 				output: values.output,
+				modelFrame: command === "render" ? modelFrame : undefined,
 			},
 			log,
 		);

@@ -353,31 +353,6 @@ importers:
         specifier: ^4.1.11
         version: 4.1.11(@opentelemetry/api@1.9.0)(@types/node@24.10.14)(@vitest/coverage-v8@4.1.11)(jsdom@29.1.0(@noble/hashes@2.0.1)(canvas@3.2.3))(vite@8.2.1(@types/node@24.10.14)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.3))
 
-  examples/25_bakery:
-    dependencies:
-      '@framefields/compositions':
-        specifier: workspace:*
-        version: link:../../packages/compositions
-      framefields:
-        specifier: workspace:*
-        version: link:../../packages/framefields
-      mediabunny:
-        specifier: ^1.61.6
-        version: 1.61.6
-    devDependencies:
-      '@framefields/tsconfig':
-        specifier: workspace:*
-        version: link:../../packages/tsconfig
-      '@types/node':
-        specifier: ^24.1.0
-        version: 24.10.14
-      tsx:
-        specifier: ^4.20.3
-        version: 4.21.0
-      typescript:
-        specifier: ^5.8.3
-        version: 5.9.3
-
   examples/26_mac_keyboard_from_3d_primitives:
     dependencies:
       framefields:
@@ -569,69 +544,6 @@ importers:
         specifier: 2.0.2
         version: 2.0.2
 
-  examples/34_spatial_styling:
-    dependencies:
-      framefields:
-        specifier: workspace:*
-        version: link:../../packages/framefields
-    devDependencies:
-      '@framefields/tsconfig':
-        specifier: workspace:*
-        version: link:../../packages/tsconfig
-      '@types/node':
-        specifier: ^24.1.0
-        version: 24.10.14
-      tsx:
-        specifier: ^4.20.3
-        version: 4.21.0
-      typescript:
-        specifier: ^5.8.3
-        version: 5.9.3
-      vitest:
-        specifier: ^4.1.11
-        version: 4.1.11(@opentelemetry/api@1.9.0)(@types/node@24.10.14)(@vitest/coverage-v8@4.1.11)(jsdom@29.1.0(@noble/hashes@2.0.1)(canvas@3.2.3))(vite@8.2.1(@types/node@24.10.14)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.3))
-
-  examples/35_robot_uprising:
-    dependencies:
-      framefields:
-        specifier: workspace:*
-        version: link:../../packages/framefields
-    devDependencies:
-      '@framefields/tsconfig':
-        specifier: workspace:*
-        version: link:../../packages/tsconfig
-      '@types/node':
-        specifier: ^24.1.0
-        version: 24.10.14
-      tsx:
-        specifier: ^4.20.3
-        version: 4.21.0
-      typescript:
-        specifier: ^5.8.3
-        version: 5.9.3
-      vitest:
-        specifier: ^4.1.11
-        version: 4.1.11(@opentelemetry/api@1.9.0)(@types/node@24.10.14)(@vitest/coverage-v8@4.1.11)(jsdom@29.1.0(@noble/hashes@2.0.1)(canvas@3.2.3))(vite@8.2.1(@types/node@24.10.14)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.3))
-
-  examples/37_lumen:
-    dependencies:
-      framefields:
-        specifier: workspace:*
-        version: link:../../packages/framefields
-    devDependencies:
-      '@framefields/tsconfig':
-        specifier: workspace:*
-        version: link:../../packages/tsconfig
-      '@types/node':
-        specifier: ^24.1.0
-        version: 24.10.14
-      tsx:
-        specifier: ^4.20.3
-        version: 4.21.0
-      typescript:
-        specifier: ^5.8.3
-        version: 5.9.3
-
   examples/41_hawking_radiation:
     dependencies:
       framefields:
@@ -710,6 +622,28 @@ importers:
       '@types/node':
         specifier: ^24.1.0
         version: 24.10.14
+      tsx:
+        specifier: ^4.20.3
+        version: 4.21.0
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+
+  examples/45_sculpture:
+    dependencies:
+      framefields:
+        specifier: workspace:*
+        version: link:../../packages/framefields
+    devDependencies:
+      '@framefields/tsconfig':
+        specifier: workspace:*
+        version: link:../../packages/tsconfig
+      '@types/node':
+        specifier: ^24.1.0
+        version: 24.10.14
+      sharp:
+        specifier: ^0.35.4
+        version: 0.35.5(@types/node@24.10.14)
       tsx:
         specifier: ^4.20.3
         version: 4.21.0
@@ -3130,9 +3064,6 @@ importers:
       '@framefields/core':
         specifier: workspace:*
         version: link:../core
-      '@framefields/gltf-fixtures':
-        specifier: workspace:*
-        version: link:../gltf-fixtures
       '@framefields/node-audio-compressor':
         specifier: workspace:*
         version: link:../../nodes/node-audio-compressor
@@ -3310,6 +3241,9 @@ importers:
       '@types/node':
         specifier: ^24.1.0
         version: 24.10.14
+      gltf-validator:
+        specifier: 2.0.0-dev.3.10
+        version: 2.0.0-dev.3.10
       jsdom:
         specifier: ^29.1.0
         version: 29.1.0(@noble/hashes@2.0.1)(canvas@3.2.3)
@@ -3338,33 +3272,6 @@ importers:
       onnxruntime-web:
         specifier: ^1.24.0
         version: 1.30.0
-
-  packages/gltf-fixtures:
-    devDependencies:
-      '@framefields/tsconfig':
-        specifier: workspace:*
-        version: link:../tsconfig
-      '@framefields/webgpu-renderers':
-        specifier: workspace:*
-        version: link:../webgpu-renderers
-      '@types/node':
-        specifier: ^24.1.0
-        version: 24.10.14
-      gltf-validator:
-        specifier: 2.0.0-dev.3.10
-        version: 2.0.0-dev.3.10
-      tsdown:
-        specifier: ^0.19.0
-        version: 0.19.0(oxc-resolver@11.19.1)(typescript@5.9.3)
-      tsx:
-        specifier: ^4.20.3
-        version: 4.21.0
-      typescript:
-        specifier: ^5.8.3
-        version: 5.9.3
-      vitest:
-        specifier: ^4.1.11
-        version: 4.1.11(@opentelemetry/api@1.9.0)(@types/node@24.10.14)(@vitest/coverage-v8@4.1.11)(jsdom@29.1.0(@noble/hashes@2.0.1)(canvas@3.2.3))(vite@8.2.1(@types/node@24.10.14)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.3))
 
   packages/library:
     dependencies:
@@ -3916,6 +3823,9 @@ importers:
       '@vitest/coverage-v8':
         specifier: ^4.1.11
         version: 4.1.11(vitest@4.1.11)
+      gltf-validator:
+        specifier: 2.0.0-dev.3.10
+        version: 2.0.0-dev.3.10
       tsdown:
         specifier: ^0.19.0
         version: 0.19.0(oxc-resolver@11.19.1)(typescript@5.8.3)

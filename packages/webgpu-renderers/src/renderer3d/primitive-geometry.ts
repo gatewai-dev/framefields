@@ -1,4 +1,7 @@
 import earcut from "earcut";
+import { clayField } from "../clayfield/field.js";
+import { CLAY_RESOLUTION, meshClay } from "../clayfield/mesh.js";
+import type { ClayGeometryOptions } from "../clayfield/program.js";
 import type { Material3D, Mesh3DData, Model3DData } from "../loaders/types.js";
 import { Path3D } from "../math3d/path3d.js";
 import type { Vec3 } from "../math3d/vector3.js";
@@ -312,7 +315,8 @@ export type PrimitiveGeometryOptions =
 	| Points3DGeometryOptions
 	| ShardGeometryOptions
 	| TerrainGeometryOptions
-	| SdfGeometryOptions;
+	| SdfGeometryOptions
+	| ClayGeometryOptions;
 
 class MeshBuilder {
 	positions: number[] = [];
@@ -2614,7 +2618,10 @@ export function generatePrimitiveGeometry(
 	}
 
 	const mb = new MeshBuilder();
-	if (options.type === "roundedBox") roundedBox(options, mb);
+	const clay = options.type === "clay" ? clayField(options) : undefined;
+	if (clay && options.type === "clay")
+		adopt(mb, meshClay(clay, options.resolution ?? CLAY_RESOLUTION));
+	else if (options.type === "roundedBox") roundedBox(options, mb);
 	else if (options.type === "sphere") sphere(options, mb);
 	else if (options.type === "cylinder") cylinder(options, mb);
 	else if (options.type === "torus") torus(options, mb);
@@ -2636,6 +2643,9 @@ export function generatePrimitiveGeometry(
 
 	const name = options.type;
 	const mesh = mb.build(name);
+	// Opaque draws render the field itself unless asked for its triangles.
+	if (clay && options.type === "clay" && options.draw !== "mesh")
+		mesh.clay = clay;
 	const defaultShading =
 		options.type === "line3d" ||
 		(options.type === "points3d" && (options.pointSize ?? 0) <= 0)

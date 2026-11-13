@@ -8,7 +8,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { GltfDocument } from "@framefields/gltf-fixtures";
+import { GltfDocument } from "@framefields/webgpu-renderers/gltf";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
 	Composition,

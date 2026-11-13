@@ -158,6 +158,17 @@ export function renderOutput(
 	);
 }
 
+/** Where `render --model` writes: `--output`, else the video's path as `.glb`. */
+export function modelOutput(
+	target: { name?: string; entry?: string },
+	spec: RenderSpec | undefined,
+	output?: string,
+): string {
+	return (
+		output ?? renderOutput(target, spec, "h264").replace(/\.[^./\\]+$/, ".glb")
+	);
+}
+
 /**
  * What `framefields render [arg]` renders: a render named in framefields.json,
  * or a module path; with no argument, the project's only named render.

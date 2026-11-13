@@ -3,9 +3,10 @@
  * warnings, and the engine's own loader reads back exactly what was written
  * (geometry, 32-bit indices, skins, named morph targets, materials, clips).
  */
-import { denseMorphDeltas, parseGLB } from "@framefields/webgpu-renderers";
+
 import { validateBytes } from "gltf-validator";
 import { describe, expect, it } from "vitest";
+import { denseMorphDeltas, parseGLB } from "../index.js";
 import { encodePng, GltfDocument, linearRgba, Skeleton } from "./index.js";
 import { readPng } from "./read-png.test-util.js";
 
@@ -319,6 +320,83 @@ describe("GltfDocument", () => {
 		expect(() => doc.addDriver({ joint: "a", from: "b", rotate: {} })).toThrow(
 			/finite share/,
 		);
+	});
+
+	it("writes cameras, punctual lights and matrix nodes that validate and place their meshes", async () => {
+		const doc = new GltfDocument();
+		const { positions, normals, indices } = strip(1, 10);
+		const mesh = doc.addMesh({
+			primitives: [
+				{ positions, normals, indices, material: doc.addMaterial({}) },
+			],
+		});
+		// Column-major: turned a quarter about z, then moved to (3, 4, 5).
+		const placed = doc.addNode({
+			name: "placed",
+			mesh,
+			matrix: [0, 1, 0, 0, -1, 0, 0, 0, 0, 0, 1, 0, 3, 4, 5, 1],
+		});
+		doc.addNode({
+			name: "rig",
+			children: [placed],
+			matrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+		});
+		doc.addNode({
+			name: "Camera",
+			camera: doc.addCamera({
+				fov: 40,
+				aspectRatio: 16 / 9,
+				near: 0.1,
+				far: 100,
+			}),
+			translation: [0, 1, 10],
+		});
+		doc.addNode({
+			name: "Spot",
+			light: doc.addLight({
+				type: "spot",
+				color: "#ffcc88",
+				intensity: 500,
+				range: 20,
+				innerConeAngle: 10,
+				outerConeAngle: 30,
+			}),
+		});
+		const glb = doc.toGlb();
+		expect(await validate(glb)).toMatchObject({ errors: 0, warnings: 0 });
+		const json = doc.json() as {
+			nodes: Array<{ name: string; matrix?: number[] }>;
+			cameras: Array<{ perspective: { yfov: number } }>;
+			extensions: {
+				KHR_lights_punctual: {
+					lights: Array<{ spot: { outerConeAngle: number } }>;
+				};
+			};
+		};
+		// An identity matrix is left out, as glTF's default.
+		expect(json.nodes.find((n) => n.name === "rig")?.matrix).toBeUndefined();
+		expect(json.cameras[0]?.perspective.yfov).toBeCloseTo((40 * Math.PI) / 180);
+		expect(
+			json.extensions.KHR_lights_punctual.lights[0]?.spot.outerConeAngle,
+		).toBeCloseTo((30 * Math.PI) / 180);
+		// The loader places the mesh by the matrix.
+		const model = parseGLB(glb);
+		const node = model.nodes?.find((n) => n.name === "placed");
+		expect(node?.matrix?.[12]).toBe(3);
+		expect(() =>
+			doc.addNode({
+				matrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+				translation: [1, 0, 0],
+			}),
+		).toThrow(/matrix or translation/);
+		expect(() =>
+			doc.addLight({
+				type: "spot",
+				intensity: 1,
+				innerConeAngle: 40,
+				outerConeAngle: 30,
+			}),
+		).toThrow(/cone/);
 	});
 
 	it("refuses inconsistent input where it is given", () => {

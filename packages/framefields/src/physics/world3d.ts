@@ -67,7 +67,7 @@ export interface Body3DOptions extends Omit<BodyCommonOptions, "lockRotation"> {
 	lockRotation?: boolean | { x?: boolean; y?: boolean; z?: boolean };
 	/**
 	 * Collider: `"auto"` (default) reads the Layer3D primitive (box, sphere,
-	 * cylinder), uses the exact triangles of `Layer3D.terrain` / `Layer3D.sdf`
+	 * cylinder), uses the exact triangles of `Layer3D.terrain` / `Layer3D.sdf` / `Layer3D.clay`
 	 * on static bodies, and falls back to the mesh's convex hull for models and
 	 * tapered or uneven shapes. Force `"box"`, `"sphere"`, `"cylinder"`,
 	 * `"hull"` or `"mesh"` (exact triangles; static or kinematic bodies only).
@@ -835,7 +835,7 @@ function colliderShape3D(t: LayerLike, options: Body3DOptions): Shape3D {
 		mode === "mesh" ||
 		(mode === "auto" &&
 			(options.type ?? "dynamic") !== "dynamic" &&
-			(prim.type === "terrain" || prim.type === "sdf"));
+			(prim.type === "terrain" || prim.type === "sdf" || prim.type === "clay"));
 	if (exact) {
 		const mesh = meshTriangles(t.modelData, scale);
 		if (mesh) return mesh;

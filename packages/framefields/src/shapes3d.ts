@@ -40,6 +40,8 @@ import {
 } from "./index.js";
 import type { PhysicsBody3D } from "./physics/world3d.js";
 import {
+	type Clay3DOptions,
+	clay3d,
 	type Scatter3DNode,
 	type Scatter3DOptions,
 	type Sdf3DOptions,
@@ -1685,6 +1687,22 @@ export const Layer3D = {
 	 */
 	sdf(options: Sdf3DOptions): AnimatableNode<Model3DNode> {
 		return sdf3d(options);
+	},
+
+	/**
+	 * Clayfield: a sculpture kept as a field, not a mesh, and drawn per pixel
+	 * at whatever size it has on screen. `ops` run in order: solids (sphere,
+	 * box, cylinder, capsule, torus) and brush `stroke`s add, carve or
+	 * intersect material, hard or smooth; `grab`, `twist` and `bulge` move
+	 * what is already there as an elastic solid would; `inflate` swells a
+	 * region; `detail` adds procedural relief that fades below a pixel.
+	 * `symmetry: "x"` mirrors the sculpture. Opaque draws render the field
+	 * itself (`draw: "mesh"` draws triangles instead); glass, blended and
+	 * instanced draws, path tracing, physics and scatter use a mesh of it
+	 * built at `resolution`.
+	 */
+	clay(options: Clay3DOptions): AnimatableNode<Model3DNode> {
+		return clay3d(options);
 	},
 
 	/**

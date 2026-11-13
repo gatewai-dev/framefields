@@ -1,5 +1,6 @@
 export * from "./audio-mesh-deform-pipeline.js";
 export * from "./bloom-pipeline.js";
+export * from "./display-blit.js";
 export * from "./floor-reflection-pipeline.js";
 export * from "./fracture-geometry.js";
 export * from "./glass-pipeline.js";
@@ -12,6 +13,7 @@ export * from "./primitive-geometry.js";
 export * from "./quad3d-pipeline.js";
 export * from "./renderer3d.js";
 export * from "./scatter.js";
+export * from "./scene-capture.js";
 export * from "./sdf-geometry.js";
 export * from "./shadow-depth.js";
 export * from "./shadow-frustum.js";

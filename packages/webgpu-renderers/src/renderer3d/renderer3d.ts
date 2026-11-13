@@ -2,6 +2,8 @@ import type {
 	GeometryOutlineOptions,
 	MeshAudioDeformConfig,
 } from "@framefields/core";
+import { ClayPipeline } from "../clayfield/clay-pipeline.js";
+import type { ClayField } from "../clayfield/field.js";
 import { type Color, parseColor } from "../color.js";
 import {
 	FbxLoader,
@@ -83,6 +85,7 @@ import {
 	type MeshCrowd,
 	type MeshMaterialMaps,
 	type MeshMotionPrev,
+	type MeshUniformData,
 	type MeshWind,
 	VELOCITY_DEPTH_FORMAT,
 	VELOCITY_FORMAT,
@@ -367,6 +370,7 @@ export class Renderer3D {
 	private morphPipeline: MorphPipeline;
 	public swarm3dPipeline: Swarm3DPipeline;
 	public floorReflectionPipeline: FloorReflectionPipeline;
+	private clayPipeline: ClayPipeline;
 	private dofPipeline: GPURenderPipeline;
 	private dofBindGroupLayout: GPUBindGroupLayout;
 	private cameraPool: BufferPool;
@@ -474,6 +478,14 @@ export class Renderer3D {
 			sampleCount,
 		);
 		this.mesh3dPipeline = new Mesh3DPipeline(
+			device,
+			format,
+			"depth24plus",
+			this.quad3dPipeline.cameraLayout,
+			this.quad3dPipeline.lightsLayout,
+			sampleCount,
+		);
+		this.clayPipeline = new ClayPipeline(
 			device,
 			format,
 			"depth24plus",
@@ -644,6 +656,7 @@ export class Renderer3D {
 		this.quad3dPipeline.resetPools();
 		this.slug3dPipeline.resetPools();
 		this.mesh3dPipeline.resetPools();
+		this.clayPipeline.resetPools();
 		this.audioMeshDeformPipeline.resetPools();
 		this.morphPipeline.resetPools();
 	}
@@ -1202,6 +1215,7 @@ export class Renderer3D {
 		lightCam.set(viewProj, 0);
 		lightCam[5] = 1;
 		lightCam.set(viewProj, 16);
+		lightCam.set(Matrix4Math.invert(viewProj) ?? Matrix4Math.identity(), 48);
 		lightCam[64] = position[0];
 		lightCam[65] = position[1];
 		lightCam[66] = position[2];
@@ -1232,10 +1246,17 @@ export class Renderer3D {
 		for (const c of casters) {
 			if (c.kind === "mesh") {
 				const m = this.meshModelMatrix(c.opts);
+				const buffers =
+					c.buffers ?? this.getOrCreateMeshBuffers(c.mesh, c.opts.wireframe);
+				const clay = this.fieldToDraw(buffers, c.opts);
+				if (clay) {
+					this.clayPipeline.drawShadow(pass, lightCamBindGroup, clay, m);
+					continue;
+				}
 				this.mesh3dPipeline.drawShadow(
 					pass,
 					lightCamBindGroup,
-					c.buffers ?? this.getOrCreateMeshBuffers(c.mesh, c.opts.wireframe),
+					buffers,
 					{
 						modelMatrix: m,
 						normalMatrix: c.opts.normalMatrix ?? Light3D.computeNormalMatrix(m),
@@ -2077,6 +2098,7 @@ export class Renderer3D {
 			colorBuffer,
 			mapUvBuffer,
 			skin1Buffer,
+			clay: mesh.clay,
 		};
 		this.meshBuffersCache.set(mesh, cached);
 		if (wireframe && (!mesh.topology || mesh.topology === "triangle-list"))
@@ -2242,6 +2264,70 @@ export class Renderer3D {
 				}
 			: undefined;
 
+		// A layer texture wraps by UVs, which only the triangles have.
+		const clay = texture ? undefined : this.fieldToDraw(meshBuffers, opts);
+		const data: MeshUniformData = {
+			glass,
+			backdrop: opts.backdrop,
+			modelMatrix: m,
+			normalMatrix,
+			colorTint,
+			opacity,
+			twoSided,
+			wireframe,
+			transparent: opts.transparent ?? (opacity < 1 || colorTint[3] < 1),
+			isSkinned,
+			skinningMatrices,
+			material: material === "unlit" || material === "toon" ? material : "lit",
+			shadeColor,
+			alphaCutoff,
+			shininess,
+			roughness: glassy ? Math.min(roughness ?? 0.05, 0.3) : roughness,
+			specularIntensity,
+			ambientIntensity,
+			metallic,
+			emissive: opts.emissive,
+			emissiveIntensity: opts.emissiveIntensity,
+			toon: opts.toon,
+			outline: opts.outline,
+			matte: opts.matte,
+			maps: opts.maps,
+			uvRect: opts.uvRect,
+			wind: opts.wind,
+			crowd: opts.crowd,
+			clearcoat: opts.clearcoat,
+			clearcoatRoughness: opts.clearcoatRoughness,
+			anisotropy: opts.anisotropy,
+			anisotropyRotation: opts.anisotropyRotation,
+			subsurface: opts.subsurface,
+			subsurfaceColor: opts.subsurfaceColor,
+			sheen: opts.sheen,
+			sheenColor: opts.sheenColor,
+			sheenRoughness: opts.sheenRoughness,
+			iridescence: opts.iridescence,
+			iridescenceThickness: opts.iridescenceThickness,
+			iridescenceIor: opts.iridescenceIor,
+			triplanar: opts.triplanar,
+			triplanarScale: opts.triplanarScale,
+			triplanarSharpness: opts.triplanarSharpness,
+			isInstanced: Boolean(
+				opts.instanceBuffer || (opts.instanceCount && opts.instanceCount > 1),
+			),
+			instanceBuffer: opts.instanceBuffer,
+			matrixInstances: opts.matrixInstances,
+		};
+		if (clay) {
+			this.clayPipeline.draw(
+				pass,
+				cameraBindGroup,
+				lightsBindGroup,
+				clay,
+				data,
+				useMrt,
+				this.passWritesHdr,
+			);
+			return;
+		}
 		this.mesh3dPipeline.draw(
 			pass,
 			cameraBindGroup,
@@ -2249,62 +2335,38 @@ export class Renderer3D {
 			meshBuffers,
 			texture,
 			sampler,
-			{
-				glass,
-				backdrop: opts.backdrop,
-				modelMatrix: m,
-				normalMatrix,
-				colorTint,
-				opacity,
-				twoSided,
-				wireframe,
-				transparent: opts.transparent ?? (opacity < 1 || colorTint[3] < 1),
-				isSkinned,
-				skinningMatrices,
-				material:
-					material === "unlit" || material === "toon" ? material : "lit",
-				shadeColor,
-				alphaCutoff,
-				shininess,
-				roughness: glassy ? Math.min(roughness ?? 0.05, 0.3) : roughness,
-				specularIntensity,
-				ambientIntensity,
-				metallic,
-				emissive: opts.emissive,
-				emissiveIntensity: opts.emissiveIntensity,
-				toon: opts.toon,
-				outline: opts.outline,
-				matte: opts.matte,
-				maps: opts.maps,
-				uvRect: opts.uvRect,
-				wind: opts.wind,
-				crowd: opts.crowd,
-				clearcoat: opts.clearcoat,
-				clearcoatRoughness: opts.clearcoatRoughness,
-				anisotropy: opts.anisotropy,
-				anisotropyRotation: opts.anisotropyRotation,
-				subsurface: opts.subsurface,
-				subsurfaceColor: opts.subsurfaceColor,
-				sheen: opts.sheen,
-				sheenColor: opts.sheenColor,
-				sheenRoughness: opts.sheenRoughness,
-				iridescence: opts.iridescence,
-				iridescenceThickness: opts.iridescenceThickness,
-				iridescenceIor: opts.iridescenceIor,
-				triplanar: opts.triplanar,
-				triplanarScale: opts.triplanarScale,
-				triplanarSharpness: opts.triplanarSharpness,
-				isInstanced: Boolean(
-					opts.instanceBuffer || (opts.instanceCount && opts.instanceCount > 1),
-				),
-				instanceBuffer: opts.instanceBuffer,
-				matrixInstances: opts.matrixInstances,
-			},
+			data,
 			useMrt,
 			this.passWritesHdr,
 			opts.instanceCount ?? 1,
 			opts.firstInstance ?? 0,
 		);
+	}
+
+	/**
+	 * The clay field to draw in place of a mesh's triangles: an opaque,
+	 * solid, single draw of a mesh taken from one. Glass, blended, matted,
+	 * wireframe and instanced draws use the triangles.
+	 */
+	private fieldToDraw(
+		buffers: GPUMeshBuffers,
+		opts: DrawMesh3DOpts,
+	): ClayField | undefined {
+		if (!buffers.clay) return undefined;
+		const { material, colorTint, opacity = 1 } = opts;
+		const blended =
+			opts.transparent ??
+			(opacity < 1 || (colorTint ? colorTint[3] < 1 : false));
+		const triangles =
+			blended ||
+			opts.wireframe ||
+			opts.matte ||
+			opts.instanceBuffer ||
+			(opts.instanceCount ?? 1) > 1 ||
+			material === "glass" ||
+			material === "acrylic" ||
+			material === "frosted";
+		return triangles ? undefined : buffers.clay;
 	}
 
 	/**

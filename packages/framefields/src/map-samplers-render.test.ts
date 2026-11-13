@@ -8,7 +8,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { encodePng, GltfDocument } from "@framefields/gltf-fixtures";
+import { encodePng, GltfDocument } from "@framefields/webgpu-renderers/gltf";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Composition, Layer, type LayoutNode } from "./index.js";
 import { decodePngPixels } from "./test-utils/pixels.js";

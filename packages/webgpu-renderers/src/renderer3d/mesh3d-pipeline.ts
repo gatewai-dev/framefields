@@ -1,3 +1,4 @@
+import type { ClayField } from "../clayfield/field.js";
 import { BufferPool } from "../renderer2d/buffer-pool.js";
 import { meshVelocityWgsl } from "../shaders/mesh-velocity.js";
 import { mesh3dWgsl } from "../shaders/mesh3d.js";
@@ -171,6 +172,8 @@ export interface GPUMeshBuffers {
 	skin1Buffer?: GPUBuffer;
 	wireIndexBuffer?: GPUBuffer;
 	wireIndexCount?: number;
+	/** The clay field the mesh was taken from: opaque draws render the field, not these triangles. */
+	clay?: ClayField;
 }
 
 /** uvRect, then wind (amplitude rad, angular frequency, wave scale, time), then (dir x, dir z, baseY, 1 / height). */
@@ -191,6 +194,67 @@ function packUvAndWind(out: Float32Array, at: number, data: MeshUniformData) {
 	out[at + 9] = w.direction[1] / len;
 	out[at + 10] = w.baseY;
 	out[at + 11] = 1 / w.height;
+}
+
+/** Fills the mesh `ModelUniforms` block (`MESH_MODEL_FLOATS` floats) for a draw. */
+export function packMeshModel(out: Float32Array, data: MeshUniformData): void {
+	writeModelTransform(out, data.modelMatrix, data.normalMatrix, data.colorTint);
+
+	out[36] = data.opacity ?? 1.0;
+	out[37] = data.twoSided ? 1.0 : 0.0;
+	out[38] = data.isSkinned || data.crowd ? 1.0 : 0.0;
+	// Bit 0 selects instance data; bit 1 the extra map UVs; bit 4 the second skin set.
+	out[39] =
+		(data.isInstanced || data.instanceBuffer ? 1 : 0) +
+		(data.hasMapUvs ? 2 : 0) +
+		(data.matrixInstances ? 4 : 0) +
+		(data.crowd ? 8 : 0) +
+		(data.hasSkin1 ? 16 : 0);
+
+	const shininess =
+		data.roughness !== undefined
+			? Math.max(1, (1 - data.roughness) * 128)
+			: (data.shininess ?? 32.0);
+	const specInt =
+		data.metallic !== undefined
+			? data.metallic
+			: (data.specularIntensity ?? 0.5);
+	const ambientInt = data.ambientIntensity ?? 1.0;
+	const materialMode =
+		data.material === "unlit" ? 0.0 : data.material === "toon" ? 2.0 : 1.0;
+
+	out[40] = shininess;
+	out[41] = specInt;
+	out[42] = ambientInt;
+	out[43] = materialMode;
+
+	const shade = data.shadeColor ?? [1, 1, 1];
+	out[44] = shade[0];
+	out[45] = shade[1];
+	out[46] = shade[2];
+	out[47] = data.alphaCutoff ?? 0;
+	packSurfaceParams(data, out, 48, data.shadeColor);
+	const maps = data.maps;
+	const mapsOffset = 48 + SURFACE_PARAMS_FLOATS;
+	out[mapsOffset] = maps?.normal ? (maps.normalScale ?? 1) : 0;
+	out[mapsOffset + 1] = maps?.occlusion ? (maps.occlusionStrength ?? 1) : 0;
+	out[mapsOffset + 2] = maps?.metallicRoughness ? 1 : 0;
+	out[mapsOffset + 3] = maps?.emissive ? 1 : 0;
+	packUvAndWind(out, mapsOffset + 4, data);
+	const crowd = data.crowd;
+	out.set(
+		crowd ? [crowd.time, 0, crowd.jointCount, 1] : [0, 0, 0, 0],
+		mapsOffset + 16,
+	);
+	const glass = data.glass;
+	if (glass) {
+		// shade.rgb and pbr.zw are unused outside toon: glass parameters.
+		out[44] = glass.dispersion;
+		out[45] = glass.thickness;
+		out[46] = glass.frost;
+		out[50] = 1;
+		out[51] = glass.ior;
+	}
 }
 
 export class Mesh3DPipeline {
@@ -571,70 +635,7 @@ export class Mesh3DPipeline {
 	}
 
 	private packModel(data: MeshUniformData): GPUBindGroup {
-		writeModelTransform(
-			this.modelData,
-			data.modelMatrix,
-			data.normalMatrix,
-			data.colorTint,
-		);
-
-		this.modelData[36] = data.opacity ?? 1.0;
-		this.modelData[37] = data.twoSided ? 1.0 : 0.0;
-		this.modelData[38] = data.isSkinned || data.crowd ? 1.0 : 0.0;
-		// Bit 0 selects instance data; bit 1 the extra map UVs; bit 4 the second skin set.
-		this.modelData[39] =
-			(data.isInstanced || data.instanceBuffer ? 1 : 0) +
-			(data.hasMapUvs ? 2 : 0) +
-			(data.matrixInstances ? 4 : 0) +
-			(data.crowd ? 8 : 0) +
-			(data.hasSkin1 ? 16 : 0);
-
-		const shininess =
-			data.roughness !== undefined
-				? Math.max(1, (1 - data.roughness) * 128)
-				: (data.shininess ?? 32.0);
-		const specInt =
-			data.metallic !== undefined
-				? data.metallic
-				: (data.specularIntensity ?? 0.5);
-		const ambientInt = data.ambientIntensity ?? 1.0;
-		const materialMode =
-			data.material === "unlit" ? 0.0 : data.material === "toon" ? 2.0 : 1.0;
-
-		this.modelData[40] = shininess;
-		this.modelData[41] = specInt;
-		this.modelData[42] = ambientInt;
-		this.modelData[43] = materialMode;
-
-		const shade = data.shadeColor ?? [1, 1, 1];
-		this.modelData[44] = shade[0];
-		this.modelData[45] = shade[1];
-		this.modelData[46] = shade[2];
-		this.modelData[47] = data.alphaCutoff ?? 0;
-		packSurfaceParams(data, this.modelData, 48, data.shadeColor);
-		const maps = data.maps;
-		const mapsOffset = 48 + SURFACE_PARAMS_FLOATS;
-		this.modelData[mapsOffset] = maps?.normal ? (maps.normalScale ?? 1) : 0;
-		this.modelData[mapsOffset + 1] = maps?.occlusion
-			? (maps.occlusionStrength ?? 1)
-			: 0;
-		this.modelData[mapsOffset + 2] = maps?.metallicRoughness ? 1 : 0;
-		this.modelData[mapsOffset + 3] = maps?.emissive ? 1 : 0;
-		packUvAndWind(this.modelData, mapsOffset + 4, data);
-		const crowd = data.crowd;
-		this.modelData.set(
-			crowd ? [crowd.time, 0, crowd.jointCount, 1] : [0, 0, 0, 0],
-			mapsOffset + 16,
-		);
-		const glass = data.glass;
-		if (glass) {
-			// shade.rgb and pbr.zw are unused outside toon: glass parameters.
-			this.modelData[44] = glass.dispersion;
-			this.modelData[45] = glass.thickness;
-			this.modelData[46] = glass.frost;
-			this.modelData[50] = 1;
-			this.modelData[51] = glass.ior;
-		}
+		packMeshModel(this.modelData, data);
 
 		const modelBuffer = this.modelPool.getBuffer(this.device, this.modelData);
 

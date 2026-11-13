@@ -1,5 +1,12 @@
 # framefields
 
+## 3.0.2
+
+### Patch Changes
+
+- cc49ff3: The framefields library: `framefields library [words]` searches curated items on framefields.dev (SFX and HDRIs so far; components stay with `framefields list`) by kind, tags, length, tempo, loop and license, and `framefields add <kind>/<name>` installs them: code is copied in as before, media is pinned by sha256 in `framefields.json`, downloaded verified to `assets/library/` and gitignored, with a module that exports its path and measured duration, onset, beats and tempo. `framefields/library` exports the registry format and search. `framefields add` now resolves items lazily and refuses registry items whose paths would leave the project.
+- cc49ff3: Spheres, cylinders, capsules and tori choose their segment counts from their size on screen each frame (camera depth, zoom, scale and output height), so large or close ones keep a smooth outline instead of showing the fixed 32-segment facets. Small ones keep the old counts; counts you set are kept; meshes come in power-of-two steps and are cached.
+
 ## 3.0.1
 
 ### Patch Changes

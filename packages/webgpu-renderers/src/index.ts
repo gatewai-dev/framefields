@@ -1,5 +1,6 @@
 export * from "./audio/audio-latent-engine.js";
 export * from "./audio/webgpu-audio-processor.js";
+export * from "./clayfield/index.js";
 export * from "./color.js";
 export * from "./device.js";
 export * from "./headless/dom-shims.js";

@@ -1,3 +1,4 @@
+import type { ClayField } from "../clayfield/field.js";
 import type { Mat4, Vec3 } from "../math3d/index.js";
 
 /**
@@ -62,6 +63,11 @@ export interface Mesh3DData {
 	node?: number;
 	/** Skin (Model3DData.skins) whose joints deform this mesh; jointIndices index its `joints`. */
 	skin?: number;
+	/**
+	 * The clay field these triangles were taken from. The raster pass draws
+	 * the field itself, per pixel; the triangles serve what needs a mesh.
+	 */
+	clay?: ClayField;
 }
 
 /** The maps of a material besides its base color. */

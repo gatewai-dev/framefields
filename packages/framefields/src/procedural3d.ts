@@ -11,6 +11,7 @@ import type {
 	WindConfig,
 } from "@framefields/compositions/program";
 import {
+	type ClayGeometryOptions,
 	createTerrainSampler,
 	getPrimitiveGeometry,
 	type Mat4,
@@ -46,6 +47,9 @@ export type Terrain3DOptions = Primitive3DNodeOptions &
 
 export type Sdf3DOptions = Primitive3DNodeOptions &
 	Omit<SdfGeometryOptions, GeometryKeys>;
+
+export type Clay3DOptions = Primitive3DNodeOptions &
+	Omit<ClayGeometryOptions, GeometryKeys>;
 
 export type Scatter3DOptions = Omit<
 	Instances3DOptions,
@@ -177,6 +181,22 @@ export function sdf3d(options: Sdf3DOptions): AnimatableNode<Model3DNode> {
 			bounds: options.bounds,
 			resolution: options.resolution,
 			flatShaded: options.flatShaded,
+		},
+		options,
+	);
+}
+
+/** A Clayfield sculpture (see `Layer3D.clay`). */
+export function clay3d(options: Clay3DOptions): AnimatableNode<Model3DNode> {
+	return primitiveNode(
+		"clay",
+		{
+			type: "clay",
+			ops: options.ops,
+			symmetry: options.symmetry,
+			bounds: options.bounds,
+			bricks: options.bricks,
+			resolution: options.resolution,
 		},
 		options,
 	);

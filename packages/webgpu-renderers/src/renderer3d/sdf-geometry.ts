@@ -152,11 +152,33 @@ interface Sample {
 	color: Rgba;
 }
 
+/** A signed field Surface Nets can mesh: negative inside. */
+export interface SurfaceField {
+	/** Whether `sample` returns colors worth storing per vertex. */
+	readonly colored: boolean;
+	distance(x: number, y: number, z: number): number;
+	sample(x: number, y: number, z: number): { color: Rgba };
+	/** Unit outward normal, from differences `e` apart. */
+	normal(x: number, y: number, z: number, e: number): V3;
+}
+
+/** The box a field is meshed in. */
+export interface MeshFieldOptions {
+	/** [width, height, depth], px. */
+	bounds: V3;
+	/** The box's center. Default the origin. */
+	center?: V3;
+	/** Cells along the longest side of `bounds`, 16..160. Default 64. */
+	resolution?: number;
+	/** Faceted shading. */
+	flatShaded?: boolean;
+}
+
 /**
  * The composite field. Joins follow Quilez's polynomial smooth min / max;
  * the blend weight `h` they compute also mixes the two sides' colors.
  */
-export class SdfField {
+export class SdfField implements SurfaceField {
 	private prims: Prepared[];
 	private half: V3;
 	private base: Rgba;
@@ -260,7 +282,7 @@ interface Grid {
 }
 
 /** Field values on a lattice that covers the bounds with one cell to spare on every side. */
-function sampleGrid(field: SdfField, o: SdfGeometryOptions): Grid {
+function sampleGrid(field: SurfaceField, o: MeshFieldOptions): Grid {
 	const res = Math.min(160, Math.max(16, Math.round(o.resolution ?? 64)));
 	const cell = Math.max(...o.bounds) / res;
 	const count = (s: number) => Math.ceil(s / cell) + 3;
@@ -269,10 +291,11 @@ function sampleGrid(field: SdfField, o: SdfGeometryOptions): Grid {
 		count(o.bounds[1]),
 		count(o.bounds[2]),
 	];
+	const center = o.center ?? [0, 0, 0];
 	const origin: V3 = [
-		(-(nx - 1) * cell) / 2,
-		(-(ny - 1) * cell) / 2,
-		(-(nz - 1) * cell) / 2,
+		center[0] - ((nx - 1) * cell) / 2,
+		center[1] - ((ny - 1) * cell) / 2,
+		center[2] - ((nz - 1) * cell) / 2,
 	];
 	const values = new Float32Array(nx * ny * nz);
 	for (let k = 0; k < nz; k++) {
@@ -345,7 +368,9 @@ function cellPoint(g: Grid, i: number, j: number, k: number): V3 | null {
 }
 
 /** Box-projected UVs: the face of `bounds` the normal points at. */
-function boxUv(p: V3, n: V3, bounds: V3): [number, number] {
+function boxUv(at: V3, n: V3, o: MeshFieldOptions): [number, number] {
+	const { bounds, center = [0, 0, 0] } = o;
+	const p: V3 = [at[0] - center[0], at[1] - center[1], at[2] - center[2]];
 	const ax = Math.abs(n[0]);
 	const ay = Math.abs(n[1]);
 	const az = Math.abs(n[2]);
@@ -358,8 +383,8 @@ function boxUv(p: V3, n: V3, bounds: V3): [number, number] {
 /** One vertex per surface cell, normal from the field's gradient. */
 function placeVertices(
 	g: Grid,
-	field: SdfField,
-	o: SdfGeometryOptions,
+	field: SurfaceField,
+	o: MeshFieldOptions,
 	out: GeometryArrays,
 ): Int32Array {
 	const index = new Int32Array((g.nx - 1) * (g.ny - 1) * (g.nz - 1)).fill(-1);
@@ -376,7 +401,7 @@ function placeVertices(
 					out,
 					p,
 					n,
-					boxUv(p, n, o.bounds),
+					boxUv(p, n, o),
 					color,
 				);
 			}
@@ -448,12 +473,19 @@ function stitch(g: Grid, index: Int32Array, out: GeometryArrays): void {
 	}
 }
 
-/** Builds the sculpture's vertex arrays. */
-export function buildSdf(o: SdfGeometryOptions): GeometryArrays {
-	const field = new SdfField(o);
+/** Surface Nets: a watertight mesh of the field's zero surface inside the box. */
+export function meshField(
+	field: SurfaceField,
+	o: MeshFieldOptions,
+): GeometryArrays {
 	const grid = sampleGrid(field, o);
 	const out = emptyArrays();
 	const index = placeVertices(grid, field, o, out);
 	stitch(grid, index, out);
 	return o.flatShaded ? flatten(out) : out;
+}
+
+/** Builds the sculpture's vertex arrays. */
+export function buildSdf(o: SdfGeometryOptions): GeometryArrays {
+	return meshField(new SdfField(o), o);
 }

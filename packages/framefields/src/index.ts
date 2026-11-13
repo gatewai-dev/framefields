@@ -1022,12 +1022,20 @@ export type {
 	WindConfig,
 } from "@framefields/compositions/program";
 export type {
+	ClayDetail,
+	ClayInflate,
+	ClayMode,
+	ClayOp,
+	ClaySolid,
+	ClayStroke,
+	ClayWarp,
 	ScatterPoint,
 	SdfPrimitive,
 	TerrainColorByElevation,
 	TerrainNoiseOptions,
 } from "@framefields/webgpu-renderers";
 export type {
+	Clay3DOptions,
 	Scatter3DNode,
 	Scatter3DOptions,
 	Sdf3DOptions,

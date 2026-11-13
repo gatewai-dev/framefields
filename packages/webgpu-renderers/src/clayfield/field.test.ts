@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { generatePrimitiveGeometry } from "../renderer3d/primitive-geometry.js";
 import { ClayField } from "./field.js";
 import { BRICK_BYTES } from "./layout.js";
+import { meshClay } from "./mesh.js";
 import type { ClayGeometryOptions, ClayOp } from "./program.js";
 
 const clay = (ops: ClayOp[], extra: Partial<ClayGeometryOptions> = {}) =>
@@ -253,6 +254,79 @@ describe("ClayField", () => {
 	});
 });
 
+/** How many triangles use each edge of an indexed mesh: count → edges. */
+function edgeUse(indices: ArrayLike<number>, vertices: number) {
+	const edges = new Map<number, number>();
+	for (let t = 0; t < indices.length; t += 3) {
+		for (let e = 0; e < 3; e++) {
+			const a = indices[t + e];
+			const b = indices[t + ((e + 1) % 3)];
+			const key = a < b ? a * vertices + b : b * vertices + a;
+			edges.set(key, (edges.get(key) ?? 0) + 1);
+		}
+	}
+	const use = new Map<number, number>();
+	for (const n of edges.values()) use.set(n, (use.get(n) ?? 0) + 1);
+	return use;
+}
+
+describe("meshClay", () => {
+	const blob: ClayOp[] = [
+		{ type: "sphere", radius: 110 },
+		{ type: "sphere", radius: 70, center: [0, -130, 0], smoothness: 40 },
+		{ type: "sphere", radius: 30, center: [40, -40, -95], mode: "carve" },
+		{ type: "grab", center: [0, -200, 0], radius: 40, delta: [0, -40, 0] },
+	];
+
+	it("keeps a shape in reach of a later smooth join", () => {
+		// The first sphere has no blend of its own: the second one's reaches it.
+		const f = clay(blob.slice(0, 2), { bricks: 32 });
+		for (const [x, y, z] of points(3000, 190)) {
+			const whole = f.distance(x, y, z);
+			if (Math.abs(whole) < 1) expect(f.local(x, y, z)).toBeCloseTo(whole, 4);
+		}
+	});
+
+	it("is closed and lies on the surface at every resolution", () => {
+		const f = clay(blob);
+		let before = 0;
+		for (const resolution of [64, 128, 256]) {
+			const g = meshClay(f, resolution);
+			const triangles = g.indices.length / 3;
+			// Four times the triangles for twice the resolution: work follows the area.
+			if (before) expect(triangles / before).toBeGreaterThan(3.5);
+			before = triangles;
+			// Closed: no edge is left with an odd number of triangles (a hard
+			// crease can pinch four onto one, as Surface Nets does).
+			const use = [...edgeUse(g.indices, g.positions.length / 3).keys()];
+			expect(use.every((n) => n % 2 === 0)).toBe(true);
+			const cell = (f.max[0] - f.min[0]) / resolution;
+			for (let v = 0; v < g.positions.length; v += 3 * 53) {
+				const d = f.distance(
+					g.positions[v],
+					g.positions[v + 1],
+					g.positions[v + 2],
+				);
+				expect(Math.abs(d)).toBeLessThan(cell);
+			}
+		}
+	});
+
+	it("carries the field's colors", () => {
+		const f = clay([
+			{ type: "sphere", radius: 50, color: "#ff0000" },
+			{ type: "sphere", radius: 50, center: [120, 0, 0], color: "#0000ff" },
+		]);
+		const g = meshClay(f, 64);
+		expect(g.colors.length).toBe((g.positions.length / 3) * 4);
+		for (let v = 0; v < g.positions.length / 3; v++) {
+			const red = g.positions[v * 3] < 60;
+			expect(g.colors[v * 4]).toBe(red ? 1 : 0);
+			expect(g.colors[v * 4 + 2]).toBe(red ? 0 : 1);
+		}
+	});
+});
+
 describe("clay primitive", () => {
 	it("yields a closed mesh that carries its field", () => {
 		const model = generatePrimitiveGeometry({
@@ -265,6 +339,12 @@ describe("clay primitive", () => {
 		});
 		const mesh = model.meshes[0];
 		expect(mesh.clay).toBeInstanceOf(ClayField);
+		const triangles = generatePrimitiveGeometry({
+			type: "clay",
+			draw: "mesh",
+			ops: [{ type: "sphere", radius: 100 }],
+		});
+		expect(triangles.meshes[0].clay).toBeUndefined();
 		expect(mesh.indices.length).toBeGreaterThan(1000);
 		// Closed: every edge is shared by exactly two triangles.
 		const edges = new Map<string, number>();

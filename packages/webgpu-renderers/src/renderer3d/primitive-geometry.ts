@@ -1,16 +1,13 @@
 import earcut from "earcut";
-import { ClayField } from "../clayfield/field.js";
+import { clayField } from "../clayfield/field.js";
+import { CLAY_RESOLUTION, meshClay } from "../clayfield/mesh.js";
 import type { ClayGeometryOptions } from "../clayfield/program.js";
 import type { Material3D, Mesh3DData, Model3DData } from "../loaders/types.js";
 import { Path3D } from "../math3d/path3d.js";
 import type { Vec3 } from "../math3d/vector3.js";
 import { sampleSvgArc } from "../renderer2d/path-geometry.js";
 import type { GeometryArrays } from "./geometry-arrays.js";
-import {
-	buildSdf,
-	meshField,
-	type SdfGeometryOptions,
-} from "./sdf-geometry.js";
+import { buildSdf, type SdfGeometryOptions } from "./sdf-geometry.js";
 import {
 	buildTerrain,
 	type TerrainGeometryOptions,
@@ -2612,25 +2609,6 @@ function finalizeModel3DData(
 	};
 }
 
-/**
- * The triangles of a clay field, for whatever needs them (path tracing,
- * physics, scatter, shadows of instances). The raster pass draws the field
- * itself and never reads this mesh.
- */
-function clayMesh(field: ClayField, o: ClayGeometryOptions): GeometryArrays {
-	const bounds = field.max.map((v, k) => v - field.min[k]) as [
-		number,
-		number,
-		number,
-	];
-	const center = field.max.map((v, k) => (v + field.min[k]) / 2) as [
-		number,
-		number,
-		number,
-	];
-	return meshField(field, { bounds, center, resolution: o.resolution });
-}
-
 /** Builds a procedural solid as a Model3DData. */
 export function generatePrimitiveGeometry(
 	options: PrimitiveGeometryOptions,
@@ -2640,8 +2618,9 @@ export function generatePrimitiveGeometry(
 	}
 
 	const mb = new MeshBuilder();
-	const clay = options.type === "clay" ? new ClayField(options) : undefined;
-	if (clay && options.type === "clay") adopt(mb, clayMesh(clay, options));
+	const clay = options.type === "clay" ? clayField(options) : undefined;
+	if (clay && options.type === "clay")
+		adopt(mb, meshClay(clay, options.resolution ?? CLAY_RESOLUTION));
 	else if (options.type === "roundedBox") roundedBox(options, mb);
 	else if (options.type === "sphere") sphere(options, mb);
 	else if (options.type === "cylinder") cylinder(options, mb);
@@ -2664,7 +2643,9 @@ export function generatePrimitiveGeometry(
 
 	const name = options.type;
 	const mesh = mb.build(name);
-	if (clay) mesh.clay = clay;
+	// Opaque draws render the field itself unless asked for its triangles.
+	if (clay && options.type === "clay" && options.draw !== "mesh")
+		mesh.clay = clay;
 	const defaultShading =
 		options.type === "line3d" ||
 		(options.type === "points3d" && (options.pointSize ?? 0) <= 0)

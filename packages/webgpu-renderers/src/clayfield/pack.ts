@@ -437,12 +437,28 @@ function symmetryMask(axes: string | undefined): number {
 	return mask;
 }
 
+/**
+ * A smooth join blends with whatever the field already holds within its
+ * radius, so material stays in reach as far as the widest join after it.
+ */
+function reachLaterJoins(p: Packer): void {
+	let widest = 0;
+	for (let i = p.info.length - 1; i >= 0; i--) {
+		const info = p.info[i];
+		if (info.type > OP.segment) continue;
+		const own = p.floats[i * OP_FLOATS + 2];
+		if (info.box && widest > own) info.box = growBox(info.box, widest - own);
+		widest = Math.max(widest, own);
+	}
+}
+
 export function packProgram(o: ClayGeometryOptions): PackedProgram {
 	const p = new Packer();
 	for (const op of o.ops) packOp(p, op);
 	// Clipping to `bounds` is one more operation: every evaluator agrees on it.
 	if (o.bounds)
 		packSolid(p, { type: "box", size: o.bounds, mode: "intersect" });
+	reachLaterJoins(p);
 	return {
 		ops: new Float32Array(p.floats),
 		info: p.info,

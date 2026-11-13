@@ -368,7 +368,7 @@ function cellPoint(g: Grid, i: number, j: number, k: number): V3 | null {
 }
 
 /** Box-projected UVs: the face of `bounds` the normal points at. */
-function boxUv(at: V3, n: V3, o: MeshFieldOptions): [number, number] {
+export function boxUv(at: V3, n: V3, o: MeshFieldOptions): [number, number] {
 	const { bounds, center = [0, 0, 0] } = o;
 	const p: V3 = [at[0] - center[0], at[1] - center[1], at[2] - center[2]];
 	const ax = Math.abs(n[0]);

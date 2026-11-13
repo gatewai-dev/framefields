@@ -197,6 +197,7 @@ export function clay3d(options: Clay3DOptions): AnimatableNode<Model3DNode> {
 			bounds: options.bounds,
 			bricks: options.bricks,
 			resolution: options.resolution,
+			draw: options.draw,
 		},
 		options,
 	);

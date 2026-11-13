@@ -26,9 +26,10 @@ struct ClayUniforms {
     params   : vec4<f32>, // x = symmetry bits (1 = x, 2 = y, 4 = z), y = detail filter (1 = fade octaves below a pixel, 0 = keep all)
     grid     : vec4<f32>, // xyz = the grid's corner, w = brick size
     dims     : vec4<f32>, // xyz = bricks along each axis
-    // The distance cache: x = cells along a brick's edge (0 = none),
-    // y = invocations per row of the bake dispatch, z = bricks,
+    // The cache: x = cells along a brick's edge (0 = none), z = bricks,
     // w = 1 while baking (the cache holds the field without its detail).
+    // y = while baking, invocations per row of the dispatch; while
+    // drawing, 1 when the cache also holds colors.
     bake     : vec4<f32>,
 };
 `;
@@ -42,9 +43,10 @@ ${clayStructsWgsl}
 @group(${group}) @binding(4) var<storage, read> clayBricks : array<ClayBrick>;
 // Per grid cell: 1 + the index of its brick, 0 where the surface cannot be.
 @group(${group}) @binding(5) var<storage, read> clayGrid : array<u32>;
-// The distance cache: per brick, the field without its detail on a lattice
-// of (cells + 1)^3 points, x fastest; then, per brick, how far reading the
-// cache between lattice points can be from the field.
+// The cache: per brick, the field without its detail on a lattice of
+// (cells + 1)^3 points, x fastest; then, per brick, how far reading it
+// between lattice points can be from the field; then, per brick, the color
+// (rgb) on a lattice half as fine.
 @group(${group}) @binding(6) var<storage, read> clayCache : array<f32>;
 `;
 
@@ -179,24 +181,58 @@ fn clayHash4(h: vec4<u32>) -> vec4<f32> {
     return vec4<f32>(v >> vec4<u32>(8u)) / 16777216.0 * 2.0 - 1.0;
 }
 
-fn clayNoise(p: vec3<f32>, seed: u32) -> f32 {
+struct ClayLattice {
+    near : vec4<f32>, // the cell's corners at z, x fastest
+    far  : vec4<f32>, // and at z + 1
+    f    : vec3<f32>, // the point inside the cell, 0..1
+};
+
+fn clayLattice(p: vec3<f32>, seed: u32) -> ClayLattice {
     let cell = floor(p);
     let i = bitcast<vec3<u32>>(vec3<i32>(cell));
-    let f = p - cell;
-    let u = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
     // (i + 1) * k = i * k + k: each axis costs one product for both corners.
     let x0 = i.x * 0x8da6b343u;
     let y0 = i.y * 0xd8163841u;
-    let z0 = (i.z * 0xcb1ab31fu) ^ (seed * 0x165667b1u);
+    let zk = i.z * 0xcb1ab31fu;
+    let s = seed * 0x165667b1u;
     let x1 = x0 + 0x8da6b343u;
     let y1 = y0 + 0xd8163841u;
-    let z1 = z0 ^ (i.z * 0xcb1ab31fu) ^ ((i.z * 0xcb1ab31fu) + 0xcb1ab31fu);
     let face = vec4<u32>(x0 ^ y0, x1 ^ y0, x0 ^ y1, x1 ^ y1);
-    let near = clayHash4(face ^ vec4<u32>(z0));
-    let far = clayHash4(face ^ vec4<u32>(z1));
-    let nearRow = mix(near.xz, near.yw, vec2<f32>(u.x));
-    let farRow = mix(far.xz, far.yw, vec2<f32>(u.x));
+    return ClayLattice(
+        clayHash4(face ^ vec4<u32>(zk ^ s)),
+        clayHash4(face ^ vec4<u32>((zk + 0xcb1ab31fu) ^ s)),
+        p - cell,
+    );
+}
+
+// Value noise in -1..1.
+fn clayNoise(p: vec3<f32>, seed: u32) -> f32 {
+    let l = clayLattice(p, seed);
+    let f = l.f;
+    let u = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
+    let nearRow = mix(l.near.xz, l.near.yw, vec2<f32>(u.x));
+    let farRow = mix(l.far.xz, l.far.yw, vec2<f32>(u.x));
     return mix(mix(nearRow.x, nearRow.y, u.y), mix(farRow.x, farRow.y, u.y), u.z);
+}
+
+// The same noise with its gradient: xyz = gradient, w = value.
+fn clayNoiseGradient(p: vec3<f32>, seed: u32) -> vec4<f32> {
+    let l = clayLattice(p, seed);
+    let f = l.f;
+    let u = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
+    let du = 30.0 * f * f * (f - 1.0) * (f - 1.0);
+    let nearRow = mix(l.near.xz, l.near.yw, vec2<f32>(u.x));
+    let farRow = mix(l.far.xz, l.far.yw, vec2<f32>(u.x));
+    let nearPlane = mix(nearRow.x, nearRow.y, u.y);
+    let farPlane = mix(farRow.x, farRow.y, u.y);
+    let dxNear = mix(l.near.y - l.near.x, l.near.w - l.near.z, u.y);
+    let dxFar = mix(l.far.y - l.far.x, l.far.w - l.far.z, u.y);
+    return vec4<f32>(
+        mix(dxNear, dxFar, u.z) * du.x,
+        mix(nearRow.y - nearRow.x, farRow.y - farRow.x, u.z) * du.y,
+        (farPlane - nearPlane) * du.z,
+        mix(nearPlane, farPlane, u.z),
+    );
 }
 
 // How far the detail at record o raises the surface. An octave fades out
@@ -227,6 +263,42 @@ fn clayDetail(o: u32, p: vec3<f32>, footprint: f32) -> f32 {
         sum *= clayFade(dot(r, r), p1.w);
     }
     return sum * p2.x;
+}
+
+// The gradient of clayDetail in space (it has no finite-difference width:
+// the octave fade already limits it to the pixel).
+fn clayDetailGradient(o: u32, p: vec3<f32>, footprint: f32) -> vec3<f32> {
+    let p1 = clayOps[o + 1u];
+    let p2 = clayOps[o + 2u];
+    let p3 = clayOps[o + 3u];
+    let octaves = i32(p2.z);
+    let seed = bitcast<u32>(i32(p2.w));
+    var frequency = p2.y;
+    var height = 1.0;
+    var sum = vec4<f32>(0.0);
+    for (var i = 0; i < octaves; i++) {
+        var visible = 1.0;
+        if (footprint > 0.0) {
+            visible = clamp(1.0 / (2.0 * footprint * frequency) - 1.0, 0.0, 1.0);
+        }
+        if (visible > 0.0) {
+            var n = clayNoiseGradient(p * frequency, seed + u32(i));
+            n = vec4<f32>(n.xyz * frequency, n.w);
+            if (p3.z > 0.5) {
+                n = vec4<f32>(-2.0 * sign(n.w) * n.xyz, 1.0 - 2.0 * abs(n.w));
+            }
+            sum += height * visible * n;
+        }
+        height *= p3.x;
+        frequency *= p3.y;
+    }
+    var gradient = sum.xyz;
+    if (p1.w > 0.0) {
+        let r = p - p1.xyz;
+        let x = max(0.0, 1.0 - dot(r, r) / (p1.w * p1.w));
+        gradient = gradient * (x * x) + sum.w * (-4.0 * x / (p1.w * p1.w)) * r;
+    }
+    return gradient * p2.x;
 }
 
 // Joins e into the running sample (rgb = color, w = distance): Quilez's
@@ -492,6 +564,57 @@ fn clayMarch(ray: ClayRay, index: u32, t0: f32, t1: f32) -> ClayHit {
         t = min(t + max(safe, 0.25 * footprint) / speed, t1);
     }
     return ClayHit(clamp(1.0 - best, 0.0, 1.0), bestT);
+}
+
+// The cached color at a point of a brick: trilinear on its color lattice.
+fn clayCachedColor(p: vec3<f32>, index: u32, brick: ClayBrick) -> vec3<f32> {
+    let full = u32(clay.bake.x) + 1u;
+    let bricks = u32(clay.bake.z);
+    let cells = u32(clay.bake.x) / 2u;
+    let side = cells + 1u;
+    let u = clamp((p - brick.origin) / brick.size, vec3<f32>(0.0), vec3<f32>(1.0)) * f32(cells);
+    let lo = min(vec3<u32>(u), vec3<u32>(cells - 1u));
+    let f = u - vec3<f32>(lo);
+    let first = bricks * (full * full * full + 1u) + index * side * side * side * 3u;
+    var corners : array<vec3<f32>, 8>;
+    for (var c = 0u; c < 8u; c++) {
+        let at = first + (((lo.z + (c >> 2u)) * side + lo.y + ((c >> 1u) & 1u)) * side + lo.x + (c & 1u)) * 3u;
+        corners[c] = vec3<f32>(clayCache[at], clayCache[at + 1u], clayCache[at + 2u]);
+    }
+    return mix(
+        mix(mix(corners[0], corners[1], f.x), mix(corners[2], corners[3], f.x), f.y),
+        mix(mix(corners[4], corners[5], f.x), mix(corners[6], corners[7], f.x), f.y),
+        f.z,
+    );
+}
+
+// What shading needs at a surface point, from the cache alone: the normal
+// from the cached field's gradient less the trailing detail's, the color
+// from the color lattice. No record of the brick's list is evaluated
+// beyond that detail.
+fn clayCachedShading(p: vec3<f32>, index: u32, e: f32, footprint: f32) -> ClayShading {
+    let brick = clayBricks[index];
+    let k = vec2<f32>(1.0, -1.0);
+    // Four taps e apart sum to 4e times the gradient.
+    var gradient = (
+        k.xyy * clayCached(p + k.xyy * e, index, brick) +
+        k.yyx * clayCached(p + k.yyx * e, index, brick) +
+        k.yxy * clayCached(p + k.yxy * e, index, brick) +
+        k.xxx * clayCached(p + k.xxx * e, index, brick)
+    ) / (4.0 * e);
+    let bits = u32(clay.params.x);
+    let mirrored = vec3<bool>((bits & 1u) != 0u, (bits & 2u) != 0u, (bits & 4u) != 0u);
+    let folded = select(p, abs(p), mirrored);
+    let side = select(vec3<f32>(1.0), sign(p), mirrored);
+    for (var n = 0u; n < u32(brick.detail.w); n++) {
+        let o = (clayLists[brick.offset + brick.count - 1u - n] & ~CLAY_GROUP_END) * 5u;
+        gradient -= side * clayDetailGradient(o, folded, footprint);
+    }
+    var color = vec3<f32>(1.0);
+    if (clay.bake.y > 0.5) {
+        color = clayCachedColor(p, index, brick);
+    }
+    return ClayShading(normalize(gradient + vec3<f32>(1e-20)), color);
 }
 
 // Which way a surface point faces, for a shadow map's depth bias: from the

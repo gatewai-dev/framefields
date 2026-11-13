@@ -74,7 +74,15 @@ struct ClayLit {
 
 fn lightClay(point: ClayPoint) -> ClayLit {
     let brick = clayBricks[point.brick];
-    let surface = clayShading(point.local, brick, clayNormalStep(point), point.footprint);
+    let e = clayNormalStep(point);
+    var surface : ClayShading;
+    // Where the cache follows the field to a twentieth of a pixel, shading
+    // reads it and evaluates nothing; elsewhere it evaluates the field.
+    if (clay.bake.x > 0.5 && clayCacheBlur(point.brick, brick) <= 0.05 * point.footprint) {
+        surface = clayCachedShading(point.local, point.brick, max(e, 0.5 * brick.size / clay.bake.x), point.footprint);
+    } else {
+        surface = clayShading(point.local, brick, e, point.footprint);
+    }
     var out : ClayLit;
     out.world = (model.modelMatrix * vec4<f32>(point.local, 1.0)).xyz;
     out.normal = normalize((model.normalMatrix * vec4<f32>(surface.normal, 0.0)).xyz);
@@ -277,6 +285,29 @@ fn measure(@builtin(global_invocation_id) id: vec3<u32>) {
     clayCache[bricks * side * side * side + id.x] = 2.0 * worst + 1e-4 * brick.size;
 }
 
+// The color lattice: half as fine as the distances, after them and the errors.
+@compute @workgroup_size(64)
+fn tint(@builtin(global_invocation_id) id: vec3<u32>) {
+    let bricks = u32(clay.bake.z);
+    let full = u32(clay.bake.x) + 1u;
+    let cells = u32(clay.bake.x) / 2u;
+    let side = cells + 1u;
+    let perBrick = side * side * side;
+    let index = id.y * u32(clay.bake.y) + id.x;
+    let brickIndex = index / perBrick;
+    if (brickIndex >= bricks) {
+        return;
+    }
+    let at = index % perBrick;
+    let point = vec3<f32>(vec3<u32>(at % side, (at / side) % side, at / (side * side)));
+    let brick = clayBricks[brickIndex];
+    let color = clayField(brick.origin + brick.size * point / f32(cells), brick, 0.0).rgb;
+    let to = bricks * (full * full * full + 1u) + index * 3u;
+    clayCache[to] = color.r;
+    clayCache[to + 1u] = color.g;
+    clayCache[to + 2u] = color.b;
+}
+
 @compute @workgroup_size(64)
 fn bake(@builtin(global_invocation_id) id: vec3<u32>) {
     let side = u32(clay.bake.x) + 1u;
@@ -298,7 +329,13 @@ const BAKE_GROUP = 64;
 const BAKE_ROW_GROUPS = 32768;
 /** Cells along a brick's edge in the distance cache, and the most memory a cache may take. */
 const CACHE_CELLS = 16;
-const CACHE_BYTES = 96 * 1024 * 1024;
+const CACHE_BYTES = 128 * 1024 * 1024;
+
+/** Floats in a field's cache: per brick its distances, its error, and (colored fields) its colors. */
+function cacheFloats(field: ClayField, cells: number): number {
+	const colors = field.colored ? (cells / 2 + 1) ** 3 * 3 : 0;
+	return field.brickCount * ((cells + 1) ** 3 + 1 + colors);
+}
 
 interface ClayBuffers {
 	ops: GPUBuffer;
@@ -326,6 +363,7 @@ export class ClayPipeline {
 	private bake?: {
 		pipeline: GPUComputePipeline;
 		measure: GPUComputePipeline;
+		tint: GPUComputePipeline;
 		layout: GPUBindGroupLayout;
 	};
 	private modelData = new Float32Array(MESH_MODEL_FLOATS);
@@ -452,7 +490,7 @@ export class ClayPipeline {
 			this.device.limits.maxStorageBufferBindingSize,
 		);
 		for (let cells = CACHE_CELLS; cells >= 2; cells /= 2) {
-			if (field.brickCount * ((cells + 1) ** 3 + 1) * 4 <= limit) return cells;
+			if (cacheFloats(field, cells) * 4 <= limit) return cells;
 		}
 		return 0;
 	}
@@ -493,6 +531,7 @@ export class ClayPipeline {
 			this.bake = {
 				pipeline: stage("bake"),
 				measure: stage("measure"),
+				tint: stage("tint"),
 				layout,
 			};
 		}
@@ -510,31 +549,28 @@ export class ClayPipeline {
 		const { cells } = buffers;
 		if (cells === 0 || field.brickCount === 0)
 			return this.upload(new Float32Array(1), "ClayCache");
-		const points = field.brickCount * (cells + 1) ** 3;
-		const groups = Math.ceil(points / BAKE_GROUP);
-		const row = Math.min(groups, BAKE_ROW_GROUPS);
 		const cache = this.device.createBuffer({
 			label: "ClayCache",
-			// The lattice values, then one error per brick.
-			size: (points + field.brickCount) * 4,
+			size: cacheFloats(field, cells) * 4,
 			usage: GPUBufferUsage.STORAGE,
 		});
-		const uniforms = new Float32Array(CLAY_UNIFORM_FLOATS);
-		uniforms[16] = field.symmetry;
-		uniforms.set([cells, row * BAKE_GROUP, field.brickCount, 1], 28);
-		const uniformBuffer = this.device.createBuffer({
-			label: "ClayBakeUniforms",
-			size: uniforms.byteLength,
-			usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-		});
-		this.device.queue.writeBuffer(uniformBuffer, 0, uniforms);
-		const { pipeline, measure, layout } = this.bakePipeline();
-		const encoder = this.device.createCommandEncoder({ label: "ClayBake" });
-		const pass = encoder.beginComputePass();
-		pass.setPipeline(pipeline);
-		pass.setBindGroup(
-			0,
-			this.device.createBindGroup({
+		const { pipeline, measure, tint, layout } = this.bakePipeline();
+		const retired: GPUBuffer[] = [];
+		/** Binds the bake with a dispatch row wide enough for `points` invocations. */
+		const stage = (points: number) => {
+			const groups = Math.ceil(points / BAKE_GROUP);
+			const row = Math.min(groups, BAKE_ROW_GROUPS);
+			const uniforms = new Float32Array(CLAY_UNIFORM_FLOATS);
+			uniforms[16] = field.symmetry;
+			uniforms.set([cells, row * BAKE_GROUP, field.brickCount, 1], 28);
+			const uniformBuffer = this.device.createBuffer({
+				label: "ClayBakeUniforms",
+				size: uniforms.byteLength,
+				usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+			});
+			this.device.queue.writeBuffer(uniformBuffer, 0, uniforms);
+			retired.push(uniformBuffer);
+			const group = this.device.createBindGroup({
 				layout,
 				entries: [
 					{ binding: 0, resource: { buffer: uniformBuffer } },
@@ -543,14 +579,26 @@ export class ClayPipeline {
 					{ binding: 3, resource: { buffer: buffers.bricks } },
 					{ binding: 4, resource: { buffer: cache } },
 				],
-			}),
-		);
-		pass.dispatchWorkgroups(row, Math.ceil(groups / row));
+			});
+			return { group, row, rows: Math.ceil(groups / row) };
+		};
+		const encoder = this.device.createCommandEncoder({ label: "ClayBake" });
+		const pass = encoder.beginComputePass();
+		const distances = stage(field.brickCount * (cells + 1) ** 3);
+		pass.setBindGroup(0, distances.group);
+		pass.setPipeline(pipeline);
+		pass.dispatchWorkgroups(distances.row, distances.rows);
 		pass.setPipeline(measure);
 		pass.dispatchWorkgroups(Math.ceil(field.brickCount / BAKE_GROUP));
+		if (field.colored) {
+			const colors = stage(field.brickCount * (cells / 2 + 1) ** 3);
+			pass.setBindGroup(0, colors.group);
+			pass.setPipeline(tint);
+			pass.dispatchWorkgroups(colors.row, colors.rows);
+		}
 		pass.end();
 		this.device.queue.submit([encoder.finish()]);
-		uniformBuffer.destroy();
+		for (const buffer of retired) buffer.destroy();
 		return cache;
 	}
 
@@ -586,7 +634,10 @@ export class ClayPipeline {
 		this.clayData[17] = filterDetail ? 1 : 0;
 		this.clayData.set([...field.min, field.brickSize, ...field.dims, 0], 20);
 		const buffers = this.fieldBuffers(field);
-		this.clayData.set([buffers.cells, 0, field.brickCount, 0], 28);
+		this.clayData.set(
+			[buffers.cells, field.colored ? 1 : 0, field.brickCount, 0],
+			28,
+		);
 		return this.device.createBindGroup({
 			layout: this.layout,
 			entries: [

@@ -1690,8 +1690,9 @@ export const Layer3D = {
 	 * what is already there as an elastic solid would; `inflate` swells a
 	 * region; `detail` adds procedural relief that fades below a pixel.
 	 * `symmetry: "x"` mirrors the sculpture. Opaque draws render the field
-	 * itself; glass, blended and instanced draws, path tracing, physics and
-	 * scatter use a mesh of it built at `resolution`.
+	 * itself (`draw: "mesh"` draws triangles instead); glass, blended and
+	 * instanced draws, path tracing, physics and scatter use a mesh of it
+	 * built at `resolution`.
 	 */
 	clay(options: Clay3DOptions): AnimatableNode<Model3DNode> {
 		return clay3d(options);

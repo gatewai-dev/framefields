@@ -48,7 +48,8 @@ function union(a: Aabb | null, b: Aabb): Aabb {
 /** The box that holds the sculpture: its added material, moved by what follows. */
 function fitBounds(program: PackedProgram, o: ClayGeometryOptions): Aabb {
 	if (o.bounds) {
-		const h = o.bounds.map((v) => v / 2) as V3;
+		// A little past the clip box: its faces are surfaces too.
+		const h = o.bounds.map((v) => (v / 2) * 1.02 + 1e-3) as V3;
 		return { min: [-h[0], -h[1], -h[2]], max: h };
 	}
 	let box: Aabb | null = null;
@@ -174,6 +175,33 @@ interface Sample {
 	color: Rgba;
 }
 
+export interface BrickField {
+	/** Lipschitz bounds of the field in the brick: without its detail, and with it. */
+	lipschitz: number;
+	detailed: number;
+	/** How far detail can move the surface. */
+	relief: number;
+	/** After `value`: the distance, then the color (rgba). */
+	color: Float64Array;
+	value(x: number, y: number, z: number, footprint: number): number;
+}
+
+/** Fields by program: every resolution of a sculpture's mesh shares one. */
+const fields = new Map<string, ClayField>();
+
+/** The compiled field of a clay program; equal programs share it. */
+export function clayField(options: ClayGeometryOptions): ClayField {
+	const { ops, symmetry, bounds, bricks } = options;
+	const key = JSON.stringify({ ops, symmetry, bounds, bricks });
+	let field = fields.get(key);
+	if (!field) {
+		field = new ClayField(options);
+		if (fields.size >= 64) fields.clear();
+		fields.set(key, field);
+	}
+	return field;
+}
+
 export class ClayField {
 	readonly ops: Float32Array;
 	readonly symmetry: number;
@@ -195,11 +223,13 @@ export class ClayField {
 	private cellWarps: Uint8Array;
 	/** The whole program as one list: offset, count, warps. */
 	private whole: [number, number, number];
+	private info: OpInfo[];
 	private scratch = new Float64Array(5);
 
 	constructor(options: ClayGeometryOptions) {
 		const program = packProgram(options);
 		this.ops = program.ops;
+		this.info = program.info;
 		this.symmetry = program.symmetry;
 		this.colored = program.colored;
 
@@ -292,7 +322,8 @@ export class ClayField {
 		});
 	}
 
-	private cellOrigin(cell: number): V3 {
+	/** A grid cell's corner. */
+	cellOrigin(cell: number): V3 {
 		const [nx, ny] = this.dims;
 		const i = cell % nx;
 		const j = Math.floor(cell / nx) % ny;
@@ -335,6 +366,46 @@ export class ClayField {
 				Math.max(0, Math.floor((v - this.min[k]) / this.brickSize)),
 			);
 		return (at(z, 2) * this.dims[1] + at(y, 1)) * this.dims[0] + at(x, 0);
+	}
+
+	/**
+	 * A brick's field for a consumer that reads it up to `margin` past the
+	 * brick's faces (a mesher's lattice): its list gathered that far, the
+	 * bounds that go with it, and the evaluation. `value` returns the signed
+	 * distance and leaves the color in `color`.
+	 */
+	brickField(cell: number, margin: number): BrickField {
+		const origin = this.cellOrigin(cell);
+		const s = this.brickSize;
+		const box = growBox(
+			{ min: origin, max: [origin[0] + s, origin[1] + s, origin[2] + s] },
+			margin,
+		);
+		const list = gather(this.info, fold(box, this.symmetry));
+		const entries = Uint32Array.from(list.entries);
+		const color = new Float64Array(5);
+		return {
+			lipschitz: list.lipschitz,
+			detailed: list.detailed,
+			relief: list.relief,
+			color,
+			value: (x, y, z, footprint) => {
+				evalList(
+					this.ops,
+					entries,
+					0,
+					entries.length,
+					list.warps,
+					this.symmetry,
+					x,
+					y,
+					z,
+					footprint,
+					color,
+				);
+				return color[0];
+			},
+		};
 	}
 
 	/**

@@ -146,11 +146,18 @@ export interface ClayGeometryOptions {
 	 */
 	bricks?: number;
 	/**
-	 * Cells along the longest side of the triangle mesh the field is turned
-	 * into where triangles are needed (path tracing, physics, scatter),
-	 * 16..160. Default 64. The raster pass never uses it.
+	 * Lattice cells along the longest side of the triangle mesh of the
+	 * field, 16..1024. Default 64. Used where triangles are needed: `draw:
+	 * "mesh"`, glass, blended, textured and instanced draws, path tracing,
+	 * physics, scatter.
 	 */
 	resolution?: number;
+	/**
+	 * "field" (default) draws the field itself, per pixel: exact at any
+	 * size. "mesh" draws its triangles at `resolution`: a mesh's cost, a
+	 * mesh's fixed detail.
+	 */
+	draw?: "mesh" | "field";
 	color?: string;
 	material?: "lit" | "unlit" | "toon";
 	shininess?: number;

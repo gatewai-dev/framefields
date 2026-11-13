@@ -270,7 +270,8 @@ export const ClayGeometrySchema = z
 			.optional(),
 		bounds: PositiveVec3Schema.optional(),
 		bricks: z.number().int().min(4).max(48).optional(),
-		resolution: z.number().int().min(16).max(160).optional(),
+		resolution: z.number().int().min(16).max(1024).optional(),
+		draw: z.enum(["mesh", "field"]).optional(),
 		...PrimitiveSurfaceFields,
 	})
 	.strict();

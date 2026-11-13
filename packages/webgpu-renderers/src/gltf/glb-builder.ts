@@ -169,7 +169,7 @@ export class GlbBuilder {
 		const bin = concat(this.chunks, this.length);
 		const doc = new TextEncoder().encode(
 			JSON.stringify({
-				asset: { version: "2.0", generator: "framefields gltf-fixtures" },
+				asset: { version: "2.0", generator: "framefields" },
 				...json,
 				...(bin.byteLength
 					? {

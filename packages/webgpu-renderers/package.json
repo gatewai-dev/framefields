@@ -23,6 +23,12 @@
 			"import": "./dist/text-animations/index.mjs",
 			"default": "./dist/text-animations/index.mjs"
 		},
+		"./gltf": {
+			"types": "./dist/gltf/index.d.mts",
+			"development": "./src/gltf/index.ts",
+			"import": "./dist/gltf/index.mjs",
+			"default": "./dist/gltf/index.mjs"
+		},
 		"./math3d": {
 			"types": "./dist/math3d/index.d.mts",
 			"development": "./src/math3d/index.ts",
@@ -62,6 +68,7 @@
 		"@types/earcut": "^3.0.0",
 		"@types/fontkit": "^2.0.9",
 		"@vitest/coverage-v8": "^4.1.11",
+		"gltf-validator": "2.0.0-dev.3.10",
 		"tsdown": "^0.19.0",
 		"typescript": "^5.8.3",
 		"vitest": "^4.1.5",

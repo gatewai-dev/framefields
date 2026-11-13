@@ -29,6 +29,7 @@ import {
 	NodeSurfaceProvider,
 	type RenderContextValue,
 	type Renderer2D,
+	type Scene3DCapture,
 	SlugFontCache,
 	shaderStore,
 	textureCache,
@@ -706,6 +707,8 @@ export class HeadlessWebGPURenderer {
 			renderId?: string;
 			/** "rgba" / "raw" skips image encoding and returns width*height*4 raw pixels. */
 			format?: "png" | "rgba" | "raw" | "jpeg" | "jpg" | "webp";
+			/** Receives the frame's 3D passes as data (model export). */
+			scene3d?: Scene3DCapture;
 		} = {},
 	): Promise<Buffer> {
 		await HeadlessWebGPURenderer.initialize();
@@ -822,6 +825,7 @@ export class HeadlessWebGPURenderer {
 					containerWidth: width,
 					containerHeight: height,
 					isVideoMode: virtualMedia.operation?.dataType === "Video",
+					...(options.scene3d && { scene3d: options.scene3d }),
 				},
 			);
 
@@ -890,6 +894,8 @@ export class HeadlessWebGPURenderer {
 			renderId?: string;
 			/** "rgba" / "raw" returns raw width*height*4 pixels instead of an encoded image. */
 			format?: "png" | "rgba" | "raw" | "jpeg" | "jpg" | "webp";
+			/** Receives the frame's 3D passes as data (model export). */
+			scene3d?: Scene3DCapture;
 		} = {},
 	): Promise<Buffer> {
 		const vm =
@@ -903,6 +909,7 @@ export class HeadlessWebGPURenderer {
 		return this.renderImage(vm, frame, fps, {
 			renderId: options.renderId,
 			format: options.format,
+			scene3d: options.scene3d,
 		});
 	}
 

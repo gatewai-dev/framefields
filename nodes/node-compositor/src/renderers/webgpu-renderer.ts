@@ -104,7 +104,7 @@ import { type CubeCamera, resolveCubeCamera } from "./cube-camera.js";
 import { fracturedModel, fracturePose, fractureWhole } from "./fracture.js";
 import { compatibleMeshDraws } from "./mesh-instancing.js";
 import { type MotionHistory, motionHistory } from "./motion-history.js";
-import { pathTraceCheck, pathTraceItems } from "./path-trace.js";
+import { pathTraceCheck, pathTraceItems, scene3dItems } from "./path-trace.js";
 import { screenDetailModel } from "./primitive-detail.js";
 import {
 	composeQuat,
@@ -1611,6 +1611,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				const rotation = target?.rotation ?? lop.rotation ?? 0;
 
 				sceneLights.push({
+					id: lop.id,
 					type: lightType,
 					color,
 					intensity,
@@ -1850,6 +1851,15 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				pending3DItems.length = 0;
 				return { finalTex: curTex, finalView: curView };
 			}
+
+			props.scene3d?.capture(ctx.device, encoder, {
+				items: scene3dItems(r3d, pending3DItems),
+				camera,
+				lights: sceneLights,
+				environment: sceneEnvironment,
+				width: nativeWidth,
+				height: nativeHeight,
+			});
 
 			const itemTextures = pendingTextures();
 

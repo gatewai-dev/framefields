@@ -2,10 +2,11 @@
  * The textures a traced frame reads, packed into one texture array. WebGPU
  * has no bindless textures, so every layer picture and material map a ray
  * may hit is drawn into a shelf of a `layerSize`² array layer, downscaled
- * when larger. Values are copied as they are stored (display-encoded colors
- * stay display-encoded; `-srgb` sources are encoded back), so the kernel
- * decodes exactly what the raster shaders decode.
+ * when larger. Values are copied as they are stored (`DisplayBlit`), so the
+ * kernel decodes exactly what the raster shaders decode.
  */
+
+import { DisplayBlit } from "../renderer3d/display-blit.js";
 
 /** Where one texture landed: normalized rect (inset half a texel) and layer. */
 export interface AtlasSlot {
@@ -21,37 +22,6 @@ interface Placement {
 	h: number;
 	layer: number;
 }
-
-const blitWgsl = /* wgsl */ `
-struct VsOut {
-    @builtin(position) pos : vec4<f32>,
-    @location(0) uv : vec2<f32>,
-};
-@group(0) @binding(0) var src : texture_2d<f32>;
-@group(0) @binding(1) var srcSampler : sampler;
-@group(0) @binding(2) var<uniform> encode : vec4<f32>;
-
-@vertex
-fn vs(@builtin(vertex_index) i: u32) -> VsOut {
-    let p = vec2<f32>(f32((i << 1u) & 2u), f32(i & 2u));
-    var out: VsOut;
-    out.pos = vec4<f32>(p * 2.0 - 1.0, 0.0, 1.0);
-    out.uv = vec2<f32>(p.x, 1.0 - p.y);
-    return out;
-}
-
-fn toSrgb(c: vec3<f32>) -> vec3<f32> {
-    let lo = c * 12.92;
-    let hi = 1.055 * pow(max(c, vec3<f32>(0.0)), vec3<f32>(1.0 / 2.4)) - 0.055;
-    return select(hi, lo, c <= vec3<f32>(0.0031308));
-}
-
-@fragment
-fn fs(in: VsOut) -> @location(0) vec4<f32> {
-    let t = textureSampleLevel(src, srcSampler, in.uv, 0.0);
-    return select(t, vec4<f32>(toSrgb(t.rgb), t.a), encode.x > 0.5);
-}
-`;
 
 /** Shelf packer over square layers. */
 function pack(
@@ -90,47 +60,16 @@ const GUTTER = 2;
 
 export class TextureAtlas {
 	private texture: GPUTexture | null = null;
-	private pipeline: GPURenderPipeline;
-	private sampler: GPUSampler;
-	private encodeOn: GPUBuffer;
-	private encodeOff: GPUBuffer;
+	private readonly blitter: DisplayBlit;
 	readonly filterSampler: GPUSampler;
 
 	constructor(private device: GPUDevice) {
-		const module = device.createShaderModule({
-			label: "PathTraceAtlasBlit",
-			code: blitWgsl,
-		});
-		this.pipeline = device.createRenderPipeline({
-			label: "PathTraceAtlasBlit",
-			layout: "auto",
-			vertex: { module, entryPoint: "vs" },
-			fragment: {
-				module,
-				entryPoint: "fs",
-				targets: [{ format: "rgba8unorm" }],
-			},
-			primitive: { topology: "triangle-list" },
-		});
-		this.sampler = device.createSampler({
-			magFilter: "linear",
-			minFilter: "linear",
-		});
+		this.blitter = new DisplayBlit(device);
 		this.filterSampler = device.createSampler({
 			label: "PathTraceAtlasSampler",
 			magFilter: "linear",
 			minFilter: "linear",
 		});
-		const uniform = (v: number) => {
-			const b = device.createBuffer({
-				size: 16,
-				usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-			});
-			device.queue.writeBuffer(b, 0, new Float32Array([v, 0, 0, 0]));
-			return b;
-		};
-		this.encodeOn = uniform(1);
-		this.encodeOff = uniform(0);
 	}
 
 	/**
@@ -195,52 +134,21 @@ export class TextureAtlas {
 	}
 
 	private blit(encoder: GPUCommandEncoder, atlas: GPUTexture, p: Placement) {
-		const srgb = p.texture.format.endsWith("-srgb");
-		const bind = this.device.createBindGroup({
-			layout: this.pipeline.getBindGroupLayout(0),
-			entries: [
-				{
-					binding: 0,
-					resource: p.texture.createView({ mipLevelCount: 1, dimension: "2d" }),
-				},
-				{ binding: 1, resource: this.sampler },
-				{
-					binding: 2,
-					resource: { buffer: srgb ? this.encodeOn : this.encodeOff },
-				},
-			],
-		});
-		const pass = encoder.beginRenderPass({
-			colorAttachments: [
-				{
-					view: atlas.createView({
-						dimension: "2d",
-						baseArrayLayer: p.layer,
-						arrayLayerCount: 1,
-					}),
-					loadOp: "load",
-					storeOp: "store",
-				},
-			],
-		});
-		pass.setPipeline(this.pipeline);
-		pass.setBindGroup(0, bind);
 		// The gutter stays empty: lookups are clamped half a texel inside the entry.
-		pass.setViewport(
-			p.x + GUTTER,
-			p.y + GUTTER,
-			p.w - 2 * GUTTER,
-			p.h - 2 * GUTTER,
-			0,
-			1,
+		this.blitter.draw(
+			encoder,
+			p.texture,
+			atlas.createView({
+				dimension: "2d",
+				baseArrayLayer: p.layer,
+				arrayLayerCount: 1,
+			}),
+			[p.x + GUTTER, p.y + GUTTER, p.w - 2 * GUTTER, p.h - 2 * GUTTER],
 		);
-		pass.draw(3);
-		pass.end();
 	}
 
 	destroy(): void {
 		this.texture?.destroy();
-		this.encodeOn.destroy();
-		this.encodeOff.destroy();
+		this.blitter.destroy();
 	}
 }

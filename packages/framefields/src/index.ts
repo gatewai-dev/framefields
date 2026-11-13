@@ -137,8 +137,6 @@ export {
 	type VisionTask,
 	type VisionVariant,
 } from "@framefields/vision";
-
-// Types only, so SAM stays in its own lazily loaded chunk; the trackers are in `framefields/sam`.
 export type {
 	Sam2FrameResult,
 	Sam2Model,
@@ -149,6 +147,8 @@ export type {
 	Sam3Precision,
 	Sam3Prompt,
 } from "@framefields/vision-sam";
+// Types only, so SAM stays in its own lazily loaded chunk; the trackers are in `framefields/sam`.
+export type { ModelExport, ModelExportOptions } from "./model-export.js";
 
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -236,6 +236,7 @@ import {
 	TensorPipeline,
 } from "@framefields/tensor-webgpu";
 import { inputStore, mediaDecoderCache } from "@framefields/webgpu-renderers";
+import { Scene3DExporter } from "@framefields/webgpu-renderers/gltf";
 import { buildChart, type ChartOptions } from "./chart.js";
 import { ClipVision, type ClipVisionOptions } from "./clip-vision.js";
 import {
@@ -303,6 +304,11 @@ import {
 	MediaSignalTimeline,
 	remapKey,
 } from "./media-signals.js";
+import {
+	type ModelExport,
+	type ModelExportOptions,
+	writeModel,
+} from "./model-export.js";
 import { Particles, type ParticlesOptions } from "./particles.js";
 import {
 	type FrameGridOptions,
@@ -2411,29 +2417,7 @@ export class Composition {
 				`Composition fps is ${this.fps}; cannot render at fps ${options.fps}.`,
 			);
 
-		// Compile first: the frame's hooks then record its live signal time.
-		const vm = this.toVirtualMedia();
-		if (this.hasFrameHooks()) {
-			const targetFrame = frame;
-			await this.notifyFrame({
-				frame: targetFrame,
-				fps: this.fps,
-				time: this.fps > 0 ? targetFrame / this.fps : 0,
-				duration: (this.durationMs ?? 0) / 1000,
-				durationMs: this.durationMs ?? 0,
-				progress:
-					this.durationMs && this.durationMs > 0
-						? Math.max(
-								0,
-								Math.min(
-									1,
-									((targetFrame / this.fps) * 1000) / this.durationMs,
-								),
-							)
-						: 0,
-				deltaTime: this.fps > 0 ? 1 / this.fps : 0,
-			});
-		}
+		const vm = await this.frameMedia(frame);
 		const renderer = options.renderer ?? new HeadlessMediaRenderer();
 		return renderer.renderFrame(vm, {
 			fps: this.fps,
@@ -2441,6 +2425,65 @@ export class Composition {
 			renderId: options.renderId,
 			format: options.format,
 		});
+	}
+
+	/**
+	 * The 3D scene at a frame as glTF 2.0 binary (`.glb`), the standard
+	 * format Blender, Maya, Unreal, Unity and the web read: every mesh in
+	 * its pose that frame (morphs and skins applied; clay, SDF and terrain
+	 * as their triangles, clay at its `resolution`), layers on 3D planes as
+	 * textured quads, instances as nodes sharing one mesh, materials with
+	 * their maps and Khronos extensions, the camera and the lights.
+	 * 100 px is a meter (`metersPerPixel`) and y is up, so a model standing
+	 * in the scene stands in the file. `skipped` lists what the frame drew
+	 * that the file cannot carry.
+	 *
+	 * ```ts
+	 * const { filePath, skipped } = await comp.exportModel({ frame: 30, outputPath: "out/scene.glb" });
+	 * ```
+	 */
+	public async exportModel(
+		options: ModelExportOptions & { renderer?: HeadlessMediaRenderer } = {},
+	): Promise<ModelExport> {
+		const { frame } = resolveFrameRequest(options, this.fps);
+		const vm = await this.frameMedia(frame);
+		const exporter = new Scene3DExporter(options);
+		const renderer = options.renderer ?? new HeadlessMediaRenderer();
+		await renderer.renderFrame(vm, {
+			fps: this.fps,
+			frame,
+			format: "rgba",
+			scene3d: exporter,
+		});
+		const result = await exporter.finish();
+		if (result.meshes === 0)
+			throw new Error(
+				`exportModel: frame ${frame} draws no 3D meshes (add a Layer.camera and Layer3D layers).`,
+			);
+		return writeModel(result, options.outputPath);
+	}
+
+	/** Compiles the composition for `frame` and runs its frame hooks, which record the live signal time. */
+	private async frameMedia(frame: number): Promise<VirtualMediaData> {
+		const vm = this.toVirtualMedia();
+		if (this.hasFrameHooks()) {
+			await this.notifyFrame({
+				frame,
+				fps: this.fps,
+				time: this.fps > 0 ? frame / this.fps : 0,
+				duration: (this.durationMs ?? 0) / 1000,
+				durationMs: this.durationMs ?? 0,
+				progress:
+					this.durationMs && this.durationMs > 0
+						? Math.max(
+								0,
+								Math.min(1, ((frame / this.fps) * 1000) / this.durationMs),
+							)
+						: 0,
+				deltaTime: this.fps > 0 ? 1 / this.fps : 0,
+			});
+		}
+		return vm;
 	}
 
 	/**

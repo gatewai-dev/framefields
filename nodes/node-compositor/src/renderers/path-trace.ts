@@ -6,6 +6,7 @@ import type {
 	PathTraceItem,
 	PathTraceOptions,
 	Renderer3D,
+	Scene3DItem,
 } from "@framefields/webgpu-renderers";
 
 /** What else the scene's 3D pass asks for that a traced frame does not draw. */
@@ -42,7 +43,7 @@ export function pathTraceCheck(
 	return setting;
 }
 
-type QueuedItem =
+type QueuedItem = (
 	| { kind: "quad"; texture: GPUTexture; opts: DrawQuad3DOpts }
 	| { kind: "slug"; opts: DrawQuad3DOpts }
 	| {
@@ -50,7 +51,41 @@ type QueuedItem =
 			mesh: Mesh3DData;
 			texture?: GPUTexture;
 			opts: DrawMesh3DOpts;
-	  };
+	  }
+) & { owner?: string };
+
+/** The queued 3D draws as scene data (`NodeRenderProps.scene3d`), each with its object-to-world matrix. */
+export function scene3dItems(
+	r3d: Renderer3D,
+	queued: QueuedItem[],
+): Scene3DItem[] {
+	return queued.map((item): Scene3DItem => {
+		const owner = item.owner;
+		if (item.kind === "slug")
+			return {
+				kind: "text",
+				opts: item.opts,
+				matrix: r3d.quadModelMatrix(item.opts),
+				owner,
+			};
+		if (item.kind === "quad")
+			return {
+				kind: "quad",
+				texture: item.texture,
+				opts: item.opts,
+				matrix: r3d.quadModelMatrix(item.opts),
+				owner,
+			};
+		return {
+			kind: "mesh",
+			mesh: item.mesh,
+			texture: item.texture,
+			opts: item.opts,
+			matrix: r3d.meshModelMatrix(item.opts),
+			owner,
+		};
+	});
+}
 
 /** The queued 3D draws as the path tracer takes them, each with its object-to-world matrix. */
 export function pathTraceItems(

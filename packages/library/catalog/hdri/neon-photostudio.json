@@ -1,0 +1,18 @@
+{
+	"title": "Neon Photostudio",
+	"summary": "A studio lit by fluorescent tubes and a window: crisp highlights with a cool edge.",
+	"tags": ["studio", "neon", "fluorescent", "indoor", "cool"],
+	"version": 1,
+	"license": {
+		"id": "CC0-1.0",
+		"commercial": true,
+		"attribution": "Sergej Majboroda, Poly Haven",
+		"source": "https://polyhaven.com/a/neon_photostudio"
+	},
+	"source": {
+		"url": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/2k/neon_photostudio_2k.hdr",
+		"ext": "hdr",
+		"sha256": "e6baa610a8e3518177465440777897def354015bf89aac82f1a23ee84b75e116",
+		"size": 6334365
+	}
+}

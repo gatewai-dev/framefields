@@ -1,0 +1,18 @@
+{
+	"title": "Brown Photostudio 02",
+	"summary": "A warm loft studio with big windows and fluorescent tubes: natural, lived-in light.",
+	"tags": ["studio", "window", "warm", "indoor", "natural-light"],
+	"version": 1,
+	"license": {
+		"id": "CC0-1.0",
+		"commercial": true,
+		"attribution": "Sergej Majboroda, Poly Haven",
+		"source": "https://polyhaven.com/a/brown_photostudio_02"
+	},
+	"source": {
+		"url": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/2k/brown_photostudio_02_2k.hdr",
+		"ext": "hdr",
+		"sha256": "153ca0cb899575c00f5b23065958d250a0f73e8789c8cf5957ccea313baf2bb6",
+		"size": 6492863
+	}
+}

@@ -40,6 +40,15 @@ const LEVEL_RANGE = 48;
 /** References never sit below this (dBFS): silence stays 0, not normalised up. */
 const SILENCE = -60;
 
+/**
+ * A `level` value (0–1 over the track's top 48 dB) as linear amplitude
+ * relative to the track's reference: what a drawn waveform shows, where the
+ * level itself (perceptual, in dB) suits driving motion.
+ */
+export function levelAmplitude(level: number): number {
+	return level <= 0 ? 0 : 10 ** (((level - 1) * LEVEL_RANGE) / 20);
+}
+
 /** In-place radix-2 FFT over `re` / `im` (length a power of two). */
 function fft(re: Float64Array, im: Float64Array): void {
 	const n = re.length;

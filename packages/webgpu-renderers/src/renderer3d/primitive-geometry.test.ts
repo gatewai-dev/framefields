@@ -4,6 +4,8 @@ import {
 	generatePrimitiveGeometry,
 	getPrimitiveGeometry,
 	type PrimitiveGeometryOptions,
+	primitiveDetailForScreen,
+	screenSegments,
 } from "./primitive-geometry.js";
 
 type V = [number, number, number];
@@ -515,5 +517,75 @@ describe("3D primitive geometry", () => {
 		});
 		expect(spherePoints.meshes[0]!.topology).toBeUndefined();
 		expect(spherePoints.meshes[0]!.indices.length).toBeGreaterThan(100);
+	});
+});
+
+describe("detail from on-screen size", () => {
+	it("keeps the outline within a quarter pixel, in powers of two, from the default up to 256", () => {
+		expect(screenSegments(10, 32)).toBe(32); // small: the default is plenty
+		expect(screenSegments(100, 32)).toBe(64);
+		expect(screenSegments(310, 32)).toBe(128);
+		expect(screenSegments(5000, 32)).toBe(256);
+		expect(screenSegments(Number.NaN, 32)).toBe(32);
+		// Whatever it picks, the sagitta stays under tolerance (until the cap).
+		for (const r of [40, 120, 600, 1100]) {
+			const n = screenSegments(r, 32);
+			expect(r * (1 - Math.cos(Math.PI / n))).toBeLessThanOrEqual(0.25);
+		}
+	});
+
+	it("refines spheres, cylinders, capsules and tori it draws large, and nothing else", () => {
+		const sphere: PrimitiveGeometryOptions = { type: "sphere", radius: 62 };
+		expect(primitiveDetailForScreen(sphere, 0.5)).toBe(sphere); // 31 px: 32 holds
+		expect(primitiveDetailForScreen(sphere, 5)).toEqual({
+			...sphere,
+			segments: 128,
+		});
+		const own: PrimitiveGeometryOptions = {
+			type: "sphere",
+			radius: 62,
+			segments: 12,
+		};
+		expect(primitiveDetailForScreen(own, 5)).toBe(own); // a set count wins
+		expect(
+			primitiveDetailForScreen(
+				{ type: "cylinder", height: 10, radiusTop: 400 },
+				1,
+			),
+		).toMatchObject({ segments: 128 });
+		const flat: PrimitiveGeometryOptions = {
+			type: "cylinder",
+			height: 10,
+			radius: 400,
+			flatShaded: true,
+		};
+		expect(primitiveDetailForScreen(flat, 1)).toBe(flat);
+		expect(
+			primitiveDetailForScreen({ type: "capsule", radius: 400 }, 1),
+		).toMatchObject({
+			radialSegments: 128,
+			capSegments: 32,
+		});
+		expect(
+			primitiveDetailForScreen({ type: "torus", radius: 300, tube: 100 }, 1),
+		).toMatchObject({ radialSegments: 64, tubularSegments: 128 });
+		const box: PrimitiveGeometryOptions = {
+			type: "roundedBox",
+			width: 900,
+			height: 900,
+			depth: 900,
+		};
+		expect(primitiveDetailForScreen(box, 4)).toBe(box);
+	});
+
+	it("builds a smoother sphere when asked: more segments, the same size", () => {
+		const coarse = generatePrimitiveGeometry({ type: "sphere", radius: 50 });
+		const fine = generatePrimitiveGeometry(
+			primitiveDetailForScreen({ type: "sphere", radius: 50 }, 8),
+		);
+		const verts = (m: Model3DData) =>
+			m.meshes.reduce((n, mesh) => n + mesh.positions.length / 3, 0);
+		expect(verts(fine)).toBeGreaterThan(verts(coarse) * 3);
+		expect(fine.bounds.size).toEqual(coarse.bounds.size);
 	});
 });

@@ -1,0 +1,17 @@
+{
+	"title": "Soft whoosh",
+	"summary": "A soft air whoosh passing left to right, for gentle transitions.",
+	"tags": ["whoosh", "transition", "air", "soft"],
+	"version": 1,
+	"license": {
+		"id": "CC0-1.0",
+		"commercial": true,
+		"source": "Synthesized by framefields (packages/library/src/synth.ts)"
+	},
+	"synth": {
+		"kind": "whoosh",
+		"seconds": 0.9,
+		"from": 300,
+		"to": 2400
+	}
+}

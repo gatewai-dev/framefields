@@ -7,9 +7,17 @@
  * Where they go is remembered in `framefields.json` at the project root.
  * Components that draw with fonts beyond the theme's (emoji) get them
  * installed too, plus a generated `fonts.ts` that registers them.
+ *
+ * Library items (`framefields add music/neon-drive`) may also carry media:
+ * each file is pinned by content in `framefields.json` under
+ * `assets/library/`, downloaded verified, and kept out of git, so cloud
+ * renders fetch the same bytes.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
+import { downloadVerified } from "@framefields/storage";
+import { LIBRARY_ASSETS_DIR } from "../library/types.js";
+import { ignore, localState, megabytes, sortKeys } from "./assets.js";
 import { readConfig, writeConfig } from "./config.js";
 import {
 	type Fetch,
@@ -40,6 +48,24 @@ export interface AddOptions {
 	fontCatalog?: Record<string, FontSpec>;
 	/** Called before a font download starts. */
 	onDownload?: (spec: FontSpec) => void;
+	/** Download items' media now (default true); pinned either way. */
+	media?: boolean;
+	/** For tests; how media is downloaded. Default the global `fetch`. */
+	fetchMedia?: typeof fetch;
+	log?: (line: string) => void;
+}
+
+/** A media file an item installed. */
+export interface MediaInstall {
+	/** Project-relative path, pinned in `framefields.json`. */
+	path: string;
+	size: number;
+	/**
+	 * `downloaded` now, already `present`, only `pinned` (`media: false`), or
+	 * `changed`: a different file is there, left alone unless `overwrite`.
+	 */
+	state: "downloaded" | "present" | "pinned" | "changed";
+	by: string;
 }
 
 export interface AddReport {
@@ -57,6 +83,8 @@ export interface AddReport {
 	fontsSkipped: Array<{ role: string; why: string; by: string }>;
 	/** The generated `fonts.ts`, when any font is installed. */
 	fontsModule?: FontsModule;
+	/** Media the items pinned. */
+	media: MediaInstall[];
 }
 
 /** Resolve `names` (and what they import) and write their files. */
@@ -65,15 +93,8 @@ export async function add(
 	options: AddOptions,
 ): Promise<AddReport> {
 	const { cwd, registry } = options;
-	const index = await registry.index();
-	const known = new Set(index.map((e) => e.name));
-	for (const n of names)
-		if (!known.has(n))
-			throw new Error(
-				`Unknown component "${n}". Run \`framefields list\` to see them all.`,
-			);
-
-	// Depth-first, dependencies before dependants.
+	// Depth-first, dependencies before dependants; every item is resolved
+	// (and checked) before anything is written.
 	const order: RegistryItem[] = [];
 	const seen = new Set<string>();
 	const visit = async (name: string) => {
@@ -97,6 +118,7 @@ export async function add(
 		configWritten: false,
 		fonts: [],
 		fontsSkipped: [],
+		media: [],
 	};
 	for (const item of order) {
 		for (const file of item.files) {
@@ -144,5 +166,56 @@ export async function add(
 	}
 	if (report.fonts.length > 0 || readConfig(cwd).config.fonts)
 		report.fontsModule = writeFontsModule(cwd, dir, options.fontCatalog);
+	report.media = await installMedia(order, options);
 	return report;
+}
+
+/** Pins every item's media in `framefields.json`, then downloads what's missing. */
+async function installMedia(
+	items: RegistryItem[],
+	options: AddOptions,
+): Promise<MediaInstall[]> {
+	const { cwd } = options;
+	const wanted = items.flatMap((item) =>
+		(item.assets ?? []).map((asset) => ({
+			asset,
+			by: item.name,
+			path: `${LIBRARY_ASSETS_DIR}/${asset.path}`,
+		})),
+	);
+	if (wanted.length === 0) return [];
+	for (const { asset, by } of wanted)
+		if (!/^https?:\/\//.test(asset.url))
+			throw new Error(
+				`${by}: media ${asset.path} has no http(s) URL (${asset.url}).`,
+			);
+	const { config } = readConfig(cwd);
+	const assets = { ...config.assets };
+	for (const { asset, path } of wanted)
+		assets[path] = { sha256: asset.sha256, size: asset.size, url: asset.url };
+	writeConfig(cwd, { ...config, assets: sortKeys(assets) });
+	ignore(
+		cwd,
+		wanted.map((w) => w.path),
+	);
+
+	const done: MediaInstall[] = [];
+	for (const { asset, by, path } of wanted) {
+		const base = { path, size: asset.size, by };
+		if (options.media === false) {
+			done.push({ ...base, state: "pinned" });
+			continue;
+		}
+		const state = await localState(cwd, path, asset);
+		if (state === "ok" || (state === "changed" && !options.overwrite)) {
+			done.push({ ...base, state: state === "ok" ? "present" : "changed" });
+			continue;
+		}
+		options.log?.(`Downloading ${path} (${megabytes(asset.size)})`);
+		await downloadVerified(asset.url, join(cwd, path), asset, {
+			fetch: options.fetchMedia,
+		});
+		done.push({ ...base, state: "downloaded" });
+	}
+	return done;
 }

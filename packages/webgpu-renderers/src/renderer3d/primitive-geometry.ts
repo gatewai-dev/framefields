@@ -55,7 +55,10 @@ export interface RoundedBoxGeometryOptions extends PrimitiveSurface {
 export interface SphereGeometryOptions extends PrimitiveSurface {
 	type: "sphere";
 	radius: number;
-	/** Segments around the equator (default 32); rings are half of it. */
+	/**
+	 * Segments around the equator; rings are half of it. Default: from its
+	 * size on screen each frame (at least 32), so its outline stays smooth.
+	 */
 	segments?: number;
 }
 
@@ -71,7 +74,7 @@ export interface CylinderGeometryOptions extends PrimitiveSurface {
 	bottomRadius?: number;
 	radius?: number;
 	height: number;
-	/** Segments around (default 32). */
+	/** Segments around. Default: from its size on screen (at least 32). */
 	segments?: number;
 	/** Leave the caps off (a thin open cylinder). */
 	openEnded?: boolean;
@@ -91,9 +94,9 @@ export interface TorusGeometryOptions extends PrimitiveSurface {
 	minorRadius?: number;
 	/** Alias for `tube`. */
 	tubeRadius?: number;
-	/** Segments around the tube cross-section (default 24). */
+	/** Segments around the tube cross-section. Default: from its size on screen (at least 24). */
 	radialSegments?: number;
-	/** Segments around the main ring (default 48). */
+	/** Segments around the main ring. Default: from its size on screen (at least 48). */
 	tubularSegments?: number;
 	/** Central sweep angle in degrees (default 360). */
 	arc?: number;
@@ -105,9 +108,9 @@ export interface CapsuleGeometryOptions extends PrimitiveSurface {
 	radius?: number;
 	/** Straight cylinder length between the hemisphere centers; total height is `length + 2 * radius` (default 60). */
 	length?: number;
-	/** Latitude rings per hemisphere cap (default 12). */
+	/** Latitude rings per hemisphere cap. Default: a quarter of `radialSegments` (at least 12). */
 	capSegments?: number;
-	/** Segments around the circumference (default 32). */
+	/** Segments around the circumference. Default: from its size on screen (at least 32). */
 	radialSegments?: number;
 }
 
@@ -2648,6 +2651,92 @@ export function generatePrimitiveGeometry(
 	};
 
 	return finalizeModel3DData(name, [mesh], { [material.name]: material });
+}
+
+/** Most segments a screen-sized curve gets (around a full circle). */
+const MAX_SCREEN_SEGMENTS = 256;
+/** How far a silhouette may stray from the true curve, in screen px. */
+const SCREEN_TOLERANCE = 0.25;
+
+/**
+ * Segments around a full circle of `radiusPx` on screen so its outline
+ * strays at most `tolerance` px from the curve (a chord's sagitta), as a
+ * power of two (few distinct meshes get built), never under `min` (the
+ * fixed default) nor over 256.
+ */
+export function screenSegments(
+	radiusPx: number,
+	min: number,
+	tolerance = SCREEN_TOLERANCE,
+): number {
+	if (!(radiusPx > tolerance)) return min;
+	const needed = Math.PI / Math.acos(1 - tolerance / radiusPx);
+	const pow2 = 2 ** Math.ceil(Math.log2(needed));
+	return Math.min(MAX_SCREEN_SEGMENTS, Math.max(min, pow2));
+}
+
+/**
+ * The options of a curved primitive (sphere, cylinder, capsule, torus) with
+ * the detail its size on screen needs, at `pixelsPerUnit` screen px per
+ * model unit. Counts set in `options` are kept; other primitives, and ones
+ * needing no more than their defaults, come back as the same object.
+ */
+export function primitiveDetailForScreen(
+	options: PrimitiveGeometryOptions,
+	pixelsPerUnit: number,
+): PrimitiveGeometryOptions {
+	if (!(pixelsPerUnit > 0)) return options;
+	const px = (units: number) => units * pixelsPerUnit;
+	const pick = <K extends string>(
+		key: K,
+		current: number | undefined,
+		radius: number,
+		min: number,
+	): Partial<Record<K, number>> => {
+		if (current !== undefined) return {};
+		const n = screenSegments(px(radius), min);
+		return n > min ? ({ [key]: n } as Partial<Record<K, number>>) : {};
+	};
+	let detail: Record<string, number> = {};
+	switch (options.type) {
+		case "sphere":
+			detail = pick("segments", options.segments, options.radius, 32);
+			break;
+		case "cylinder": {
+			// Flat-shaded sides are facets on purpose.
+			if (options.flatShaded) return options;
+			const r = Math.max(
+				options.radiusTop ?? options.topRadius ?? options.radius ?? 50,
+				options.radiusBottom ?? options.bottomRadius ?? options.radius ?? 50,
+			);
+			detail = pick("segments", options.segments, r, 32);
+			break;
+		}
+		case "capsule": {
+			const r = options.radius ?? 30;
+			detail = pick("radialSegments", options.radialSegments, r, 32);
+			// A cap is a quarter circle in profile.
+			const around = detail.radialSegments;
+			if (around && options.capSegments === undefined)
+				detail.capSegments = Math.max(12, around / 4);
+			break;
+		}
+		case "torus": {
+			const tube =
+				options.tube ?? options.minorRadius ?? options.tubeRadius ?? 20;
+			const ring = (options.radius ?? options.majorRadius ?? 60) + tube;
+			detail = {
+				...pick("radialSegments", options.radialSegments, tube, 24),
+				...pick("tubularSegments", options.tubularSegments, ring, 48),
+			};
+			break;
+		}
+		default:
+			return options;
+	}
+	return Object.keys(detail).length > 0
+		? ({ ...options, ...detail } as PrimitiveGeometryOptions)
+		: options;
 }
 
 const primitiveCache = new Map<string, Model3DData>();

@@ -19,12 +19,21 @@ export interface ComponentMeta {
 	/** Spec milestone that introduced it. */
 	since: string;
 	/**
+	 * What the library lists it as. Default `component`; a `template` is a
+	 * whole film or scene built from components, with its content as props;
+	 * `shader` and `vfx` wrap a shader or an effect with its uniforms as props.
+	 */
+	kind?: ComponentKind;
+	/**
 	 * Fonts it draws with beyond the theme's families. `framefields add`
 	 * installs each one into the project (pinned, hash-checked) and registers
 	 * it in the generated `fonts.ts`.
 	 */
 	fonts?: readonly FontNeed[];
 }
+
+/** The library kinds that are components. */
+export type ComponentKind = "component" | "template" | "shader" | "vfx";
 
 /** Fonts `framefields add` knows how to install, by role. */
 export type FontRole = "emoji" | "sans" | "mono";

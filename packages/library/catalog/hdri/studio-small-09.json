@@ -1,0 +1,18 @@
+{
+	"title": "Studio Small 09",
+	"summary": "A small photo studio with umbrella and softbox lights: soft, even product light.",
+	"tags": ["studio", "softbox", "product", "indoor", "soft-light"],
+	"version": 1,
+	"license": {
+		"id": "CC0-1.0",
+		"commercial": true,
+		"attribution": "Sergej Majboroda, Poly Haven",
+		"source": "https://polyhaven.com/a/studio_small_09"
+	},
+	"source": {
+		"url": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/2k/studio_small_09_2k.hdr",
+		"ext": "hdr",
+		"sha256": "36724313c0fc66dab126ff90f081b85a0b1ef47be65eda1417bd20b033f0573f",
+		"size": 6312947
+	}
+}

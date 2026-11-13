@@ -1,0 +1,25 @@
+{
+	"name": "@framefields/library",
+	"version": "3.0.1",
+	"private": true,
+	"description": "Builds the framefields library (framefields.dev): the curated catalog plus the component registry, with media analysis and engine-rendered previews, as a static registry folder the API repo publishes to R2.",
+	"type": "module",
+	"license": "Apache-2.0",
+	"scripts": {
+		"library": "tsx --tsconfig tsconfig.dev.json --conditions=development src/build.ts",
+		"typecheck": "tsc --noEmit -p tsconfig.dev.json",
+		"test": "vitest run"
+	},
+	"dependencies": {
+		"@framefields/components": "workspace:*",
+		"framefields": "workspace:*"
+	},
+	"devDependencies": {
+		"@framefields/tsconfig": "workspace:*",
+		"@types/node": "^24.1.0",
+		"sharp": "^0.35.4",
+		"tsx": "^4.20.3",
+		"typescript": "^5.8.3",
+		"vitest": "^4.1.5"
+	}
+}

@@ -1,0 +1,18 @@
+{
+	"title": "Kloofendal Partly Cloudy Sky",
+	"summary": "A pure midday sky with scattered clouds and a hard sun: outdoor daylight without a horizon.",
+	"tags": ["sky", "daylight", "outdoor", "sun", "clouds"],
+	"version": 1,
+	"license": {
+		"id": "CC0-1.0",
+		"commercial": true,
+		"attribution": "Greg Zaal, Jarod Guest, Poly Haven",
+		"source": "https://polyhaven.com/a/kloofendal_48d_partly_cloudy_puresky"
+	},
+	"source": {
+		"url": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/2k/kloofendal_48d_partly_cloudy_puresky_2k.hdr",
+		"ext": "hdr",
+		"sha256": "5244534e9cf5b606f2ff513aa00ddb161b0a4826ffd88a0d3bd03ac29247d198",
+		"size": 5451493
+	}
+}

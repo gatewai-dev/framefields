@@ -1,0 +1,16 @@
+{
+	"title": "UI click",
+	"summary": "A crisp interface click for buttons, pointers and taps.",
+	"tags": ["click", "ui", "button", "tap"],
+	"version": 1,
+	"license": {
+		"id": "CC0-1.0",
+		"commercial": true,
+		"source": "Synthesized by framefields (packages/library/src/synth.ts)"
+	},
+	"synth": {
+		"kind": "click",
+		"seconds": 0.12,
+		"tone": 3200
+	}
+}

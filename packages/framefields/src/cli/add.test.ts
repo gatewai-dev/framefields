@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
 	mkdirSync,
 	mkdtempSync,
@@ -8,6 +9,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { chainRegistries, openHttpRegistry } from "../library/registry.js";
 import { add, CONFIG_FILE, readConfig } from "./add.js";
 import { openRegistry, type RegistryItem } from "./registry.js";
 
@@ -119,7 +121,146 @@ describe("framefields add", () => {
 	it("rejects unknown names before writing anything", async () => {
 		await expect(
 			add(["counter", "nope"], { cwd, registry: openRegistry(registryDir) }),
-		).rejects.toThrow('Unknown component "nope"');
+		).rejects.toThrow('Unknown item "nope"');
 		expect(() => readFileSync(join(cwd, CONFIG_FILE))).toThrow();
+	});
+});
+
+describe("framefields add: library media", () => {
+	const audio = Buffer.from("not really an mp3, but bytes all the same");
+	const sha256 = createHash("sha256").update(audio).digest("hex");
+	const track: RegistryItem = {
+		...item("music/neon-drive", {
+			"music/neon-drive.ts":
+				'export const neonDrive = { src: "assets/library/music/neon-drive.mp3" };\n',
+		}),
+		title: "neonDrive",
+		kind: "music",
+		license: { id: "CC0-1.0", commercial: true },
+		assets: [
+			{
+				path: "music/neon-drive.mp3",
+				sha256,
+				size: audio.length,
+				url: `files/${sha256}.mp3`,
+			},
+		],
+	};
+	const library = "https://cdn.example.dev/library/";
+	const served: Record<string, unknown> = {
+		[`${library}index.json`]: [track],
+		[`${library}music/neon-drive.json`]: track,
+		[`${library}files/${sha256}.mp3`]: audio,
+	};
+	const requests: string[] = [];
+	const fakeFetch = (async (input: string | URL) => {
+		const url = String(input);
+		requests.push(url);
+		const body = served[url];
+		if (body === undefined) return new Response("no", { status: 404 });
+		return Buffer.isBuffer(body)
+			? new Response(body)
+			: new Response(JSON.stringify(body));
+	}) as typeof fetch;
+
+	beforeEach(() => {
+		requests.length = 0;
+	});
+
+	it("copies the module, pins the media at its absolute URL, downloads it verified", async () => {
+		const registry = chainRegistries(
+			openRegistry(registryDir),
+			openHttpRegistry(library, fakeFetch),
+		);
+		const report = await add(["music/neon-drive"], {
+			cwd,
+			registry,
+			fetchMedia: fakeFetch,
+		});
+		expect(report.written).toEqual(["components/music/neon-drive.ts"]);
+		expect(report.media).toEqual([
+			{
+				path: "assets/library/music/neon-drive.mp3",
+				size: audio.length,
+				state: "downloaded",
+				by: "music/neon-drive",
+			},
+		]);
+		expect(readConfig(cwd).config.assets).toEqual({
+			"assets/library/music/neon-drive.mp3": {
+				sha256,
+				size: audio.length,
+				url: `${library}files/${sha256}.mp3`,
+			},
+		});
+		expect(
+			readFileSync(join(cwd, "assets/library/music/neon-drive.mp3")),
+		).toEqual(audio);
+		expect(readFileSync(join(cwd, ".gitignore"), "utf8")).toContain(
+			"/assets/library/music/neon-drive.mp3",
+		);
+		const again = await add(["music/neon-drive"], {
+			cwd,
+			registry,
+			fetchMedia: fakeFetch,
+		});
+		expect(again.media[0]?.state).toBe("present");
+	});
+
+	it("asks the library only for names the bundled registry lacks", async () => {
+		const registry = chainRegistries(
+			openRegistry(registryDir),
+			openHttpRegistry(library, fakeFetch),
+		);
+		await add(["counter"], { cwd, registry });
+		expect(requests).toEqual([]);
+	});
+
+	it("pins without downloading when media is off", async () => {
+		const report = await add(["music/neon-drive"], {
+			cwd,
+			registry: openHttpRegistry(library, fakeFetch),
+			media: false,
+		});
+		expect(report.media[0]?.state).toBe("pinned");
+		expect(readConfig(cwd).config.assets).toHaveProperty(
+			"assets/library/music/neon-drive.mp3",
+		);
+		expect(requests).not.toContain(`${library}files/${sha256}.mp3`);
+	});
+
+	it("refuses media whose bytes don't match the pin", async () => {
+		served[`${library}files/${sha256}.mp3`] = Buffer.from("tampered");
+		try {
+			await expect(
+				add(["music/neon-drive"], {
+					cwd,
+					registry: openHttpRegistry(library, fakeFetch),
+					fetchMedia: fakeFetch,
+				}),
+			).rejects.toThrow();
+		} finally {
+			served[`${library}files/${sha256}.mp3`] = audio;
+		}
+	});
+
+	it("refuses items that would write outside the project", async () => {
+		served[`${library}evil.json`] = {
+			...item("evil", { "../../escape.ts": "x" }),
+		};
+		served[`${library}sneaky.json`] = {
+			...item("sneaky", {}),
+			assets: [{ path: "../../.bashrc", sha256, size: 1, url: "x" }],
+		};
+		const registry = openHttpRegistry(library, fakeFetch);
+		await expect(add(["evil"], { cwd, registry })).rejects.toThrow(
+			/invalid file path/,
+		);
+		await expect(add(["sneaky"], { cwd, registry })).rejects.toThrow(
+			/invalid asset/,
+		);
+		await expect(add(["../etc/passwd"], { cwd, registry })).rejects.toThrow(
+			/Unknown item/,
+		);
 	});
 });

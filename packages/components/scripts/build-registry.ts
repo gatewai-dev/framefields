@@ -29,7 +29,7 @@ export interface RegistryFile {
 }
 
 export interface RegistryEntry
-	extends Pick<ComponentMeta, "summary" | "tags" | "example"> {
+	extends Pick<ComponentMeta, "summary" | "tags" | "example" | "kind"> {
 	/** Folder name, what `framefields add` takes: `logo-reveal`. */
 	name: string;
 	/** The factory the item exports: `LogoReveal`. */
@@ -184,6 +184,7 @@ export function registryItem(
 		summary: meta.summary,
 		tags: meta.tags,
 		example: meta.example,
+		...(meta.kind && meta.kind !== "component" && { kind: meta.kind }),
 		parts: meta.parts,
 		cues: meta.cues,
 		...(meta.fonts && { fonts: meta.fonts }),
@@ -220,12 +221,13 @@ export async function buildRegistry(src = SRC): Promise<RegistryItem[]> {
 export function writeRegistry(items: RegistryItem[], out: string): void {
 	mkdirSync(out, { recursive: true });
 	const index: RegistryEntry[] = items.map(
-		({ name, title, summary, tags, example, registryDependencies }) => ({
+		({ name, title, summary, tags, example, kind, registryDependencies }) => ({
 			name,
 			title,
 			summary,
 			tags,
 			example,
+			...(kind && { kind }),
 			registryDependencies,
 		}),
 	);

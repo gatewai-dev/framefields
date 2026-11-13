@@ -1,0 +1,3 @@
+# Downloaded catalog media and the built library (published to R2, never committed).
+.cache/
+dist/

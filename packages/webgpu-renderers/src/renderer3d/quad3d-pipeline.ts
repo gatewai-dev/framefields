@@ -191,7 +191,7 @@ export class Quad3DPipeline {
 
 		const module = device.createShaderModule({
 			label: "quad3d.wgsl",
-			code: quad3dWgsl,
+			code: quad3dWgsl(sampleCount > 1),
 		});
 
 		this.cameraLayout = device.createBindGroupLayout({

@@ -75,7 +75,11 @@ export const Camera3D = {
 	 * Creates a default canvas-aligned 3D camera.
 	 * Calibrated so that layers at Z=0 project 1:1 with 2D canvas pixel coordinates.
 	 */
-	createDefaultCamera(width: number, height: number, fovDegrees = 50): Camera3DPose {
+	createDefaultCamera(
+		width: number,
+		height: number,
+		fovDegrees = 50,
+	): Camera3DPose {
 		const fovRad = (fovDegrees * Math.PI) / 180;
 		const distance = height / 2.0 / Math.tan(fovRad / 2.0);
 
@@ -119,6 +123,28 @@ export const Camera3D = {
 		}
 
 		return p;
+	},
+
+	/**
+	 * Screen pixels one world unit spans at `point`, in a viewport
+	 * `viewportHeight` px tall: what a size there measures on screen. Points
+	 * at or behind the near plane count as on it.
+	 */
+	pixelsPerUnit(
+		camera: Camera3DPose,
+		point: Vec3,
+		viewportHeight: number,
+	): number {
+		const forward = Vector3Math.normalize(
+			Vector3Math.subtract(camera.target, camera.eye),
+		);
+		const depth = Math.max(
+			camera.near,
+			Vector3Math.dot(Vector3Math.subtract(point, camera.eye), forward),
+		);
+		const zoom = camera.zoom > 0 ? camera.zoom : 1;
+		const halfFov = (camera.fov * Math.PI) / 360;
+		return (viewportHeight / 2 / (depth * Math.tan(halfFov))) * zoom;
 	},
 
 	/**
@@ -300,8 +326,7 @@ export const Camera3D = {
 		}
 
 		const t = timeSeconds * frequency;
-		const dx =
-			smoothHarmonicNoise(t, seed, octaves) * translationAmplitude;
+		const dx = smoothHarmonicNoise(t, seed, octaves) * translationAmplitude;
 		const dy =
 			smoothHarmonicNoise(t, seed + 101.5, octaves) * translationAmplitude;
 		const dz =
@@ -316,9 +341,7 @@ export const Camera3D = {
 		const forward = Vector3Math.normalize(
 			Vector3Math.subtract(pose.target, pose.eye),
 		);
-		const right = Vector3Math.normalize(
-			Vector3Math.cross(forward, pose.up),
-		);
+		const right = Vector3Math.normalize(Vector3Math.cross(forward, pose.up));
 		const trueUp = Vector3Math.cross(right, forward);
 
 		const disp = Vector3Math.add(

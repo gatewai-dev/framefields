@@ -105,6 +105,7 @@ import { fracturedModel, fracturePose, fractureWhole } from "./fracture.js";
 import { compatibleMeshDraws } from "./mesh-instancing.js";
 import { type MotionHistory, motionHistory } from "./motion-history.js";
 import { pathTraceCheck, pathTraceItems } from "./path-trace.js";
+import { screenDetailModel } from "./primitive-detail.js";
 import {
 	composeQuat,
 	meshWind,
@@ -3060,6 +3061,16 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				const finalModelMatrix = parent3DMatrix
 					? Matrix4Math.multiply(parent3DMatrix, localM)
 					: localM;
+
+				// Curved primitives get the detail their size on screen needs.
+				if (camera && lop.primitive3d && !lop.fracture3d && !lop.instances3d)
+					model = screenDetailModel(
+						model,
+						lop.primitive3d as PrimitiveGeometryOptions,
+						finalModelMatrix,
+						camera,
+						nativeHeight,
+					);
 
 				const colorParsed =
 					target?.colorTint || target?.color || lop.colorTint || lop.color

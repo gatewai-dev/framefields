@@ -1,0 +1,17 @@
+{
+	"title": "Deep impact",
+	"summary": "A low cinematic boom with a short crack: titles landing, logo hits.",
+	"tags": ["impact", "boom", "hit", "cinematic", "logo"],
+	"version": 1,
+	"license": {
+		"id": "CC0-1.0",
+		"commercial": true,
+		"source": "Synthesized by framefields (packages/library/src/synth.ts)"
+	},
+	"synth": {
+		"kind": "impact",
+		"seconds": 1.6,
+		"from": 110,
+		"to": 38
+	}
+}

@@ -1,0 +1,17 @@
+{
+	"title": "Success chime",
+	"summary": "A rising two-note bell for success, done, or deployed.",
+	"tags": ["chime", "success", "bell", "notification", "ui"],
+	"version": 1,
+	"license": {
+		"id": "CC0-1.0",
+		"commercial": true,
+		"source": "Synthesized by framefields (packages/library/src/synth.ts)"
+	},
+	"synth": {
+		"kind": "chime",
+		"seconds": 1.6,
+		"notes": [880, 1318.5],
+		"gap": 0.12
+	}
+}

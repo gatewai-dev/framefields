@@ -1,47 +1,27 @@
 /**
- * Reading a component registry: the one shipped in this package's dist, a
- * local folder, or one served over http(s). A registry is `index.json` (the
- * entries) plus `<name>.json` per component (entry, meta and files).
+ * Opening registries for `framefields add`: the components shipped in this
+ * package's dist, a local folder, one served over http(s), and the library
+ * on framefields.dev. The format is in `library/registry.ts`.
  */
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+	chainRegistries,
+	checkItem,
+	openHttpRegistry,
+	parseItemName,
+	type Registry,
+	type RegistryItem,
+	UnknownItemError,
+} from "../library/registry.js";
+import { LIBRARY_URL } from "../library/types.js";
 
-export interface RegistryEntry {
-	/** What `framefields add` takes: `logo-reveal`. */
-	name: string;
-	/** The factory the component exports: `LogoReveal`. */
-	title: string;
-	summary: string;
-	tags: readonly string[];
-	example: string;
-	/** Other components it imports, installed with it. */
-	registryDependencies: string[];
-}
-
-export interface RegistryItem extends RegistryEntry {
-	/** Generated from the component schema and JSDoc. */
-	props?: ReadonlyArray<{
-		name: string;
-		type: string;
-		required: boolean;
-		default?: unknown;
-		description?: string;
-	}>;
-	parts: readonly string[];
-	cues: readonly string[];
-	/** Fonts to install with it, by role (see `cli/fonts.ts`). */
-	fonts?: ReadonlyArray<{ font: string; why: string }>;
-	/** Paths relative to the components directory. */
-	files: Array<{ path: string; content: string }>;
-}
-
-export interface Registry {
-	/** Where it was read from, for messages. */
-	source: string;
-	index(): Promise<RegistryEntry[]>;
-	item(name: string): Promise<RegistryItem>;
-}
+export type {
+	Registry,
+	RegistryEntry,
+	RegistryItem,
+} from "../library/registry.js";
 
 /** The registry shipped next to this module in dist (`dist/registry`). */
 export function bundledRegistryPath(): string {
@@ -52,31 +32,45 @@ export function bundledRegistryPath(): string {
 export function openRegistry(source?: string, cwd = process.cwd()): Registry {
 	const from =
 		source ?? process.env.FRAMEFIELDS_REGISTRY ?? bundledRegistryPath();
-	if (/^https?:\/\//.test(from)) {
-		const base = from.endsWith("/") ? from : `${from}/`;
-		const get = async <T>(file: string): Promise<T> => {
-			const res = await fetch(new URL(file, base));
-			if (!res.ok)
-				throw new Error(
-					`${new URL(file, base)}: ${res.status} ${res.statusText}`,
-				);
-			return (await res.json()) as T;
-		};
-		return {
-			source: base,
-			index: () => get("index.json"),
-			item: (name) => get(`${name}.json`),
-		};
-	}
+	if (/^https?:\/\//.test(from)) return openHttpRegistry(from);
 	const dir = resolve(cwd, from);
-	const read = <T>(file: string): T => {
+	const read = <T>(file: string): T | undefined => {
 		const path = join(dir, file);
-		if (!existsSync(path)) throw new Error(`No ${file} in registry ${dir}`);
-		return JSON.parse(readFileSync(path, "utf8")) as T;
+		return existsSync(path)
+			? (JSON.parse(readFileSync(path, "utf8")) as T)
+			: undefined;
 	};
 	return {
 		source: dir,
-		index: async () => read("index.json"),
-		item: async (name) => read(`${name}.json`),
+		index: async () => {
+			const index = read<RegistryItem[]>("index.json");
+			if (!index) throw new Error(`No index.json in registry ${dir}`);
+			return index;
+		},
+		item: async (spec) => {
+			parseItemName(spec);
+			const item = read<RegistryItem>(`${spec}.json`);
+			if (!item) throw new UnknownItemError(spec);
+			// Media URLs here must be absolute: a folder has no URL to resolve against.
+			return checkItem(item, spec);
+		},
 	};
+}
+
+/** The library: framefields.dev, or `FRAMEFIELDS_LIBRARY` (a URL or folder). */
+export function openLibraryRegistry(cwd = process.cwd()): Registry {
+	return openRegistry(process.env.FRAMEFIELDS_LIBRARY ?? LIBRARY_URL, cwd);
+}
+
+/**
+ * What `framefields add` reads without `--registry`: this package's own
+ * components first (they match its version and work offline), then the
+ * library for everything else.
+ */
+export function defaultRegistry(cwd = process.cwd()): Registry {
+	if (process.env.FRAMEFIELDS_REGISTRY) return openRegistry(undefined, cwd);
+	return chainRegistries(
+		openRegistry(undefined, cwd),
+		openLibraryRegistry(cwd),
+	);
 }

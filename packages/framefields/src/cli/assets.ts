@@ -228,7 +228,7 @@ function storedAssets(
 	return Object.entries(assets ?? {}).filter(([, entry]) => !entry.url);
 }
 
-async function localState(
+export async function localState(
 	cwd: string,
 	path: string,
 	entry: AssetEntry,
@@ -310,7 +310,7 @@ const IGNORE_HEADER =
 	"# framefields assets: on the bucket, pinned in framefields.json";
 
 /** Adds the files to .gitignore, under one marked block. */
-function ignore(cwd: string, files: string[]): void {
+export function ignore(cwd: string, files: string[]): void {
 	const file = join(cwd, ".gitignore");
 	const text = existsSync(file) ? readFileSync(file, "utf8") : "";
 	const lines = new Set(text.split("\n"));
@@ -335,7 +335,7 @@ function trackedByGit(cwd: string, files: string[]): string[] {
 	}
 }
 
-function sortKeys(assets: AssetManifest): AssetManifest {
+export function sortKeys(assets: AssetManifest): AssetManifest {
 	return Object.fromEntries(
 		Object.entries(assets).sort(([a], [b]) => a.localeCompare(b)),
 	);

@@ -1,0 +1,18 @@
+{
+	"title": "Venice Sunset",
+	"summary": "Low golden sun over a European street: warm, long-shadow evening light.",
+	"tags": ["sunset", "golden-hour", "outdoor", "warm", "city"],
+	"version": 1,
+	"license": {
+		"id": "CC0-1.0",
+		"commercial": true,
+		"attribution": "Greg Zaal, Poly Haven",
+		"source": "https://polyhaven.com/a/venice_sunset"
+	},
+	"source": {
+		"url": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/2k/venice_sunset_2k.hdr",
+		"ext": "hdr",
+		"sha256": "cbfac020ee17ab36016ccc7fbe9020b828587b9864af6ecda0a93089914889a6",
+		"size": 5723224
+	}
+}

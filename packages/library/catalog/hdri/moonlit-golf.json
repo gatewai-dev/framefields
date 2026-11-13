@@ -1,0 +1,18 @@
+{
+	"title": "Moonlit Golf",
+	"summary": "A clear night with a bright moon over a field: cold, high-contrast night light.",
+	"tags": ["night", "moon", "outdoor", "cool", "dark"],
+	"version": 1,
+	"license": {
+		"id": "CC0-1.0",
+		"commercial": true,
+		"attribution": "Greg Zaal, Poly Haven",
+		"source": "https://polyhaven.com/a/moonlit_golf"
+	},
+	"source": {
+		"url": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/2k/moonlit_golf_2k.hdr",
+		"ext": "hdr",
+		"sha256": "b4e3a366b785fcfe765ef8143a8930cf4e71aa59467ef9050098ecf375d7926b",
+		"size": 6981963
+	}
+}

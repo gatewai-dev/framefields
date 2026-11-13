@@ -1,0 +1,17 @@
+{
+	"title": "Notification chime",
+	"summary": "A single soft bell for a message or a notification.",
+	"tags": ["chime", "notification", "bell", "message", "ui"],
+	"version": 1,
+	"license": {
+		"id": "CC0-1.0",
+		"commercial": true,
+		"source": "Synthesized by framefields (packages/library/src/synth.ts)"
+	},
+	"synth": {
+		"kind": "chime",
+		"seconds": 1.2,
+		"notes": [1046.5],
+		"gap": 0
+	}
+}

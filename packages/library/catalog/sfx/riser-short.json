@@ -1,0 +1,17 @@
+{
+	"title": "Short riser",
+	"summary": "Filtered noise and tone building over two seconds into a hit.",
+	"tags": ["riser", "build", "tension", "transition"],
+	"version": 1,
+	"license": {
+		"id": "CC0-1.0",
+		"commercial": true,
+		"source": "Synthesized by framefields (packages/library/src/synth.ts)"
+	},
+	"synth": {
+		"kind": "riser",
+		"seconds": 2,
+		"from": 200,
+		"to": 4000
+	}
+}

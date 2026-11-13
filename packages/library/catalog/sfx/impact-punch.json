@@ -1,0 +1,18 @@
+{
+	"title": "Punch impact",
+	"summary": "A tight, short thump for counters, stamps and fast reveals.",
+	"tags": ["impact", "hit", "punch", "short"],
+	"version": 1,
+	"license": {
+		"id": "CC0-1.0",
+		"commercial": true,
+		"source": "Synthesized by framefields (packages/library/src/synth.ts)"
+	},
+	"synth": {
+		"kind": "impact",
+		"seconds": 0.6,
+		"from": 180,
+		"to": 60,
+		"seed": 4
+	}
+}

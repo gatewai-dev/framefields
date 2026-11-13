@@ -5,6 +5,7 @@
  *   npx framefields init [dir]           start a project (or add framefields to one)
  *   npx framefields add <name...>        copy components into this project
  *   npx framefields list                 the components you can add
+ *   npx framefields library [words…]     search the library on framefields.dev
  *   npx framefields fonts add <role...>  install fonts (emoji)
  *   npx framefields fonts list           the fonts you can install
  *   npx framefields assets add|push|pull|status   media on your own bucket
@@ -37,8 +38,13 @@ import {
 	type PackageManager,
 	shownPath,
 } from "./cli/init.js";
+import { runLibrary } from "./cli/library.js";
 import { runLocal } from "./cli/local.js";
-import { openRegistry } from "./cli/registry.js";
+import {
+	defaultRegistry,
+	openLibraryRegistry,
+	openRegistry,
+} from "./cli/registry.js";
 import { AI_DASHBOARD } from "./cli/templates.js";
 
 const HELP = `Usage: framefields <command> [options]
@@ -57,7 +63,13 @@ Commands:
                   overwrites; existing files only gain what they lack.
   add <name...>   Copy components' source into this project (and the
                   components they build on). The code is yours to edit.
+                  Library items (music/neon-drive) also pin their media in
+                  framefields.json and download it to assets/library/.
   list            List the components you can add.
+  library [words...]
+                  Search the library on framefields.dev: music, SFX,
+                  HDRIs, backgrounds, footage, overlays, textures, LUTs,
+                  3D models, templates, shaders, VFX (components: list).
   fonts add <role...>
                   Install fonts (pinned, hash-checked, with their license)
                   and register them in the generated <components>/fonts.ts.
@@ -126,24 +138,39 @@ Options for init:
   --no-emoji        Skip the color emoji font.
   --no-git          Don't run \`git init\`.
 
+Options for library:
+  --kind <kind>     Only this kind (repeat, or comma-separate, for several).
+  --tag <tag>       Only items with this tag (repeatable).
+  --min-duration <s>, --max-duration <s>
+                    Length in seconds, for audio and video.
+  --bpm <n|a-b>     Tempo, or a range of tempi, for music.
+  --loop            Only items that loop seamlessly.
+  --commercial      Only items licensed for commercial work.
+  --json            The matching entries as JSON.
+
 Options for add:
   --all             Add every component.
   --dir <path>      Components directory (default: from framefields.json,
                     else src/components or components). Saved the first time.
   --overwrite       Replace files you have changed.
   --no-fonts        Don't install the fonts components ask for (emoji).
+  --no-media        Pin library media in framefields.json without
+                    downloading it (\`framefields assets pull\` does later).
 
 Options for add and fonts add:
   --fonts-dir <path>  Where downloaded fonts go (default assets/fonts).
 
-Options for add and list:
+Options for add, list and library:
   --registry <src>  A registry folder or http(s) URL instead of the one
-                    shipped with this version of framefields.
+                    shipped with this version of framefields (add: and the
+                    library). FRAMEFIELDS_LIBRARY points library lookups at
+                    a mirror.
   -h, --help        Show this help.
 
 Examples:
   npx framefields init my-film --install
   npx framefields add mouse-pointer focus-zoom
+  npx framefields library upbeat --kind music --bpm 110-130
   npx framefields fonts add emoji
   npx framefields assets add assets/footage
   npx framefields preview film
@@ -182,6 +209,14 @@ async function main(argv: string[]): Promise<number> {
 			quality: { type: "string" },
 			select: { type: "string" },
 			remote: { type: "string" },
+			kind: { type: "string", multiple: true },
+			tag: { type: "string", multiple: true },
+			"min-duration": { type: "string" },
+			"max-duration": { type: "string" },
+			bpm: { type: "string" },
+			loop: { type: "boolean" },
+			commercial: { type: "boolean" },
+			"no-media": { type: "boolean" },
 			help: { type: "boolean", short: "h" },
 		},
 	});
@@ -292,10 +327,20 @@ async function main(argv: string[]): Promise<number> {
 		logInit(report, cwd, log);
 		return 0;
 	}
-	const registry = openRegistry(values.registry, cwd);
+	if (command === "library")
+		return runLibrary(
+			names,
+			values,
+			values.registry
+				? openRegistry(values.registry, cwd)
+				: openLibraryRegistry(cwd),
+			log,
+		);
+	const bundled = openRegistry(values.registry, cwd);
+	const registry = values.registry ? bundled : defaultRegistry(cwd);
 
 	if (command === "list") {
-		const index = await registry.index();
+		const index = await bundled.index();
 		if (values.json) {
 			log(
 				JSON.stringify({
@@ -303,9 +348,7 @@ async function main(argv: string[]): Promise<number> {
 					sdkVersion: ownVersion(),
 					components: await Promise.all(
 						index.map(async (entry) => {
-							const { files: _files, ...item } = await registry.item(
-								entry.name,
-							);
+							const { files: _files, ...item } = await bundled.item(entry.name);
 							return item;
 						}),
 					),
@@ -324,7 +367,7 @@ async function main(argv: string[]): Promise<number> {
 	}
 
 	const wanted = values.all
-		? (await registry.index()).map((e) => e.name)
+		? (await bundled.index()).map((e) => e.name)
 		: names;
 	if (wanted.length === 0) {
 		process.stderr.write(
@@ -340,6 +383,8 @@ async function main(argv: string[]): Promise<number> {
 		fonts: !values["no-fonts"],
 		fontsDir: values["fonts-dir"],
 		onDownload,
+		media: !values["no-media"],
+		log,
 	});
 	for (const f of report.written) log(`  wrote      ${f}`);
 	for (const f of report.unchanged) log(`  unchanged  ${f}`);
@@ -347,14 +392,17 @@ async function main(argv: string[]): Promise<number> {
 		log(`  skipped    ${f} (yours differs; --overwrite replaces it)`);
 	if (report.configWritten) log("  wrote      framefields.json");
 	logFonts(report, cwd, log);
+	logMedia(report, log);
 	const extra = report.components.filter((c) => !wanted.includes(c.name));
 	if (extra.length > 0)
 		log(`\nWith what they build on: ${extra.map((c) => c.name).join(", ")}.`);
 	warnIfMissingFramefields(cwd, log);
 	const first = report.components.find((c) => wanted.includes(c.name));
-	if (first)
+	const module =
+		first?.files.find((f) => f.path.endsWith("/index.ts")) ?? first?.files[0];
+	if (first && module)
 		log(
-			`\nimport { ${first.title} } from "./${first.name}/index.js"; // from ${relative(cwd, report.dir) || "."}`,
+			`\nimport { ${first.title} } from "./${module.path.replace(/\.ts$/, ".js")}"; // from ${relative(cwd, report.dir) || "."}`,
 		);
 	return 0;
 }
@@ -471,6 +519,22 @@ function listRenders(
 		);
 	}
 	return 0;
+}
+
+function logMedia(report: AddReport, log: (s: string) => void) {
+	for (const m of report.media) {
+		const note =
+			m.state === "changed"
+				? " (yours differs; --overwrite replaces it)"
+				: m.state === "pinned"
+					? " (pinned; `framefields assets pull` downloads it)"
+					: "";
+		log(`  ${m.state.padEnd(10)} ${m.path}${note}`);
+	}
+	if (report.media.length > 0)
+		log(
+			"  pinned in  framefields.json (commit it; the media stays out of git)",
+		);
 }
 
 function logFonts(report: AddReport, cwd: string, log: (s: string) => void) {

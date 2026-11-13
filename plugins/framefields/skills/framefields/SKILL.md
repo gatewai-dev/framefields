@@ -1,6 +1,6 @@
 ---
 name: framefields
-description: Start a new framefields video project, or add framefields to an existing Node.js project. Use when the user wants to make a video with framefields and the project has no framefields setup yet, or asks how to install framefields, scaffold a composition and render script, get from an empty folder to a first MP4, store footage (asset buckets, Git LFS), generate images, video, music or voice for a film with AI models (`ai` from framefields, the framefields AI gateway), or add ready-made components (pointers, captions, title cards, device frames …) with `npx framefields add`. Hands off to framefields-compose, framefields-effects, framefields-vision, framefields-render and framefields-cloud for the details.
+description: Start a new framefields video project, or add framefields to an existing Node.js project. Use when the user wants to make a video with framefields and the project has no framefields setup yet, or asks how to install framefields, scaffold a composition and render script, get from an empty folder to a first MP4, store footage (asset buckets, Git LFS), generate images, video, music or voice for a film with AI models (`ai` from framefields, the framefields AI gateway), or add ready-made components (pointers, captions, title cards, device frames …) and library media (SFX, HDRIs) with `npx framefields add` / `npx framefields library`. Hands off to framefields-compose, framefields-effects, framefields-vision, framefields-render and framefields-cloud for the details.
 ---
 
 # framefields
@@ -203,6 +203,26 @@ film.add(pointer); // pointer.cues.clicks[0].frame: key a sound or press to the 
 - Every component takes base props (`x`, `y`, `width`, `height`, `at`, `duration`, `hold`, `theme`, `enter`, `exit`, `seed`, `fps`, `canvas`; time in frames) and returns a box layer with `cues`, `span` and `parts`. Props are validated at build; each `index.ts` documents itself at the top.
 - Files go to the folder saved in `framefields.json` (`--dir` on first use); dependencies come along. Installed code imports only `framefields` and `framefields/components`. After upgrading framefields, `add <name> --overwrite` refreshes; without it, edited files are `skipped`.
 - Components needing emoji (`chat-thread`, `captions`) download Noto Color Emoji (pinned, ~10.7 MB) into `assets/fonts/` and write `src/components/fonts.ts`: call its `registerFonts()` before building. Emoji without an emoji font draw nothing (`lint` reports `missing_emoji_font`): install the font, don't remove the emoji.
+
+### The library (framefields.dev)
+
+Curated media and code beyond the bundled components (which stay with `framefields list`): SFX and HDRIs so far, more kinds (music, backgrounds, shaders, templates …) as they are curated. **Search it before synthesizing or generating a common asset.**
+
+```bash
+npx framefields library whoosh --kind sfx          # words + filters: --kind, --tag, --min/--max-duration, --bpm 110-130, --loop, --commercial, --json
+npx framefields add sfx/whoosh-soft hdri/venice-sunset
+```
+
+```typescript
+import { veniceSunset } from "./components/hdri/venice-sunset.js";
+import { whooshSoft } from "./components/sfx/whoosh-soft.js";
+film.add(Layer.environment({ hdri: veniceSunset.src }));
+// Start an SFX so its hit lands on the frame: hitFrame - whooshSoft.onset * fps.
+```
+
+- Media is pinned by sha256 in `framefields.json` (`assets`, with its CDN `url`), downloaded to `assets/library/` and gitignored; `framefields assets pull` restores it, cloud renders fetch it. `--no-media` pins without downloading.
+- Each media item installs a module beside the components exporting `src` and what was measured once at publish time: `duration`, `onset`, `beats` (seconds), `bpm` and `start` for music, `width`/`height` for images, plus `license` and `attribution`. Credit what the license asks for.
+- Bundled components win over library items of the same name; `name@2` pins an item's version.
 
 ## 7. Report engine issues
 

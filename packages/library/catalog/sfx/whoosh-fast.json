@@ -1,0 +1,18 @@
+{
+	"title": "Fast whoosh",
+	"summary": "A quick bright whoosh for snappy cuts and slides.",
+	"tags": ["whoosh", "transition", "fast", "swipe"],
+	"version": 1,
+	"license": {
+		"id": "CC0-1.0",
+		"commercial": true,
+		"source": "Synthesized by framefields (packages/library/src/synth.ts)"
+	},
+	"synth": {
+		"kind": "whoosh",
+		"seconds": 0.45,
+		"from": 500,
+		"to": 4000,
+		"seed": 21
+	}
+}

@@ -1,0 +1,18 @@
+{
+	"title": "Long riser",
+	"summary": "Four seconds of rising tension for a reveal or a drop.",
+	"tags": ["riser", "build", "tension", "reveal"],
+	"version": 1,
+	"license": {
+		"id": "CC0-1.0",
+		"commercial": true,
+		"source": "Synthesized by framefields (packages/library/src/synth.ts)"
+	},
+	"synth": {
+		"kind": "riser",
+		"seconds": 4,
+		"from": 120,
+		"to": 5000,
+		"seed": 9
+	}
+}

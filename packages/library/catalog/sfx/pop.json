@@ -1,0 +1,17 @@
+{
+	"title": "Pop",
+	"summary": "A round bubble pop for things appearing: badges, toasts, emoji.",
+	"tags": ["pop", "appear", "ui", "bubble"],
+	"version": 1,
+	"license": {
+		"id": "CC0-1.0",
+		"commercial": true,
+		"source": "Synthesized by framefields (packages/library/src/synth.ts)"
+	},
+	"synth": {
+		"kind": "pop",
+		"seconds": 0.18,
+		"from": 900,
+		"to": 220
+	}
+}

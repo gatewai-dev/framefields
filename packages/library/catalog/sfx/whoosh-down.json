@@ -1,0 +1,18 @@
+{
+	"title": "Falling whoosh",
+	"summary": "A whoosh that falls in pitch, for things dropping out or zooming away.",
+	"tags": ["whoosh", "transition", "down", "exit"],
+	"version": 1,
+	"license": {
+		"id": "CC0-1.0",
+		"commercial": true,
+		"source": "Synthesized by framefields (packages/library/src/synth.ts)"
+	},
+	"synth": {
+		"kind": "whoosh",
+		"seconds": 0.8,
+		"from": 3000,
+		"to": 400,
+		"seed": 33
+	}
+}

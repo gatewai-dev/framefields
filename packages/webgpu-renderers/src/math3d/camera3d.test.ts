@@ -175,3 +175,31 @@ describe("Camera3D Kinematics & Conformance Invariants", () => {
 		expect(wayOutside).toBe(false);
 	});
 });
+
+describe("Camera3D.pixelsPerUnit", () => {
+	it("is 1 on the default camera's z = 0 plane, and follows depth and zoom", () => {
+		const camera = Camera3D.createDefaultCamera(1920, 1080, 50);
+		expect(Camera3D.pixelsPerUnit(camera, [960, 540, 0], 1080)).toBeCloseTo(
+			1,
+			6,
+		);
+		// Twice as far from the eye: half the size.
+		const far = -camera.eye[2];
+		expect(Camera3D.pixelsPerUnit(camera, [960, 540, far], 1080)).toBeCloseTo(
+			0.5,
+			6,
+		);
+		// A taller viewport and a zoomed lens both enlarge it.
+		expect(Camera3D.pixelsPerUnit(camera, [960, 540, 0], 2160)).toBeCloseTo(
+			2,
+			6,
+		);
+		expect(
+			Camera3D.pixelsPerUnit({ ...camera, zoom: 2 }, [960, 540, 0], 1080),
+		).toBeCloseTo(2, 6);
+		// Behind the eye counts as on the near plane: large, never negative.
+		expect(
+			Camera3D.pixelsPerUnit(camera, [960, 540, camera.eye[2] - 100], 1080),
+		).toBeGreaterThan(100);
+	});
+});

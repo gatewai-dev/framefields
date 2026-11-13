@@ -1,0 +1,15 @@
+{
+	"title": "Glitch burst",
+	"summary": "Half a second of digital stutter for glitch cuts and errors.",
+	"tags": ["glitch", "digital", "error", "stutter", "transition"],
+	"version": 1,
+	"license": {
+		"id": "CC0-1.0",
+		"commercial": true,
+		"source": "Synthesized by framefields (packages/library/src/synth.ts)"
+	},
+	"synth": {
+		"kind": "glitch",
+		"seconds": 0.5
+	}
+}

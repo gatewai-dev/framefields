@@ -5,7 +5,10 @@ import type {
 	NodeOperation,
 	VirtualMediaData,
 } from "@framefields/core";
-import type { RenderContextValue } from "@framefields/webgpu-renderers";
+import type {
+	RenderContextValue,
+	Scene3DCapture,
+} from "@framefields/webgpu-renderers";
 
 export type GPUCommandEncoder = globalThis.GPUCommandEncoder;
 export type GPURenderPassEncoder = globalThis.GPURenderPassEncoder;
@@ -53,6 +56,8 @@ export interface NodeRenderProps<
 	 * every draw one frame earlier); nothing drawn is shown.
 	 */
 	motionHistoryOnly?: boolean;
+	/** Receives every 3D pass the frame draws, as data (model export). */
+	scene3d?: Scene3DCapture;
 	/** Signal values that override the node's own (text animators read them). */
 	signals?: Record<string, unknown>;
 	renderChild?: (

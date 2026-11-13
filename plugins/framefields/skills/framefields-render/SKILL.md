@@ -1,6 +1,6 @@
 ---
 name: framefields-render
-description: Render, inspect, test, preview and export WebGPU video and frame grids with the framefields headless engine. Use when verifying compositions, diagnosing blank frames, running frame grids or pixel tests, showing the user a live preview, exporting MP4/WebM, reading render progress, running video QA, naming renders in framefields.json, rendering without a GPU, or splitting a render into chunks in framefields. Cloud GPU rendering is in framefields-cloud.
+description: Render, inspect, test, preview and export WebGPU video and frame grids with the framefields headless engine. Use when verifying compositions, diagnosing blank frames, running frame grids or pixel tests, showing the user a live preview, exporting MP4/WebM, exporting a scene's 3D models as glTF (.glb) for Blender, Unreal, Unity or the web, reading render progress, running video QA, naming renders in framefields.json, rendering without a GPU, or splitting a render into chunks in framefields. Cloud GPU rendering is in framefields-cloud.
 ---
 
 # framefields-render
@@ -97,6 +97,26 @@ await result.cleanup?.();
 No HEVC or AV1; an unknown codec falls back to H.264. Or from the CLI: `npx framefields render <name>` uses the project's own tsx and framefields, calls the export with the render's `args`/`select`, downloads missing pinned assets first, and writes the render's `output`.
 
 Always end render scripts with `process.exit(0)`: native GPU and encoder threads keep Node alive.
+
+### 7. 3D models (`exportModel`)
+
+A frame's 3D scene exports as glTF 2.0 binary (`.glb`), the standard interchange format: Blender, Maya, Houdini, Unreal, Unity, three.js and every glTF viewer open it.
+
+```typescript
+const { filePath, meshes, triangles, skipped } = await comp.exportModel({
+  frame: 30,                       // or atMs
+  outputPath: "output/scene.glb",
+  metersPerPixel: 0.01,            // default: 100 px is a meter
+  // camera: false, lights: false, maxTextureSize: 4096
+});
+```
+
+From the CLI: `npx framefields render <name> --model [--frame 30] [--output scene.glb]` (default: the video's path as `.glb`; local only).
+
+- **What is in it:** what the frame draws. That means every mesh in its pose at that frame, with morphs and skins applied and models placed as in the scene. Clay, SDF, terrain and extruded text go in as their triangles. Clay uses its `resolution`, so raise it for a finer file. Layers on 3D planes become textured quads. Scattered and instanced meshes become nodes that share one mesh. Materials go in as PBR with their maps and Khronos extensions: glass, clearcoat, sheen, iridescence and anisotropy, plus subsurface in `extras`. The camera and the directional, point and spot lights are included, and nodes are named by layer id.
+- **Axes:** y is up and units are meters. A model upright in the scene stands upright in the file, and the file's camera frames what the render shows. To load it back into framefields, use `Layer.glb(file, { scale: 100, rotateX: 180 })`.
+- **`skipped`** lists what the frame drew that the file cannot carry: text on 3D planes (use `Layer3D.extrudedText`), rect lights, the environment's floor, rounded corners and borders of layers on planes, and GPU-computed motion (wind, audio deformation, crowds), which is written at rest. Print it.
+- A single frame: no animation tracks. Export several frames for several poses.
 
 ## Named renders (`framefields.json`)
 

@@ -1,7 +1,7 @@
 /**
- * Schemas for procedural 3D content: terrain, SDF sculptures, surface
- * scattering and wind. A model node's `primitive3d` is checked against the
- * terrain / SDF schema when it names one of them.
+ * Schemas for procedural 3D content: terrain, SDF and clay sculptures,
+ * surface scattering and wind. A model node's `primitive3d` is checked
+ * against the terrain / SDF / clay schema when it names one of them.
  */
 import { z } from "zod";
 
@@ -144,15 +144,151 @@ export const SdfGeometrySchema = z
 	})
 	.strict();
 
-/** `primitive3d`: free-form for the classic primitives, strict for terrain and SDF. */
+const ClayMaterialFields = {
+	mode: z.enum(["add", "carve", "intersect"]).optional(),
+	smoothness: z.number().min(0).optional(),
+	color: z.string().optional(),
+};
+const ClaySolidFields = {
+	...ClayMaterialFields,
+	center: Vec3Schema.optional(),
+	rotation: Vec3Schema.optional(),
+};
+const ClayWarpFields = {
+	center: Vec3Schema,
+	radius: z.number().positive(),
+	reach: z.number().positive().optional(),
+};
+const PositiveVec3Schema = z.tuple([
+	z.number().positive(),
+	z.number().positive(),
+	z.number().positive(),
+]);
+
+export const ClayOpSchema = z.discriminatedUnion("type", [
+	z
+		.object({
+			...ClaySolidFields,
+			type: z.literal("sphere"),
+			radius: z.number().positive(),
+		})
+		.strict(),
+	z
+		.object({
+			...ClaySolidFields,
+			type: z.literal("box"),
+			size: PositiveVec3Schema,
+			radius: z.number().min(0).optional(),
+		})
+		.strict(),
+	z
+		.object({
+			...ClaySolidFields,
+			type: z.enum(["cylinder", "capsule"]),
+			radius: z.number().positive(),
+			height: z.number().positive(),
+		})
+		.strict(),
+	z
+		.object({
+			...ClaySolidFields,
+			type: z.literal("torus"),
+			radius: z.number().positive(),
+			tube: z.number().positive(),
+		})
+		.strict(),
+	z
+		.object({
+			...ClayMaterialFields,
+			type: z.literal("stroke"),
+			path: z
+				.array(
+					z.union([
+						Vec3Schema,
+						z.tuple([
+							z.number(),
+							z.number(),
+							z.number(),
+							z.number().positive(),
+						]),
+					]),
+				)
+				.min(1),
+			radius: z.number().positive(),
+			progress: z.number().min(0).max(1).optional(),
+		})
+		.strict(),
+	z
+		.object({ ...ClayWarpFields, type: z.literal("grab"), delta: Vec3Schema })
+		.strict(),
+	z
+		.object({
+			...ClayWarpFields,
+			type: z.literal("twist"),
+			axis: Vec3Schema,
+			angle: z.number(),
+		})
+		.strict(),
+	z
+		.object({
+			...ClayWarpFields,
+			type: z.literal("bulge"),
+			amount: z.number().min(-0.9).max(4),
+		})
+		.strict(),
+	z
+		.object({
+			type: z.literal("inflate"),
+			center: Vec3Schema,
+			radius: z.number().positive(),
+			amount: z.number(),
+		})
+		.strict(),
+	z
+		.object({
+			type: z.literal("detail"),
+			amplitude: z.number(),
+			scale: z.number().positive(),
+			octaves: z.number().int().min(1).max(8).optional(),
+			persistence: z.number().min(0).max(1).optional(),
+			lacunarity: z.number().min(1).max(4).optional(),
+			ridged: z.boolean().optional(),
+			seed: z.number().optional(),
+			center: Vec3Schema.optional(),
+			radius: z.number().positive().optional(),
+		})
+		.strict(),
+]);
+
+export const ClayGeometrySchema = z
+	.object({
+		type: z.literal("clay"),
+		ops: z.array(ClayOpSchema).min(1),
+		symmetry: z
+			.string()
+			.regex(/^[xyz]{1,3}$/i)
+			.optional(),
+		bounds: PositiveVec3Schema.optional(),
+		bricks: z.number().int().min(4).max(48).optional(),
+		resolution: z.number().int().min(16).max(1024).optional(),
+		draw: z.enum(["mesh", "field"]).optional(),
+		...PrimitiveSurfaceFields,
+	})
+	.strict();
+
+const PROCEDURAL_SCHEMAS: Record<string, z.ZodType> = {
+	terrain: TerrainGeometrySchema,
+	sdf: SdfGeometrySchema,
+	clay: ClayGeometrySchema,
+};
+
+/** `primitive3d`: free-form for the classic primitives, strict for terrain, SDF and clay. */
 export const Primitive3DSpecSchema = z.unknown().superRefine((value, ctx) => {
 	const type = (value as { type?: unknown } | null)?.type;
 	const schema =
-		type === "terrain"
-			? TerrainGeometrySchema
-			: type === "sdf"
-				? SdfGeometrySchema
-				: undefined;
+		typeof type === "string" && Object.hasOwn(PROCEDURAL_SCHEMAS, type)
+			? PROCEDURAL_SCHEMAS[type]
+			: undefined;
 	if (!schema) return;
 	const parsed = schema.safeParse(value);
 	if (parsed.success) return;

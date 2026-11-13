@@ -15,6 +15,7 @@
  * ```
  */
 
+import { type ColorInput, linearRgb } from "./color.js";
 import { GlbBuilder } from "./glb-builder.js";
 import {
 	type MaterialSpec,
@@ -79,6 +80,10 @@ export interface NodeSpec {
 	name?: string;
 	mesh?: MeshRef;
 	skin?: SkinRef;
+	camera?: CameraRef;
+	light?: LightRef;
+	/** Local transform as a column-major 4×4, instead of translation / rotation / scale. */
+	matrix?: ArrayLike<number>;
 	translation?: [number, number, number];
 	/** Quaternion x, y, z, w. */
 	rotation?: [number, number, number, number];
@@ -122,6 +127,43 @@ export interface TextureSpec {
 	mimeType: "image/png" | "image/jpeg" | "image/webp";
 	wrap?: "repeat" | "clamp" | "mirror";
 	filter?: "linear" | "nearest";
+}
+
+/** A perspective camera; it looks down its node's -Z with +Y up. */
+export interface CameraSpec {
+	name?: string;
+	/** Vertical field of view, degrees. */
+	fov: number;
+	/** Width over height. */
+	aspectRatio?: number;
+	/** Near clip distance, scene units. */
+	near: number;
+	/** Far clip distance; omit for an infinite projection. */
+	far?: number;
+}
+
+/**
+ * A KHR_lights_punctual light, shining down its node's -Z. Intensity is in
+ * the extension's units: lux for directional, candela for point and spot.
+ */
+export interface LightSpec {
+	name?: string;
+	type: "directional" | "point" | "spot";
+	/** Display (sRGB) color. Default white. */
+	color?: ColorInput;
+	intensity: number;
+	/** Distance where a point or spot light reaches zero; omit for inverse square forever. */
+	range?: number;
+	/** Spot cone, degrees from the axis: full strength inside `inner`, none past `outer`. */
+	innerConeAngle?: number;
+	outerConeAngle?: number;
+}
+
+export interface CameraRef {
+	readonly camera: number;
+}
+export interface LightRef {
+	readonly light: number;
 }
 
 export interface MeshRef {
@@ -214,6 +256,11 @@ function influenceSet<T extends Float32Array | Uint8Array | Uint16Array>(
 	return out;
 }
 
+function isIdentity(m: Float32Array): boolean {
+	for (let i = 0; i < 16; i++) if (m[i] !== (i % 5 === 0 ? 1 : 0)) return false;
+	return true;
+}
+
 export class GltfDocument {
 	private readonly bin = new GlbBuilder();
 	private readonly materials: Record<string, unknown>[] = [];
@@ -229,6 +276,65 @@ export class GltfDocument {
 	private readonly samplers: Record<string, unknown>[] = [];
 	private readonly extensions = new Set<string>();
 	private readonly drivers: DriverSpec[] = [];
+	private readonly cameras: Record<string, unknown>[] = [];
+	private readonly lights: Record<string, unknown>[] = [];
+
+	addCamera(spec: CameraSpec): CameraRef {
+		const label = `camera ${spec.name ?? this.cameras.length}`;
+		if (!(spec.fov > 0 && spec.fov < 180))
+			throw new Error(`${label}: fov must be between 0 and 180 degrees`);
+		if (!(spec.near > 0)) throw new Error(`${label}: near must be positive`);
+		if (spec.far !== undefined && !(spec.far > spec.near))
+			throw new Error(`${label}: far must be beyond near`);
+		if (spec.aspectRatio !== undefined && !(spec.aspectRatio > 0))
+			throw new Error(`${label}: aspectRatio must be positive`);
+		this.cameras.push({
+			...(spec.name ? { name: spec.name } : {}),
+			type: "perspective",
+			perspective: {
+				yfov: (spec.fov * Math.PI) / 180,
+				znear: spec.near,
+				...(spec.far !== undefined ? { zfar: spec.far } : {}),
+				...(spec.aspectRatio !== undefined
+					? { aspectRatio: spec.aspectRatio }
+					: {}),
+			},
+		});
+		return { camera: this.cameras.length - 1 };
+	}
+
+	addLight(spec: LightSpec): LightRef {
+		const label = `light ${spec.name ?? this.lights.length}`;
+		if (!(spec.intensity >= 0))
+			throw new Error(`${label}: intensity must be zero or more`);
+		if (spec.range !== undefined && !(spec.range > 0))
+			throw new Error(`${label}: range must be positive`);
+		const outer = spec.outerConeAngle ?? 45;
+		const inner = spec.innerConeAngle ?? 0;
+		if (spec.type === "spot" && !(inner >= 0 && inner < outer && outer <= 90))
+			throw new Error(
+				`${label}: cone angles need 0 <= inner < outer <= 90 degrees`,
+			);
+		this.extensions.add("KHR_lights_punctual");
+		this.lights.push({
+			...(spec.name ? { name: spec.name } : {}),
+			type: spec.type,
+			color: linearRgb(spec.color ?? "#ffffff"),
+			intensity: spec.intensity,
+			...(spec.range !== undefined && spec.type !== "directional"
+				? { range: spec.range }
+				: {}),
+			...(spec.type === "spot"
+				? {
+						spot: {
+							innerConeAngle: (inner * Math.PI) / 180,
+							outerConeAngle: (outer * Math.PI) / 180,
+						},
+					}
+				: {}),
+		});
+		return { light: this.lights.length - 1 };
+	}
 
 	addMaterial(spec: MaterialSpec): MaterialRef {
 		const { json, extensions } = materialJson(spec);
@@ -459,6 +565,15 @@ export class GltfDocument {
 			throw new Error(
 				`node ${spec.name ?? index}: skinned mesh without a skin`,
 			);
+		if (
+			spec.matrix &&
+			(spec.translation || spec.rotation || spec.scale || spec.skin)
+		)
+			throw new Error(
+				`node ${spec.name ?? index}: give a matrix or translation / rotation / scale, not both (and no matrix on a skinned node)`,
+			);
+		const matrix =
+			spec.matrix && floats(`node ${index} matrix`, spec.matrix, 16, 1);
 		if (spec.rotation) {
 			const [x, y, z, w] = spec.rotation;
 			if (Math.abs(Math.hypot(x, y, z, w) - 1) > 1e-4)
@@ -476,6 +591,11 @@ export class GltfDocument {
 			...(spec.name ? { name: spec.name } : {}),
 			...(spec.mesh ? { mesh: spec.mesh.mesh } : {}),
 			...(spec.skin ? { skin: spec.skin.skin } : {}),
+			...(spec.camera ? { camera: spec.camera.camera } : {}),
+			...(spec.light
+				? { extensions: { KHR_lights_punctual: { light: spec.light.light } } }
+				: {}),
+			...(matrix && !isIdentity(matrix) ? { matrix: [...matrix] } : {}),
 			...(spec.translation ? { translation: spec.translation } : {}),
 			...(spec.rotation ? { rotation: spec.rotation } : {}),
 			...(spec.scale ? { scale: spec.scale } : {}),
@@ -644,6 +764,9 @@ export class GltfDocument {
 			if (list.length) out[key] = list;
 		};
 		put("meshes", this.meshes);
+		put("cameras", this.cameras);
+		if (this.lights.length)
+			out.extensions = { KHR_lights_punctual: { lights: this.lights } };
 		put("materials", this.materials);
 		put("skins", this.skins);
 		put("animations", this.animations);

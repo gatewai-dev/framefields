@@ -22,8 +22,10 @@ export interface LocalJob {
 	engine: string;
 	args?: unknown;
 	select?: string;
-	/** render: where the video goes. */
+	/** render: where the video (or the model) goes. */
 	outputPath?: string;
+	/** render: write the 3D scene at this frame as glTF (.glb) instead of the video. */
+	modelFrame?: number;
 	codec?: string;
 	quality?: string;
 	/** preview: the page's title. */
@@ -52,6 +54,18 @@ async function run(job: LocalJob): Promise<LocalResult> {
 		pathToFileURL(job.entry).href
 	);
 	const comp = await pickComposition(mod, job);
+	if (job.modelFrame !== undefined) {
+		const model = await comp.exportModel({
+			frame: job.modelFrame,
+			outputPath: job.outputPath,
+		});
+		process.stdout.write(
+			`${model.meshes} meshes, ${model.triangles} triangles at frame ${job.modelFrame}\n`,
+		);
+		for (const what of model.skipped)
+			process.stdout.write(`Not in the file: ${what}\n`);
+		return { ok: true, filePath: model.filePath };
+	}
 	const result = await comp.renderVideo({
 		outputPath: job.outputPath,
 		...(job.codec && { codec: job.codec }),

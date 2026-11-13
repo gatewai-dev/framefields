@@ -11,7 +11,7 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { AssetsError, megabytes, pullAssets } from "./assets.js";
-import { pickRender, renderOutput } from "./cloud.js";
+import { modelOutput, pickRender, renderOutput } from "./cloud.js";
 import { findRender, readConfig } from "./config.js";
 import type { LocalJob, LocalResult } from "./local-worker.js";
 import { projectNodeArgs } from "./project-node.js";
@@ -24,6 +24,8 @@ export interface LocalCliOptions {
 	codec?: string;
 	quality?: string;
 	output?: string;
+	/** render: write the 3D scene at this frame as `.glb` instead of the video. */
+	modelFrame?: number;
 	/** Project folder. Default `process.cwd()`. */
 	cwd?: string;
 }
@@ -60,7 +62,13 @@ export async function runLocal(
 		select: o.select ?? spec?.select,
 		codec,
 		quality: o.quality ?? spec?.quality,
-		outputPath: path.resolve(cwd, renderOutput(target, spec, codec, o.output)),
+		outputPath: path.resolve(
+			cwd,
+			o.modelFrame === undefined
+				? renderOutput(target, spec, codec, o.output)
+				: modelOutput(target, spec, o.output),
+		),
+		modelFrame: o.modelFrame,
 		title: spec?.title ?? target.name,
 	};
 	if (mode === "preview" && (job.args !== undefined || job.select))
@@ -74,7 +82,9 @@ export async function runLocal(
 		return 1;
 	}
 	if (result.filePath)
-		log(`Rendered ${path.relative(cwd, result.filePath) || result.filePath}`);
+		log(
+			`${job.modelFrame === undefined ? "Rendered" : "Exported"} ${path.relative(cwd, result.filePath) || result.filePath}`,
+		);
 	// The video is written either way; failed QA fails the command.
 	return result.qaPassed === false ? 1 : 0;
 }

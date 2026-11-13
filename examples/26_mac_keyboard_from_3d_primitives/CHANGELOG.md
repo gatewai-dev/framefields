@@ -1,5 +1,7 @@
 # @framefields/example-26-mac-keyboard
 
+## 3.0.2
+
 ## 3.0.1
 
 ## 3.0.0

@@ -463,6 +463,17 @@ fn clayCacheBlur(index: u32, brick: ClayBrick) -> f32 {
     return clayCache[u32(clay.bake.z) * side * side * side + index] + brick.detail.z;
 }
 
+// The largest angle between the cache's normals and the field's in a brick,
+// near its surface (radians).
+fn clayCacheTurn(index: u32) -> f32 {
+    let side = u32(clay.bake.x) + 1u;
+    let bricks = u32(clay.bake.z);
+    return clayCache[bricks * side * side * side + bricks + index];
+}
+
+// Normals closer than this to the field's shade the same: a quarter of a degree.
+const CLAY_SHADING_TURN : f32 = 0.0044;
+
 // The field at a point of the ray: from the cache (with the detail on top
 // of it) where that is trusted, else evaluated.
 fn clayAlong(ray: ClayRay, t: f32, index: u32, brick: ClayBrick, trusted: bool) -> f32 {
@@ -575,7 +586,7 @@ fn clayCachedColor(p: vec3<f32>, index: u32, brick: ClayBrick) -> vec3<f32> {
     let u = clamp((p - brick.origin) / brick.size, vec3<f32>(0.0), vec3<f32>(1.0)) * f32(cells);
     let lo = min(vec3<u32>(u), vec3<u32>(cells - 1u));
     let f = u - vec3<f32>(lo);
-    let first = bricks * (full * full * full + 1u) + index * side * side * side * 3u;
+    let first = bricks * (full * full * full + 2u) + index * side * side * side * 3u;
     var corners : array<vec3<f32>, 8>;
     for (var c = 0u; c < 8u; c++) {
         let at = first + (((lo.z + (c >> 2u)) * side + lo.y + ((c >> 1u) & 1u)) * side + lo.x + (c & 1u)) * 3u;
@@ -595,12 +606,15 @@ fn clayCachedColor(p: vec3<f32>, index: u32, brick: ClayBrick) -> vec3<f32> {
 fn clayCachedShading(p: vec3<f32>, index: u32, e: f32, footprint: f32) -> ClayShading {
     let brick = clayBricks[index];
     let k = vec2<f32>(1.0, -1.0);
+    // The cache ends at the brick's faces: taken at most e inside them, all
+    // four taps read it (a tap past a face would read the face's value).
+    let q = clamp(p, brick.origin + vec3<f32>(e), brick.origin + vec3<f32>(brick.size - e));
     // Four taps e apart sum to 4e times the gradient.
     var gradient = (
-        k.xyy * clayCached(p + k.xyy * e, index, brick) +
-        k.yyx * clayCached(p + k.yyx * e, index, brick) +
-        k.yxy * clayCached(p + k.yxy * e, index, brick) +
-        k.xxx * clayCached(p + k.xxx * e, index, brick)
+        k.xyy * clayCached(q + k.xyy * e, index, brick) +
+        k.yyx * clayCached(q + k.yyx * e, index, brick) +
+        k.yxy * clayCached(q + k.yxy * e, index, brick) +
+        k.xxx * clayCached(q + k.xxx * e, index, brick)
     ) / (4.0 * e);
     let bits = u32(clay.params.x);
     let mirrored = vec3<bool>((bits & 1u) != 0u, (bits & 2u) != 0u, (bits & 4u) != 0u);

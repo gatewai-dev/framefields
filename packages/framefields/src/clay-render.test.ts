@@ -114,6 +114,74 @@ describe("Layer3D.clay", () => {
 		expect(differ / covered).toBeLessThan(0.005);
 	});
 
+	it("shades smoothly across its bricks and where shading leaves the cache", async () => {
+		// Lit and filling the frame: a normal read past the end of a brick's
+		// cache draws a line along the brick's face, and one that differs
+		// between cached and evaluated shading draws the seam between them.
+		const px = await pixels(
+			stage([
+				Layer.environment("studio", { intensity: 0.6 }),
+				Layer.directionalLight({
+					x: -300,
+					y: -400,
+					z: -500,
+					targetX: 200,
+					targetY: 150,
+					intensity: 1.4,
+				}),
+				Layer3D.clay({
+					x: 200,
+					y: 150,
+					rotateY: 30,
+					color: "#d8c8b0",
+					roughness: 0.6,
+					ops: [
+						{ type: "capsule", radius: 70, height: 160, rotation: [0, 0, 90] },
+						{
+							type: "sphere",
+							radius: 60,
+							center: [0, -60, 20],
+							smoothness: 30,
+						},
+					],
+				}),
+			]),
+		);
+		// Well inside the surface (silhouettes turn from the light fast), the
+		// largest second difference of brightness along rows and columns.
+		const MARGIN = 12;
+		const lit = (x: number, y: number) => lum(at(px, x, y)) > 40;
+		/** Pixels to the nearest unlit pixel along a row or column, capped. */
+		const run = new Uint8Array(W * H);
+		for (let y = 0; y < H; y++)
+			for (let x = 0; x < W; x++) {
+				let n = 0;
+				while (
+					n < MARGIN &&
+					[
+						[x + n, y],
+						[x - n, y],
+						[x, y + n],
+						[x, y - n],
+					].every(([u, v]) => u >= 0 && v >= 0 && u < W && v < H && lit(u, v))
+				)
+					n++;
+				run[y * W + x] = n;
+			}
+		let worst = 0;
+		for (let y = 1; y < H - 1; y++)
+			for (let x = 1; x < W - 1; x++) {
+				if (run[y * W + x] < MARGIN) continue;
+				const c = lum(at(px, x, y));
+				worst = Math.max(
+					worst,
+					Math.abs(lum(at(px, x - 1, y)) - 2 * c + lum(at(px, x + 1, y))),
+					Math.abs(lum(at(px, x, y - 1)) - 2 * c + lum(at(px, x, y + 1))),
+				);
+			}
+		expect(worst).toBeLessThan(6);
+	});
+
 	it("antialiases its silhouette from the field", async () => {
 		const px = await pixels(
 			stage([

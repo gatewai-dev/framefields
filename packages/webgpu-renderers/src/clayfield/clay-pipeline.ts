@@ -76,9 +76,11 @@ fn lightClay(point: ClayPoint) -> ClayLit {
     let brick = clayBricks[point.brick];
     let e = clayNormalStep(point);
     var surface : ClayShading;
-    // Where the cache follows the field to a twentieth of a pixel, shading
-    // reads it and evaluates nothing; elsewhere it evaluates the field.
-    if (clay.bake.x > 0.5 && clayCacheBlur(point.brick, brick) <= 0.05 * point.footprint) {
+    // Where the cache follows the field to a twentieth of a pixel and its
+    // normals turn from the field's by less than shading can show, shading
+    // reads it and evaluates nothing; elsewhere it evaluates the field. Both
+    // conditions keep the switch between the two invisible.
+    if (clay.bake.x > 0.5 && clayCacheBlur(point.brick, brick) <= 0.05 * point.footprint && clayCacheTurn(point.brick) <= CLAY_SHADING_TURN) {
         surface = clayCachedShading(point.local, point.brick, max(e, 0.5 * brick.size / clay.bake.x), point.footprint);
     } else {
         surface = clayShading(point.local, brick, e, point.footprint);
@@ -252,9 +254,33 @@ fn cachedAt(first: u32, side: u32, lo: vec3<u32>, f: vec3<f32>) -> f32 {
     return mix(mix(x00, x10, f.y), mix(x01, x11, f.y), f.z);
 }
 
+// The cache at any point of its brick, clamped to it, as the rays read it.
+fn cachedPoint(p: vec3<f32>, first: u32, cells: u32, brick: ClayBrick) -> f32 {
+    let u = clamp((p - brick.origin) / brick.size, vec3<f32>(0.0), vec3<f32>(1.0)) * f32(cells);
+    let lo = min(vec3<u32>(u), vec3<u32>(cells - 1u));
+    return cachedAt(first, cells + 1u, lo, u - vec3<f32>(lo));
+}
+
+// The angle between the cache's normal and the field's at p, both taken
+// with the four taps shading uses, e apart.
+fn normalTurn(p: vec3<f32>, first: u32, cells: u32, brick: ClayBrick, e: f32) -> f32 {
+    let k = vec2<f32>(1.0, -1.0);
+    let cached = k.xyy * cachedPoint(p + k.xyy * e, first, cells, brick) +
+        k.yyx * cachedPoint(p + k.yyx * e, first, cells, brick) +
+        k.yxy * cachedPoint(p + k.yxy * e, first, cells, brick) +
+        k.xxx * cachedPoint(p + k.xxx * e, first, cells, brick);
+    let exact = k.xyy * clayField(p + k.xyy * e, brick, 0.0).w +
+        k.yyx * clayField(p + k.yyx * e, brick, 0.0).w +
+        k.yxy * clayField(p + k.yxy * e, brick, 0.0).w +
+        k.xxx * clayField(p + k.xxx * e, brick, 0.0).w;
+    let c = dot(cached, exact) / max(length(cached) * length(exact), 1e-20);
+    return acos(clamp(c, -1.0, 1.0));
+}
+
 // Per brick: how far the cache is from the field at the centers of its
 // cells, edges and faces, where interpolation strays most. Stored doubled
-// (the worst point need not be one of those) after the lattice values.
+// (the worst point need not be one of those) after the lattice values,
+// then, per brick, the largest turn of its normals there (radians).
 @compute @workgroup_size(64)
 fn measure(@builtin(global_invocation_id) id: vec3<u32>) {
     let bricks = u32(clay.bake.z);
@@ -267,6 +293,7 @@ fn measure(@builtin(global_invocation_id) id: vec3<u32>) {
     let brick = clayBricks[id.x];
     let h = brick.size / clay.bake.x;
     var worst = 0.0;
+    var turn = 0.0;
     // Half-cell steps: every point with an odd coordinate lies between lattice points.
     for (var k = 0u; k <= 2u * cells; k++) {
         for (var j = 0u; j <= 2u * cells; j++) {
@@ -277,12 +304,20 @@ fn measure(@builtin(global_invocation_id) id: vec3<u32>) {
                 }
                 let lo = min(half / 2u, vec3<u32>(cells - 1u));
                 let f = vec3<f32>(half) * 0.5 - vec3<f32>(lo);
-                let exact = clayField(brick.origin + vec3<f32>(half) * (0.5 * h), brick, 0.0).w;
+                let p = brick.origin + vec3<f32>(half) * (0.5 * h);
+                let exact = clayField(p, brick, 0.0).w;
                 worst = max(worst, abs(exact - cachedAt(first, side, lo, f)));
+                // Near the surface, also how far the cache's normal turns from
+                // the field's: trilinear gradients kink at every cell face.
+                if (abs(exact) < 1.5 * h) {
+                    turn = max(turn, normalTurn(p, first, cells, brick, 0.5 * h));
+                }
             }
         }
     }
-    clayCache[bricks * side * side * side + id.x] = 2.0 * worst + 1e-4 * brick.size;
+    let errors = bricks * side * side * side;
+    clayCache[errors + id.x] = 2.0 * worst + 1e-4 * brick.size;
+    clayCache[errors + bricks + id.x] = turn;
 }
 
 // The color lattice: half as fine as the distances, after them and the errors.
@@ -302,7 +337,7 @@ fn tint(@builtin(global_invocation_id) id: vec3<u32>) {
     let point = vec3<f32>(vec3<u32>(at % side, (at / side) % side, at / (side * side)));
     let brick = clayBricks[brickIndex];
     let color = clayField(brick.origin + brick.size * point / f32(cells), brick, 0.0).rgb;
-    let to = bricks * (full * full * full + 1u) + index * 3u;
+    let to = bricks * (full * full * full + 2u) + index * 3u;
     clayCache[to] = color.r;
     clayCache[to + 1u] = color.g;
     clayCache[to + 2u] = color.b;
@@ -331,10 +366,10 @@ const BAKE_ROW_GROUPS = 32768;
 const CACHE_CELLS = 16;
 const CACHE_BYTES = 128 * 1024 * 1024;
 
-/** Floats in a field's cache: per brick its distances, its error, and (colored fields) its colors. */
+/** Floats in a field's cache: per brick its distances, its distance and normal errors, and (colored fields) its colors. */
 function cacheFloats(field: ClayField, cells: number): number {
 	const colors = field.colored ? (cells / 2 + 1) ** 3 * 3 : 0;
-	return field.brickCount * ((cells + 1) ** 3 + 1 + colors);
+	return field.brickCount * ((cells + 1) ** 3 + 2 + colors);
 }
 
 interface ClayBuffers {

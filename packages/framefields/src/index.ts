@@ -147,9 +147,35 @@ export type {
 	Sam3Precision,
 	Sam3Prompt,
 } from "@framefields/vision-sam";
-export type { Scene3DTruth } from "@framefields/webgpu-renderers";
+export type {
+	Scene3DTruth,
+	Scene3DTruthObject,
+} from "@framefields/webgpu-renderers";
 // Types only, so SAM stays in its own lazily loaded chunk; the trackers are in `framefields/sam`.
 export type { ModelExport, ModelExportOptions } from "./model-export.js";
+export {
+	type Box2D,
+	type CameraLabels,
+	type ObjectBox3D,
+	type ObjectLabels,
+	type TruthLabels,
+	truthLabels,
+} from "./truth-labels.js";
+
+/** Every layer's `label` by layer id, through nested children. */
+function layerLabels(nodes: readonly LayoutNode[]): Map<string, string> {
+	const out = new Map<string, string>();
+	const walk = (list: readonly unknown[]) => {
+		for (const node of list) {
+			const n = node as { id?: unknown; label?: unknown; children?: unknown };
+			if (typeof n.id === "string" && typeof n.label === "string")
+				out.set(n.id, n.label);
+			if (Array.isArray(n.children)) walk(n.children);
+		}
+	};
+	walk(nodes);
+	return out;
+}
 
 /** A frame's picture and its 3D ground truth (`Composition.renderTruth`). */
 export interface FrameTruth {
@@ -971,6 +997,7 @@ export {
 	type Body2DOptions,
 	type Body3DOptions,
 	type BodyCommonOptions,
+	type BodyTrack,
 	type FieldSample2D,
 	type FieldSample3D,
 	Fracture3D,
@@ -988,15 +1015,21 @@ export {
 	type PhysicsCollision,
 	type PhysicsDriver,
 	type PhysicsGroundOptions,
+	type PhysicsIntervention,
+	type PhysicsInterventions,
 	type PhysicsRect,
 	type PhysicsRope3DOptions,
 	type PhysicsRopeOptions,
 	type PhysicsSpring3DOptions,
 	type PhysicsSpringOptions,
+	type PhysicsState,
 	type PhysicsWallsOptions,
 	PhysicsWorld2D,
 	PhysicsWorld3D,
 	type PhysicsWorldOptions,
+	type PoseAxes,
+	PoseTrack,
+	type PoseTrackOptions,
 	type World2DOptions,
 	type World3DOptions,
 } from "./physics/index.js";
@@ -2503,6 +2536,12 @@ export class Composition {
 					atMs?: number;
 					frame?: number;
 					renderer?: HeadlessMediaRenderer;
+					/**
+					 * Also draw each object alone, so `truthLabels` gives what share
+					 * of it shows (`visibleFraction`) and its whole extent on screen.
+					 * One more pass per object.
+					 */
+					amodal?: boolean;
 			  } = {},
 	): Promise<FrameTruth> {
 		const options =
@@ -2511,7 +2550,9 @@ export class Composition {
 				: frameOrOptions;
 		const { frame } = resolveFrameRequest(options, this.fps);
 		const vm = await this.frameMedia(frame);
-		const reader = new Scene3DTruthReader();
+		const reader = new Scene3DTruthReader(
+			typeof frameOrOptions === "object" && frameOrOptions.amodal === true,
+		);
 		const renderer = options.renderer ?? new HeadlessMediaRenderer();
 		const rgba = await renderer.renderFrame(vm, {
 			fps: this.fps,
@@ -2520,6 +2561,13 @@ export class Composition {
 			truth: reader,
 		});
 		const scenes = await reader.finish();
+		const labels = layerLabels(this.children);
+		for (const scene of scenes) {
+			for (const o of scene.objects) {
+				const label = o.layer === undefined ? undefined : labels.get(o.layer);
+				if (label !== undefined) o.label = label;
+			}
+		}
 		if (scenes.length === 0)
 			throw new Error(
 				`renderTruth: frame ${frame} draws no raster 3D scene (add a Layer.camera and Layer3D layers; a cube camera has no pinhole truth).`,

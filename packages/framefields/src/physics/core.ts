@@ -34,7 +34,56 @@ export interface PhysicsWorldOptions {
 	impactDecay?: number;
 	/** Velocity change, px/s, that reads as impact 1 (default 1500). */
 	impactReference?: number;
+	/**
+	 * Keep the simulation's state at these simulation frames (or `true`: at
+	 * every frame) so `world.state(frame)` can branch a new run from it.
+	 * About 2 KB per body per kept frame.
+	 */
+	keepStates?: boolean | number[];
+	/**
+	 * Continue from `world.state(frame)` of a world built the same way (the
+	 * same bodies, joints and forces, added in the same order): frames up to
+	 * that one replay the original run, later ones are simulated here, with
+	 * this world's own interventions.
+	 */
+	from?: PhysicsState;
 }
+
+/**
+ * A simulation's state at one frame, from `world.state(frame)`: pass it as
+ * `from` to a world built the same way to branch a new run there.
+ */
+export interface PhysicsState {
+	/** Simulation frame it was taken at. */
+	readonly frame: number;
+	/** @internal */ readonly snapshot: Uint8Array;
+	/** @internal Each body's channels up to `frame`, and impact level. */
+	readonly bodies: ReadonlyArray<{
+		channels: Record<string, Float32Array>;
+		level: number;
+	}>;
+	/** @internal */ readonly impact: Float32Array;
+	/** @internal First contacts up to `frame`, by body index. */
+	readonly collisions: ReadonlyArray<{
+		body: number;
+		with: number;
+		frame: number;
+		speed: number;
+	}>;
+	/** @internal Gravity (m/s²) in effect, after interventions. */
+	readonly gravity: readonly number[];
+	/** @internal */ readonly fps: number;
+	/** @internal */ readonly startFrame: number;
+}
+
+/** A change to the simulation at a frame: what physics-violation datasets label. */
+export type PhysicsIntervention =
+	| { kind: "teleport"; frame: number; layer?: string; position: number[] }
+	| { kind: "velocity"; frame: number; layer?: string; velocity: number[] }
+	| { kind: "vanish"; frame: number; layer?: string }
+	| { kind: "passThrough"; frame: number; layer?: string; until?: number }
+	| { kind: "mass"; frame: number; layer?: string; scale: number }
+	| { kind: "gravity"; frame: number; gravity: number[] };
 
 export interface BodyCommonOptions {
 	/** `"dynamic"` (default) falls and collides; `"fixed"` never moves; `"kinematic"` follows `follow` and pushes others. */
@@ -83,6 +132,10 @@ interface Stepper<B, V, R> {
 	kinematicFrom: Map<B, { position: V; rotation: R }>;
 	/** Impact envelope level per body after `current`. */
 	level: Map<B, number>;
+	/** Gravity in effect (m/s²): the world's, until an intervention changes it. */
+	gravity: number[];
+	/** Bodies hidden by `vanish`. */
+	hidden: Set<B>;
 }
 
 export interface PhysicsCollision<B> {
@@ -289,6 +342,10 @@ export abstract class WorldCore<
 	protected readonly simulatedHooks: Array<() => void> = [];
 	private readonly worldRecording: Recording;
 	private readonly allCollisions: Array<PhysicsCollision<B> & { body: B }> = [];
+	private readonly planned: PlannedIntervention<V, B>[] = [];
+	private readonly states = new Map<number, PhysicsState>();
+	private readonly keepStates: boolean | Set<number>;
+	private readonly from?: PhysicsState;
 	/** No more bodies, joints or forces: the world has started (or finished). */
 	private locked = false;
 	private liveMode = false;
@@ -312,6 +369,75 @@ export abstract class WorldCore<
 		this.impactDecay = Math.max(0.5, options.impactDecay ?? 8);
 		this.impactReference = options.impactReference ?? 1500;
 		this.worldRecording = this.newRecording();
+		this.keepStates = Array.isArray(options.keepStates)
+			? new Set(options.keepStates.map((f) => Math.round(f)))
+			: (options.keepStates ?? false);
+		this.from = options.from;
+		if (this.from) this.checkFrom(this.from);
+	}
+
+	/**
+	 * Interventions at simulation frame `frame`: they take effect as that
+	 * frame is stepped. Chain them:
+	 *
+	 * ```ts
+	 * world.at(30).teleport(ball, [400, 100, 0]).gravity([0, -2400, 0]);
+	 * ```
+	 */
+	at(frame: number): PhysicsInterventions<V, B> {
+		this.assertOpen();
+		const f = Math.round(frame);
+		if (!(f >= 1 && f < this.frames))
+			throw new Error(
+				`Physics.at(${frame}): interventions go at simulation frames 1 to ${this.frames - 1}.`,
+			);
+		if (this.from && f <= this.from.frame)
+			throw new Error(
+				`Physics.at(${frame}): this world continues from frame ${this.from.frame}; intervene after it.`,
+			);
+		return new PhysicsInterventions<V, B>(f, (entry) =>
+			this.planned.push(entry),
+		);
+	}
+
+	/** Every intervention, in frame order, with its body's layer id. */
+	get interventions(): PhysicsIntervention[] {
+		return [...this.planned]
+			.sort((a, b) => a.frame - b.frame)
+			.flatMap((p) => describe(p));
+	}
+
+	/**
+	 * The state at simulation frame `frame`, to branch a new run from (pass
+	 * it as `from`). The world keeps states it was asked to (`keepStates`).
+	 */
+	state(frame: number): PhysicsState {
+		const f = Math.round(frame);
+		if (
+			this.keepStates === false ||
+			(this.keepStates !== true && !this.keepStates.has(f))
+		)
+			throw new Error(
+				`Physics: frame ${f}'s state was not kept; pass \`keepStates: [${f}]\` (or \`true\` for every frame) to the world.`,
+			);
+		this.ensureSimulated();
+		const state = this.states.get(f);
+		if (!state)
+			throw new Error(
+				`Physics: frame ${f} is outside this run (0 to ${this.frames - 1}).`,
+			);
+		return state;
+	}
+
+	private checkFrom(from: PhysicsState): void {
+		if (from.fps !== this.fps || from.startFrame !== this.startFrame)
+			throw new Error(
+				"Physics: `from` comes from a world with another fps or startFrame; build the branch the same way.",
+			);
+		if (!(from.frame >= 0 && from.frame < this.frames))
+			throw new Error(
+				`Physics: \`from\` is frame ${from.frame}; this run has ${this.frames} frames.`,
+			);
 	}
 
 	/** First contacts so far (all of them once simulated), in frame order. */
@@ -464,7 +590,7 @@ export abstract class WorldCore<
 		if (this.locked) return;
 		this.locked = true;
 		const st = this.begin();
-		for (let f = 1; f < this.frames; f++) this.stepFrame(st, f);
+		for (let f = st.current + 1; f < this.frames; f++) this.stepFrame(st, f);
 		st.freed = true;
 		this.sim.free();
 		for (const body of this.bodies) this.bind(body);
@@ -492,13 +618,100 @@ export abstract class WorldCore<
 		]) {
 			for (const arr of rec.channels.values()) arr.fill(arr[startFrame]);
 		}
-		return {
+		const st: Stepper<B, V, R> = {
 			current: 0,
 			freed: false,
 			bySim,
 			kinematicFrom,
 			level: new Map(bodies.map((b) => [b, 0])),
+			gravity: [...this.gravity],
+			hidden: new Set(),
 		};
+		for (const b of this.vanishing()) b.recording.channel("visible").fill(1);
+		if (this.from) this.restore(st, this.from);
+		else this.keepState(st, 0);
+		return st;
+	}
+
+	/** Bodies some intervention hides. */
+	private vanishing(): Set<B> {
+		return new Set(
+			this.planned
+				.filter((p) => p.apply.kind === "vanish" && p.body)
+				.map((p) => p.body as B),
+		);
+	}
+
+	/** Puts the stepper where `from` was: the simulation, history, impacts, contacts. */
+	private restore(st: Stepper<B, V, R>, from: PhysicsState): void {
+		const bodies = this.bodies;
+		if (from.bodies.length !== bodies.length)
+			throw new Error(
+				`Physics: \`from\` has ${from.bodies.length} bodies, this world ${bodies.length} (grounds and walls count); add the same bodies in the same order.`,
+			);
+		if (this.stepHooks.length || this.simulatedHooks.length)
+			throw new Error(
+				"Physics: a world with fracture() cannot continue `from` a state yet.",
+			);
+		this.sim.restore(from.snapshot);
+		const end = this.startFrame + from.frame;
+		bodies.forEach((b, i) => {
+			const saved = from.bodies[i];
+			for (const [name, values] of Object.entries(saved.channels)) {
+				const arr = b.recording.channel(name);
+				arr.set(values.subarray(0, end + 1));
+				arr.fill(values[end], end + 1);
+			}
+			st.level.set(b, saved.level);
+		});
+		const impact = this.worldRecording.channel("impact");
+		impact.set(from.impact.subarray(0, end + 1));
+		impact.fill(from.impact[end], end + 1);
+		for (const c of from.collisions) {
+			const body = bodies[c.body];
+			const other = bodies[c.with];
+			const entry = { frame: c.frame, with: other, speed: c.speed };
+			body.collisions.push(entry as never);
+			if (c.body < c.with) this.allCollisions.push({ ...entry, body });
+		}
+		st.gravity = [...from.gravity];
+		this.sim.setGravity(st.gravity as V);
+		st.kinematicFrom = new Map();
+		for (const b of bodies) {
+			const t = b.kinematicTarget?.(end);
+			if (t) st.kinematicFrom.set(b, t);
+		}
+		st.current = from.frame;
+	}
+
+	/** Keeps the state after simulation frame `f`, when asked to. */
+	private keepState(st: Stepper<B, V, R>, f: number): void {
+		const keep = this.keepStates;
+		if (keep === false || (keep !== true && !keep.has(f))) return;
+		const end = this.startFrame + f;
+		const index = new Map(this.bodies.map((b, i) => [b, i]));
+		this.states.set(f, {
+			frame: f,
+			snapshot: this.sim.snapshot(),
+			bodies: this.bodies.map((b) => ({
+				channels: Object.fromEntries(
+					[...b.recording.channels].map(([k, v]) => [k, v.slice(0, end + 1)]),
+				),
+				level: st.level.get(b) ?? 0,
+			})),
+			impact: this.worldRecording.channel("impact").slice(0, end + 1),
+			collisions: this.bodies.flatMap((b) =>
+				b.collisions.map((c) => ({
+					body: index.get(b) ?? -1,
+					with: index.get(c.with as unknown as B) ?? -1,
+					frame: c.frame,
+					speed: c.speed,
+				})),
+			),
+			gravity: [...st.gravity],
+			fps: this.fps,
+			startFrame: this.startFrame,
+		});
 	}
 
 	private stepFrame(st: Stepper<B, V, R>, f: number): void {
@@ -507,6 +720,11 @@ export abstract class WorldCore<
 		const bodies = this.bodies;
 		const frame = startFrame + f;
 		const dims = this.gravity.length;
+		// Rule changes (gravity, vanish, pass-through, mass) act as the frame steps.
+		for (const p of this.planned) {
+			if (p.frame === f && !SETS_STATE.has(p.apply.kind))
+				this.intervene(st, p.apply, p.body);
+		}
 		const prevVel = new Map<B, number[]>();
 		for (const b of bodies) {
 			// A body sits at its start pose on its start frame and moves after.
@@ -520,7 +738,7 @@ export abstract class WorldCore<
 		for (const b of bodies) {
 			expected.set(
 				b,
-				this.gravity.map((g) => (isActive(b) ? (g * b.gravityScale) / fps : 0)),
+				st.gravity.map((g) => (isActive(b) ? (g * b.gravityScale) / fps : 0)),
 			);
 		}
 		for (const imp of this.impulses) {
@@ -586,8 +804,19 @@ export abstract class WorldCore<
 			}
 		}
 		st.kinematicFrom = kinematicTo;
+		// State sets (teleport, velocity) hold at the frame itself.
+		for (const p of this.planned) {
+			if (p.frame === f && SETS_STATE.has(p.apply.kind))
+				this.intervene(st, p.apply, p.body);
+		}
 
-		for (const b of bodies) b.record(frame, frame - 1);
+		for (const b of bodies) {
+			b.record(frame, frame - 1);
+			if (st.hidden.size || this.planned.length) {
+				const visible = b.recording.channels.get("visible");
+				if (visible) visible[frame] = st.hidden.has(b) ? 0 : 1;
+			}
+		}
 
 		const raw = new Map<B, number>();
 		if (pairs.length > 0) {
@@ -633,6 +862,48 @@ export abstract class WorldCore<
 		this.worldRecording.channel("impact")[frame] = loudest;
 		for (const hook of this.stepHooks) hook(f, pairs);
 		st.current = f;
+		this.keepState(st, f);
+	}
+
+	/** Applies one intervention as its frame starts. */
+	private intervene(
+		st: Stepper<B, V, R>,
+		apply: Intervention<V>,
+		body: B | undefined,
+	): void {
+		const ppm = this.pixelsPerMeter;
+		switch (apply.kind) {
+			case "gravity":
+				st.gravity = apply.gravity.map((g) => g / ppm);
+				this.sim.setGravity(st.gravity as V);
+				return;
+			case "teleport":
+				body?.sim.setPose(
+					apply.position.map((v) => v / ppm) as V,
+					body.sim.rotation(),
+				);
+				return;
+			case "velocity":
+				body?.sim.setVelocity(
+					apply.velocity.map((v) => v / ppm) as V,
+					body.sim.angularVelocity(),
+				);
+				return;
+			case "vanish":
+				if (!body) return;
+				body.sim.setEnabled(false);
+				st.hidden.add(body);
+				return;
+			case "passThrough":
+				body?.sim.setCollisions(false);
+				return;
+			case "collide":
+				body?.sim.setCollisions(true);
+				return;
+			case "mass":
+				body?.sim.setMass(body.sim.mass() * apply.scale);
+				return;
+		}
 	}
 
 	protected abstract lerpRotation(a: R, b: R, t: number): R;
@@ -645,6 +916,8 @@ export abstract class WorldCore<
 		if (typeof layer?.animate !== "function" || output === "none") return;
 		if (body.type === "fixed") return;
 		const channels = body.boundChannels();
+		if (body.recording.channels.has("visible"))
+			channels.push(["opacity", "visible"]);
 		if (output === "keyframes" && this.liveMode) {
 			throw new Error(
 				'Physics: live worlds bind signals; drop `output: "keyframes"` or use simulate().',
@@ -672,4 +945,139 @@ export abstract class WorldCore<
 
 function lerpVec<V extends number[]>(a: V, b: V, t: number): V {
 	return a.map((v, i) => v + (b[i] - v) * t) as V;
+}
+
+/** Interventions that set a body's state: it holds at their frame. */
+const SETS_STATE = new Set(["teleport", "velocity"]);
+
+/** An intervention as the world applies it (px units; `collide` ends a pass-through). */
+type Intervention<V> =
+	| { kind: "teleport"; position: V }
+	| { kind: "velocity"; velocity: V }
+	| { kind: "vanish" }
+	| { kind: "passThrough"; until?: number }
+	| { kind: "collide" }
+	| { kind: "mass"; scale: number }
+	| { kind: "gravity"; gravity: V };
+
+interface PlannedIntervention<V, B> {
+	frame: number;
+	body?: B;
+	apply: Intervention<V>;
+}
+
+function layerId(
+	body: { layer?: Record<string, unknown> } | undefined,
+): string | undefined {
+	const id = body?.layer?.id;
+	return typeof id === "string" ? id : undefined;
+}
+
+/** How an intervention reads in labels (none for the end of a pass-through). */
+function describe<
+	V extends number[],
+	B extends { layer?: Record<string, unknown> },
+>(p: PlannedIntervention<V, B>): PhysicsIntervention[] {
+	const { frame, apply } = p;
+	const layer = layerId(p.body);
+	const on = layer === undefined ? {} : { layer };
+	switch (apply.kind) {
+		case "teleport":
+			return [
+				{ kind: "teleport", frame, ...on, position: [...apply.position] },
+			];
+		case "velocity":
+			return [
+				{ kind: "velocity", frame, ...on, velocity: [...apply.velocity] },
+			];
+		case "vanish":
+			return [{ kind: "vanish", frame, ...on }];
+		case "passThrough":
+			return [
+				{
+					kind: "passThrough",
+					frame,
+					...on,
+					...(apply.until !== undefined && { until: apply.until }),
+				},
+			];
+		case "mass":
+			return [{ kind: "mass", frame, ...on, scale: apply.scale }];
+		case "gravity":
+			return [{ kind: "gravity", frame, gravity: [...apply.gravity] }];
+		case "collide":
+			return [];
+	}
+}
+
+/**
+ * What can happen to a world at one simulation frame (`world.at(frame)`):
+ * the changes physics-violation datasets are made of. `teleport` and
+ * `velocity` hold at the frame itself; gravity, `vanish`, `passThrough` and
+ * `mass` change how the world steps from it. Positions, velocities and
+ * gravity are in scene px (y down); each call returns the builder.
+ */
+export class PhysicsInterventions<V extends number[], B> {
+	/** @internal */
+	constructor(
+		readonly frame: number,
+		private readonly plan: (entry: PlannedIntervention<V, B>) => void,
+	) {}
+
+	/** Puts the body at `position`, px, at this frame (its velocity and rotation stay). */
+	teleport(body: B, position: V): this {
+		this.plan({
+			frame: this.frame,
+			body,
+			apply: { kind: "teleport", position },
+		});
+		return this;
+	}
+
+	/** Gives the body this velocity, px/s, at this frame. */
+	velocity(body: B, velocity: V): this {
+		this.plan({
+			frame: this.frame,
+			body,
+			apply: { kind: "velocity", velocity },
+		});
+		return this;
+	}
+
+	/** Removes the body: it stops, touches nothing and its layer disappears. */
+	vanish(body: B): this {
+		this.plan({ frame: this.frame, body, apply: { kind: "vanish" } });
+		return this;
+	}
+
+	/** The body passes through everything, until frame `until` if given. */
+	passThrough(body: B, options: { until?: number } = {}): this {
+		const until =
+			options.until === undefined ? undefined : Math.round(options.until);
+		if (until !== undefined && !(until > this.frame))
+			throw new Error(
+				`passThrough: \`until\` (${until}) comes after frame ${this.frame}.`,
+			);
+		this.plan({
+			frame: this.frame,
+			body,
+			apply: { kind: "passThrough", until },
+		});
+		if (until !== undefined)
+			this.plan({ frame: until, body, apply: { kind: "collide" } });
+		return this;
+	}
+
+	/** Multiplies the body's mass by `scale`. */
+	mass(body: B, scale: number): this {
+		if (!(scale > 0)) throw new Error("mass: `scale` must be > 0.");
+		this.plan({ frame: this.frame, body, apply: { kind: "mass", scale } });
+		return this;
+	}
+
+	/** Changes the world's gravity, px/s². */
+	gravity(gravity: V): this {
+		this.plan({ frame: this.frame, apply: { kind: "gravity", gravity } });
+		return this;
+	}
 }

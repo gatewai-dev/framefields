@@ -1752,6 +1752,8 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 			cam: Camera3DPose,
 			floor: Environment3DFloor | undefined,
 			precision: "blur" | "truth",
+			/** Draw only the item at this index (an object alone, for amodal truth). */
+			only?: number,
 		): {
 			velocity: GPUTexture;
 			objects?: GPUTexture;
@@ -1773,12 +1775,17 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 			const truth = precision === "truth";
 			const objectTable: Scene3DTruthObject[] = [];
 			const items = motionItems();
-			const floorId = truth && floor ? items.length + 1 : 0;
-			if (floor) {
+			const floorId =
+				truth && floor && only === undefined ? items.length + 1 : 0;
+			if (floor && only === undefined) {
 				r3d.drawFloorVelocity(vel.pass, vel.objectCamera(floorId), floor);
 			}
 			const parts = new Map<string, number>();
 			items.forEach(([item, key], index) => {
+				if (only !== undefined && index !== only) return;
+				// Ground truth names what can be seen: a fully transparent draw
+				// (a vanished body, a faded-out layer) covers nothing.
+				if (truth && (item.opts.opacity ?? 1) <= 0) return;
 				let camera = vel.cameraBindGroup;
 				if (truth) {
 					const id = index + 1;
@@ -1789,6 +1796,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 						kind: item.kind === "slug" ? "text" : item.kind,
 						...(item.owner !== undefined && { layer: item.owner }),
 						part,
+						...truthPose(r3d, item),
 					});
 					camera = vel.objectCamera(id);
 				}
@@ -2555,6 +2563,26 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 							? r3d.truthGeometry(encoder, linearDepthTex)
 							: undefined,
 				});
+				// Each object alone: every pixel it covers, hidden or not.
+				if (props.truth.amodal && props.truth.captureAmodal) {
+					for (const o of measured.objectTable) {
+						if (o.kind === "floor") continue;
+						const solo = drawSceneVelocity(
+							history,
+							camera,
+							undefined,
+							"truth",
+							o.id - 1,
+						);
+						if (solo.objects)
+							props.truth.captureAmodal(
+								ctx.device,
+								encoder,
+								o.id,
+								solo.objects,
+							);
+					}
+				}
 			}
 			if (motionBlur && history) {
 				const blurredTex = ctx.renderer.getTemporaryTexture(
@@ -7119,5 +7147,27 @@ function createBorderTexture(
 		oy: oy - m,
 		ow: borderTexW / rasterScale,
 		oh: borderTexH / rasterScale,
+	};
+}
+
+/** A truth object's pose and local bounds (and instance count) for its labels. */
+function truthPose(
+	r3d: ReturnType<typeof getRenderer3D>,
+	item:
+		| { kind: "mesh"; mesh: Mesh3DData; opts: DrawMesh3DOpts }
+		| { kind: "quad" | "slug"; opts: DrawQuad3DOpts },
+): Pick<Scene3DTruthObject, "matrix" | "bounds" | "instances"> {
+	if (item.kind !== "mesh") {
+		return {
+			matrix: r3d.quadModelMatrix(item.opts),
+			bounds: { min: [-0.5, -0.5, 0], max: [0.5, 0.5, 0] },
+		};
+	}
+	const box = r3d.meshAabb(item.mesh);
+	const instances = item.opts.instanceCount ?? 1;
+	return {
+		matrix: r3d.meshModelMatrix(item.opts),
+		bounds: { min: [...box.min], max: [...box.max] },
+		...(instances > 1 && { instances }),
 	};
 }

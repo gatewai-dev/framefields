@@ -20,12 +20,15 @@ import {
 import type { FrameSignal } from "@framefields/core";
 import {
 	finalizeModel3DData,
+	type Material3D,
 	type Mesh3DData,
 } from "@framefields/webgpu-renderers";
+import { encodePng } from "@framefields/webgpu-renderers/gltf";
 import { Layer, type LayoutNode } from "../index.js";
 import { Layer3D } from "../shapes3d.js";
-import type { Quat, Vec3 } from "./backend.js";
+import type { Vec3 } from "./backend.js";
 import { Recording } from "./core.js";
+import { quatFromMatrix } from "./poses.js";
 import { eulerFromQuat } from "./world3d.js";
 
 // ---------------------------------------------------------------------------
@@ -46,6 +49,21 @@ interface MjModel {
 	geom_dataid: Int32Array;
 	geom_matid: Int32Array;
 	mat_rgba: Float32Array;
+	/** Per material, one texture per role (`mjNTEXROLE` of them); role 1 is RGB. */
+	mat_texid: Int32Array;
+	mat_texrepeat: Float32Array;
+	mat_texuniform: Uint8Array;
+	nmat: number;
+	tex_type: Int32Array;
+	tex_width: Int32Array;
+	tex_height: Int32Array;
+	tex_nchannel: Int32Array;
+	tex_adr: Int32Array;
+	tex_data: Uint8Array;
+	mesh_texcoord: Float32Array;
+	mesh_texcoordadr: Int32Array;
+	mesh_texcoordnum: Int32Array;
+	mesh_facetexcoord: Int32Array;
 	mesh_vert: Float32Array;
 	mesh_vertadr: Int32Array;
 	mesh_vertnum: Int32Array;
@@ -96,6 +114,7 @@ interface MujocoModule {
 	DoubleBuffer: new (size: number) => DoubleBuffer;
 	mj_forward(model: MjModel, data: MjData): void;
 	mj_step(model: MjModel, data: MjData): void;
+	mj_fwdPosition(model: MjModel, data: MjData): void;
 	mj_stateSize(model: MjModel, spec: number): number;
 	mj_getState(
 		model: MjModel,
@@ -155,26 +174,6 @@ function toSceneMatrix(m: ArrayLike<number>, o: number): number[] {
 	];
 }
 
-/** The unit quaternion [x, y, z, w] of a row-major rotation matrix. */
-function quatFromMatrix(m: number[]): Quat {
-	const [m00, m01, m02, m10, m11, m12, m20, m21, m22] = m;
-	const trace = m00 + m11 + m22;
-	if (trace > 0) {
-		const s = Math.sqrt(trace + 1) * 2;
-		return [(m21 - m12) / s, (m02 - m20) / s, (m10 - m01) / s, s / 4];
-	}
-	if (m00 > m11 && m00 > m22) {
-		const s = Math.sqrt(1 + m00 - m11 - m22) * 2;
-		return [s / 4, (m01 + m10) / s, (m02 + m20) / s, (m21 - m12) / s];
-	}
-	if (m11 > m22) {
-		const s = Math.sqrt(1 + m11 - m00 - m22) * 2;
-		return [(m01 + m10) / s, s / 4, (m12 + m21) / s, (m02 - m20) / s];
-	}
-	const s = Math.sqrt(1 + m22 - m00 - m11) * 2;
-	return [(m02 + m20) / s, (m12 + m21) / s, s / 4, (m10 - m01) / s];
-}
-
 function readName(model: MjModel, adr: number): string {
 	let end = adr;
 	while (end < model.names.length && model.names[end] !== 0) end++;
@@ -219,6 +218,13 @@ export interface MujocoWorldOptions {
 	control?: (frame: number, state: MujocoFrameState) => ArrayLike<number>;
 	/** A state from `world.state(frame)` to start from instead of the model's. */
 	initialState?: Float64Array;
+	/**
+	 * Generalized positions recorded by another simulator (native MuJoCo,
+	 * MJX, a policy rollout), one `nq`-long row per frame: each frame is
+	 * posed from its row through MuJoCo's kinematics instead of simulated.
+	 * Needs at least `frames` rows; `control` and `initialState` do not apply.
+	 */
+	qpos?: ArrayLike<ArrayLike<number>>;
 }
 
 export interface MujocoLayersOptions {
@@ -253,7 +259,24 @@ const DEFAULT_RGBA = [0.5, 0.5, 0.5, 1];
 interface GeomMesh {
 	positions: Float32Array;
 	normals: Float32Array;
+	/** Per corner, when the mesh has texture coordinates. */
+	uvs?: Float32Array;
+	/** Seen from both sides (a plane's single face). */
+	twoSided?: boolean;
 }
+
+/** A geom's 2D color texture (its material's), as a PNG. */
+interface GeomTexture {
+	png: Uint8Array;
+	/** Material `texrepeat`. */
+	repeat: [number, number];
+	/** Material `texuniform`: repeat per meter instead of per surface. */
+	uniform: boolean;
+}
+
+/** MuJoCo's `mjtTexture` 2D type and the RGB texture role (`mjTEXROLE_RGB`). */
+const TEX_2D = 0;
+const TEXROLE_RGB = 1;
 
 export class MujocoWorld {
 	readonly fps: number;
@@ -273,6 +296,7 @@ export class MujocoWorld {
 	private readonly geomBody: Int32Array;
 	private readonly geomGroup: Int32Array;
 	private readonly geomMeshes: Array<GeomMesh | undefined>;
+	private readonly geomTextures: Array<GeomTexture | undefined>;
 	private readonly qposFrames: Float64Array[] = [];
 	private readonly stateFrames: Float64Array[] = [];
 	private readonly contactFrames: MujocoContact[][] = [];
@@ -310,6 +334,7 @@ export class MujocoWorld {
 					? meshTriangles(model, model.geom_dataid[i], this.pixelsPerMeter)
 					: undefined,
 			);
+			this.geomTextures = geomTextures(model);
 		} catch (error) {
 			model.delete();
 			throw error;
@@ -334,6 +359,10 @@ export class MujocoWorld {
 		this.compiled = null;
 		const data = new mj.MjData(model);
 		try {
+			if (this.options.qpos) {
+				this.replay(model, data, this.options.qpos);
+				return this;
+			}
 			const dt = 1 / this.fps;
 			const substeps = Math.max(1, Math.round(dt / model.opt.timestep));
 			model.opt.timestep = dt / substeps;
@@ -359,9 +388,11 @@ export class MujocoWorld {
 
 	/**
 	 * Every visible geom as a Layer3D primitive that follows its body
-	 * (planes as thin slabs, their top at the plane). Meshes draw as
-	 * their triangles; ellipsoids and other types are not drawn yet, and
-	 * `skipped` names them.
+	 * (planes as thin slabs, their top at the plane). Meshes draw as their
+	 * triangles. A material's 2D texture shows on planes (with its
+	 * `texrepeat` / `texuniform`) and on meshes with texture coordinates;
+	 * other geoms, and cube textures, show the material's color. Types not
+	 * drawn (height fields, SDFs) are named in `skipped`.
 	 */
 	layers(options: MujocoLayersOptions = {}): {
 		layers: LayoutNode[];
@@ -445,6 +476,32 @@ export class MujocoWorld {
 		}
 	}
 
+	/** Poses each frame from its recorded `qpos` row (kinematics only). */
+	private replay(
+		model: MjModel,
+		data: MjData,
+		qpos: ArrayLike<ArrayLike<number>>,
+	): void {
+		if (this.options.control || this.options.initialState)
+			throw new Error(
+				"Physics.mujoco: `qpos` replays a recorded run; drop `control` and `initialState`.",
+			);
+		if (qpos.length < this.frames)
+			throw new Error(
+				`Physics.mujoco: \`qpos\` has ${qpos.length} rows for ${this.frames} frames.`,
+			);
+		for (let f = 0; f < this.frames; f++) {
+			const row = qpos[f];
+			if (row.length !== model.nq)
+				throw new Error(
+					`Physics.mujoco: \`qpos\` row ${f} has ${row.length} values; the model has nq = ${model.nq}.`,
+				);
+			data.qpos.set(row);
+			this.mj.mj_forward(model, data);
+			this.record(model, data, f);
+		}
+	}
+
 	private get stateSpec(): number {
 		return this.mj.mjtState.mjSTATE_INTEGRATION.value;
 	}
@@ -471,6 +528,10 @@ export class MujocoWorld {
 			data.ctrl.set(ctrl);
 		}
 		for (let s = 0; s < substeps; s++) this.mj.mj_step(model, data);
+		// mj_step computes positions before it integrates: bring poses and
+		// contacts up to the state it ends on (the solver's warmstart, which
+		// the next step uses, is left alone).
+		this.mj.mj_fwdPosition(model, data);
 	}
 
 	private record(model: MjModel, data: MjData, frame: number): void {
@@ -552,6 +613,7 @@ export class MujocoWorld {
 			: {};
 		const node = this.primitive(i, {
 			id,
+			label: this.bodyNames[this.geomBody[i]],
 			color: `#${hex(r)}${hex(g)}${hex(b)}`,
 			...(a < 1 && { opacity: a }),
 			...pose,
@@ -576,6 +638,15 @@ export class MujocoWorld {
 		switch (this.geomType[i]) {
 			case GEOM.sphere:
 				return Layer3D.sphere({ ...base, radius: s0 * ppm }) as LayoutNode;
+			case GEOM.ellipsoid:
+				// A unit sphere scaled along its axes (MuJoCo local y is scene z).
+				return Layer3D.sphere({
+					...base,
+					radius: ppm,
+					scaleX: s0,
+					scaleY: s2,
+					scaleZ: s1,
+				}) as LayoutNode;
 			case GEOM.box:
 				return Layer3D.roundedBox({
 					...base,
@@ -597,7 +668,16 @@ export class MujocoWorld {
 				}) as LayoutNode;
 			case GEOM.plane: {
 				// An infinite plane (size 0) draws 10 m wide.
-				const side = (h: number) => 2 * (h > 0 ? h : 5) * ppm;
+				const half = (h: number) => (h > 0 ? h : 5);
+				const side = (h: number) => 2 * half(h) * ppm;
+				const texture = this.geomTextures[i];
+				if (texture)
+					return this.modelLayer(
+						i,
+						base,
+						planeQuad(half(s0), half(s1), ppm, texture),
+						texture,
+					);
 				return Layer3D.roundedBox({
 					...base,
 					width: side(s0),
@@ -616,23 +696,45 @@ export class MujocoWorld {
 	private meshLayer(i: number, base: GeomLayerBase): LayoutNode | null {
 		const mesh = this.geomMeshes[i];
 		if (!mesh) return null;
+		return this.modelLayer(
+			i,
+			base,
+			mesh,
+			mesh.uvs ? this.geomTextures[i] : undefined,
+		);
+	}
+
+	/** Unwelded triangles in the geom's frame as a model layer, maybe textured. */
+	private modelLayer(
+		i: number,
+		base: GeomLayerBase,
+		mesh: GeomMesh,
+		texture: GeomTexture | undefined,
+	): LayoutNode {
 		const count = mesh.positions.length / 3;
-		const name = `mujoco-mesh-${i}`;
+		const name = `mujoco-geom-${i}`;
 		const data: Mesh3DData = {
 			name,
 			positions: mesh.positions,
 			normals: mesh.normals,
-			uvs: new Float32Array(count * 2),
+			uvs: mesh.uvs ?? new Float32Array(count * 2),
 			indices: Uint32Array.from({ length: count }, (_, k) => k),
 			materialName: `${name}-material`,
 		};
 		const [r, g, b, a] = this.geomRgba.subarray(i * 4, i * 4 + 4);
+		const material: Material3D = {
+			name: `${name}-material`,
+			diffuseColor: [r, g, b, a],
+			shading: "lit",
+			...(mesh.twoSided && { twoSided: true }),
+			...(texture && {
+				diffuseTextureBuffer: texture.png,
+				diffuseTextureMime: "image/png",
+				textureWrap: "repeat",
+			}),
+		};
 		const modelData = finalizeModel3DData(name, [data], {
-			[`${name}-material`]: {
-				name: `${name}-material`,
-				diffuseColor: [r, g, b, a],
-				shading: "lit",
-			},
+			[material.name]: material,
 		});
 		const { color: _color, opacity, ...pose } = base;
 		return Layer.model({
@@ -671,6 +773,11 @@ function meshTriangles(model: MjModel, id: number, ppm: number): GeomMesh {
 	const nface = model.mesh_facenum[id];
 	const positions = new Float32Array(nface * 9);
 	const normals = new Float32Array(nface * 9);
+	const textured = model.mesh_texcoordnum[id] > 0;
+	const uvs = textured ? new Float32Array(nface * 6) : undefined;
+	const texcoord = textured ? model.mesh_texcoord : undefined;
+	const faceTexcoord = textured ? model.mesh_facetexcoord : undefined;
+	const tadr = model.mesh_texcoordadr[id];
 	const corner = [0, 0, 0, 0, 0, 0, 0, 0, 0];
 	for (let f = 0; f < nface; f++) {
 		for (let k = 0; k < 3; k++) {
@@ -678,12 +785,97 @@ function meshTriangles(model: MjModel, id: number, ppm: number): GeomMesh {
 			corner[k * 3] = vert[v] * ppm;
 			corner[k * 3 + 1] = -vert[v + 2] * ppm;
 			corner[k * 3 + 2] = vert[v + 1] * ppm;
+			if (uvs && texcoord && faceTexcoord) {
+				const t = (tadr + faceTexcoord[(fadr + f) * 3 + k]) * 2;
+				uvs[f * 6 + k * 2] = texcoord[t];
+				uvs[f * 6 + k * 2 + 1] = texcoord[t + 1];
+			}
 		}
 		positions.set(corner, f * 9);
 		const n = faceNormal(corner);
 		for (let k = 0; k < 3; k++) normals.set(n, f * 9 + k * 3);
 	}
-	return { positions, normals };
+	return { positions, normals, ...(uvs && { uvs }) };
+}
+
+/**
+ * A plane's top face (half sizes in meters) in its slab's frame: the slab's
+ * center sits half its thickness below the plane, so the face is at local
+ * y = -PLANE_SLAB / 2, facing up (-y). Texture coordinates repeat
+ * `texrepeat` times across it, or per meter with `texuniform`.
+ */
+function planeQuad(
+	hx: number,
+	hy: number,
+	ppm: number,
+	texture: GeomTexture,
+): GeomMesh {
+	const top = -PLANE_SLAB / 2;
+	const [ru, rv] = texture.repeat;
+	const u = (x: number) => (texture.uniform ? x * ru : (x / hx + 1) * 0.5 * ru);
+	const v = (y: number) => (texture.uniform ? y * rv : (y / hy + 1) * 0.5 * rv);
+	// MuJoCo (x, y) on the plane is scene (x, z); counter-clockwise seen from above.
+	const corners: Array<[number, number]> = [
+		[-hx, -hy],
+		[-hx, hy],
+		[hx, hy],
+		[-hx, -hy],
+		[hx, hy],
+		[hx, -hy],
+	];
+	const positions = new Float32Array(18);
+	const normals = new Float32Array(18);
+	const uvs = new Float32Array(12);
+	corners.forEach(([x, y], k) => {
+		positions.set([x * ppm, top, y * ppm], k * 3);
+		normals.set([0, -1, 0], k * 3);
+		uvs.set([u(x), v(y)], k * 2);
+	});
+	return { positions, normals, uvs, twoSided: true };
+}
+
+/** Each geom's material's 2D RGB texture, encoded once per texture. */
+function geomTextures(model: MjModel): Array<GeomTexture | undefined> {
+	const texid = model.mat_texid;
+	const roles = model.nmat > 0 ? texid.length / model.nmat : 0;
+	const pngs = new Map<number, Uint8Array>();
+	const matid = model.geom_matid;
+	const repeat = model.mat_texrepeat;
+	const uniform = model.mat_texuniform;
+	return Array.from({ length: model.ngeom }, (_, i) => {
+		const mat = matid[i];
+		if (mat < 0) return undefined;
+		const tex = texid[mat * roles + TEXROLE_RGB];
+		if (tex < 0 || model.tex_type[tex] !== TEX_2D) return undefined;
+		let png = pngs.get(tex);
+		if (!png) {
+			png = texturePng(model, tex);
+			pngs.set(tex, png);
+		}
+		return {
+			png,
+			repeat: [repeat[mat * 2], repeat[mat * 2 + 1]],
+			uniform: uniform[mat] !== 0,
+		};
+	});
+}
+
+/** Texture `id`'s pixels (1, 3 or 4 channels, rows as MuJoCo samples them) as PNG. */
+function texturePng(model: MjModel, id: number): Uint8Array {
+	const width = model.tex_width[id];
+	const height = model.tex_height[id];
+	const channels = model.tex_nchannel[id];
+	const adr = model.tex_adr[id];
+	const src = model.tex_data.subarray(adr, adr + width * height * channels);
+	const rgba = new Uint8Array(width * height * 4);
+	for (let p = 0; p < width * height; p++) {
+		const o = p * channels;
+		rgba[p * 4] = src[o];
+		rgba[p * 4 + 1] = channels >= 3 ? src[o + 1] : src[o];
+		rgba[p * 4 + 2] = channels >= 3 ? src[o + 2] : src[o];
+		rgba[p * 4 + 3] = channels === 4 ? src[o + 3] : 255;
+	}
+	return encodePng(rgba, width, height);
 }
 
 function faceNormal(c: number[]): [number, number, number] {
@@ -705,6 +897,8 @@ function faceNormal(c: number[]): [number, number, number] {
 /** What every geom layer gets: its id, color and (world geoms) pose. */
 interface GeomLayerBase {
 	id: string;
+	/** Its body's name: what it is part of. */
+	label: string;
 	color: string;
 	opacity?: number;
 	x?: number;

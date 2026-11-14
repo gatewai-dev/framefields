@@ -1,0 +1,18 @@
+{
+	"extends": "./tsconfig.json",
+	"compilerOptions": {
+		// Types from sources, as `tsx --conditions=development` runs them; the
+		// built framefields bundles its own copy of the component types.
+		"customConditions": ["development"],
+		"paths": {
+			"framefields": ["../framefields/src/index.ts"],
+			"framefields/*": ["../framefields/src/*/index.ts"]
+		}
+	},
+	"include": [
+		"src/**/*",
+		"../../nodes/**/*",
+		"../../packages/**/*",
+		"../../node_modules/@framefields/**/*"
+	]
+}

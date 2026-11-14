@@ -472,6 +472,8 @@ export interface ExtrudedText3DOptions extends Text3DOptions {
 /** Node props shared by the mesh primitives (roundedBox, sphere, cylinder, torus, capsule, …). */
 export interface Primitive3DNodeOptions extends Surface3DOptions {
 	id?: string;
+	/** What it is, for datasets: `renderTruth` names its pixels' object with it. */
+	label?: string;
 	x?: number;
 	y?: number;
 	z?: number;
@@ -688,6 +690,7 @@ export function primitiveNode(
 	) as unknown as PrimitiveGeometryOptions;
 	return Layer.model({
 		id: o.id ?? autoId(prefix),
+		...(o.label !== undefined && { label: o.label }),
 		modelData: getPrimitiveGeometry(spec),
 		// What the compositor rebuilds the mesh from when modelData did not
 		// survive (a spec sent as JSON).

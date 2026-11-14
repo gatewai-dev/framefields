@@ -49,8 +49,9 @@ checkable tasks, headless and reproducible.
    Layer3D primitives, actuator `control`, `state(frame)` / `initialState`
    branching, contacts, mesh geoms and materials; loads SO-101
    (TheRobotStudio SO-ARM100, `Simulation/SO101/scene.xml`) in 1.3 s.
-   Next: textures, ellipsoids, a pose-import bridge for labs running their
-   own simulator. Rapier stays for film physics.
+   Textures (2D, planes and textured meshes), ellipsoids, and the
+   pose-import bridge (`Physics.poses`, `Physics.mujoco({ qpos })`) for labs
+   running their own simulator are in. Rapier stays for film physics.
 6. **Physics branching and interventions.** `world.snapshot()/restore()`
    (Rapier snapshots) for rollouts and counterfactuals; interventions at a
    frame (teleport, gravity change, pass-through, vanish, mass change) for
@@ -76,7 +77,18 @@ checkable tasks, headless and reproducible.
 - [x] Determinism audit and hash test (`determinism-render.test.ts`)
 - [x] Truth passes: depth, normal, motion (`comp.renderTruth`, `truth-render.test.ts`)
 - [x] Truth passes: object and instance ids
-- [ ] Semantic classes (layer `meta`)
+- [x] Semantic classes (`label` on any layer; see below)
 - [x] MuJoCo spike (`Physics.mujoco`, `mujoco.test.ts`, `mujoco-render.test.ts`)
 - [x] MuJoCo mesh geoms; SO-101 loads and renders
-- [ ] Annotations
+- [x] Annotations (`truthLabels`: camera intrinsics/extrinsics, per object pixels, 2D/3D/projected boxes)
+- [x] Dataset writer (`packages/envs`: WebDataset shards, `truth.npz`, dataset card; ~1.1 MB and ~11 samples/s at 640×480)
+- [x] Envs: `falling`, `falling-multiview`, `so101`; task: recreate the scene (`tasks/recreate.ts`)
+- [x] Visible fraction (`renderTruth({ amodal: true })`), semantic classes (`label` on any layer), interventions (`world.at(frame)`), Rapier branching (`keepStates` / `state` / `from`); env `falling-violation` + task `find-violation`
+- [x] MuJoCo ellipsoids and textures (2D material textures on planes and textured meshes); geom poses read at each frame's final state
+- [x] Pose-import bridge: `Physics.poses` (any simulator's body trajectories, z-up / y-up / scene axes) and `Physics.mujoco({ qpos })` (recorded joint positions through MuJoCo kinematics)
+- [x] Scenario sampler (`packages/envs/src/sampler.ts`: spec of distributions → seeded params → scene; `scenario(spec)` is an Env); envs `scenes`, `scenes-multiview`
+- [x] Tasks and metrics: predict-next (`tasks/predict.ts`: poses scored by tolerance share and position/rotation error, frames by PSNR/SSIM per horizon frame); SSIM in recreate (`metrics.ts`, CPU)
+- [x] Fan-out: `generate --part i/n` (a worker's seed slice, own shards + manifest), `generate card` (merge, check, card), `--jobs n` (local processes); parts are byte-identical to a single run
+- [ ] Not done in Phase 2: recreate answers as the composition program schema (needs a program-JSON → Composition loader in the engine); cube textures and textured primitives in MuJoCo; dispatching parts through the API repo's split-render plan (the render service has no envs job yet)
+- [ ] Phase 3 (`step(action)`, Python client)
+- [ ] Publish a first benchmark on Hugging Face (generate, card, VLM baseline scores) — after Phase 3

@@ -3,7 +3,7 @@
  * the scene's geometry, and asking for them leaves the picture unchanged.
  */
 import { describe, expect, it } from "vitest";
-import { Composition, Layer, Layer3D } from "./index.js";
+import { Composition, Layer, Layer3D, truthLabels } from "./index.js";
 import { Physics } from "./physics/index.js";
 
 const FPS = 30;
@@ -172,5 +172,146 @@ describe("renderTruth", () => {
 
 		const rgba = await c.renderFrame({ frame: 0, format: "rgba" });
 		expect(truth.rgba.equals(rgba)).toBe(true);
+	});
+});
+
+describe("truthLabels", () => {
+	it("labels the camera and each object's boxes", async () => {
+		const c = new Composition({
+			width: W,
+			height: H,
+			fps: FPS,
+			durationFrames: 1,
+			backgroundColor: "#000000",
+		});
+		c.add([
+			Layer.camera({
+				x: 200,
+				y: 150,
+				z: -900,
+				targetX: 200,
+				targetY: 150,
+				targetZ: 0,
+			}),
+			Layer.ambientLight("#ffffff", 1),
+			Layer3D.sphere({ id: "ball", radius: 50, x: 150, y: 150, z: 0 }),
+			// A box in front of the ball's right half.
+			Layer3D.roundedBox({
+				id: "wall",
+				width: 60,
+				height: 200,
+				depth: 10,
+				x: 190,
+				y: 150,
+				z: -100,
+			}),
+		]);
+		const [scene] = (await c.renderTruth(0)).scenes;
+		const { camera, objects } = truthLabels(scene);
+		const f = H / 2 / Math.tan((scene.camera.fov * Math.PI) / 360);
+		expect(camera.intrinsics.fy).toBeCloseTo(f, 3);
+		expect(camera.intrinsics.fx).toBeCloseTo(f, 3);
+		expect([camera.intrinsics.cx, camera.intrinsics.cy]).toEqual([
+			W / 2,
+			H / 2,
+		]);
+
+		const ball = objects.find((o) => o.layer === "ball");
+		const wall = objects.find((o) => o.layer === "wall");
+		if (!ball?.box3d || !ball.box2d || !ball.projectedBox2d || !wall)
+			throw new Error("missing labels");
+		expect(ball.box3d.center.map((v) => Math.round(v))).toEqual([150, 150, 0]);
+		ball.box3d.size.forEach((v) => expect(v).toBeCloseTo(100, 0));
+		// The pixels it shows sit inside where its box projects, and the wall
+		// in front hides part of it.
+		const [x0, y0, x1, y1] = ball.box2d;
+		const [p0, q0, p1, q1] = ball.projectedBox2d;
+		expect(x0).toBeGreaterThanOrEqual(Math.floor(p0));
+		expect(y0).toBeGreaterThanOrEqual(Math.floor(q0));
+		expect(x1).toBeLessThanOrEqual(Math.ceil(p1));
+		expect(y1).toBeLessThanOrEqual(Math.ceil(q1));
+		expect(x1).toBeLessThan(p1 - 10);
+		expect(wall.pixels).toBeGreaterThan(0);
+		// Pixels add up to the covered area.
+		const covered = scene.mask.reduce((n, m) => n + m, 0);
+		expect(objects.reduce((n, o) => n + o.pixels, 0)).toBe(covered);
+	});
+});
+
+describe("amodal truth and labels", () => {
+	it("measures what share of each object shows, and names what it is", async () => {
+		const c = new Composition({
+			width: W,
+			height: H,
+			fps: FPS,
+			durationFrames: 1,
+			backgroundColor: "#000000",
+		});
+		c.add([
+			Layer.camera({
+				x: 200,
+				y: 150,
+				z: -900,
+				targetX: 200,
+				targetY: 150,
+				targetZ: 0,
+			}),
+			Layer.ambientLight("#ffffff", 1),
+			Layer3D.sphere({
+				id: "ball",
+				label: "toy",
+				radius: 50,
+				x: 150,
+				y: 150,
+				z: 0,
+			}),
+			Layer3D.roundedBox({
+				id: "wall",
+				label: "wall",
+				width: 60,
+				height: 200,
+				depth: 10,
+				x: 190,
+				y: 150,
+				z: -100,
+			}),
+			Layer3D.sphere({ id: "free", radius: 30, x: 320, y: 150, z: 0 }),
+		]);
+		const plain = await c.renderTruth(0);
+		const truth = await c.renderTruth({ frame: 0, amodal: true });
+		// Measuring alone changes nothing else, the picture included.
+		expect(truth.rgba.equals(plain.rgba)).toBe(true);
+		expect(Array.from(truth.scenes[0].object)).toEqual(
+			Array.from(plain.scenes[0].object),
+		);
+
+		const { objects } = truthLabels(truth.scenes[0]);
+		const byLayer = (id: string) => {
+			const o = objects.find((x) => x.layer === id);
+			if (!o) throw new Error(`no ${id}`);
+			return o;
+		};
+		const ball = byLayer("ball");
+		const wall = byLayer("wall");
+		const free = byLayer("free");
+		expect(ball.label).toBe("toy");
+		expect(wall.label).toBe("wall");
+		expect(free.label).toBeUndefined();
+		// The wall hides part of the ball; nothing is in front of the others.
+		expect(ball.visibleFraction).toBeGreaterThan(0.2);
+		expect(ball.visibleFraction).toBeLessThan(0.9);
+		expect(wall.visibleFraction).toBe(1);
+		expect(free.visibleFraction).toBe(1);
+		// Drawn alone it reaches past where it shows.
+		const [x0, y0, x1, y1] = ball.box2d ?? [0, 0, 0, 0];
+		const [a0, b0, a1, b1] = ball.amodalBox2d ?? [0, 0, 0, 0];
+		expect(a0).toBeLessThanOrEqual(x0);
+		expect(b0).toBeLessThanOrEqual(y0);
+		expect(a1).toBeGreaterThan(x1);
+		expect(b1).toBeGreaterThanOrEqual(y1);
+		// Without amodal, no visibility is claimed.
+		expect(
+			truthLabels(plain.scenes[0]).objects[0].visibleFraction,
+		).toBeUndefined();
 	});
 });

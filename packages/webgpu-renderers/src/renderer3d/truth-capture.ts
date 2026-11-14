@@ -7,6 +7,7 @@
  */
 
 import type { Camera3DPose } from "../math3d/camera3d.js";
+import type { Mat4 } from "../math3d/matrix4.js";
 import { float16BitsToFloat32 } from "../signals/float16.js";
 
 /** A draw of a 3D pass, as its pixels name it in `Scene3DTruth.object`. */
@@ -16,8 +17,16 @@ export interface Scene3DTruthObject {
 	kind: "mesh" | "quad" | "text" | "floor";
 	/** Id of the layer that drew it (absent for the environment's floor). */
 	layer?: string;
+	/** The layer's `label` (what it is), filled in by `Composition.renderTruth`. */
+	label?: string;
 	/** Which of the layer's draws this is, in draw order (a model's meshes). */
 	part: number;
+	/** Object to world (scene px, y down), column-major; the floor has none. */
+	matrix?: Mat4;
+	/** The draw's own bounds, before `matrix` (a layer plane: the unit quad). */
+	bounds?: { min: [number, number, number]; max: [number, number, number] };
+	/** Instances it draws (per-instance poses are not given). */
+	instances?: number;
 }
 
 /** What the compositor hands a truth capture for one 3D pass. */
@@ -44,6 +53,8 @@ export interface Scene3DTruthPass {
 }
 
 export interface Scene3DTruthCapture {
+	/** Also draw each object alone (`captureAmodal`), to measure what covers it. */
+	readonly amodal?: boolean;
 	/**
 	 * Called once per 3D pass while the frame is being encoded: copy what is
 	 * needed with `encoder` now, since the frame reuses its targets afterwards.
@@ -53,6 +64,27 @@ export interface Scene3DTruthCapture {
 		encoder: GPUCommandEncoder,
 		pass: Scene3DTruthPass,
 	): void;
+	/**
+	 * With `amodal`: after each `capture`, once per object of that pass, its
+	 * object target drawn with that object alone. Copy it now: the next
+	 * object's pass draws into the same target.
+	 */
+	captureAmodal?(
+		device: GPUDevice,
+		encoder: GPUCommandEncoder,
+		id: number,
+		objects: GPUTexture,
+	): void;
+}
+
+/** An object drawn alone: every pixel it covers, hidden or not. */
+export interface Scene3DAmodal {
+	id: number;
+	pixels: number;
+	/** [x0, y0, x1, y1], the max edges exclusive; null when it is off screen. */
+	box: [number, number, number, number] | null;
+	/** Instanced draws: each instance's pixels. */
+	instances?: Array<{ instance: number; pixels: number }>;
 }
 
 /** One 3D pass's ground truth, row-major from the top-left pixel. */
@@ -74,6 +106,8 @@ export interface Scene3DTruth {
 	instance: Uint32Array;
 	/** The objects of the pass by id, in draw order. */
 	objects: Scene3DTruthObject[];
+	/** With `amodal`: each object drawn alone (the floor is not measured). */
+	amodal?: Scene3DAmodal[];
 }
 
 const ROW_ALIGN = 256;
@@ -139,6 +173,7 @@ interface PendingPass {
 	objects: RawReadback;
 	objectTable: Scene3DTruthObject[];
 	geometry?: RawReadback;
+	amodal: Array<{ id: number; objects: RawReadback }>;
 }
 
 /**
@@ -147,6 +182,9 @@ interface PendingPass {
  */
 export class Scene3DTruthReader implements Scene3DTruthCapture {
 	private readonly passes: PendingPass[] = [];
+
+	/** `amodal`: also measure each object drawn alone (one more pass per object). */
+	constructor(readonly amodal = false) {}
 
 	capture(
 		device: GPUDevice,
@@ -162,6 +200,21 @@ export class Scene3DTruthReader implements Scene3DTruthCapture {
 			objectTable: pass.objectTable,
 			geometry:
 				pass.geometry && new RawReadback(device, encoder, pass.geometry, 8),
+			amodal: [],
+		});
+	}
+
+	captureAmodal(
+		device: GPUDevice,
+		encoder: GPUCommandEncoder,
+		id: number,
+		objects: GPUTexture,
+	): void {
+		const pass = this.passes.at(-1);
+		if (!pass) throw new Error("captureAmodal: no pass captured yet.");
+		pass.amodal.push({
+			id,
+			objects: new RawReadback(device, encoder, objects, 8),
 		});
 	}
 
@@ -201,6 +254,13 @@ export class Scene3DTruthReader implements Scene3DTruthCapture {
 			instance,
 			objects: pass.objectTable,
 		};
+		if (this.amodal) {
+			truth.amodal = await Promise.all(
+				pass.amodal.map(async ({ id, objects }) =>
+					amodalOf(id, new Uint32Array(await objects.read()), pass.width),
+				),
+			);
+		}
 		if (pass.geometry) {
 			const half = new Uint16Array(await pass.geometry.read());
 			const normal = new Float32Array(count * 3);
@@ -216,4 +276,36 @@ export class Scene3DTruthReader implements Scene3DTruthCapture {
 		}
 		return truth;
 	}
+}
+
+/** Pixels, box and per-instance pixels of object `id` in an object target. */
+function amodalOf(id: number, ids: Uint32Array, width: number): Scene3DAmodal {
+	let pixels = 0;
+	let box: [number, number, number, number] | null = null;
+	const instances = new Map<number, number>();
+	for (let i = 0; i < ids.length / 2; i++) {
+		if (ids[i * 2] !== id) continue;
+		pixels++;
+		const x = i % width;
+		const y = (i - x) / width;
+		if (!box) box = [x, y, x + 1, y + 1];
+		else {
+			if (x < box[0]) box[0] = x;
+			if (y < box[1]) box[1] = y;
+			if (x + 1 > box[2]) box[2] = x + 1;
+			if (y + 1 > box[3]) box[3] = y + 1;
+		}
+		const inst = ids[i * 2 + 1];
+		instances.set(inst, (instances.get(inst) ?? 0) + 1);
+	}
+	return {
+		id,
+		pixels,
+		box,
+		...(instances.size > 1 && {
+			instances: [...instances]
+				.sort(([a], [b]) => a - b)
+				.map(([instance, n]) => ({ instance, pixels: n })),
+		}),
+	};
 }

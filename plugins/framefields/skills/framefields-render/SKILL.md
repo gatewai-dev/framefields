@@ -138,9 +138,11 @@ s.camera;                        // eye, target, fov (vertical, degrees), near, 
 
 - **Same picture:** `rgba` is byte-identical to `renderFrame({ format: "rgba" })`. Truth only adds measuring passes.
 - **Exact values:** depth and motion are f32 from a pass without anti-aliasing, so an edge pixel belongs to one surface. Normals are half precision, from the sample nearest the camera.
-- **Objects:** ids number the pass's draws from 1 in draw order, and the environment's floor comes last. They are per frame, so match objects across frames by `layer` and `part` (a model's meshes in order), not by id. Give layers an `id` to read them back.
+- **Objects:** ids number the pass's draws from 1 in draw order, and the environment's floor comes last. They are per frame, so match objects across frames by `layer` and `part` (a model's meshes in order), not by id. Give layers an `id` to read them back, and a `label` (any layer: `Layer3D.sphere({ id: "ball", label: "toy" })`) to say what they are: truth objects and `truthLabels` carry it (semantic classes; MuJoCo geoms are labeled with their body's name). A fully transparent draw (opacity 0) is no object.
+- **Visible fraction:** `renderTruth({ frame, amodal: true })` also draws each object alone (one more pass per object), so `truthLabels` gives `amodalPixels`, `amodalBox2d` (its whole extent on screen, hidden or not) and `visibleFraction` (the share that shows: 1 nothing in front, 0 wholly hidden), per instance too. The picture and the id image are unchanged.
 - **Motion** reads the frame before. After a seek, the renderer renders that frame first, so any frame works on its own. A scene's first frame has no motion.
 - A cube camera (a lens remap) has no pinhole truth and is left out. A frame with no raster 3D pass throws.
+- **Labels:** `truthLabels(scene)` gives the camera as datasets describe one (`intrinsics` fx/fy/cx/cy in px, `view` and `projection` matrices) and per object its visible `pixels` and `box2d`, its oriented `box3d` (center, size, rotation in scene px) and `projectedBox2d` (where that box lands, covered or not; visible/projected area hints at occlusion). Instanced draws list each instance's pixels and box instead of a 3D box.
 
 ## Named renders (`framefields.json`)
 

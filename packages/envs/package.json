@@ -1,0 +1,24 @@
+{
+	"name": "@framefields/envs",
+	"version": "3.0.2",
+	"private": true,
+	"description": "Training and evaluation environments on the framefields engine: seeded 3D and physics scenes rendered with ground truth (depth, normals, motion, object ids, labels) into WebDataset shards, and tasks scored against them.",
+	"type": "module",
+	"license": "Apache-2.0",
+	"scripts": {
+		"generate": "tsx --tsconfig tsconfig.dev.json --conditions=development src/cli.ts",
+		"typecheck": "tsc --noEmit -p tsconfig.dev.json",
+		"test": "vitest run"
+	},
+	"dependencies": {
+		"framefields": "workspace:*",
+		"sharp": "^0.35.4"
+	},
+	"devDependencies": {
+		"@framefields/tsconfig": "workspace:*",
+		"@types/node": "^24.1.0",
+		"tsx": "^4.20.3",
+		"typescript": "^5.8.3",
+		"vitest": "^4.1.5"
+	}
+}

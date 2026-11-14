@@ -4,6 +4,7 @@ import {
 	type MujocoWorldOptions,
 	mujocoWorld,
 } from "./mujoco.js";
+import { PoseTrack, type PoseTrackOptions } from "./poses.js";
 import { PhysicsWorld2D, type World2DOptions } from "./world2d.js";
 import { PhysicsWorld3D, type World3DOptions } from "./world3d.js";
 
@@ -38,6 +39,14 @@ export const Physics = {
 	async mujoco(options: MujocoWorldOptions): Promise<MujocoWorld> {
 		return mujocoWorld(options);
 	},
+	/**
+	 * Body trajectories recorded by another simulator, replayed as pose
+	 * signals: `track.follow(name, layer)` makes a layer follow one. For an
+	 * MJCF model, `Physics.mujoco({ qpos })` replays joint positions instead.
+	 */
+	poses(options: PoseTrackOptions): PoseTrack {
+		return new PoseTrack(options);
+	},
 };
 
 export type {
@@ -45,6 +54,9 @@ export type {
 	PhysicsBakeOptions,
 	PhysicsCollision,
 	PhysicsDriver,
+	PhysicsIntervention,
+	PhysicsInterventions,
+	PhysicsState,
 	PhysicsWorldOptions,
 } from "./core.js";
 export { Fracture3D, type Fracture3DOptions } from "./fracture3d.js";
@@ -55,6 +67,12 @@ export {
 	MujocoWorld,
 	type MujocoWorldOptions,
 } from "./mujoco.js";
+export {
+	type BodyTrack,
+	type PoseAxes,
+	PoseTrack,
+	type PoseTrackOptions,
+} from "./poses.js";
 export {
 	type Body2DOptions,
 	type FieldSample2D,

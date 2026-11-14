@@ -1151,7 +1151,7 @@ export class Renderer3D {
 	}
 
 	/** Local bounds of a mesh, computed once. */
-	private meshAabb(mesh: Mesh3DData): Aabb {
+	meshAabb(mesh: Mesh3DData): Aabb {
 		let box = this.meshBounds.get(mesh);
 		if (!box) {
 			const min: Vec3 = [Infinity, Infinity, Infinity];

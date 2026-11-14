@@ -95,6 +95,10 @@ export interface SimBody<V, R> {
 	/** Sets linear and angular velocity (wakes the body). */
 	setVelocity(linear: V, angular: R extends number ? number : Vec3): void;
 	setKinematicTarget(position: V, rotation: R): void;
+	/** Off: it touches nothing (passes through everything); on again: it collides. */
+	setCollisions(enabled: boolean): void;
+	/** Sets its mass, kg (its shape's density scaled to match). */
+	setMass(kg: number): void;
 }
 
 export type SimBody2D = SimBody<Vec2, number>;
@@ -106,6 +110,15 @@ export interface SimWorld<V, B, S> {
 	step(dt: number): void;
 	/** Pairs that started touching during the last step. */
 	drainCollisionStarts(): Array<[B, B]>;
+	setGravity(gravity: V): void;
+	/** The whole simulation state, bytes (Rapier's snapshot). */
+	snapshot(): Uint8Array;
+	/**
+	 * Replaces the state with a snapshot of a world built the same way (the
+	 * same bodies and joints added in the same order): bodies keep their
+	 * `SimBody` objects.
+	 */
+	restore(snapshot: Uint8Array): void;
 	free(): void;
 }
 
@@ -179,9 +192,9 @@ export async function rapierBackend(dims: 2 | 3): Promise<PhysicsBackend> {
 }
 
 class RapierWorld2D implements SimWorld2D {
-	private readonly world: RAPIER2D.World;
+	private world: RAPIER2D.World;
 	private readonly events: RAPIER2D.EventQueue;
-	private readonly byCollider = new Map<number, SimBody2D>();
+	private readonly byCollider = new Map<number, RapierSim2D>();
 	private readonly started: Array<[SimBody2D, SimBody2D]> = [];
 
 	constructor(
@@ -215,33 +228,39 @@ class RapierWorld2D implements SimWorld2D {
 				.setSensor(spec.sensor ?? false),
 			body,
 		);
-		const sim: SimBody2D & { raw: RAPIER2D.RigidBody } = {
+		const sim: RapierSim2D = {
 			raw: body,
+			collider,
 			position: () => {
-				const t = body.translation();
+				const t = sim.raw.translation();
 				return [t.x, t.y];
 			},
-			rotation: () => body.rotation(),
+			rotation: () => sim.raw.rotation(),
 			velocity: () => {
-				const v = body.linvel();
+				const v = sim.raw.linvel();
 				return [v.x, v.y];
 			},
-			angularVelocity: () => body.angvel(),
-			sleeping: () => body.isSleeping(),
-			mass: () => body.mass(),
-			setEnabled: (on) => body.setEnabled(on),
-			applyImpulse: ([x, y]) => body.applyImpulse({ x, y }, true),
+			angularVelocity: () => sim.raw.angvel(),
+			sleeping: () => sim.raw.isSleeping(),
+			mass: () => sim.raw.mass(),
+			setEnabled: (on) => sim.raw.setEnabled(on),
+			applyImpulse: ([x, y]) => sim.raw.applyImpulse({ x, y }, true),
 			setPose: ([x, y], angle) => {
-				body.setTranslation({ x, y }, true);
-				body.setRotation(angle, true);
+				sim.raw.setTranslation({ x, y }, true);
+				sim.raw.setRotation(angle, true);
 			},
 			setVelocity: ([x, y], w) => {
-				body.setLinvel({ x, y }, true);
-				body.setAngvel(w, true);
+				sim.raw.setLinvel({ x, y }, true);
+				sim.raw.setAngvel(w, true);
+			},
+			setCollisions: (on) => sim.collider.setEnabled(on),
+			setMass: (kg) => {
+				sim.collider.setMass(kg);
+				sim.raw.wakeUp();
 			},
 			setKinematicTarget: ([x, y], angle) => {
-				body.setNextKinematicTranslation({ x, y });
-				body.setNextKinematicRotation(angle);
+				sim.raw.setNextKinematicTranslation({ x, y });
+				sim.raw.setNextKinematicRotation(angle);
 			},
 		};
 		this.byCollider.set(collider.handle, sim);
@@ -295,16 +314,46 @@ class RapierWorld2D implements SimWorld2D {
 		return this.started.splice(0);
 	}
 
+	setGravity([x, y]: Vec2): void {
+		this.world.gravity = { x, y };
+	}
+
+	snapshot(): Uint8Array {
+		return this.world.takeSnapshot();
+	}
+
+	restore(snapshot: Uint8Array): void {
+		const world = this.R.World.restoreSnapshot(snapshot);
+		if (!world)
+			throw new Error("Physics: this state is not a snapshot of this world.");
+		this.world.free();
+		this.world = world;
+		for (const [handle, sim] of this.byCollider) {
+			sim.raw = world.getRigidBody(sim.raw.handle);
+			sim.collider = world.getCollider(handle);
+		}
+	}
+
 	free(): void {
 		this.events.free();
 		this.world.free();
 	}
 }
 
+/** A body bound to its Rapier objects, re-bound by handle after a restore. */
+type RapierSim3D = SimBody3D & {
+	raw: RAPIER3D.RigidBody;
+	collider: RAPIER3D.Collider;
+};
+type RapierSim2D = SimBody2D & {
+	raw: RAPIER2D.RigidBody;
+	collider: RAPIER2D.Collider;
+};
+
 class RapierWorld3D implements SimWorld3D {
-	private readonly world: RAPIER3D.World;
+	private world: RAPIER3D.World;
 	private readonly events: RAPIER3D.EventQueue;
-	private readonly byCollider = new Map<number, SimBody3D>();
+	private readonly byCollider = new Map<number, RapierSim3D>();
 	private readonly started: Array<[SimBody3D, SimBody3D]> = [];
 
 	constructor(
@@ -351,39 +400,45 @@ class RapierWorld3D implements SimWorld3D {
 				.setSensor(spec.sensor ?? false),
 			body,
 		);
-		const sim: SimBody3D & { raw: RAPIER3D.RigidBody } = {
+		const sim: RapierSim3D = {
 			raw: body,
+			collider,
 			position: () => {
-				const t = body.translation();
+				const t = sim.raw.translation();
 				return [t.x, t.y, t.z];
 			},
 			rotation: () => {
-				const q = body.rotation();
+				const q = sim.raw.rotation();
 				return [q.x, q.y, q.z, q.w];
 			},
 			velocity: () => {
-				const v = body.linvel();
+				const v = sim.raw.linvel();
 				return [v.x, v.y, v.z];
 			},
 			angularVelocity: () => {
-				const w = body.angvel();
+				const w = sim.raw.angvel();
 				return [w.x, w.y, w.z];
 			},
-			sleeping: () => body.isSleeping(),
-			mass: () => body.mass(),
-			setEnabled: (on) => body.setEnabled(on),
-			applyImpulse: (v) => body.applyImpulse(vec3(v), true),
+			sleeping: () => sim.raw.isSleeping(),
+			mass: () => sim.raw.mass(),
+			setEnabled: (on) => sim.raw.setEnabled(on),
+			applyImpulse: (v) => sim.raw.applyImpulse(vec3(v), true),
 			setPose: (p, [x, y, z, w]) => {
-				body.setTranslation(vec3(p), true);
-				body.setRotation({ x, y, z, w }, true);
+				sim.raw.setTranslation(vec3(p), true);
+				sim.raw.setRotation({ x, y, z, w }, true);
 			},
 			setVelocity: (v, w) => {
-				body.setLinvel(vec3(v), true);
-				body.setAngvel(vec3(w), true);
+				sim.raw.setLinvel(vec3(v), true);
+				sim.raw.setAngvel(vec3(w), true);
+			},
+			setCollisions: (on) => sim.collider.setEnabled(on),
+			setMass: (kg) => {
+				sim.collider.setMass(kg);
+				sim.raw.wakeUp();
 			},
 			setKinematicTarget: (p, [x, y, z, w]) => {
-				body.setNextKinematicTranslation(vec3(p));
-				body.setNextKinematicRotation({ x, y, z, w });
+				sim.raw.setNextKinematicTranslation(vec3(p));
+				sim.raw.setNextKinematicRotation({ x, y, z, w });
 			},
 		};
 		this.byCollider.set(collider.handle, sim);
@@ -439,6 +494,26 @@ class RapierWorld3D implements SimWorld3D {
 
 	drainCollisionStarts(): Array<[SimBody3D, SimBody3D]> {
 		return this.started.splice(0);
+	}
+
+	setGravity(gravity: Vec3): void {
+		this.world.gravity = vec3(gravity);
+	}
+
+	snapshot(): Uint8Array {
+		return this.world.takeSnapshot();
+	}
+
+	restore(snapshot: Uint8Array): void {
+		const world = this.R.World.restoreSnapshot(snapshot);
+		if (!world)
+			throw new Error("Physics: this state is not a snapshot of this world.");
+		this.world.free();
+		this.world = world;
+		for (const [handle, sim] of this.byCollider) {
+			sim.raw = world.getRigidBody(sim.raw.handle);
+			sim.collider = world.getCollider(handle);
+		}
 	}
 
 	free(): void {

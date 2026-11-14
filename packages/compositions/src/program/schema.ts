@@ -806,6 +806,8 @@ export type TriplanarConfig = z.infer<typeof TriplanarConfigSchema>;
 
 const BaseNodeFields = {
 	id: z.string().min(1),
+	/** What the layer is, for datasets: ground truth labels its pixels with it. */
+	label: z.string().min(1).optional(),
 	/** Graph binding — which connected input this node renders (for text/media nodes). */
 	inputHandleId: z.string().optional(),
 	/** "absolute" = out of flow, placed at x/y of the parent's content box. */
@@ -979,6 +981,8 @@ const BaseNodeFields = {
 
 export interface CompositionNodeBase {
 	id: string;
+	/** What the layer is, for datasets: ground truth labels its pixels with it. */
+	label?: string;
 	inputHandleId?: string;
 	position?: "relative" | "absolute";
 	x?: number | unknown;
@@ -1865,6 +1869,8 @@ export const LightNodeSchema: z.ZodType<LightNode> = z
 
 export interface Model3DNode {
 	id: string;
+	/** What the layer is, for datasets: ground truth labels its pixels with it. */
+	label?: string;
 	kind: "model3d";
 	src?: string;
 	modelFormat?:

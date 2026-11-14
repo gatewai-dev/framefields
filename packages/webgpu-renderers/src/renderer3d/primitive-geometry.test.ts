@@ -72,6 +72,27 @@ describe("3D primitive geometry", () => {
 		expectOutwardSolid(model);
 	});
 
+	it("rejects negative or non-finite sizes instead of building inside out", () => {
+		const box = { type: "roundedBox", width: 100, depth: 100 } as const;
+		expect(() =>
+			generatePrimitiveGeometry({ ...box, height: -12, radius: 0 }),
+		).toThrow(/roundedBox: `height` must be a finite size >= 0, got -12/);
+		expect(() =>
+			generatePrimitiveGeometry({
+				type: "cylinder",
+				radius: 10,
+				height: Number.NaN,
+			}),
+		).toThrow(/cylinder: `height`/);
+		expect(() =>
+			generatePrimitiveGeometry({ type: "sphere", radius: -1 }),
+		).toThrow(/sphere: `radius`/);
+		// Zero is a flat (degenerate) solid, not an inverted one.
+		expect(() =>
+			generatePrimitiveGeometry({ ...box, height: 0 }),
+		).not.toThrow();
+	});
+
 	it("builds a sharp box when the radius is 0", () => {
 		const model = generatePrimitiveGeometry({
 			type: "roundedBox",

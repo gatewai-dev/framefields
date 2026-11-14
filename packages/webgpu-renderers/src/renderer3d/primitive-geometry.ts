@@ -2609,10 +2609,58 @@ function finalizeModel3DData(
 	};
 }
 
+/**
+ * The size options of each solid. A negative one mirrors the solid through
+ * its center, turning it inside out: its front faces point inward, so it
+ * shows its far side and z-fights whatever lies on that plane.
+ */
+const SIZE_KEYS: Partial<Record<PrimitiveGeometryOptions["type"], string[]>> = {
+	roundedBox: [
+		"width",
+		"height",
+		"depth",
+		"radius",
+		"cornerRadius",
+		"borderRadius",
+	],
+	sphere: ["radius"],
+	cylinder: [
+		"radius",
+		"radiusTop",
+		"topRadius",
+		"radiusBottom",
+		"bottomRadius",
+		"height",
+	],
+	torus: ["radius", "majorRadius", "tube", "minorRadius", "tubeRadius"],
+	capsule: ["radius", "length"],
+	ring: ["innerRadius", "outerRadius", "depth"],
+	polyhedron: ["radius"],
+	extrude: ["depth"],
+	tube: ["radius", "innerRadius"],
+	shard: ["radius"],
+};
+
+/** Throws on a negative or non-finite size, naming the option. */
+export function assertPrimitiveSizes(options: PrimitiveGeometryOptions): void {
+	const values = options as unknown as Record<string, unknown>;
+	for (const key of SIZE_KEYS[options.type] ?? []) {
+		const value = values[key];
+		if (value === undefined) continue;
+		if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+			throw new Error(
+				`Layer3D.${options.type}: \`${key}\` must be a finite size >= 0, got ${String(value)}. ` +
+					"A negative size turns the solid inside out; place it with x/y/z instead.",
+			);
+		}
+	}
+}
+
 /** Builds a procedural solid as a Model3DData. */
 export function generatePrimitiveGeometry(
 	options: PrimitiveGeometryOptions,
 ): Model3DData {
+	assertPrimitiveSizes(options);
 	if (options.type === "extrude") {
 		return buildExtrudedShapeModel(options);
 	}

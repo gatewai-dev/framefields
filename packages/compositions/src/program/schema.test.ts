@@ -1213,3 +1213,15 @@ describe("container overflow", () => {
 		).toBe("hidden");
 	});
 });
+
+describe("validateLayoutProgram kinds", () => {
+	it("accepts every kind the schema does", () => {
+		const layout = ["camera", "light", "model3d"].map((kind, i) => ({
+			id: `n${i}`,
+			kind,
+		}));
+		expect(validateLayoutProgram({ width: 10, height: 10, layout })).toEqual({
+			ok: true,
+		});
+	});
+});

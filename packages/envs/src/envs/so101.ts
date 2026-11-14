@@ -7,8 +7,8 @@
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { Composition, Layer, type LayoutNode, Physics } from "framefields";
-import type { Env, EnvView } from "../env.js";
-import { random } from "../random.js";
+import type { Env, EnvView } from "framefields/datasets";
+import { random } from "framefields/datasets";
 import type { CameraParams } from "./falling.js";
 
 /** Actuator ranges (rad) from `so101_new_calib.xml`, in actuator order. */

@@ -27,8 +27,8 @@ import {
 	type PhysicsBody3D,
 	type PhysicsWorld3D,
 } from "framefields";
-import type { Env, EnvView } from "./env.js";
-import { type Random, random } from "./random.js";
+import type { Env, EnvView } from "framefields/datasets";
+import { type Random, random } from "framefields/datasets";
 
 // ---------------------------------------------------------------------------
 // Distributions.

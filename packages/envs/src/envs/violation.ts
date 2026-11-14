@@ -5,8 +5,8 @@
  * identical until something impossible happens to one object: it teleports,
  * vanishes, falls through the floor, or gravity turns upward.
  */
-import type { Env, EnvView } from "../env.js";
-import { random } from "../random.js";
+import type { Env, EnvView } from "framefields/datasets";
+import { random } from "framefields/datasets";
 import {
 	FALLING_CLIP,
 	type FallingParams,

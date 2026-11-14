@@ -75,6 +75,7 @@ export const RENDER_KINDS = [
 	"audio",
 	"probe",
 	"stitch",
+	"dataset",
 ] as const;
 
 /** An object key the worker reads from storage: relative, no "..". */
@@ -90,6 +91,70 @@ const stitchInput = z.union([
 	z.url({ protocol: /^https$/ }).max(8192),
 	storageKey,
 ]);
+
+/** Seeds: a list, or `from` (inclusive) to `to` (exclusive). */
+const seedsSchema = z.union([
+	z.array(z.number().int().min(0)).min(1).max(100_000),
+	z
+		.object({ from: z.number().int().min(0), to: z.number().int().min(1) })
+		.refine((r) => r.to > r.from && r.to - r.from <= 1_000_000, {
+			message: "seeds.to must be > seeds.from, at most 1,000,000 seeds",
+		}),
+]);
+
+/** A part job's manifest (framefields/datasets `PartManifest`). */
+const partManifest = z.object({
+	env: z.string().min(1).max(128),
+	part: z.object({
+		index: z.number().int().min(0),
+		count: z.number().int().min(1).max(1024),
+	}),
+	seeds: z.array(z.number().int().min(0)).max(1_000_000),
+	samples: z.number().int().min(0),
+	shards: z.array(z.string().min(1).max(256)).max(100_000),
+});
+
+/**
+ * kind=dataset: the entry's export is an `Env` (framefields/datasets).
+ * Without `finish`, the job renders its `part` of the seeds (or all of
+ * them) into WebDataset shards and a manifest; with `finish`, it merges the
+ * parts' manifests and writes the dataset card.
+ */
+const datasetSchema = z
+	.object({
+		seeds: seedsSchema,
+		part: z
+			.object({
+				index: z.number().int().min(0),
+				count: z.number().int().min(1).max(1024),
+			})
+			.refine((p) => p.index < p.count, {
+				message: "part.index must be < part.count",
+			})
+			.optional(),
+		frames: z.array(z.number().int().min(0)).min(1).max(10_000).optional(),
+		/** Samples per shard (default 500). */
+		shard: z.number().int().min(1).max(10_000_000).optional(),
+		amodal: z.boolean().optional(),
+		finish: z
+			.object({
+				bucket: z.string().min(1).max(255).optional(),
+				/**
+				 * Every part's manifest: presigned URLs, keys in the output
+				 * bucket, or the manifests themselves (what a part job wrote).
+				 */
+				manifests: z
+					.array(z.union([stitchInput, partManifest]))
+					.min(1)
+					.max(1024),
+			})
+			.optional(),
+	})
+	.refine((d) => !(d.finish && d.part), {
+		message: "a finish job merges parts; it has no part of its own",
+	});
+
+export type DatasetSettings = z.infer<typeof datasetSchema>;
 
 export const renderSchema = z.object({
 	kind: z.enum(RENDER_KINDS).default("video"),
@@ -123,6 +188,7 @@ export const renderSchema = z.object({
 			audio: stitchInput.optional(),
 		})
 		.optional(),
+	dataset: datasetSchema.optional(),
 	grid: z
 		.object({
 			from: z.number().int().min(0).optional(),
@@ -199,6 +265,13 @@ export const jobSchema = z
 				code: "custom",
 				path: ["render", "stitch"],
 				message: 'required when render.kind is "stitch"',
+			});
+		}
+		if (job.render.kind === "dataset" && !job.render.dataset) {
+			ctx.addIssue({
+				code: "custom",
+				path: ["render", "dataset"],
+				message: 'required when render.kind is "dataset"',
 			});
 		}
 		if (job.render.range && job.render.kind !== "video") {

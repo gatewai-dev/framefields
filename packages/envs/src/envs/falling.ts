@@ -14,8 +14,8 @@ import {
 	type PhysicsState,
 	type PhysicsWorld3D,
 } from "framefields";
-import type { Env, EnvView } from "../env.js";
-import { random } from "../random.js";
+import type { Env, EnvView } from "framefields/datasets";
+import { random } from "framefields/datasets";
 
 const SHAPES = ["box", "sphere", "cylinder", "capsule"] as const;
 const COLORS = [

@@ -4,6 +4,8 @@
  * texture coordinates wears its texture, and an ellipsoid keeps its three
  * radii.
  */
+
+import { encodePng } from "@framefields/webgpu-renderers/gltf";
 import { describe, expect, it } from "vitest";
 import { Composition, Layer, truthLabels } from "./index.js";
 import { Physics } from "./physics/index.js";
@@ -104,5 +106,90 @@ describe("MuJoCo textures and ellipsoids", () => {
 		const [ex0, ey0, ex1, ey1] = egg?.box2d ?? [0, 0, 0, 0];
 		expect((ey1 - ey0) / (ex1 - ex0)).toBeGreaterThan(2.2);
 		expect((ey1 - ey0) / (ex1 - ex0)).toBeLessThan(3.1);
+	});
+
+	it("draws cube textures by face and 2D textures on primitives", async () => {
+		// Six faces, one color each: +x red, -x green, +y blue, -y yellow, +z white, -z magenta.
+		const colors: Record<string, [number, number, number]> = {
+			right: [255, 0, 0],
+			left: [0, 255, 0],
+			up: [0, 0, 255],
+			down: [255, 255, 0],
+			front: [255, 255, 255],
+			back: [255, 0, 255],
+		};
+		const files: Record<string, Uint8Array> = {};
+		for (const [face, rgb] of Object.entries(colors)) {
+			const px = new Uint8Array(8 * 8 * 4);
+			for (let p = 0; p < 64; p++) px.set([...rgb, 255], p * 4);
+			files[`${face}.png`] = encodePng(px, 8, 8);
+		}
+		const faces = Object.keys(colors)
+			.map((f) => `file${f}="${f}.png"`)
+			.join(" ");
+		const mjcf = `<mujoco>
+  <asset>
+    <texture name="dice" type="cube" ${faces}/>
+    <material name="dice" texture="dice"/>
+    <texture name="checker" type="2d" builtin="checker" rgb1="1 0 0" rgb2="0 0 1" width="64" height="64"/>
+    <material name="ball" texture="checker" texrepeat="3 3"/>
+  </asset>
+  <worldbody>
+    <geom name="front" type="box" size="0.08 0.08 0.08" pos="-0.3 0 0" material="dice"/>
+    <geom name="turned" type="box" size="0.08 0.08 0.08" pos="0 0 0" euler="0 0 90" material="dice"/>
+    <geom name="ball" type="sphere" size="0.1" pos="0.3 0 0" material="ball"/>
+  </worldbody>
+</mujoco>`;
+		const world = await Physics.mujoco({
+			mjcf,
+			files,
+			fps: 30,
+			frames: 1,
+			pixelsPerMeter: PPM,
+			origin: [200, 150, 0],
+		});
+		const c = new Composition({
+			width: W,
+			height: H,
+			fps: 30,
+			durationFrames: 1,
+			backgroundColor: "#000000",
+		});
+		c.add([
+			Layer.camera({
+				x: 200,
+				y: 150,
+				z: -900,
+				targetX: 200,
+				targetY: 150,
+				targetZ: 0,
+			}),
+			Layer.ambientLight("#ffffff", 1),
+			...world.layers().layers,
+		]);
+		const truth = await c.renderTruth(0);
+		const [s] = truth.scenes;
+		const center = (layer: string) => {
+			const box = truthLabels(s).objects.find((o) => o.layer === layer)?.box2d;
+			if (!box) throw new Error(`${layer} not drawn`);
+			return [(box[0] + box[2]) / 2, (box[1] + box[3]) / 2];
+		};
+		const rgbAt = ([x, y]: number[]) => {
+			const i = (Math.round(y) * W + Math.round(x)) * 4;
+			return Array.from(truth.rgba.subarray(i, i + 3));
+		};
+		const dominant = (rgb: number[]) =>
+			rgb.map((v) => (v > 128 ? 1 : 0)).join("");
+		// The camera looks along MuJoCo +y: it sees -y (down, yellow), and
+		// the box turned a quarter about z shows its -x (left, green).
+		expect(dominant(rgbAt(center("mujoco:front")))).toBe("110");
+		expect(dominant(rgbAt(center("mujoco:turned")))).toBe("010");
+		// The ball wears both checker colors.
+		const [bx, by] = center("mujoco:ball");
+		const seen = new Set<string>();
+		for (let dx = -30; dx <= 30; dx += 3)
+			seen.add(dominant(rgbAt([bx + dx, by])));
+		expect(seen.has("100")).toBe(true);
+		expect(seen.has("001")).toBe(true);
 	});
 });

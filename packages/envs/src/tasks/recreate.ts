@@ -6,12 +6,12 @@
  * object. Nothing the answer says is executed.
  */
 import { HeadlessMediaRenderer } from "framefields";
+import { maskAndDepth, psnr, ssim } from "framefields/datasets";
 import {
 	type FallingObject,
 	type FallingParams,
 	falling,
 } from "../envs/falling.js";
-import { maskAndDepth, psnr, ssim } from "../metrics.js";
 
 const SHAPES = new Set(["box", "sphere", "cylinder", "capsule"]);
 

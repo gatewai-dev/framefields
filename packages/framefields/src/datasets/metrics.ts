@@ -3,7 +3,7 @@
  * frames, mask IoU and depth error between ground truths, and position /
  * rotation error between poses.
  */
-import type { Scene3DTruth } from "framefields";
+import type { Scene3DTruth } from "../index.js";
 
 /** RGB PSNR of two RGBA frames of the same size, dB (99 when identical). */
 export function psnr(a: Uint8Array, b: Uint8Array): number {

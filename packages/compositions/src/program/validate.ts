@@ -22,14 +22,19 @@ export type ProgramValidationResult =
 	| { ok: true }
 	| { ok: false; issues: ProgramIssue[] };
 
-const KIND_SET = new Set([
+/** Every node kind `LayoutNodeSchema` accepts. */
+const KINDS = [
 	"flex",
 	"block",
 	"box",
 	"text",
 	"media",
 	"shape",
-]);
+	"model3d",
+	"camera",
+	"light",
+] as const;
+const KIND_SET = new Set<string>(KINDS);
 const MAX_NODES = 512;
 const MAX_DEPTH = 64;
 
@@ -110,7 +115,7 @@ export function validateLayoutProgram(raw: unknown): ProgramValidationResult {
 				issue(
 					"E1201",
 					[...path, "kind"],
-					`Unknown layout node kind '${String(kind)}'. Expected one of: flex, block, box, text, media, shape.`,
+					`Unknown layout node kind '${String(kind)}'. Expected one of: ${KINDS.join(", ")}.`,
 				),
 			);
 		}

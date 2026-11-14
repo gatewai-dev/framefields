@@ -146,6 +146,10 @@ describe("renderCloud", () => {
 				res.end("video-bytes");
 				return;
 			}
+			if (req.url?.startsWith("/files/ds/")) {
+				res.end(`bytes of ${req.url.slice("/files/ds/".length)}`);
+				return;
+			}
 			if (req.headers.authorization !== "Bearer ff_test_key") {
 				res.writeHead(401).end(
 					JSON.stringify({
@@ -176,6 +180,57 @@ describe("renderCloud", () => {
 		commit: "abc1234",
 		workdir: ".",
 	};
+
+	it("renders a dataset and downloads its folder", async () => {
+		const out = path.join(
+			await fs.mkdtemp(path.join(os.tmpdir(), "ff-cloud-")),
+			"scenes",
+		);
+		const files = ["shard-p000of002-000000.tar", "part-p000of002.json"];
+		script = [
+			status({
+				dataset: { seeds: 100, parts: 2, parts_done: 1, samples: 2400 },
+			}),
+			status({ status: "finishing" }),
+			status({
+				status: "completed",
+				output: {
+					url: `${url}/files/ds/README.md`,
+					files: files.map((f) => `${url}/files/ds/${f}`),
+				},
+			}),
+		];
+		const seen: CloudRenderStatus[] = [];
+		const result = await renderCloud({
+			entry: "src/index.ts",
+			export: "scenes",
+			dataset: { seeds: { from: 0, to: 100 }, parts: 2, frames: [0, 24] },
+			source,
+			outputPath: out,
+			apiKey: "ff_test_key",
+			apiUrl: url,
+			pollMs: 1,
+			onProgress: (s) => seen.push(s),
+		});
+		expect((requests[0].body as { dataset: unknown }).dataset).toEqual({
+			seeds: { from: 0, to: 100 },
+			parts: 2,
+			frames: [0, 24],
+		});
+		expect(seen[1].dataset).toEqual({
+			seeds: 100,
+			parts: 2,
+			partsDone: 1,
+			samples: 2400,
+		});
+		expect(result.filePath).toBe(out);
+		expect((await fs.readdir(out)).sort()).toEqual(
+			["README.md", ...files].sort(),
+		);
+		expect(await fs.readFile(path.join(out, files[0]), "utf8")).toBe(
+			`bytes of ${files[0]}`,
+		);
+	});
 
 	it("submits, polls until done and downloads the video", async () => {
 		const out = path.join(

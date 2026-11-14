@@ -87,6 +87,12 @@
 			"import": "./dist/cloud/index.mjs",
 			"default": "./dist/cloud/index.mjs"
 		},
+		"./datasets": {
+			"types": "./dist/datasets/index.d.mts",
+			"development": "./src/datasets/index.ts",
+			"import": "./dist/datasets/index.mjs",
+			"default": "./dist/datasets/index.mjs"
+		},
 		"./library": {
 			"types": "./dist/library/index.d.mts",
 			"development": "./src/library/index.ts",

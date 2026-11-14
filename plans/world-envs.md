@@ -89,6 +89,8 @@ checkable tasks, headless and reproducible.
 - [x] Scenario sampler (`packages/envs/src/sampler.ts`: spec of distributions → seeded params → scene; `scenario(spec)` is an Env); envs `scenes`, `scenes-multiview`
 - [x] Tasks and metrics: predict-next (`tasks/predict.ts`: poses scored by tolerance share and position/rotation error, frames by PSNR/SSIM per horizon frame); SSIM in recreate (`metrics.ts`, CPU)
 - [x] Fan-out: `generate --part i/n` (a worker's seed slice, own shards + manifest), `generate card` (merge, check, card), `--jobs n` (local processes); parts are byte-identical to a single run
-- [ ] Not done in Phase 2: recreate answers as the composition program schema (needs a program-JSON → Composition loader in the engine); cube textures and textured primitives in MuJoCo; dispatching parts through the API repo's split-render plan (the render service has no envs job yet)
+- [x] Program documents: `comp.toProgram()` / `Composition.fromProgram()` (validated JSON, byte-identical round trip; the validator now knows `model3d`, `camera`, `light`); task `recreate-program` (answers as program layouts, scored by IoU/PSNR/SSIM/depth plus lint findings)
+- [x] MuJoCo cube textures (by face) and 2D textures projected onto primitives
+- [x] Cloud datasets: `framefields/datasets` (published subpath: Env, `generateDataset`, `finishDataset`, parts, metrics); render service `kind: "dataset"` (parts and `finish`); API dataset jobs (branch `feat/dataset-jobs` in the API repo: parts → card, presigned keys, $1/part hold, GPU-second billing); `renderCloud({ dataset })`; envs `--cloud --parts n`. Not deployed.
 - [ ] Phase 3 (`step(action)`, Python client)
 - [ ] Publish a first benchmark on Hugging Face (generate, card, VLM baseline scores) — after Phase 3

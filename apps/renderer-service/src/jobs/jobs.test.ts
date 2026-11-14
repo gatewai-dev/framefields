@@ -364,3 +364,66 @@ describe("JobQueue", () => {
 		expect(queue.cancel("zzz", new RenderError("CANCELLED", "x"))).toBe(false);
 	});
 });
+
+describe("dataset jobs", () => {
+	const config = testConfig();
+	const job = (dataset: unknown) =>
+		testJob({
+			render: { kind: "dataset", ...(dataset !== undefined && { dataset }) },
+		});
+	const code = (raw: unknown) => {
+		try {
+			validateJob(raw, config);
+			return "ok";
+		} catch (err) {
+			return err instanceof RenderError ? err.code : String(err);
+		}
+	};
+
+	it("accepts a part, a whole run and a finish with inline manifests", () => {
+		expect(
+			code(job({ seeds: { from: 0, to: 100 }, part: { index: 3, count: 8 } })),
+		).toBe("ok");
+		expect(code(job({ seeds: [1, 5, 9], frames: [0, 12], shard: 50 }))).toBe(
+			"ok",
+		);
+		const manifest = {
+			env: "scenes",
+			part: { index: 0, count: 1 },
+			seeds: [0],
+			samples: 48,
+			shards: ["shard-p000of001-000000.tar"],
+		};
+		expect(code(job({ seeds: [0], finish: { manifests: [manifest] } }))).toBe(
+			"ok",
+		);
+	});
+
+	it("rejects a dataset job without settings, a bad part, and a finish with a part", () => {
+		expect(code(job(undefined))).toBe("JOB_INVALID");
+		expect(code(job({ seeds: [0], part: { index: 2, count: 2 } }))).toBe(
+			"JOB_INVALID",
+		);
+		expect(code(job({ seeds: { from: 5, to: 5 } }))).toBe("JOB_INVALID");
+		expect(
+			code(
+				job({
+					seeds: [0],
+					part: { index: 0, count: 1 },
+					finish: { manifests: ["https://example.com/part-p000of001.json"] },
+				}),
+			),
+		).toBe("JOB_INVALID");
+	});
+
+	it("reads manifest keys only from an allowed bucket", () => {
+		expect(
+			code(
+				job({
+					seeds: [0],
+					finish: { manifests: ["renders/x/part-p000of001.json"] },
+				}),
+			),
+		).toBe("JOB_INVALID");
+	});
+});

@@ -16,6 +16,7 @@ export default defineConfig({
 		"src/components/index.ts",
 		"src/sam/index.ts",
 		"src/cloud/index.ts",
+		"src/datasets/index.ts",
 		"src/storage/index.ts",
 		"src/library/index.ts",
 		"src/style-library/index.ts",

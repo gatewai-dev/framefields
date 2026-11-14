@@ -6,8 +6,8 @@
  * position and rotation error and the share of objects placed within a
  * tolerance (the score).
  */
-import type { EnvView } from "../env.js";
-import { type Pose, poseError, psnr, ssim } from "../metrics.js";
+import type { EnvView } from "framefields/datasets";
+import { type Pose, poseError, psnr, ssim } from "framefields/datasets";
 
 /** Context frames shown, and the horizon frames to predict. */
 export interface PredictSplit {

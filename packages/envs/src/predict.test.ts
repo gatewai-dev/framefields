@@ -3,15 +3,15 @@
  * true future perfect and a frozen guess ("nothing moves") worse.
  */
 import { HeadlessMediaRenderer } from "framefields";
-import { describe, expect, it } from "vitest";
-import { falling } from "./envs/falling.js";
 import {
 	poseError,
 	psnr,
 	quatFromEuler,
 	rotationError,
 	ssim,
-} from "./metrics.js";
+} from "framefields/datasets";
+import { describe, expect, it } from "vitest";
+import { falling } from "./envs/falling.js";
 import {
 	predictSplit,
 	scorePredictedFrames,

@@ -7,7 +7,7 @@ import {
 	type Composition,
 	HeadlessMediaRenderer,
 	truthLabels,
-} from "framefields";
+} from "../index.js";
 import { type DatasetWriter, frameSample } from "./dataset.js";
 
 /** One camera's composition of a scene, and its simulation state per frame. */

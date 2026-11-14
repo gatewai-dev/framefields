@@ -277,7 +277,8 @@ Versions of `framefields` released before worker support (2.1.3 and older) still
 - `frames` (`frames: [0, 120]` → PNGs);
 - `frameGrid` (a contact sheet);
 - `lut`;
-- `probe` and `stitch`, for split renders (below).
+- `probe` and `stitch`, for split renders (below);
+- `dataset`, training data from an env (below).
 
 ### Split renders
 
@@ -288,6 +289,15 @@ The worker renders one piece of a split render per job. A coordinator decides th
 3. **Stitch:** `{ "kind": "stitch", "stitch": { "chunks": ["…/chunk-000.mp4", …], "audio": "…/audio.m4a" } }` downloads the files from the output bucket (`stitch.bucket` defaults to `STORAGE_BUCKET`; either must be in `FF_OUTPUT_BUCKETS`), joins them without re-encoding, and uploads the result to the job's output.
 
 These kinds need a framefields version with split renders; older ones fail with `ENGINE_UNSUPPORTED` rather than render the whole film.
+
+### Datasets
+
+`render.kind: "dataset"` renders an env from `framefields/datasets`: the target export is an `Env` (or a function returning one, called with `target.args`). Its frames render with ground truth into WebDataset shards, using the project's own framefields.
+
+- **Part:** `{ "kind": "dataset", "dataset": { "seeds": { "from": 0, "to": 1000 }, "part": { "index": 2, "count": 8 }, "frames": [0, 12], "shard": 500, "amodal": true } }` renders the part's slice of the seeds. Without `part` it renders every seed. Its files come in a fixed order: the shards (`shard-p002of008-000000.tar`, …), then the manifest (`part-p002of008.json`), then (without `part`) the card (`README.md`). Set `shard` at or above the part's sample count to get exactly one shard, so a coordinator can presign each upload.
+- **Finish:** `{ "kind": "dataset", "dataset": { "seeds": …, "finish": { "manifests": [ … ] } } }` checks that the parts make one dataset (every part once, no seed twice, all the job's seeds) and writes `README.md`. Each manifest is a presigned URL, a key in the output bucket (as for stitch inputs), or the manifest JSON itself.
+
+Older framefields versions without `framefields/datasets` fail with `ENGINE_UNSUPPORTED`.
 
 ### Output targets
 
@@ -361,7 +371,7 @@ A failed job returns:
 | `RENDER_TIMEOUT` / `RENDER_STALLED` | The render took too long, or stopped making progress. |
 | `ENGINE_NOT_FOUND` | The project doesn't depend on `framefields`, so there is nothing to render with. |
 | `ENGINE_SWITCH` | Retry. The project needs another framefields version, or new dependencies; the worker restarts to load them. |
-| `ENGINE_UNSUPPORTED` | A `probe`, `stitch` or `range` job on a framefields version without split renders. Update framefields in the project. |
+| `ENGINE_UNSUPPORTED` | A `probe`, `stitch` or `range` job on a framefields version without split renders, or a `dataset` job on one without `framefields/datasets`. Update framefields in the project. |
 | `GPU_DEVICE_LOST` / `RENDER_OOM` | Retry. The worker replaces itself. |
 | `GPU_UNAVAILABLE` | The machine has no usable GPU (`FF_GPU=require`), or has one that WebGPU couldn't use. Retry on another worker; on RunPod this happens automatically. Check the GPU's Vulkan driver with `vulkaninfo --summary`. |
 | `QA_FAILED` | `render.qa.failOn` matched. The outputs are still uploaded and listed. |

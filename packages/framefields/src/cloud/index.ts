@@ -55,7 +55,12 @@ export interface CloudRenderOptions {
 	quality?: string;
 	/** Probe and plan only: returns the plan and estimated cost, renders nothing. */
 	dryRun?: boolean;
-	/** Download the finished video here. */
+	/**
+	 * Render a dataset instead of a film: the export is an env
+	 * (`framefields/datasets`), its seeds split into `parts`, one GPU each.
+	 */
+	dataset?: CloudDatasetOptions;
+	/** Download the finished video here (a dataset: into this folder). */
 	outputPath?: string;
 	/** Project folder. Default `process.cwd()`. */
 	cwd?: string;
@@ -77,11 +82,24 @@ export interface CloudRenderOptions {
 	pollMs?: number;
 }
 
+/** A cloud dataset render. */
+export interface CloudDatasetOptions {
+	/** A list, or `from` (inclusive) to `to` (exclusive). */
+	seeds: number[] | { from: number; to: number };
+	/** Workers, each rendering a slice of the seeds into one shard. Default 1. */
+	parts?: number;
+	/** Frames to write per view; default every frame. */
+	frames?: number[];
+	/** Visible fraction and whole extent per object. Default on. */
+	amodal?: boolean;
+}
+
 export type CloudRenderPhase =
 	| "probing"
 	| "holding"
 	| "rendering"
 	| "stitching"
+	| "finishing"
 	| "planned"
 	| "completed"
 	| "failed"
@@ -113,12 +131,20 @@ export interface CloudRenderStatus {
 	estimateUsd?: number;
 	/** The commit rendered. */
 	sha?: string;
-	output?: { url: string; bytes?: number };
+	/** A dataset render's progress. */
+	dataset?: {
+		seeds: number;
+		parts: number;
+		partsDone: number;
+		samples: number;
+	};
+	/** The video; for a dataset its card (README.md), and every shard and manifest in `files`. */
+	output?: { url: string; bytes?: number; files?: string[] };
 	error?: { code: string; message: string };
 }
 
 export interface CloudRenderResult extends CloudRenderStatus {
-	/** Where the video was downloaded (`outputPath`). */
+	/** Where the video (a dataset: its folder) was downloaded (`outputPath`). */
 	filePath?: string;
 }
 
@@ -174,6 +200,16 @@ export async function renderCloud(
 		workers: o.workers ?? 1,
 		...(o.maxWorkers && { max_workers: o.maxWorkers }),
 		dry_run: options.dryRun ?? false,
+		...(options.dataset && {
+			dataset: {
+				seeds: options.dataset.seeds,
+				parts: options.dataset.parts ?? 1,
+				...(options.dataset.frames && { frames: options.dataset.frames }),
+				...(options.dataset.amodal !== undefined && {
+					amodal: options.dataset.amodal,
+				}),
+			},
+		}),
 		...(o.name && { name: o.name }),
 		...(o.title && { title: o.title }),
 	});
@@ -206,7 +242,20 @@ export async function renderCloud(
 			status,
 		);
 	if (status.status === "completed" && options.outputPath && status.output) {
-		await download(status.output.url, options.outputPath, options.signal);
+		if (options.dataset) {
+			// The folder: the card and every shard and manifest, by their names.
+			await fs.mkdir(options.outputPath, { recursive: true });
+			for (const url of [status.output.url, ...(status.output.files ?? [])])
+				await download(
+					url,
+					path.join(
+						options.outputPath,
+						path.posix.basename(new URL(url).pathname),
+					),
+					options.signal,
+				);
+		} else
+			await download(status.output.url, options.outputPath, options.signal);
 		return { ...status, filePath: options.outputPath };
 	}
 	return status;
@@ -341,7 +390,13 @@ interface ApiStatus {
 	gpu_seconds?: number;
 	estimate_usd?: number;
 	sha?: string;
-	output?: { url: string; bytes?: number };
+	dataset?: {
+		seeds: number;
+		parts: number;
+		parts_done: number;
+		samples: number;
+	};
+	output?: { url: string; bytes?: number; files?: string[] };
 	error?: { code: string; message: string };
 }
 
@@ -367,6 +422,14 @@ function fromApi(s: ApiStatus): CloudRenderStatus {
 		gpuSeconds: s.gpu_seconds ?? 0,
 		...(s.estimate_usd !== undefined && { estimateUsd: s.estimate_usd }),
 		...(s.sha && { sha: s.sha }),
+		...(s.dataset && {
+			dataset: {
+				seeds: s.dataset.seeds,
+				parts: s.dataset.parts,
+				partsDone: s.dataset.parts_done,
+				samples: s.dataset.samples,
+			},
+		}),
 		...(s.output && { output: s.output }),
 		...(s.error && { error: s.error }),
 	};

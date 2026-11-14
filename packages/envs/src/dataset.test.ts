@@ -7,12 +7,17 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { inflateRawSync } from "node:zlib";
+import {
+	DatasetWriter,
+	encodeNpy,
+	encodeNpz,
+	generate,
+	sampleKey,
+	tarHeader,
+	toFloat16Bits,
+} from "framefields/datasets";
 import { describe, expect, it } from "vitest";
-import { DatasetWriter } from "./dataset.js";
-import { generate, sampleKey } from "./env.js";
 import { falling, fallingMultiView } from "./envs/falling.js";
-import { encodeNpy, encodeNpz, toFloat16Bits } from "./npy.js";
-import { tarHeader } from "./tar.js";
 
 /** Members of a ustar archive: name and bytes. */
 function readTar(bytes: Uint8Array): Array<{ name: string; data: Uint8Array }> {

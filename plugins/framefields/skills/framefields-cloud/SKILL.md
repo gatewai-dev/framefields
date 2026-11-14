@@ -58,7 +58,9 @@ try {
 }
 ```
 
-Options override the named render's; `signal` cancels. `cloudClient({ apiKey })` exposes `start`, `status`, `cancel`. HTTP: `POST /v1/render` (`source`, `target`, `render`, `workers`, `max_workers`, `dry_run`, `name`, `title`), `GET` / `DELETE /v1/render/:id`, `Authorization: Bearer <key>`.
+**Datasets:** `renderCloud({ entry: "src/envs.ts", export: "scenes", dataset: { seeds: { from: 0, to: 1000 }, parts: 8, frames: [0, 24] }, outputPath: "datasets/scenes" })` renders a `framefields/datasets` env (the export) on `parts` GPUs, each a slice of the seeds into one WebDataset shard and a manifest, then writes the dataset card; `outputPath` is a folder that receives the card, shards and manifests. Status: `status` goes `rendering` → `finishing` → `completed`, `dataset: { seeds, parts, partsDone, samples }`, and `output.url` (the card) with `output.files`. Each part is billed by its GPU time like a render; the opening hold is $1 per part.
+
+Options override the named render's; `signal` cancels. `cloudClient({ apiKey })` exposes `start`, `status`, `cancel`. HTTP: `POST /v1/render` (`source`, `target`, `render`, `workers`, `max_workers`, `dry_run`, `dataset`, `name`, `title`), `GET` / `DELETE /v1/render/:id`, `Authorization: Bearer <key>`.
 
 ## Billing and the dashboard
 

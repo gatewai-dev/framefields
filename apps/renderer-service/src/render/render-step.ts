@@ -14,6 +14,7 @@ import { rendererLogger } from "../logger.js";
 import { downloadS3, downloadUrl } from "../output/sinks.js";
 import { gpuStatus } from "../worker/gpu.js";
 import { workerHealth } from "../worker/health.js";
+import { datasetOutput } from "./dataset.js";
 import {
 	type BoundEngine,
 	bindEngine,
@@ -75,6 +76,19 @@ export const render: Pipeline["render"] = async (checkout, input, ctx) => {
 				return [
 					await stitchOutput(input.render, outDir, ctx, controller, engine),
 				];
+			// A dataset renders an env's seeds: no composition plan either.
+			if (input.render.kind === "dataset")
+				return datasetOutput(
+					checkout.workdir,
+					input,
+					outDir,
+					ctx,
+					controller,
+					engine,
+					(d) => {
+						dispose = d;
+					},
+				);
 			const files: RenderedFile[] = [];
 			const plan = await withTimeout(
 				loadPlan(checkout, input, ctx.jobId, (d) => {
@@ -263,9 +277,10 @@ async function renderOutput(
 					),
 				];
 			case "stitch":
+			case "dataset":
 				throw new RenderError(
 					"INTERNAL",
-					"Stitch jobs are handled before the plan loads.",
+					`${settings.kind} jobs are handled before the plan loads.`,
 				);
 			case "frames": {
 				const files: RenderedFile[] = [];

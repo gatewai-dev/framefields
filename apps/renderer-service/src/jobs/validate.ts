@@ -138,19 +138,35 @@ function validateOutput(input: JobInput, config: RendererConfig): void {
 	}
 }
 
-/** Stitch inputs given as keys are read with the worker's own storage credentials. */
+/**
+ * Stitch inputs (and dataset manifests) given as keys are read with the
+ * worker's own storage credentials.
+ */
 function validateStitchInputs(input: JobInput, config: RendererConfig): void {
-	const stitch = input.render.stitch;
-	if (input.render.kind !== "stitch" || !stitch) return;
-	const inputs = [...stitch.chunks, ...(stitch.audio ? [stitch.audio] : [])];
-	if (inputs.every(isUrl)) return;
+	const { kind, stitch } = input.render;
+	const finish = input.render.dataset?.finish;
+	const read =
+		kind === "stitch" && stitch
+			? {
+					inputs: [...stitch.chunks, ...(stitch.audio ? [stitch.audio] : [])],
+					bucket: stitch.bucket,
+				}
+			: kind === "dataset" && finish
+				? {
+						inputs: finish.manifests.filter(
+							(m): m is string => typeof m === "string",
+						),
+						bucket: finish.bucket,
+					}
+				: undefined;
+	if (!read || read.inputs.every(isUrl)) return;
 	if (config.storage.driver !== "s3") {
 		throw new RenderError(
 			"JOB_INVALID",
-			'render.kind "stitch" needs STORAGE_DRIVER=s3 on the worker.',
+			`render.kind "${kind}" reading keys needs STORAGE_DRIVER=s3 on the worker.`,
 		);
 	}
-	const bucket = stitch.bucket ?? config.storage.bucket;
+	const bucket = read.bucket ?? config.storage.bucket;
 	if (!bucket || !config.storage.outputBuckets.includes(bucket)) {
 		throw new RenderError(
 			"BUCKET_NOT_ALLOWED",

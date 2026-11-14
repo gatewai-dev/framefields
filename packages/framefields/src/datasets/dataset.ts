@@ -5,8 +5,8 @@
  */
 import { mkdirSync } from "node:fs";
 import path from "node:path";
-import type { FrameTruth, Scene3DTruth, TruthLabels } from "framefields";
 import sharp from "sharp";
+import type { FrameTruth, Scene3DTruth, TruthLabels } from "../index.js";
 import { encodeNpy, encodeNpz, narrowUint, toFloat16Bits } from "./npy.js";
 import { TarWriter } from "./tar.js";
 

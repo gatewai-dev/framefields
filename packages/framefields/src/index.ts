@@ -205,6 +205,7 @@ import {
 	type EnvironmentVolumetricFog,
 	type EnvironmentVolumetricFogNoise,
 	type FlexNode,
+	getInlineSignal,
 	LayerAnimation,
 	type LayoutNode,
 	type LightAnimatableProp,
@@ -217,11 +218,14 @@ import {
 	type Model3DAnimatableProp,
 	type Model3DNode,
 	mergeAnimationTracks,
+	type ProgramIssue,
+	CompositorProgramSchema as ProgramSchema,
 	type ShapeAnimatableProp,
 	type ShapeNode,
 	type SizeSpec,
 	type TextAnimatableProp,
 	type TextNode,
+	validateLayoutProgram,
 } from "@framefields/compositions/program";
 import {
 	appendOperation,
@@ -1867,6 +1871,53 @@ export class Composition {
 		return new Composition(options);
 	}
 
+	/**
+	 * A composition from a program document: `toProgram()`'s JSON, or one an
+	 * agent or a model wrote. It is checked (the E-code scan, then the
+	 * schema) and loaded as data; nothing in it runs. Throws listing every
+	 * issue. Primitives rebuild their meshes from their `primitive3d` recipe.
+	 */
+	public static fromProgram(
+		program: unknown,
+		options: Pick<CompositionOptions, "durationFrames" | "durationMs"> = {},
+	): Composition {
+		const scan = validateLayoutProgram(program);
+		const issues: ProgramIssue[] = scan.ok ? [] : scan.issues;
+		if (scan.ok) {
+			const parsed = ProgramSchema.safeParse(program);
+			if (!parsed.success)
+				for (const i of parsed.error.issues)
+					issues.push({
+						code: "E1000",
+						path: i.path.filter(
+							(k): k is string | number => typeof k !== "symbol",
+						),
+						message: i.message,
+					});
+		}
+		if (issues.length)
+			throw new Error(
+				`Composition.fromProgram: ${issues.length} issue(s):\n${issues
+					.map(
+						(i) => `  ${i.code} ${i.path.join(".") || "(root)"}: ${i.message}`,
+					)
+					.join("\n")}`,
+			);
+		// The document as given (the schema only checks it: parsing would drop
+		// render fields it does not list).
+		const doc = structuredClone(program) as CompositorProgramConfig;
+		const comp = new Composition({
+			width: doc.width,
+			height: doc.height,
+			fps: doc.fps ?? 24,
+			backgroundColor: doc.backgroundColor,
+			...(doc.antialias3d !== undefined && { antialias3d: doc.antialias3d }),
+			...options,
+		});
+		comp.add(doc.layout as LayoutNode[]);
+		return comp;
+	}
+
 	public addSignal(name: string, signal: unknown): this {
 		this.signals[name] = signal;
 		return this;
@@ -2382,6 +2433,62 @@ export class Composition {
 				onRequestFrame: (ctx: FrameContext) => this.notifyFrame(ctx),
 			}),
 		} as unknown as CompositorProgramConfig;
+	}
+
+	/**
+	 * The composition as a program document: plain JSON that
+	 * `Composition.fromProgram` loads back. Primitives keep their recipe
+	 * (`primitive3d`), not their triangles. Throws naming the first value
+	 * only code can rebuild (a function or signal, binary data such as a
+	 * loaded model), so a document never silently loses part of the scene.
+	 */
+	public toProgram(): CompositorProgramConfig {
+		const { onRequestFrame: _hook, ...spec } =
+			this.toSpec() as CompositorProgramConfig & {
+				onRequestFrame?: unknown;
+			};
+		const walk = (value: unknown, at: string): unknown => {
+			if (value === null || typeof value !== "object") {
+				if (typeof value === "function")
+					throw new Error(
+						`toProgram: ${at} is a function; a program holds data only.`,
+					);
+				if (typeof value === "number" && !Number.isFinite(value))
+					throw new Error(
+						`toProgram: ${at} is ${value}; JSON holds finite numbers.`,
+					);
+				return value;
+			}
+			if (ArrayBuffer.isView(value) || value instanceof ArrayBuffer)
+				throw new Error(
+					`toProgram: ${at} is binary data (a loaded model or image); reference it by path instead.`,
+				);
+			if (Array.isArray(value))
+				return value.map((v, i) => walk(v, `${at}[${i}]`));
+			if (getInlineSignal(value))
+				throw new Error(
+					`toProgram: ${at} is bound to a signal object (code); use keyframes, or bake the signal into them.`,
+				);
+			const proto = Object.getPrototypeOf(value);
+			if (proto !== Object.prototype && proto !== null)
+				throw new Error(
+					`toProgram: ${at} is a ${proto?.constructor?.name ?? "class instance"}; a program holds plain data only.`,
+				);
+			const out: Record<string, unknown> = {};
+			const node = value as Record<string, unknown>;
+			for (const [k, v] of Object.entries(node)) {
+				if (v === undefined) continue;
+				// A primitive's mesh is rebuilt from its recipe.
+				if (k === "modelData" && node.primitive3d) continue;
+				out[k] = walk(v, at ? `${at}.${k}` : k);
+			}
+			return out;
+		};
+		const doc = walk(spec, "") as CompositorProgramConfig;
+		if (doc.signals && Object.keys(doc.signals).length === 0)
+			delete doc.signals;
+		if (doc.fonts && doc.fonts.length === 0) delete doc.fonts;
+		return doc;
 	}
 
 	/**

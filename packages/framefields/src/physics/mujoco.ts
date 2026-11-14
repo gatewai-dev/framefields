@@ -20,8 +20,10 @@ import {
 import type { FrameSignal } from "@framefields/core";
 import {
 	finalizeModel3DData,
+	getPrimitiveGeometry,
 	type Material3D,
 	type Mesh3DData,
+	type PrimitiveGeometryOptions,
 } from "@framefields/webgpu-renderers";
 import { encodePng } from "@framefields/webgpu-renderers/gltf";
 import { Layer, type LayoutNode } from "../index.js";
@@ -267,6 +269,8 @@ interface GeomMesh {
 
 /** A geom's 2D color texture (its material's), as a PNG. */
 interface GeomTexture {
+	/** `2d`, or `cube`: six square faces stacked top to bottom (+x, -x, +y, -y, +z, -z). */
+	kind: "2d" | "cube";
 	png: Uint8Array;
 	/** Material `texrepeat`. */
 	repeat: [number, number];
@@ -274,8 +278,9 @@ interface GeomTexture {
 	uniform: boolean;
 }
 
-/** MuJoCo's `mjtTexture` 2D type and the RGB texture role (`mjTEXROLE_RGB`). */
+/** MuJoCo's `mjtTexture` types and the RGB texture role (`mjTEXROLE_RGB`). */
 const TEX_2D = 0;
+const TEX_CUBE = 1;
 const TEXROLE_RGB = 1;
 
 export class MujocoWorld {
@@ -635,6 +640,15 @@ export class MujocoWorld {
 	private primitive(i: number, base: GeomLayerBase): LayoutNode | null {
 		const ppm = this.pixelsPerMeter;
 		const [s0, s1, s2] = this.geomSize.subarray(i * 3, i * 3 + 3);
+		const texture = this.geomTextures[i];
+		const solid = texture && this.solidGeometry(i);
+		if (texture && solid)
+			return this.modelLayer(
+				i,
+				base,
+				texturedTriangles(solid, texture, [s0, s1, s2], ppm, this.geomType[i]),
+				texture,
+			);
 		switch (this.geomType[i]) {
 			case GEOM.sphere:
 				return Layer3D.sphere({ ...base, radius: s0 * ppm }) as LayoutNode;
@@ -671,7 +685,7 @@ export class MujocoWorld {
 				const half = (h: number) => (h > 0 ? h : 5);
 				const side = (h: number) => 2 * half(h) * ppm;
 				const texture = this.geomTextures[i];
-				if (texture)
+				if (texture?.kind === "2d")
 					return this.modelLayer(
 						i,
 						base,
@@ -692,6 +706,53 @@ export class MujocoWorld {
 		}
 	}
 
+	/**
+	 * A solid geom's triangles from the engine's primitive meshes (the ones
+	 * its untextured layer draws), for texturing: the mesh, and the scale an
+	 * ellipsoid stretches its unit sphere by.
+	 */
+	private solidGeometry(
+		i: number,
+	): { options: PrimitiveGeometryOptions; scale: Vec3 } | null {
+		const ppm = this.pixelsPerMeter;
+		const [s0, s1, s2] = this.geomSize.subarray(i * 3, i * 3 + 3);
+		const one: Vec3 = [1, 1, 1];
+		switch (this.geomType[i]) {
+			case GEOM.sphere:
+				return {
+					options: { type: "sphere", radius: s0 * ppm, segments: 48 },
+					scale: one,
+				};
+			case GEOM.ellipsoid:
+				return {
+					options: { type: "sphere", radius: ppm, segments: 48 },
+					scale: [s0, s2, s1],
+				};
+			case GEOM.box:
+				return {
+					options: {
+						type: "roundedBox",
+						width: 2 * s0 * ppm,
+						height: 2 * s2 * ppm,
+						depth: 2 * s1 * ppm,
+					},
+					scale: one,
+				};
+			case GEOM.capsule:
+				return {
+					options: { type: "capsule", radius: s0 * ppm, length: 2 * s1 * ppm },
+					scale: one,
+				};
+			case GEOM.cylinder:
+				return {
+					options: { type: "cylinder", radius: s0 * ppm, height: 2 * s1 * ppm },
+					scale: one,
+				};
+			default:
+				return null;
+		}
+	}
+
 	/** A mesh geom as a model layer of its triangles (flat-shaded, as MuJoCo's). */
 	private meshLayer(i: number, base: GeomLayerBase): LayoutNode | null {
 		const mesh = this.geomMeshes[i];
@@ -700,7 +761,9 @@ export class MujocoWorld {
 			i,
 			base,
 			mesh,
-			mesh.uvs ? this.geomTextures[i] : undefined,
+			mesh.uvs && this.geomTextures[i]?.kind === "2d"
+				? this.geomTextures[i]
+				: undefined,
 		);
 	}
 
@@ -730,7 +793,8 @@ export class MujocoWorld {
 			...(texture && {
 				diffuseTextureBuffer: texture.png,
 				diffuseTextureMime: "image/png",
-				textureWrap: "repeat",
+				// A cube texture's faces sit side by side: no wrapping into the next.
+				textureWrap: texture.kind === "cube" ? "clamp" : "repeat",
 			}),
 		};
 		const modelData = finalizeModel3DData(name, [data], {
@@ -834,7 +898,121 @@ function planeQuad(
 	return { positions, normals, uvs, twoSided: true };
 }
 
-/** Each geom's material's 2D RGB texture, encoded once per texture. */
+/** Scene-local (x right, y down) to MuJoCo-local (z up) axes. */
+const toMujoco = (x: number, y: number, z: number): Vec3 => [x, z, -y];
+
+/**
+ * Where direction `d` (MuJoCo-local) reads a cube texture, as OpenGL
+ * samples cube maps: the face of its largest component, and (s, t) on it.
+ */
+function cubeFace(axis: number, d: Vec3): [number, number] {
+	const [x, y, z] = d;
+	const m = Math.abs(d[axis >> 1]) || 1;
+	const [sc, tc] = (
+		[
+			[-z, -y],
+			[z, -y],
+			[x, z],
+			[x, -z],
+			[x, -y],
+			[-x, -y],
+		] as const
+	)[axis];
+	return [(sc / m + 1) / 2, (tc / m + 1) / 2];
+}
+
+/** The cube face (0..5: +x, -x, +y, -y, +z, -z) a direction points into. */
+function faceOf(d: Vec3): number {
+	const a = d.map(Math.abs);
+	const k = a[0] >= a[1] && a[0] >= a[2] ? 0 : a[1] >= a[2] ? 1 : 2;
+	return k * 2 + (d[k] < 0 ? 1 : 0);
+}
+
+/**
+ * A solid geom's triangles with texture coordinates as MuJoCo maps them:
+ * a 2D texture projected along the geom's local z (`texrepeat` across it,
+ * or per meter with `texuniform`); a cube texture by direction, each
+ * triangle reading the face it points into (a box's faces each show one).
+ */
+function texturedTriangles(
+	solid: { options: PrimitiveGeometryOptions; scale: Vec3 },
+	texture: GeomTexture,
+	size: Vec3,
+	ppm: number,
+	type: number,
+): GeomMesh {
+	const meshes = getPrimitiveGeometry(solid.options).meshes;
+	const [kx, ky, kz] = solid.scale;
+	let count = 0;
+	for (const m of meshes) count += m.indices.length;
+	const positions = new Float32Array(count * 3);
+	const normals = new Float32Array(count * 3);
+	const uvs = new Float32Array(count * 2);
+	// Half extents along MuJoCo-local x and y, meters.
+	const hx = size[0];
+	const hy = type === GEOM.box || type === GEOM.ellipsoid ? size[1] : size[0];
+	const [ru, rv] = texture.repeat;
+	const planar = (m: Vec3): [number, number] =>
+		texture.uniform
+			? [m[0] * ru, m[1] * rv]
+			: [(m[0] / (2 * hx) + 0.5) * ru, (m[1] / (2 * hy) + 0.5) * rv];
+	let o = 0;
+	const corner: Vec3[] = [
+		[0, 0, 0],
+		[0, 0, 0],
+		[0, 0, 0],
+	];
+	for (const mesh of meshes) {
+		const { positions: p, normals: n, indices } = mesh;
+		for (let t = 0; t < indices.length; t += 3) {
+			for (let k = 0; k < 3; k++) {
+				const v = indices[t + k] * 3;
+				const x = p[v] * kx;
+				const y = p[v + 1] * ky;
+				const z = p[v + 2] * kz;
+				corner[k] = [x, y, z];
+				positions.set([x, y, z], (o + k) * 3);
+				// Normals of a stretched surface scale by the inverse.
+				const nx = n[v] / kx;
+				const ny = n[v + 1] / ky;
+				const nz = n[v + 2] / kz;
+				const len = Math.hypot(nx, ny, nz) || 1;
+				normals.set([nx / len, ny / len, nz / len], (o + k) * 3);
+			}
+			const local = corner.map(([x, y, z]) =>
+				toMujoco(x / ppm, y / ppm, z / ppm),
+			);
+			let face = 0;
+			if (texture.kind === "cube") {
+				// A box face by its normal; a curved surface by where it points.
+				const c: Vec3 = [0, 1, 2].map(
+					(a) => (local[0][a] + local[1][a] + local[2][a]) / 3,
+				) as Vec3;
+				const ref =
+					type === GEOM.box
+						? (() => {
+								const v = indices[t] * 3;
+								return toMujoco(n[v], n[v + 1], n[v + 2]);
+							})()
+						: c;
+				face = faceOf(ref);
+			}
+			for (let k = 0; k < 3; k++) {
+				let uv: [number, number];
+				if (texture.kind === "cube") {
+					const [s, tt] = cubeFace(face, local[k]);
+					const clamp = (v: number) => Math.min(1, Math.max(0, v));
+					uv = [clamp(s), (face + clamp(tt)) / 6];
+				} else uv = planar(local[k]);
+				uvs.set(uv, (o + k) * 2);
+			}
+			o += 3;
+		}
+	}
+	return { positions, normals, uvs };
+}
+
+/** Each geom's material's RGB texture (2D or cube), encoded once per texture. */
 function geomTextures(model: MjModel): Array<GeomTexture | undefined> {
 	const texid = model.mat_texid;
 	const roles = model.nmat > 0 ? texid.length / model.nmat : 0;
@@ -846,13 +1024,16 @@ function geomTextures(model: MjModel): Array<GeomTexture | undefined> {
 		const mat = matid[i];
 		if (mat < 0) return undefined;
 		const tex = texid[mat * roles + TEXROLE_RGB];
-		if (tex < 0 || model.tex_type[tex] !== TEX_2D) return undefined;
+		if (tex < 0) return undefined;
+		const type = model.tex_type[tex];
+		if (type !== TEX_2D && type !== TEX_CUBE) return undefined;
 		let png = pngs.get(tex);
 		if (!png) {
 			png = texturePng(model, tex);
 			pngs.set(tex, png);
 		}
 		return {
+			kind: type === TEX_CUBE ? "cube" : "2d",
 			png,
 			repeat: [repeat[mat * 2], repeat[mat * 2 + 1]],
 			uniform: uniform[mat] !== 0,

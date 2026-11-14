@@ -10,6 +10,7 @@ export * from "../utils/layout/resolve-layout.js";
 export * from "./animation.js";
 export * from "./character-schema.js";
 export * from "./evaluator.js";
+export { getInlineSignal } from "./inline-signals.js";
 export * from "./lint.js";
 export * from "./mattes.js";
 export * from "./media-signal.js";

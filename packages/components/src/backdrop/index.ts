@@ -5,7 +5,8 @@
  * backdrop can sit under any length of scene.
  *
  * Keys sit on each motion's extremes with `sine.inOut` (an exact cosine
- * between extremes), so a loop costs a few keys per axis.
+ * between extremes), so a loop costs a few keys per axis. One loop is keyed
+ * and its tracks repeat, so the backdrop never keys past the scene it sits in.
  *
  * Coordinates are the frame's: the root covers the video (default
  * the composition `canvas`, or the given width / height) from 0, 0.
@@ -29,13 +30,6 @@ export interface BackdropCues {
 	/** The first frame of every loop. */
 	loops: ReadonlyArray<{ frame: number }>;
 }
-
-/**
- * Keys per track, to bound program size on very long scenes (past it the
- * last loop holds). A layer carries at most two looping tracks, so it stays
- * under the `large_animation` lint threshold of 2000.
- */
-const MAX_KEYS = 960;
 
 export const backdrop = /* @__PURE__ */ defineComponent({
 	name: "Backdrop",
@@ -66,7 +60,7 @@ export const backdrop = /* @__PURE__ */ defineComponent({
 		const loop = props.loop ?? fps * 10;
 		const colors = props.colors ?? [c.accent, c.accent2, c.highlight];
 		const cell = props.cell ?? 64 * s;
-		// Motion is keyed for the window, or a minute, in whole loops.
+		// Loop cues cover the window, or a minute, in whole loops.
 		const span =
 			Math.max(1, Math.ceil((ctx.requested.duration ?? fps * 60) / loop)) *
 			loop;
@@ -115,15 +109,8 @@ export const backdrop = /* @__PURE__ */ defineComponent({
 				blob.animate(
 					LayerAnimation.keys(
 						"y",
-						cosineKeys(
-							cy - size / 2,
-							ay,
-							2,
-							r.next() * Math.PI * 2,
-							loop,
-							span,
-						),
-					),
+						cosineKeys(cy - size / 2, ay, 2, r.next() * Math.PI * 2, loop),
+					).loop(),
 				);
 				const carrier = host.box({
 					id: ctx.partId(`blob-${i}-x`),
@@ -143,9 +130,8 @@ export const backdrop = /* @__PURE__ */ defineComponent({
 							1,
 							r.next() * Math.PI * 2,
 							loop,
-							span,
 						),
-					),
+					).loop(),
 				);
 				parts[`blob-${i}`] = blob;
 				add(`blob-${i}-x`, carrier);
@@ -196,8 +182,9 @@ export const backdrop = /* @__PURE__ */ defineComponent({
 				// One cell per loop, diagonally, snapping back on the loop frame.
 				node.animate(
 					LayerAnimation.create()
-						.keys("x", slideKeys(-cell, cell, loop, span))
-						.keys("y", slideKeys(-cell, cell, loop, span)),
+						.keys("x", slideKeys(-cell, cell, loop))
+						.keys("y", slideKeys(-cell, cell, loop))
+						.loop(),
 				);
 				return add(name, node);
 			};
@@ -214,7 +201,6 @@ export const backdrop = /* @__PURE__ */ defineComponent({
 						1,
 						r.next() * Math.PI * 2,
 						loop,
-						span,
 					),
 					y: cosineKeys(
 						H / 2 - size / 2,
@@ -222,7 +208,6 @@ export const backdrop = /* @__PURE__ */ defineComponent({
 						1,
 						r.next() * Math.PI * 2,
 						loop,
-						span,
 					),
 				};
 				const light = host.box({
@@ -236,7 +221,10 @@ export const backdrop = /* @__PURE__ */ defineComponent({
 						"radial-gradient(closest-side, #fff 0%, rgba(255,255,255,0) 100%)",
 				});
 				light.animate(
-					LayerAnimation.create().keys("x", lightKeys.x).keys("y", lightKeys.y),
+					LayerAnimation.create()
+						.keys("x", lightKeys.x)
+						.keys("y", lightKeys.y)
+						.loop(),
 				);
 				host.matte(lit, light);
 				parts["glow-matte"] = light;
@@ -252,7 +240,10 @@ export const backdrop = /* @__PURE__ */ defineComponent({
 					opacity: 0.18 * props.intensity,
 				});
 				halo.animate(
-					LayerAnimation.create().keys("x", lightKeys.x).keys("y", lightKeys.y),
+					LayerAnimation.create()
+						.keys("x", lightKeys.x)
+						.keys("y", lightKeys.y)
+						.loop(),
 				);
 				add("glow", halo);
 			}
@@ -314,11 +305,11 @@ export const backdrop = /* @__PURE__ */ defineComponent({
 });
 
 /**
- * Keys for `centre + amplitude × cos(2π · cycles · f / loop + phase)` over
- * `span` frames (whole loops): the value at every loop start, and at each
- * extreme inside the loop. Between extremes `sine.inOut` is the cosine
- * exactly; the partial pieces at loop starts use `sine.out` / `sine.in`.
- * Every loop repeats the same keys, so the motion is exactly periodic.
+ * One loop of keys for `centre + amplitude × cos(2π · cycles · f / loop + phase)`,
+ * from frame 0 to `loop`: the value at the loop's start and end, and at each
+ * extreme inside it. Between extremes `sine.inOut` is the cosine exactly; the
+ * partial pieces at the seam use `sine.out` / `sine.in`. The track repeats
+ * these keys, so the motion is exactly periodic for as long as it plays.
  */
 export function cosineKeys(
 	centre: number,
@@ -326,7 +317,6 @@ export function cosineKeys(
 	cycles: number,
 	phase: number,
 	loop: number,
-	span: number,
 ): KeyframeTuple[] {
 	const at = (f: number) =>
 		round(
@@ -342,43 +332,29 @@ export function cosineKeys(
 		if (f > 0 && f < loop && !extremes.includes(f)) extremes.push(f);
 	}
 	extremes.sort((a, b) => a - b);
-	const perLoop: KeyframeTuple[] = extremes.map((f, i) => [
-		f,
-		at(f),
-		i === 0 ? "sine.out" : "sine.inOut",
-	]);
-	const loops = Math.max(
-		1,
-		Math.min(span / loop, Math.floor(MAX_KEYS / (perLoop.length + 1))),
-	);
-	const keys: KeyframeTuple[] = [];
-	for (let k = 0; k < loops; k++) {
-		keys.push(k === 0 ? [0, at(0)] : [k * loop, at(0), "sine.in"]);
-		for (const [f, v, e] of perLoop)
-			keys.push([k * loop + (f as number), v, e] as KeyframeTuple);
-	}
-	keys.push([loops * loop, at(0), "sine.in"]);
-	return keys;
+	return [
+		[0, at(0)],
+		...extremes.map(
+			(f, i): KeyframeTuple => [f, at(f), i === 0 ? "sine.out" : "sine.inOut"],
+		),
+		[loop, at(0), "sine.in"],
+	];
 }
 
-/** `from` → `from + by` linearly over each loop, snapping back on the loop frame. */
+/**
+ * `from` → `from + by` linearly over one loop. Repeated, it snaps back to
+ * `from` on every loop frame; with `by` one cell of a pattern the snap is
+ * invisible.
+ */
 export function slideKeys(
 	from: number,
 	by: number,
 	loop: number,
-	span: number,
 ): KeyframeTuple[] {
-	const loops = Math.max(1, Math.min(span / loop, Math.floor(MAX_KEYS / 2)));
-	const keys: KeyframeTuple[] = [[0, from]];
-	for (let k = 0; k < loops; k++) {
-		keys.push([
-			(k + 1) * loop - 1,
-			round(from + (by * (loop - 1)) / loop),
-			"linear",
-		]);
-		keys.push([(k + 1) * loop, from, "hold"]);
-	}
-	return keys;
+	return [
+		[0, from],
+		[loop, round(from + by), "linear"],
+	];
 }
 
 function gridPath(W: number, H: number, cell: number): string {

@@ -416,8 +416,12 @@ function compileTrackToTimeline(
 	// keep the clamp (the renderer's temporal gate clips the same window) but
 	// REPORT it: an author who keys past the node's duration otherwise gets a
 	// silent static mid-animation with no diagnostic.
+	// A repeating track is the exception: its keys define one cycle, and a
+	// cycle longer than the clip is still played (the gate cuts it off), so
+	// dropping its tail would change the period of every repeat.
+	const repeats = (track.repeat ?? 0) !== 0;
 	const validKeyframes = sortedKeyframes.filter(
-		(kf) => kf.frame >= 0 && kf.frame <= durationFrames,
+		(kf) => kf.frame >= 0 && (repeats || kf.frame <= durationFrames),
 	);
 	const dropped = sortedKeyframes.length - validKeyframes.length;
 	const maxAuthoredFrame =

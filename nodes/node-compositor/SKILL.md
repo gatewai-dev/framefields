@@ -178,7 +178,7 @@ Each track represents animatable property modifications:
     - `{ type: "wiggle", frequency: number, octaves?: number, amplitude: number, offset?: number, seed?: number }`: Multi-octave continuous coherent gradient noise.
     - `{ type: "springOvershoot", mass?: number, stiffness?: number, damping?: number, initialVelocity?: number, targetValue?: number }`: Analytical closed-form damped harmonic oscillator ODE.
   - **`keyframes`** (array, optional when procedural `source` is used): Chronologically sorted keyframe points.
-  - **`repeat`** (number, optional): GSAP loop count (e.g., -1 for infinite loops).
+  - **`repeat`** (number, optional): GSAP loop count (e.g., -1 for infinite loops). The keys from the first to the last are one cycle. A repeating track keeps keys past the node's `durationFrames` (the cycle plays until the node ends), while a non-repeating track drops them with an `animation_truncated` warning.
   - **`yoyo`** (boolean, optional): If true, animates back and forth.
 
 #### Keyframe Schema:

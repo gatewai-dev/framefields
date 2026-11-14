@@ -928,6 +928,33 @@ describe("keyframe tail truncation (review M8)", () => {
 		expect(String(warn.mock.calls[0][0])).toContain("1 keyframe(s)");
 	});
 
+	it("plays a repeating track's whole cycle when it outlasts the clip", () => {
+		const warn = spyWarn();
+		const vm = vmWithTrack(
+			[
+				{ frame: 0, value: 0 },
+				{ frame: 30, value: 30 },
+				{ frame: 60, value: 60 },
+			],
+			40,
+		);
+		const track = vm.children[0]?.operation.animation.tracks[0];
+		if (track) Object.assign(track, { repeat: -1 });
+		const { tl, targetsById } = compileTimeline("m8-repeat-long-cycle", vm, {
+			fps: 30,
+			durationSec: 5,
+		});
+		const stub = targetsById["layer-1"];
+
+		// The cycle runs past frame 40 toward 60 instead of holding at 30.
+		tl.seek(39 / 30);
+		expect(stub.x).toBeCloseTo(39, 5);
+		// And the period stays 60 frames: frame 70 is frame 10 again.
+		tl.seek(70 / 30);
+		expect(stub.x).toBeCloseTo(10, 5);
+		expect(warn).not.toHaveBeenCalled();
+	});
+
 	it("does not warn when all keyframes fit the clip window", () => {
 		const warn = spyWarn();
 		compileTimeline(

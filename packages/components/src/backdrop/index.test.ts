@@ -30,6 +30,7 @@ type Node = {
 	animation?: {
 		tracks: Array<{
 			prop: string;
+			repeat?: number;
 			keyframes: Array<{ frame: number; value: number }>;
 		}>;
 	};
@@ -41,19 +42,19 @@ const all = (n: Node, out: Node[] = []): Node[] => {
 };
 
 describe("loop keys", () => {
-	it("cosine keys are exactly periodic and follow the cosine", () => {
+	it("cosine keys span one loop, close the seam and follow the cosine", () => {
 		const loop = 300;
-		const keys = cosineKeys(100, 50, 2, 1.1, loop, loop * 6);
-		for (const f of [0, 13, 77, 150, 299]) {
-			expect(valueAt(keys, f + loop)).toBeCloseTo(valueAt(keys, f), 6);
-			expect(valueAt(keys, f + loop * 4)).toBeCloseTo(valueAt(keys, f), 6);
-		}
+		const keys = cosineKeys(100, 50, 2, 1.1, loop);
+		expect(keys[0]?.[0]).toBe(0);
+		expect(keys.at(-1)?.[0]).toBe(loop);
+		// The track repeats these keys: the loop ends where it starts.
+		expect(keys.at(-1)?.[1]).toBe(keys[0]?.[1]);
 		// Between extremes it is the cosine (within rounding of extreme frames);
 		// the partial pieces at the loop seam are close, not exact.
 		const exact = (f: number) =>
 			100 + 50 * Math.cos((2 * Math.PI * 2 * f) / loop + 1.1);
-		const extremes = keys.slice(1, 5).map((k) => k[0] as number);
-		for (let f = 0; f < loop; f += 3) {
+		const extremes = keys.slice(1, -1).map((k) => k[0] as number);
+		for (let f = 0; f <= loop; f += 3) {
 			const inner =
 				f >= (extremes[0] as number) &&
 				f <= (extremes[extremes.length - 1] as number);
@@ -61,25 +62,14 @@ describe("loop keys", () => {
 				inner ? 0.6 : 4,
 			);
 		}
-		expect(keys.length).toBeLessThanOrEqual(120);
+		expect(keys.length).toBeLessThanOrEqual(8);
 	});
 
-	it("loops through long scenes, with a bound on very long ones", () => {
-		// 300 loops of 30 frames: the old 120-key cap stopped after ~24.
-		const long = cosineKeys(0, 10, 2, 0.3, 30, 30 * 150);
-		expect(long.at(-1)?.[0]).toBe(30 * 150);
-		expect(
-			cosineKeys(0, 10, 2, 0.3, 30, 30 * 10_000).length,
-		).toBeLessThanOrEqual(961);
-		expect(slideKeys(0, 10, 30, 30 * 10_000).length).toBeLessThanOrEqual(961);
-	});
-
-	it("slides one cell a loop and snaps back on the loop frame", () => {
-		const keys = slideKeys(-64, 64, 100, 300);
+	it("slides one cell over one loop", () => {
+		const keys = slideKeys(-64, 64, 100);
 		expect(valueAt(keys, 0)).toBe(-64);
 		expect(valueAt(keys, 50)).toBeCloseTo(-32, 5);
-		expect(valueAt(keys, 100)).toBe(-64);
-		expect(valueAt(keys, 150)).toBeCloseTo(valueAt(keys, 50), 6);
+		expect(keys.at(-1)).toEqual([100, 0, "linear"]);
 	});
 });
 
@@ -102,9 +92,23 @@ describe("Backdrop", () => {
 		expect(nodes.find((n) => n.id === "b-vignette")).toBeUndefined();
 	});
 
-	it("keys motion for the window in whole loops", () => {
+	it("cues each loop of the window", () => {
 		const b = make()({ id: "b", loop: 100, duration: 250 });
 		expect(b.cues.loops.map((c) => c.frame)).toEqual([0, 100, 200]);
+	});
+
+	it("keys one loop and repeats it, so no key outlasts a short scene", () => {
+		// The scene's length is unknown here; a minute of keys used to run
+		// past every shorter scene and fail its render's QA.
+		for (const kind of ["mesh", "grid", "dots"] as const) {
+			const nodes = all(make()({ id: "b", kind, loop: 90 }) as unknown as Node);
+			const tracks = nodes.flatMap((n) => n.animation?.tracks ?? []);
+			expect(tracks.length).toBeGreaterThan(0);
+			for (const t of tracks) {
+				expect(t.repeat).toBe(-1);
+				expect(Math.max(...t.keyframes.map((k) => k.frame))).toBe(90);
+			}
+		}
 	});
 
 	it("seeds blob phases", () => {

@@ -30,6 +30,7 @@ import {
 	type RenderContextValue,
 	type Renderer2D,
 	type Scene3DCapture,
+	type Scene3DTruthCapture,
 	SlugFontCache,
 	shaderStore,
 	textureCache,
@@ -709,6 +710,8 @@ export class HeadlessWebGPURenderer {
 			format?: "png" | "rgba" | "raw" | "jpeg" | "jpg" | "webp";
 			/** Receives the frame's 3D passes as data (model export). */
 			scene3d?: Scene3DCapture;
+			/** Receives the frame's 3D ground truth (depth, normals, motion). */
+			truth?: Scene3DTruthCapture;
 		} = {},
 	): Promise<Buffer> {
 		await HeadlessWebGPURenderer.initialize();
@@ -826,6 +829,7 @@ export class HeadlessWebGPURenderer {
 					containerHeight: height,
 					isVideoMode: virtualMedia.operation?.dataType === "Video",
 					...(options.scene3d && { scene3d: options.scene3d }),
+					...(options.truth && { truth: options.truth }),
 				},
 			);
 
@@ -896,6 +900,8 @@ export class HeadlessWebGPURenderer {
 			format?: "png" | "rgba" | "raw" | "jpeg" | "jpg" | "webp";
 			/** Receives the frame's 3D passes as data (model export). */
 			scene3d?: Scene3DCapture;
+			/** Receives the frame's 3D ground truth (depth, normals, motion). */
+			truth?: Scene3DTruthCapture;
 		} = {},
 	): Promise<Buffer> {
 		const vm =
@@ -910,6 +916,7 @@ export class HeadlessWebGPURenderer {
 			renderId: options.renderId,
 			format: options.format,
 			scene3d: options.scene3d,
+			truth: options.truth,
 		});
 	}
 

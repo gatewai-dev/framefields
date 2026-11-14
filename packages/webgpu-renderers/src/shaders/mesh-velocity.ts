@@ -21,8 +21,18 @@ struct VelocityCamera {
     invViewProj  : mat4x4<f32>,
     eye          : vec4<f32>,
     dir          : vec4<f32>,
-    viewport     : vec4<f32>, // xy = target size, px
+    viewport     : vec4<f32>, // xy = target size, px; z = ground-truth object id
 };
+
+/** The ground-truth pass's second target: object id (0 = none) and instance. */
+struct TruthOut {
+    @location(0) velocity : vec4<f32>,
+    @location(1) object   : vec2<u32>,
+};
+
+fn truthOut(velocity: vec4<f32>, instance: u32) -> TruthOut {
+    return TruthOut(velocity, vec2<u32>(u32(vcam.viewport.z), instance));
+}
 `;
 
 export const meshVelocityWgsl = `
@@ -56,6 +66,7 @@ struct VelocityOut {
     @location(2) uv    : vec2<f32>,
     @location(3) depth : f32,
     @location(4) alpha : f32,
+    @location(5) @interpolate(flat) instance : u32,
 };
 
 @vertex
@@ -79,11 +90,11 @@ fn vs_velocity(
     out.uv = model.uvRect.xy + in.uv * model.uvRect.zw;
     out.depth = dot(world.xyz - vcam.eye.xyz, vcam.dir.xyz);
     out.alpha = in.color.a * now.instColor.a;
+    out.instance = instanceIndex;
     return out;
 }
 
-@fragment
-fn fs_velocity(in: VelocityOut) -> @location(0) vec4<f32> {
+fn meshVelocity(in: VelocityOut) -> vec4<f32> {
     // Cut-out texels (alpha-tested leaves, cards) leave no motion behind.
     let cutoff = model.shade.a;
     if (cutoff > 0.0) {
@@ -97,6 +108,16 @@ fn fs_velocity(in: VelocityOut) -> @location(0) vec4<f32> {
     // NDC y points up, pixels down.
     let motion = (ndc - ndcPrev) * 0.5 * vcam.viewport.xy * vec2<f32>(1.0, -1.0);
     return vec4<f32>(motion, in.depth, 1.0);
+}
+
+@fragment
+fn fs_velocity(in: VelocityOut) -> @location(0) vec4<f32> {
+    return meshVelocity(in);
+}
+
+@fragment
+fn fs_velocity_truth(in: VelocityOut) -> TruthOut {
+    return truthOut(meshVelocity(in), in.instance);
 }
 `;
 
@@ -140,8 +161,7 @@ fn vs_quad_velocity(@builtin(vertex_index) i: u32) -> QuadVelocityOut {
     return out;
 }
 
-@fragment
-fn fs_quad_velocity(in: QuadVelocityOut) -> @location(0) vec4<f32> {
+fn quadVelocity(in: QuadVelocityOut) -> vec4<f32> {
     if (textureSample(quadTex, quadSampler, in.uv).a < 0.02) {
         discard;
     }
@@ -149,6 +169,16 @@ fn fs_quad_velocity(in: QuadVelocityOut) -> @location(0) vec4<f32> {
     let ndcPrev = in.prev.xy / max(in.prev.w, 1e-6);
     let motion = (ndc - ndcPrev) * 0.5 * vcam.viewport.xy * vec2<f32>(1.0, -1.0);
     return vec4<f32>(motion, in.depth, 1.0);
+}
+
+@fragment
+fn fs_quad_velocity(in: QuadVelocityOut) -> @location(0) vec4<f32> {
+    return quadVelocity(in);
+}
+
+@fragment
+fn fs_quad_velocity_truth(in: QuadVelocityOut) -> TruthOut {
+    return truthOut(quadVelocity(in), 0u);
 }
 `;
 
@@ -178,8 +208,7 @@ struct FloorVelocityOut {
     @builtin(frag_depth) depth : f32,
 };
 
-@fragment
-fn fs_floor_velocity(@builtin(position) pos: vec4<f32>) -> FloorVelocityOut {
+fn floorVelocity(pos: vec4<f32>) -> FloorVelocityOut {
     let size = vcam.viewport.xy;
     let ndc = vec2<f32>(pos.x / size.x * 2.0 - 1.0, 1.0 - pos.y / size.y * 2.0);
     let a = vcam.invViewProj * vec4<f32>(ndc, 0.0, 1.0);
@@ -202,6 +231,23 @@ fn fs_floor_velocity(@builtin(position) pos: vec4<f32>) -> FloorVelocityOut {
     out.color = vec4<f32>(motion, dot(world.xyz - vcam.eye.xyz, vcam.dir.xyz), 1.0);
     out.depth = clamp(clip.z / clip.w, 0.0, 1.0);
     return out;
+}
+
+@fragment
+fn fs_floor_velocity(@builtin(position) pos: vec4<f32>) -> FloorVelocityOut {
+    return floorVelocity(pos);
+}
+
+struct FloorTruthOut {
+    @location(0) velocity : vec4<f32>,
+    @location(1) object   : vec2<u32>,
+    @builtin(frag_depth) depth : f32,
+};
+
+@fragment
+fn fs_floor_velocity_truth(@builtin(position) pos: vec4<f32>) -> FloorTruthOut {
+    let v = floorVelocity(pos);
+    return FloorTruthOut(v.color, vec2<u32>(u32(vcam.viewport.z), 0u), v.depth);
 }
 `;
 
@@ -286,8 +332,7 @@ fn vs_slug_velocity(
     return out;
 }
 
-@fragment
-fn fs_slug_velocity(in : SlugVelocityOut) -> @location(0) vec4<f32> {
+fn slugVelocity(in : SlugVelocityOut) -> vec4<f32> {
     let fw = max(abs(dpdx(in.uv)) + abs(dpdy(in.uv)), vec2<f32>(0.000001));
     let glyph = SlugGlyph(in.glyphScale, in.bandScale, in.bandMax, in.bandsTexCoords);
     let coverage = sampleSlugCoverage(in.uv, glyph, max(vec2<f32>(1.0) / fw, vec2<f32>(1.0)));
@@ -299,5 +344,15 @@ fn fs_slug_velocity(in : SlugVelocityOut) -> @location(0) vec4<f32> {
     let ndcPrev = in.prev.xy / max(in.prev.w, 1e-6);
     let shift = (ndc - ndcPrev) * 0.5 * vcam.viewport.xy * vec2<f32>(1.0, -1.0);
     return vec4<f32>(shift, in.depth, 1.0);
+}
+
+@fragment
+fn fs_slug_velocity(in : SlugVelocityOut) -> @location(0) vec4<f32> {
+    return slugVelocity(in);
+}
+
+@fragment
+fn fs_slug_velocity_truth(in : SlugVelocityOut) -> TruthOut {
+    return truthOut(slugVelocity(in), 0u);
 }
 `;

@@ -4,7 +4,11 @@ import { slugVelocityWgsl } from "../shaders/mesh-velocity.js";
 import { slug3dWgsl } from "../shaders/slug3d.js";
 import type { SlugFont } from "../slug/slug-loader.js";
 import { fullCoverageView, matteLayoutEntry } from "./matte3d.js";
-import { VELOCITY_DEPTH_FORMAT, VELOCITY_FORMAT } from "./mesh3d-pipeline.js";
+import {
+	VELOCITY_DEPTH_FORMAT,
+	VELOCITY_FORMAT,
+	velocityFragment,
+} from "./mesh3d-pipeline.js";
 import {
 	BloomPipelineVariants,
 	createBasePipelines,
@@ -65,10 +69,11 @@ export class Slug3DPipeline {
 	private instancePool: BufferPool;
 	private fontBindGroups = new WeakMap<GPUTexture, GPUBindGroup>();
 	private motionPool: BufferPool;
-	private velocity?: {
-		pipeline: GPURenderPipeline;
-		layout: GPUBindGroupLayout;
-	};
+	/** Velocity pipelines by target format (motion blur, ground truth). */
+	private velocity = new Map<
+		GPUTextureFormat,
+		{ pipeline: GPURenderPipeline; layout: GPUBindGroupLayout }
+	>();
 	// Transform, draw/material params and the shared surface block.
 	private modelData = new Float32Array(40 + SURFACE_PARAMS_FLOATS);
 
@@ -195,9 +200,10 @@ export class Slug3DPipeline {
 		instances: Float32Array,
 		instanceCount: number,
 		data: SlugMotionData,
+		format: GPUTextureFormat = VELOCITY_FORMAT,
 	): void {
 		if (instanceCount === 0 || !font.curvesTex || !font.bandsTex) return;
-		const velocity = this.velocityPipeline(velocityCameraLayout);
+		const velocity = this.velocityPipeline(velocityCameraLayout, format);
 		const motion = new Float32Array(36);
 		motion.set(data.modelMatrix, 0);
 		motion.set(data.prevModelMatrix, 16);
@@ -233,11 +239,15 @@ export class Slug3DPipeline {
 		pass.draw(6, instanceCount);
 	}
 
-	private velocityPipeline(cameraLayout: GPUBindGroupLayout): {
+	private velocityPipeline(
+		cameraLayout: GPUBindGroupLayout,
+		format: GPUTextureFormat,
+	): {
 		pipeline: GPURenderPipeline;
 		layout: GPUBindGroupLayout;
 	} {
-		if (this.velocity) return this.velocity;
+		const cached = this.velocity.get(format);
+		if (cached) return cached;
 		const module = this.device.createShaderModule({
 			label: "slug-velocity.wgsl",
 			code: slugVelocityWgsl,
@@ -278,11 +288,7 @@ export class Slug3DPipeline {
 					},
 				],
 			},
-			fragment: {
-				module,
-				entryPoint: "fs_slug_velocity",
-				targets: [{ format: VELOCITY_FORMAT }],
-			},
+			fragment: velocityFragment(module, "fs_slug_velocity", format),
 			depthStencil: {
 				format: VELOCITY_DEPTH_FORMAT,
 				depthWriteEnabled: true,
@@ -290,8 +296,9 @@ export class Slug3DPipeline {
 			},
 			primitive: { topology: "triangle-list", cullMode: "none" },
 		});
-		this.velocity = { pipeline, layout };
-		return this.velocity;
+		const velocity = { pipeline, layout };
+		this.velocity.set(format, velocity);
+		return velocity;
 	}
 
 	draw(

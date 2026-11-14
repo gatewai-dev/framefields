@@ -3,7 +3,7 @@
  * WebGPU render pipeline for Screen-Space Ambient Occlusion (SSAO) and Bilateral Cross-Blur.
  */
 
-import { type Mat4, Matrix4Math } from "../math3d/index.js";
+import { createRandom, type Mat4, Matrix4Math } from "../math3d/index.js";
 import { ssaoBlurWgsl, ssaoWgsl } from "../shaders/ssao.js";
 
 export interface SSAOPassOptions {
@@ -32,8 +32,13 @@ export class SSAOPipeline {
 	private noiseTexture: GPUTexture;
 	private sampler: GPUSampler;
 
-	constructor(device: GPUDevice) {
+	/**
+	 * `seed` picks the noise rotations and the sample kernel, so the same
+	 * seed shades the same occlusion on every run.
+	 */
+	constructor(device: GPUDevice, seed = 1) {
 		this.device = device;
+		const random = createRandom(seed);
 
 		// 1. Generate 4x4 random rotation noise texture
 		this.noiseTexture = device.createTexture({
@@ -45,8 +50,8 @@ export class SSAOPipeline {
 
 		const noiseData = new Uint8Array(4 * 4 * 4);
 		for (let i = 0; i < 16; i++) {
-			noiseData[i * 4 + 0] = Math.floor(Math.random() * 255);
-			noiseData[i * 4 + 1] = Math.floor(Math.random() * 255);
+			noiseData[i * 4 + 0] = Math.floor(random() * 255);
+			noiseData[i * 4 + 1] = Math.floor(random() * 255);
 			noiseData[i * 4 + 2] = 128;
 			noiseData[i * 4 + 3] = 255;
 		}
@@ -60,8 +65,8 @@ export class SSAOPipeline {
 		// 2. Generate 32-sample Cosine-weighted Hemispherical Kernel
 		const kernelFloats = new Float32Array(32 * 4);
 		for (let i = 0; i < 32; i++) {
-			const u1 = Math.random();
-			const u2 = Math.random();
+			const u1 = random();
+			const u2 = random();
 			const theta = Math.acos(Math.sqrt(1.0 - u1));
 			const phi = 2.0 * Math.PI * u2;
 
@@ -90,18 +95,44 @@ export class SSAOPipeline {
 		this.ssaoBindGroupLayout = device.createBindGroupLayout({
 			label: "ssao-bgl",
 			entries: [
-				{ binding: 0, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: "depth" } },
-				{ binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: "float" } },
-				{ binding: 2, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: "float" } },
-				{ binding: 3, visibility: GPUShaderStage.FRAGMENT, sampler: { type: "filtering" } },
-				{ binding: 4, visibility: GPUShaderStage.FRAGMENT, buffer: { type: "read-only-storage" } },
-				{ binding: 5, visibility: GPUShaderStage.FRAGMENT, buffer: { type: "uniform" } },
+				{
+					binding: 0,
+					visibility: GPUShaderStage.FRAGMENT,
+					texture: { sampleType: "depth" },
+				},
+				{
+					binding: 1,
+					visibility: GPUShaderStage.FRAGMENT,
+					texture: { sampleType: "float" },
+				},
+				{
+					binding: 2,
+					visibility: GPUShaderStage.FRAGMENT,
+					texture: { sampleType: "float" },
+				},
+				{
+					binding: 3,
+					visibility: GPUShaderStage.FRAGMENT,
+					sampler: { type: "filtering" },
+				},
+				{
+					binding: 4,
+					visibility: GPUShaderStage.FRAGMENT,
+					buffer: { type: "read-only-storage" },
+				},
+				{
+					binding: 5,
+					visibility: GPUShaderStage.FRAGMENT,
+					buffer: { type: "uniform" },
+				},
 			],
 		});
 
 		this.ssaoPipeline = device.createRenderPipeline({
 			label: "ssao-eval-pipeline",
-			layout: device.createPipelineLayout({ bindGroupLayouts: [this.ssaoBindGroupLayout] }),
+			layout: device.createPipelineLayout({
+				bindGroupLayouts: [this.ssaoBindGroupLayout],
+			}),
 			vertex: { module: ssaoShader, entryPoint: "vs_main" },
 			fragment: {
 				module: ssaoShader,
@@ -126,16 +157,34 @@ export class SSAOPipeline {
 		this.blurBindGroupLayout = device.createBindGroupLayout({
 			label: "ssao-blur-bgl",
 			entries: [
-				{ binding: 0, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: "float" } },
-				{ binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: "depth" } },
-				{ binding: 2, visibility: GPUShaderStage.FRAGMENT, sampler: { type: "filtering" } },
-				{ binding: 3, visibility: GPUShaderStage.FRAGMENT, buffer: { type: "uniform" } },
+				{
+					binding: 0,
+					visibility: GPUShaderStage.FRAGMENT,
+					texture: { sampleType: "float" },
+				},
+				{
+					binding: 1,
+					visibility: GPUShaderStage.FRAGMENT,
+					texture: { sampleType: "depth" },
+				},
+				{
+					binding: 2,
+					visibility: GPUShaderStage.FRAGMENT,
+					sampler: { type: "filtering" },
+				},
+				{
+					binding: 3,
+					visibility: GPUShaderStage.FRAGMENT,
+					buffer: { type: "uniform" },
+				},
 			],
 		});
 
 		this.blurPipeline = device.createRenderPipeline({
 			label: "ssao-blur-pipeline",
-			layout: device.createPipelineLayout({ bindGroupLayouts: [this.blurBindGroupLayout] }),
+			layout: device.createPipelineLayout({
+				bindGroupLayouts: [this.blurBindGroupLayout],
+			}),
 			vertex: { module: blurShader, entryPoint: "vs_main" },
 			fragment: {
 				module: blurShader,

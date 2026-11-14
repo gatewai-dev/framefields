@@ -39,3 +39,13 @@ export function encodeFloat32ToFloat16(
 	}
 	return out;
 }
+
+/** Decodes a 16-bit half-precision float bit pattern (IEEE 754) to a number. */
+export function float16BitsToFloat32(bits: number): number {
+	const sign = bits & 0x8000 ? -1 : 1;
+	const exp = (bits >>> 10) & 0x1f;
+	const mant = bits & 0x3ff;
+	if (exp === 0) return sign * mant * 2 ** -24;
+	if (exp === 31) return mant ? Number.NaN : sign * Number.POSITIVE_INFINITY;
+	return sign * (1 + mant / 1024) * 2 ** (exp - 15);
+}

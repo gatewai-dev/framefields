@@ -24,4 +24,5 @@ export * from "./surface-params.js";
 export * from "./swarm3d-pipeline.js";
 export * from "./terrain-geometry.js";
 export * from "./text-extruder.js";
+export * from "./truth-capture.js";
 export * from "./volumetric-fog-pipeline.js";

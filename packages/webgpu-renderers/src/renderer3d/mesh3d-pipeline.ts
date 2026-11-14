@@ -158,6 +158,32 @@ export type MeshMotionPrev = Pick<
 export const VELOCITY_FORMAT: GPUTextureFormat = "rgba16float";
 /** Depth format of the velocity pass. */
 export const VELOCITY_DEPTH_FORMAT: GPUTextureFormat = "depth24plus";
+/**
+ * The velocity pass at full precision, for ground truth: the same draws and
+ * values (motion px, linear depth, coverage) as `VELOCITY_FORMAT`, in f32.
+ */
+export const TRUTH_MOTION_FORMAT: GPUTextureFormat = "rgba32float";
+/** Ground truth's second target: the object id of each pixel (0 = none) and its instance. */
+export const TRUTH_OBJECT_FORMAT: GPUTextureFormat = "rg32uint";
+
+/**
+ * A velocity pipeline's fragment stage for its target format: at
+ * `TRUTH_MOTION_FORMAT` the `_truth` entry point also writes the object
+ * target; otherwise the motion-blur entry point alone.
+ */
+export function velocityFragment(
+	module: GPUShaderModule,
+	entryPoint: string,
+	format: GPUTextureFormat,
+): GPUFragmentState {
+	return format === TRUTH_MOTION_FORMAT
+		? {
+				module,
+				entryPoint: `${entryPoint}_truth`,
+				targets: [{ format }, { format: TRUTH_OBJECT_FORMAT }],
+			}
+		: { module, entryPoint, targets: [{ format }] };
+}
 
 export interface GPUMeshBuffers {
 	vertexBuffer: GPUBuffer;
@@ -763,6 +789,7 @@ export class Mesh3DPipeline {
 		prev: MeshMotionPrev | undefined,
 		instanceCount = 1,
 		firstInstance = 0,
+		format: GPUTextureFormat = VELOCITY_FORMAT,
 	): void {
 		const hasMapUvs = Boolean(meshBuffers.mapUvBuffer);
 		const hasSkin1 = Boolean(meshBuffers.skin1Buffer);
@@ -780,7 +807,7 @@ export class Mesh3DPipeline {
 				: wireframe || meshBuffers.topology === "line-list"
 					? "line-list"
 					: "triangle-list";
-		pass.setPipeline(this.velocityPipeline(topology));
+		pass.setPipeline(this.velocityPipeline(topology, format));
 		pass.setBindGroup(0, velocityCameraBindGroup);
 		pass.setBindGroup(1, now);
 		pass.setBindGroup(2, before);
@@ -796,15 +823,19 @@ export class Mesh3DPipeline {
 		);
 	}
 
-	private velocityPipeline(topology: GPUPrimitiveTopology): GPURenderPipeline {
-		let pipeline = this.velocityPipelines.get(topology);
+	private velocityPipeline(
+		topology: GPUPrimitiveTopology,
+		format: GPUTextureFormat,
+	): GPURenderPipeline {
+		const key = `${topology}:${format}`;
+		let pipeline = this.velocityPipelines.get(key);
 		if (pipeline) return pipeline;
 		this.velocityModule ??= this.device.createShaderModule({
 			label: "mesh-velocity.wgsl",
 			code: meshVelocityWgsl,
 		});
 		pipeline = this.device.createRenderPipeline({
-			label: `Mesh3DVelocity-${topology}`,
+			label: `Mesh3DVelocity-${topology}-${format}`,
 			layout: this.device.createPipelineLayout({
 				bindGroupLayouts: [
 					this.velocityCameraLayout,
@@ -827,11 +858,7 @@ export class Mesh3DPipeline {
 					},
 				],
 			},
-			fragment: {
-				module: this.velocityModule,
-				entryPoint: "fs_velocity",
-				targets: [{ format: VELOCITY_FORMAT }],
-			},
+			fragment: velocityFragment(this.velocityModule, "fs_velocity", format),
 			depthStencil: {
 				format: VELOCITY_DEPTH_FORMAT,
 				depthWriteEnabled: true,
@@ -839,7 +866,7 @@ export class Mesh3DPipeline {
 			},
 			primitive: { topology, cullMode: "none" },
 		});
-		this.velocityPipelines.set(topology, pipeline);
+		this.velocityPipelines.set(key, pipeline);
 		return pipeline;
 	}
 

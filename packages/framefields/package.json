@@ -155,6 +155,7 @@
 	"optionalDependencies": {
 		"@dimforge/rapier2d-deterministic-compat": "0.21.0",
 		"@dimforge/rapier3d-deterministic-compat": "0.21.0",
+		"@mujoco/mujoco": "4.0.1",
 		"onnxruntime-web": "^1.24.0"
 	},
 	"devDependencies": {

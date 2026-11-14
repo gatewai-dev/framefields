@@ -8,6 +8,7 @@ import type {
 import type {
 	RenderContextValue,
 	Scene3DCapture,
+	Scene3DTruthCapture,
 } from "@framefields/webgpu-renderers";
 
 export type GPUCommandEncoder = globalThis.GPUCommandEncoder;
@@ -58,6 +59,11 @@ export interface NodeRenderProps<
 	motionHistoryOnly?: boolean;
 	/** Receives every 3D pass the frame draws, as data (model export). */
 	scene3d?: Scene3DCapture;
+	/**
+	 * Receives every raster 3D pass's ground truth (depth, normals, motion).
+	 * Adds measuring passes only: the picture is the same as without it.
+	 */
+	truth?: Scene3DTruthCapture;
 	/** Signal values that override the node's own (text animators read them). */
 	signals?: Record<string, unknown>;
 	renderChild?: (

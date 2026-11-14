@@ -118,6 +118,30 @@ From the CLI: `npx framefields render <name> --model [--frame 30] [--output scen
 - **`skipped`** lists what the frame drew that the file cannot carry: text on 3D planes (use `Layer3D.extrudedText`), rect lights, the environment's floor, rounded corners and borders of layers on planes, and GPU-computed motion (wind, audio deformation, crowds), which is written at rest. Print it.
 - A single frame: no animation tracks. Export several frames for several poses.
 
+### 8. Ground truth (`renderTruth`)
+
+A frame's picture with what the renderer measured for each raster 3D pass: per pixel depth, normals, screen motion and the object drawn there. Use it for datasets, training environments and checks that need exact geometry instead of estimates from the picture.
+
+```typescript
+const { rgba, width, height, scenes } = await comp.renderTruth({ frame: 30 });
+const s = scenes[0];             // one per raster 3D pass, in draw order
+const i = y * s.width + x;
+s.depth[i];                      // scene px along the camera's forward axis; Infinity = no surface
+s.normal?.subarray(i * 3, i * 3 + 3); // unit world normal (y down); absent when path traced
+s.motion.subarray(i * 2, i * 2 + 2);  // px moved since the previous frame (x right, y down)
+s.mask[i];                       // 1 where a surface covers the pixel
+s.object[i];                     // object id there (0 = none) …
+s.objects.find((o) => o.id === s.object[i]); // … { id, kind, layer, part }: the layer id that drew it
+s.instance[i];                   // which instance of a Layer3D.instances / scatter draw
+s.camera;                        // eye, target, fov (vertical, degrees), near, far
+```
+
+- **Same picture:** `rgba` is byte-identical to `renderFrame({ format: "rgba" })`. Truth only adds measuring passes.
+- **Exact values:** depth and motion are f32 from a pass without anti-aliasing, so an edge pixel belongs to one surface. Normals are half precision, from the sample nearest the camera.
+- **Objects:** ids number the pass's draws from 1 in draw order, and the environment's floor comes last. They are per frame, so match objects across frames by `layer` and `part` (a model's meshes in order), not by id. Give layers an `id` to read them back.
+- **Motion** reads the frame before. After a seek, the renderer renders that frame first, so any frame works on its own. A scene's first frame has no motion.
+- A cube camera (a lens remap) has no pinhole truth and is left out. A frame with no raster 3D pass throws.
+
 ## Named renders (`framefields.json`)
 
 `framefields.json` names what the project renders. Add one per cut (teaser, vertical, language) rather than flags in `render.ts`; the CLI, `framefields check`, the cloud and the dashboard pick them by name.

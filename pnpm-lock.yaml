@@ -3269,6 +3269,9 @@ importers:
       '@dimforge/rapier3d-deterministic-compat':
         specifier: 0.21.0
         version: 0.21.0
+      '@mujoco/mujoco':
+        specifier: 4.0.1
+        version: 4.0.1
       onnxruntime-web:
         specifier: ^1.24.0
         version: 1.30.0
@@ -4537,6 +4540,9 @@ packages:
 
   '@minhducsun2002/leb128@1.0.0':
     resolution: {integrity: sha512-eFrYUPDVHeuwWHluTG1kwNQUEUcFjVKYwPkU8z9DR1JH3AW7JtJsG9cRVGmwz809kKtGfwGJj58juCZxEvnI/g==}
+
+  '@mujoco/mujoco@4.0.1':
+    resolution: {integrity: sha512-vLuwD6biiyo2D2LG1fwpwJUfWSDZhBIr6aUd3AuPJR8P7FAIeSHgofGC+0XgIpZ0vYi0EOyju+Kv7zPJepX7wA==}
 
   '@napi-rs/canvas-android-arm64@1.0.3':
     resolution: {integrity: sha512-7kSCdUhoXiO+AaIMXdBGdtp6EctZNkmF62Rea/BmVQlwKaM3bBhOzyGUzxyxz9dv5vdBfpyAaxhSRSJF4kqK4A==}
@@ -7931,6 +7937,9 @@ snapshots:
       - supports-color
 
   '@minhducsun2002/leb128@1.0.0':
+    optional: true
+
+  '@mujoco/mujoco@4.0.1':
     optional: true
 
   '@napi-rs/canvas-android-arm64@1.0.3':

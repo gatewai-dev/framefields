@@ -147,8 +147,20 @@ export type {
 	Sam3Precision,
 	Sam3Prompt,
 } from "@framefields/vision-sam";
+export type { Scene3DTruth } from "@framefields/webgpu-renderers";
 // Types only, so SAM stays in its own lazily loaded chunk; the trackers are in `framefields/sam`.
 export type { ModelExport, ModelExportOptions } from "./model-export.js";
+
+/** A frame's picture and its 3D ground truth (`Composition.renderTruth`). */
+export interface FrameTruth {
+	frame: number;
+	width: number;
+	height: number;
+	/** The frame, width * height * 4 bytes: the same as `renderFrame({ format: "rgba" })`. */
+	rgba: Buffer;
+	/** One per raster 3D pass the frame draws, in draw order. */
+	scenes: Scene3DTruth[];
+}
 
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -235,7 +247,12 @@ import {
 	type NormalRelightingOptions,
 	TensorPipeline,
 } from "@framefields/tensor-webgpu";
-import { inputStore, mediaDecoderCache } from "@framefields/webgpu-renderers";
+import {
+	inputStore,
+	mediaDecoderCache,
+	type Scene3DTruth,
+	Scene3DTruthReader,
+} from "@framefields/webgpu-renderers";
 import { Scene3DExporter } from "@framefields/webgpu-renderers/gltf";
 import { buildChart, type ChartOptions } from "./chart.js";
 import { ClipVision, type ClipVisionOptions } from "./clip-vision.js";
@@ -958,6 +975,11 @@ export {
 	type FieldSample3D,
 	Fracture3D,
 	type Fracture3DOptions,
+	type MujocoContact,
+	type MujocoFrameState,
+	type MujocoLayersOptions,
+	MujocoWorld,
+	type MujocoWorldOptions,
 	Physics,
 	type PhysicsBakeOptions,
 	PhysicsBody2D,
@@ -2461,6 +2483,54 @@ export class Composition {
 				`exportModel: frame ${frame} draws no 3D meshes (add a Layer.camera and Layer3D layers).`,
 			);
 		return writeModel(result, options.outputPath);
+	}
+
+	/**
+	 * A frame's picture with its 3D ground truth, measured by the renderer:
+	 * for each raster 3D pass, per pixel linear depth, world normal and
+	 * screen motion since the previous frame (see `Scene3DTruth`). It only
+	 * adds measuring passes: `rgba` is the frame `renderFrame` draws.
+	 *
+	 * ```ts
+	 * const { rgba, scenes: [scene] } = await comp.renderTruth({ frame: 30 });
+	 * scene.depth[y * scene.width + x]; // scene px along the camera's forward axis
+	 * ```
+	 */
+	public async renderTruth(
+		frameOrOptions:
+			| number
+			| {
+					atMs?: number;
+					frame?: number;
+					renderer?: HeadlessMediaRenderer;
+			  } = {},
+	): Promise<FrameTruth> {
+		const options =
+			typeof frameOrOptions === "number"
+				? { frame: frameOrOptions }
+				: frameOrOptions;
+		const { frame } = resolveFrameRequest(options, this.fps);
+		const vm = await this.frameMedia(frame);
+		const reader = new Scene3DTruthReader();
+		const renderer = options.renderer ?? new HeadlessMediaRenderer();
+		const rgba = await renderer.renderFrame(vm, {
+			fps: this.fps,
+			frame,
+			format: "rgba",
+			truth: reader,
+		});
+		const scenes = await reader.finish();
+		if (scenes.length === 0)
+			throw new Error(
+				`renderTruth: frame ${frame} draws no raster 3D scene (add a Layer.camera and Layer3D layers; a cube camera has no pinhole truth).`,
+			);
+		return {
+			frame,
+			width: this.width,
+			height: this.height,
+			rgba,
+			scenes,
+		};
 	}
 
 	/** Compiles the composition for `frame` and runs its frame hooks, which record the live signal time. */

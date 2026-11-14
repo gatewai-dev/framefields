@@ -74,6 +74,7 @@ import {
 	Renderer3D,
 	resolvePathTrace,
 	resolveTextSpans,
+	type Scene3DTruthObject,
 	ScreenSpaceRelightPipeline,
 	type ShadowCaster3D,
 	type ShapeFillConfig,
@@ -1147,14 +1148,14 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 			durationSec,
 		});
 		const { targetsById } = compiled;
-		// Shutter motion blur reads every 3D draw one frame earlier: after a
-		// seek, render the frame before first, recording only. The history is
-		// this composition's (render id and content), not the render id's: still
-		// renders reuse ids across compositions.
+		// Shutter motion blur (and ground-truth motion) reads every 3D draw one
+		// frame earlier: after a seek, render the frame before first, recording
+		// only. The history is this composition's (render id and content), not
+		// the render id's: still renders reuse ids across compositions.
 		if (
 			!historyOnly &&
 			frame != null &&
-			sceneMotionBlur(virtualMedia) &&
+			(props.truth || sceneMotionBlur(virtualMedia)) &&
 			motionHistory(ctx.device, compiled.key).needsPrevious(shiftedFrame)
 		) {
 			await renderMotionHistory(args, frame - 1);
@@ -1484,8 +1485,8 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 			}
 
 			const blur = (camOp as CameraNode | undefined)?.motionBlur;
-			if (blur && fps) {
-				motionBlur = blur === true ? {} : blur;
+			if (blur && fps) motionBlur = blur === true ? {} : blur;
+			if ((blur || props.truth) && fps) {
 				history = motionHistory(ctx.device, compiled.key);
 			}
 
@@ -1740,6 +1741,98 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 			}
 			h.recordFrame(shiftedFrame, cam);
 		};
+		/**
+		 * Draws the queued items' screen motion since the last frame (none
+		 * without a history) into a velocity pass: half precision for motion
+		 * blur; f32 and copyable for ground truth, which also writes each
+		 * draw's object id (items 1..n in draw order, then the floor).
+		 */
+		const drawSceneVelocity = (
+			h: MotionHistory | null,
+			cam: Camera3DPose,
+			floor: Environment3DFloor | undefined,
+			precision: "blur" | "truth",
+		): {
+			velocity: GPUTexture;
+			objects?: GPUTexture;
+			objectTable: Scene3DTruthObject[];
+		} => {
+			const r3d = getRenderer3D(
+				ctx.device,
+				ctx.renderer.format ?? "rgba8unorm",
+				sampleCount3d,
+			);
+			const vel = r3d.beginVelocityPass(
+				encoder,
+				nativeWidth,
+				nativeHeight,
+				cam,
+				h?.previousCamera(shiftedFrame) ?? cam,
+				precision,
+			);
+			const truth = precision === "truth";
+			const objectTable: Scene3DTruthObject[] = [];
+			const items = motionItems();
+			const floorId = truth && floor ? items.length + 1 : 0;
+			if (floor) {
+				r3d.drawFloorVelocity(vel.pass, vel.objectCamera(floorId), floor);
+			}
+			const parts = new Map<string, number>();
+			items.forEach(([item, key], index) => {
+				let camera = vel.cameraBindGroup;
+				if (truth) {
+					const id = index + 1;
+					const part = item.owner ? (parts.get(item.owner) ?? 0) : 0;
+					if (item.owner) parts.set(item.owner, part + 1);
+					objectTable.push({
+						id,
+						kind: item.kind === "slug" ? "text" : item.kind,
+						...(item.owner !== undefined && { layer: item.owner }),
+						part,
+					});
+					camera = vel.objectCamera(id);
+				}
+				if (item.kind === "mesh") {
+					const prev = key
+						? h?.previousMesh(key, shiftedFrame, {
+								skinning: item.opts.skinningMatrices,
+								instanceBuffer: item.opts.instanceBuffer,
+								vertexBytes: item.meshBuffers && deformedBytes(item.mesh),
+								wind: item.opts.wind,
+								crowd: item.opts.crowd,
+							})
+						: undefined;
+					r3d.drawMeshVelocity(
+						vel.pass,
+						camera,
+						item.meshBuffers ?? item.mesh,
+						item.texture,
+						item.opts,
+						prev,
+					);
+				} else if (item.kind === "quad") {
+					r3d.drawQuadVelocity(
+						vel.pass,
+						camera,
+						item.texture,
+						item.opts,
+						key ? h?.previousQuad(key, shiftedFrame) : undefined,
+					);
+				} else {
+					r3d.drawSlugVelocity(
+						vel.pass,
+						camera,
+						item.batches,
+						item.opts,
+						item.stackBase,
+						key ? h?.previousSlug(key, shiftedFrame) : undefined,
+					);
+				}
+			});
+			vel.pass.end();
+			if (floorId) objectTable.push({ id: floorId, kind: "floor", part: 0 });
+			return { velocity: vel.velocity, objects: vel.objects, objectTable };
+		};
 		/** Draws the queued items' screen motion since the last frame, then blurs `color` by it into `into`. */
 		const blurScene = (
 			h: MotionHistory,
@@ -1754,54 +1847,8 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				ctx.renderer.format ?? "rgba8unorm",
 				sampleCount3d,
 			);
-			const vel = r3d.beginVelocityPass(
-				encoder,
-				nativeWidth,
-				nativeHeight,
-				cam,
-				h.previousCamera(shiftedFrame) ?? cam,
-			);
-			if (floor) r3d.drawFloorVelocity(vel.pass, vel.cameraBindGroup, floor);
-			for (const [item, key] of motionItems()) {
-				if (item.kind === "mesh") {
-					const prev = key
-						? h.previousMesh(key, shiftedFrame, {
-								skinning: item.opts.skinningMatrices,
-								instanceBuffer: item.opts.instanceBuffer,
-								vertexBytes: item.meshBuffers && deformedBytes(item.mesh),
-								wind: item.opts.wind,
-								crowd: item.opts.crowd,
-							})
-						: undefined;
-					r3d.drawMeshVelocity(
-						vel.pass,
-						vel.cameraBindGroup,
-						item.meshBuffers ?? item.mesh,
-						item.texture,
-						item.opts,
-						prev,
-					);
-				} else if (item.kind === "quad") {
-					r3d.drawQuadVelocity(
-						vel.pass,
-						vel.cameraBindGroup,
-						item.texture,
-						item.opts,
-						key ? h.previousQuad(key, shiftedFrame) : undefined,
-					);
-				} else {
-					r3d.drawSlugVelocity(
-						vel.pass,
-						vel.cameraBindGroup,
-						item.batches,
-						item.opts,
-						item.stackBase,
-						key ? h.previousSlug(key, shiftedFrame) : undefined,
-					);
-				}
-			}
-			vel.pass.end();
-			r3d.applyMotionBlur(encoder, color, vel.velocity, into.createView(), {
+			const { velocity } = drawSceneVelocity(h, cam, floor, "blur");
+			r3d.applyMotionBlur(encoder, color, velocity, into.createView(), {
 				shutterAngle: blur.shutter,
 				sampleCount: blur.samples,
 				maxBlur: blur.maxBlur,
@@ -1888,7 +1935,8 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				(dofEnabled ||
 					Boolean(outlines) ||
 					volumetricFogEnabled ||
-					screenIndirectEnabled);
+					screenIndirectEnabled ||
+					Boolean(props.truth));
 			let linearDepthTex: GPUTexture | undefined;
 			let linearDepthView: GPUTextureView | undefined;
 			if (geometryEnabled) {
@@ -2190,6 +2238,7 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 						environment: sceneEnvironment,
 						shadow: sceneShadow,
 						screenIndirect,
+						keepGeometrySamples: Boolean(props.truth),
 					},
 					writeHdr,
 					target.hdr,
@@ -2480,6 +2529,33 @@ export const CompositorWebGPURenderer: WebGPUNodeRenderer = async (args) => {
 				final3dTex = dofResultTex;
 			}
 
+			// Ground truth of the pinhole view (a cube camera's lens is not one).
+			if (props.truth && !cubeCamera) {
+				const floorVisible =
+					floorSpec &&
+					typeof floorSpec.y === "number" &&
+					camera.eye[1] < floorSpec.y;
+				const measured = drawSceneVelocity(
+					history,
+					camera,
+					floorVisible ? floorSpec : undefined,
+					"truth",
+				);
+				if (!measured.objects)
+					throw new Error("ground truth: the truth pass drew no object target");
+				props.truth.capture(ctx.device, encoder, {
+					camera,
+					width: nativeWidth,
+					height: nativeHeight,
+					motion: measured.velocity,
+					objects: measured.objects,
+					objectTable: measured.objectTable,
+					geometry:
+						mainPass && linearDepthTex
+							? r3d.truthGeometry(encoder, linearDepthTex)
+							: undefined,
+				});
+			}
 			if (motionBlur && history) {
 				const blurredTex = ctx.renderer.getTemporaryTexture(
 					nativeWidth,

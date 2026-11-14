@@ -87,8 +87,11 @@ import {
 	type MeshMotionPrev,
 	type MeshUniformData,
 	type MeshWind,
+	TRUTH_MOTION_FORMAT,
+	TRUTH_OBJECT_FORMAT,
 	VELOCITY_DEPTH_FORMAT,
 	VELOCITY_FORMAT,
+	velocityFragment,
 } from "./mesh3d-pipeline.js";
 import { MorphPipeline } from "./morph-pipeline.js";
 import {
@@ -329,6 +332,12 @@ export interface Scene3DWorld {
 	 * two passes: `radiance`, then `traceScreenIndirect`, then `apply`.
 	 */
 	screenIndirect?: ScreenIndirectPass;
+	/**
+	 * Keep the multisampled geometry after the pass (it is normally
+	 * discarded), so `resolveGeometry` can take each pixel's nearest sample
+	 * for ground truth. The caller's geometry view still gets its usual resolve.
+	 */
+	keepGeometrySamples?: boolean;
 }
 
 /** Textures one `traceScreenIndirect` writes and the `apply` pass reads. */
@@ -359,6 +368,9 @@ export interface ShadowMapOptions3D {
 	/** 0..1. Default 1. */
 	darkness?: number;
 }
+
+/** `VelocityCamera.viewport.z` in its uniform data: a ground-truth draw's object id. */
+const VELOCITY_CAMERA_OBJECT_ID = 58;
 
 export class Renderer3D {
 	private device: GPUDevice;
@@ -403,14 +415,17 @@ export class Renderer3D {
 		GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
 	);
 	private motionBlurPipeline?: MotionBlurPipeline;
-	private quadVelocity?: {
-		pipeline: GPURenderPipeline;
-		layout: GPUBindGroupLayout;
-	};
-	private floorVelocity?: {
-		pipeline: GPURenderPipeline;
-		layout: GPUBindGroupLayout;
-	};
+	/** Velocity pipelines by target format (motion blur, ground truth). */
+	private quadVelocity = new Map<
+		GPUTextureFormat,
+		{ pipeline: GPURenderPipeline; layout: GPUBindGroupLayout }
+	>();
+	private floorVelocity = new Map<
+		GPUTextureFormat,
+		{ pipeline: GPURenderPipeline; layout: GPUBindGroupLayout }
+	>();
+	/** The target format of the velocity pass being drawn (`beginVelocityPass`). */
+	private velocityFormat: GPUTextureFormat = VELOCITY_FORMAT;
 	/**
 	 * Environments looked up this frame: a pass asks several times, and a
 	 * file path is checked on disk (stat) once per frame, not per lookup.
@@ -775,9 +790,10 @@ export class Renderer3D {
 			height,
 			{
 				format: "rgba16float",
-
 				usage:
-					GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+					GPUTextureUsage.RENDER_ATTACHMENT |
+					GPUTextureUsage.TEXTURE_BINDING |
+					GPUTextureUsage.COPY_SRC,
 			},
 		);
 		return this.linearDepthTexture;
@@ -1542,6 +1558,8 @@ export class Renderer3D {
 				(world?.environment?.outlines || world?.screenIndirect === "radiance")
 			) {
 				geometryAttachment.resolveTarget = undefined;
+				geometryAttachment.storeOp = "store";
+			} else if (msaa && world?.keepGeometrySamples) {
 				geometryAttachment.storeOp = "store";
 			}
 			colorAttachments.push(geometryAttachment);
@@ -2380,17 +2398,38 @@ export class Renderer3D {
 		height: number,
 		camera: Camera3DPose,
 		prevCamera: Camera3DPose,
+		/**
+		 * `truth`: the same pass in f32 (`TRUTH_MOTION_FORMAT`), copyable, for
+		 * ground truth, plus an object target (`TRUTH_OBJECT_FORMAT`); its own
+		 * targets, so motion blur's are left as they are.
+		 */
+		precision: "blur" | "truth" = "blur",
 	): {
 		pass: GPURenderPassEncoder;
 		cameraBindGroup: GPUBindGroup;
 		velocity: GPUTexture;
+		/** Ground truth only: each pixel's object id and instance. */
+		objects?: GPUTexture;
+		/**
+		 * The camera bind group for a draw of object `id` (ground truth: a
+		 * draw writes its id with its motion; 0 is no object).
+		 */
+		objectCamera: (id: number) => GPUBindGroup;
 	} {
-		const usage =
-			GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING;
-		const velocity = this.attachment("Renderer3DVelocity", width, height, {
-			format: VELOCITY_FORMAT,
-			usage,
-		});
+		const truth = precision === "truth";
+		this.velocityFormat = truth ? TRUTH_MOTION_FORMAT : VELOCITY_FORMAT;
+		const velocity = this.attachment(
+			truth ? "Renderer3DTruthMotion" : "Renderer3DVelocity",
+			width,
+			height,
+			{
+				format: this.velocityFormat,
+				usage:
+					GPUTextureUsage.RENDER_ATTACHMENT |
+					GPUTextureUsage.TEXTURE_BINDING |
+					(truth ? GPUTextureUsage.COPY_SRC : 0),
+			},
+		);
 		const depth = this.attachment("Renderer3DVelocityDepth", width, height, {
 			format: VELOCITY_DEPTH_FORMAT,
 			usage: GPUTextureUsage.RENDER_ATTACHMENT,
@@ -2404,27 +2443,53 @@ export class Renderer3D {
 			Vector3Math.subtract(camera.target, camera.eye),
 		);
 		data.set([...camera.eye, 1, ...fwd, 0, width, height, 0, 0], 48);
-		const cameraBindGroup = this.device.createBindGroup({
-			layout: this.mesh3dPipeline.velocityCameraLayout,
-			entries: [
-				{
-					binding: 0,
-					resource: {
-						buffer: this.velocityCameraPool.getBuffer(this.device, data),
+		const cameraGroup = (cameraData: Float32Array) =>
+			this.device.createBindGroup({
+				layout: this.mesh3dPipeline.velocityCameraLayout,
+				entries: [
+					{
+						binding: 0,
+						resource: {
+							buffer: this.velocityCameraPool.getBuffer(
+								this.device,
+								cameraData,
+							),
+						},
 					},
-				},
-			],
-		});
+				],
+			});
+		const cameraBindGroup = cameraGroup(data);
+		const objectCamera = (id: number) => {
+			if (id === 0) return cameraBindGroup;
+			const withId = data.slice();
+			withId[VELOCITY_CAMERA_OBJECT_ID] = id;
+			return cameraGroup(withId);
+		};
+		const objects = truth
+			? this.attachment("Renderer3DTruthObjects", width, height, {
+					format: TRUTH_OBJECT_FORMAT,
+					usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
+				})
+			: undefined;
+		const colorAttachments: GPURenderPassColorAttachment[] = [
+			{
+				view: velocity.createView(),
+				loadOp: "clear",
+				storeOp: "store",
+				clearValue: { r: 0, g: 0, b: 0, a: 0 },
+			},
+		];
+		if (objects) {
+			colorAttachments.push({
+				view: objects.createView(),
+				loadOp: "clear",
+				storeOp: "store",
+				clearValue: { r: 0, g: 0, b: 0, a: 0 },
+			});
+		}
 		const pass = encoder.beginRenderPass({
 			label: "Renderer3DVelocityPass",
-			colorAttachments: [
-				{
-					view: velocity.createView(),
-					loadOp: "clear",
-					storeOp: "store",
-					clearValue: { r: 0, g: 0, b: 0, a: 0 },
-				},
-			],
+			colorAttachments,
 			depthStencilAttachment: {
 				view: depth.createView(),
 				depthClearValue: 1,
@@ -2432,7 +2497,7 @@ export class Renderer3D {
 				depthStoreOp: "discard",
 			},
 		});
-		return { pass, cameraBindGroup, velocity };
+		return { pass, cameraBindGroup, velocity, objects, objectCamera };
 	}
 
 	/** Draws a mesh's motion since `prev` (its state a frame earlier) into the velocity pass. */
@@ -2480,6 +2545,7 @@ export class Renderer3D {
 			prev,
 			opts.instanceCount ?? 1,
 			opts.firstInstance ?? 0,
+			this.velocityFormat,
 		);
 	}
 
@@ -2491,7 +2557,7 @@ export class Renderer3D {
 		opts: DrawQuad3DOpts,
 		prevModelMatrix: Mat4 | undefined,
 	): void {
-		const quad = this.quadVelocityPipeline();
+		const quad = this.quadVelocityPipeline(this.velocityFormat);
 		const m = this.quadModelMatrix(opts);
 		const data = new Float32Array(32);
 		data.set(m, 0);
@@ -2560,6 +2626,7 @@ export class Renderer3D {
 					slant: batch.slant,
 					depthPull: TEXT_STACK_PULL * (stackBase + i + 1),
 				},
+				this.velocityFormat,
 			);
 		});
 	}
@@ -2570,13 +2637,19 @@ export class Renderer3D {
 		cameraBindGroup: GPUBindGroup,
 		floor: Environment3DFloor,
 	): void {
-		this.floorVelocity ??= this.fullscreenVelocityPipeline(
-			"Renderer3DFloorVelocity",
-			floorVelocityWgsl,
-			"vs_floor_velocity",
-			"fs_floor_velocity",
-		);
-		const { pipeline, layout } = this.floorVelocity;
+		const format = this.velocityFormat;
+		let floorVelocity = this.floorVelocity.get(format);
+		if (!floorVelocity) {
+			floorVelocity = this.fullscreenVelocityPipeline(
+				"Renderer3DFloorVelocity",
+				floorVelocityWgsl,
+				"vs_floor_velocity",
+				"fs_floor_velocity",
+				format,
+			);
+			this.floorVelocity.set(format, floorVelocity);
+		}
+		const { pipeline, layout } = floorVelocity;
 		const group = this.device.createBindGroup({
 			layout,
 			entries: [
@@ -2602,6 +2675,7 @@ export class Renderer3D {
 		code: string,
 		vertex: string,
 		fragment: string,
+		format: GPUTextureFormat,
 	): { pipeline: GPURenderPipeline; layout: GPUBindGroupLayout } {
 		const module = this.device.createShaderModule({ label, code });
 		const layout = this.device.createBindGroupLayout({
@@ -2620,11 +2694,7 @@ export class Renderer3D {
 				bindGroupLayouts: [this.mesh3dPipeline.velocityCameraLayout, layout],
 			}),
 			vertex: { module, entryPoint: vertex },
-			fragment: {
-				module,
-				entryPoint: fragment,
-				targets: [{ format: VELOCITY_FORMAT }],
-			},
+			fragment: velocityFragment(module, fragment, format),
 			depthStencil: {
 				format: VELOCITY_DEPTH_FORMAT,
 				depthWriteEnabled: true,
@@ -2635,11 +2705,12 @@ export class Renderer3D {
 		return { pipeline, layout };
 	}
 
-	private quadVelocityPipeline(): {
+	private quadVelocityPipeline(format: GPUTextureFormat): {
 		pipeline: GPURenderPipeline;
 		layout: GPUBindGroupLayout;
 	} {
-		if (this.quadVelocity) return this.quadVelocity;
+		const cached = this.quadVelocity.get(format);
+		if (cached) return cached;
 		const module = this.device.createShaderModule({
 			label: "quad-velocity.wgsl",
 			code: quadVelocityWgsl,
@@ -2670,11 +2741,7 @@ export class Renderer3D {
 				bindGroupLayouts: [this.mesh3dPipeline.velocityCameraLayout, layout],
 			}),
 			vertex: { module, entryPoint: "vs_quad_velocity" },
-			fragment: {
-				module,
-				entryPoint: "fs_quad_velocity",
-				targets: [{ format: VELOCITY_FORMAT }],
-			},
+			fragment: velocityFragment(module, "fs_quad_velocity", format),
 			depthStencil: {
 				format: VELOCITY_DEPTH_FORMAT,
 				depthWriteEnabled: true,
@@ -2682,8 +2749,9 @@ export class Renderer3D {
 			},
 			primitive: { topology: "triangle-strip", cullMode: "none" },
 		});
-		this.quadVelocity = { pipeline, layout };
-		return this.quadVelocity;
+		const quadVelocity = { pipeline, layout };
+		this.quadVelocity.set(format, quadVelocity);
+		return quadVelocity;
 	}
 
 	/**
@@ -2948,6 +3016,27 @@ export class Renderer3D {
 			options,
 			hdrSource ?? undefined,
 		);
+	}
+
+	/**
+	 * The last pass's geometry (linear depth, octahedral normal) for ground
+	 * truth: each pixel's nearest sample, not a blend of the surfaces at an
+	 * edge, in a copyable target. With MSAA the pass must have kept its
+	 * samples (`Scene3DWorld.keepGeometrySamples`); without, it is `geometry`.
+	 */
+	truthGeometry(encoder: GPUCommandEncoder, geometry: GPUTexture): GPUTexture {
+		if (this.sampleCount <= 1) return geometry;
+		const truth = this.attachment(
+			"Renderer3DTruthGeometry",
+			geometry.width,
+			geometry.height,
+			{
+				format: geometry.format,
+				usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
+			},
+		);
+		this.resolveGeometry(encoder, truth);
+		return truth;
 	}
 
 	/** Geometry ink is applied before lens blur, independently of material shading. */

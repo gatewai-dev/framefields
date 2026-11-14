@@ -2556,7 +2556,11 @@ function adopt(mb: MeshBuilder, g: GeometryArrays): void {
 	mb.indices = g.indices;
 }
 
-function finalizeModel3DData(
+/**
+ * A model of `meshes` (each naming its material in `materials`), with its
+ * bounds: what procedural and imported geometry hand the renderer.
+ */
+export function finalizeModel3DData(
 	name: string,
 	meshes: Mesh3DData[],
 	materials: Record<string, Material3D>,

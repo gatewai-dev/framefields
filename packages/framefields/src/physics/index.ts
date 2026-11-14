@@ -1,4 +1,9 @@
 import { rapierBackend } from "./backend.js";
+import {
+	type MujocoWorld,
+	type MujocoWorldOptions,
+	mujocoWorld,
+} from "./mujoco.js";
 import { PhysicsWorld2D, type World2DOptions } from "./world2d.js";
 import { PhysicsWorld3D, type World3DOptions } from "./world3d.js";
 
@@ -25,6 +30,14 @@ export const Physics = {
 	async world3d(options: World3DOptions): Promise<PhysicsWorld3D> {
 		return new PhysicsWorld3D(await rapierBackend(3), options);
 	},
+	/**
+	 * A MuJoCo model (MJCF): robots and articulated mechanisms, simulated by
+	 * MuJoCo's WebAssembly build. `layers()` draws its geoms; `control`
+	 * drives its actuators; `state(frame)` branches a new run.
+	 */
+	async mujoco(options: MujocoWorldOptions): Promise<MujocoWorld> {
+		return mujocoWorld(options);
+	},
 };
 
 export type {
@@ -35,6 +48,13 @@ export type {
 	PhysicsWorldOptions,
 } from "./core.js";
 export { Fracture3D, type Fracture3DOptions } from "./fracture3d.js";
+export {
+	type MujocoContact,
+	type MujocoFrameState,
+	type MujocoLayersOptions,
+	MujocoWorld,
+	type MujocoWorldOptions,
+} from "./mujoco.js";
 export {
 	type Body2DOptions,
 	type FieldSample2D,

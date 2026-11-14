@@ -116,6 +116,25 @@ export {
 	sampleKey,
 } from "./env.js";
 export {
+	type ActionSpace,
+	EnvSession,
+	type EnvSessionOptions,
+	type InteractiveEnv,
+	type LiveScene,
+	type Observation,
+	type StepHost,
+	type StepResult,
+	type ViewObservation,
+} from "./interactive.js";
+export {
+	type LeRobotEpisode,
+	type LeRobotVector,
+	LeRobotWriter,
+	type LeRobotWriterOptions,
+	type MujocoEpisodeOptions,
+	mujocoEpisode,
+} from "./lerobot.js";
+export {
 	maskAndDepth,
 	objectMask,
 	type Pose,
@@ -133,6 +152,12 @@ export {
 	toFloat16Bits,
 } from "./npy.js";
 export {
+	encodeParquet,
+	type ParquetColumn,
+	type ParquetType,
+	type ParquetValue,
+} from "./parquet.js";
+export {
 	manifestName,
 	mergeParts,
 	type Part,
@@ -142,4 +167,5 @@ export {
 	partTag,
 } from "./parts.js";
 export { type Random, random } from "./random.js";
+export { type EnvSpec, serveEnvs, type ViewLayout } from "./serve.js";
 export { TarWriter, tarHeader } from "./tar.js";

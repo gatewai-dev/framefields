@@ -2529,6 +2529,8 @@ export class Renderer3D {
 				modelMatrix: m,
 				normalMatrix: opts.normalMatrix ?? Light3D.computeNormalMatrix(m),
 				colorTint: opts.colorTint,
+				// As `drawMesh`: two-sided unless the draw says otherwise.
+				twoSided: opts.twoSided ?? true,
 				wireframe: opts.wireframe,
 				isSkinned: opts.isSkinned,
 				skinningMatrices: opts.skinningMatrices,

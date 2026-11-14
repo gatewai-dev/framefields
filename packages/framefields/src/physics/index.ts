@@ -61,9 +61,12 @@ export type {
 } from "./core.js";
 export { Fracture3D, type Fracture3DOptions } from "./fracture3d.js";
 export {
+	type MujocoCameraOptions,
 	type MujocoContact,
 	type MujocoFrameState,
+	type MujocoJoint,
 	type MujocoLayersOptions,
+	type MujocoSensor,
 	MujocoWorld,
 	type MujocoWorldOptions,
 } from "./mujoco.js";

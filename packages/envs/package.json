@@ -8,7 +8,9 @@
 	"scripts": {
 		"generate": "tsx --tsconfig tsconfig.dev.json --conditions=development src/cli.ts",
 		"typecheck": "tsc --noEmit -p tsconfig.dev.json",
-		"test": "vitest run"
+		"test": "vitest run",
+		"serve": "tsx --tsconfig tsconfig.dev.json --conditions=development src/serve.ts",
+		"lerobot": "tsx --tsconfig tsconfig.dev.json --conditions=development src/lerobot.ts"
 	},
 	"dependencies": {
 		"framefields": "workspace:*",

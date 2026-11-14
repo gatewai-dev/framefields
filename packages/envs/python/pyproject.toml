@@ -1,0 +1,17 @@
+[project]
+name = "framefields-envs"
+version = "0.1.0"
+description = "Python client for framefields training environments: step rendered 3D and physics scenes from an agent, with frames in shared memory."
+requires-python = ">=3.10"
+license = "Apache-2.0"
+dependencies = ["numpy>=1.24"]
+
+[project.optional-dependencies]
+gym = ["gymnasium>=1.0"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["framefields_envs"]

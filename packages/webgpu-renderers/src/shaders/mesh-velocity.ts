@@ -94,7 +94,12 @@ fn vs_velocity(
     return out;
 }
 
-fn meshVelocity(in: VelocityOut) -> vec4<f32> {
+fn meshVelocity(in: VelocityOut, isFront: bool) -> vec4<f32> {
+    // A one-sided mesh shows no back faces (as the color pass): a camera
+    // inside a solid sees past it.
+    if (!isFront && model.params.y < 0.5) {
+        discard;
+    }
     // Cut-out texels (alpha-tested leaves, cards) leave no motion behind.
     let cutoff = model.shade.a;
     if (cutoff > 0.0) {
@@ -111,13 +116,13 @@ fn meshVelocity(in: VelocityOut) -> vec4<f32> {
 }
 
 @fragment
-fn fs_velocity(in: VelocityOut) -> @location(0) vec4<f32> {
-    return meshVelocity(in);
+fn fs_velocity(in: VelocityOut, @builtin(front_facing) isFront: bool) -> @location(0) vec4<f32> {
+    return meshVelocity(in, isFront);
 }
 
 @fragment
-fn fs_velocity_truth(in: VelocityOut) -> TruthOut {
-    return truthOut(meshVelocity(in), in.instance);
+fn fs_velocity_truth(in: VelocityOut, @builtin(front_facing) isFront: bool) -> TruthOut {
+    return truthOut(meshVelocity(in, isFront), in.instance);
 }
 `;
 

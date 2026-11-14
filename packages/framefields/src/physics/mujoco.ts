@@ -28,8 +28,8 @@ import {
 import { encodePng } from "@framefields/webgpu-renderers/gltf";
 import { Layer, type LayoutNode } from "../index.js";
 import { Layer3D } from "../shapes3d.js";
-import type { Vec3 } from "./backend.js";
-import { Recording } from "./core.js";
+import type { Quat, Vec3 } from "./backend.js";
+import { type LiveHost, Recording } from "./core.js";
 import { quatFromMatrix } from "./poses.js";
 import { eulerFromQuat } from "./world3d.js";
 
@@ -41,8 +41,29 @@ interface MjModel {
 	nbody: number;
 	ngeom: number;
 	nq: number;
+	nv: number;
 	nu: number;
-	opt: { timestep: number };
+	na: number;
+	njnt: number;
+	nsensor: number;
+	ncam: number;
+	ntendon: number;
+	jnt_type: Int32Array;
+	jnt_qposadr: Int32Array;
+	jnt_dofadr: Int32Array;
+	name_jntadr: Int32Array;
+	name_actuatoradr: Int32Array;
+	name_sensoradr: Int32Array;
+	sensor_adr: Int32Array;
+	sensor_dim: Int32Array;
+	name_camadr: Int32Array;
+	cam_fovy: Float64Array;
+	name_tendonadr: Int32Array;
+	tendon_num: Int32Array;
+	tendon_group: Int32Array;
+	tendon_width: Float64Array;
+	tendon_rgba: Float32Array;
+	opt: { timestep: number; integrator: number };
 	geom_type: Int32Array;
 	geom_size: Float64Array;
 	geom_rgba: Float32Array;
@@ -81,13 +102,23 @@ interface MjModel {
 interface MjContact {
 	geom1: number;
 	geom2: number;
+	pos: ArrayLike<number>;
 }
 
 interface MjData {
 	time: number;
 	ncon: number;
 	qpos: Float64Array;
+	qvel: Float64Array;
+	act: Float64Array;
 	ctrl: Float64Array;
+	sensordata: Float64Array;
+	cam_xpos: Float64Array;
+	cam_xmat: Float64Array;
+	ten_wrapadr: Int32Array;
+	ten_wrapnum: Int32Array;
+	wrap_obj: Int32Array;
+	wrap_xpos: Float64Array;
 	xpos: Float64Array;
 	xquat: Float64Array;
 	geom_xpos: Float64Array;
@@ -117,6 +148,14 @@ interface MujocoModule {
 	mj_forward(model: MjModel, data: MjData): void;
 	mj_step(model: MjModel, data: MjData): void;
 	mj_fwdPosition(model: MjModel, data: MjData): void;
+	mj_step1(model: MjModel, data: MjData): void;
+	mj_step2(model: MjModel, data: MjData): void;
+	mj_contactForce(
+		model: MjModel,
+		data: MjData,
+		id: number,
+		out: DoubleBuffer,
+	): void;
 	mj_stateSize(model: MjModel, spec: number): number;
 	mj_getState(
 		model: MjModel,
@@ -159,6 +198,58 @@ const GEOM = {
 	box: 6,
 	mesh: 7,
 } as const;
+
+/** `mjtIntegrator` RK4. */
+const RK4 = 1;
+
+/** `mjtJoint` by value. */
+const JOINT_TYPES = ["free", "ball", "slide", "hinge"] as const;
+
+/** Animated props of a model camera. */
+const CAMERA_CHANNELS = [
+	"cameraX",
+	"cameraY",
+	"cameraZ",
+	"targetX",
+	"targetY",
+	"targetZ",
+	"cameraRoll",
+] as const;
+
+/** How far ahead of a model camera its look-at target sits, px. */
+const CAMERA_REACH = 1000;
+
+const dot = (a: Vec3, b: Vec3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const cross = (a: Vec3, b: Vec3): Vec3 => [
+	a[1] * b[2] - a[2] * b[1],
+	a[2] * b[0] - a[0] * b[2],
+	a[0] * b[1] - a[1] * b[0],
+];
+const normalize = (v: Vec3): Vec3 => {
+	const len = Math.hypot(...v) || 1;
+	return [v[0] / len, v[1] / len, v[2] / len];
+};
+
+/** `next` in degrees, moved by whole turns to sit nearest `previous`. */
+function unwrap(previous: number, next: number): number {
+	return next + 360 * Math.round((previous - next) / 360);
+}
+
+/** The shortest rotation turning unit `a` onto unit `b`, as [x, y, z, w]. */
+function quatBetween(a: Vec3, b: Vec3): Quat {
+	const d = dot(a, b);
+	if (d < -0.999999) {
+		// Opposite: half a turn about any axis perpendicular to a.
+		const axis = normalize(
+			Math.abs(a[0]) < 0.9 ? cross(a, [1, 0, 0]) : cross(a, [0, 1, 0]),
+		);
+		return [axis[0], axis[1], axis[2], 0];
+	}
+	const c = cross(a, b);
+	const w = 1 + d;
+	const len = Math.hypot(c[0], c[1], c[2], w);
+	return [c[0] / len, c[1] / len, c[2] / len, w / len];
+}
 
 /** C · R · Cᵀ for C = [[1,0,0],[0,0,-1],[0,1,0]], on a row-major 3×3. */
 function toSceneMatrix(m: ArrayLike<number>, o: number): number[] {
@@ -239,10 +330,41 @@ export interface MujocoLayersOptions {
 /** A plane draws as a slab this thick (px), its top face on the plane. */
 const PLANE_SLAB = 2;
 
-/** A geom pair that touched in a frame, by geom name (or `geom<index>`). */
+/**
+ * A geom pair that touched during a frame (in any of its MuJoCo steps, so
+ * a contact that starts and ends between two frames still counts), by geom
+ * name (or `geom<index>`).
+ */
 export interface MujocoContact {
 	geom1: string;
 	geom2: string;
+	/** Peak normal force over the frame's steps, newtons. */
+	force: number;
+	/** Where it peaked, scene px. */
+	position: Vec3;
+}
+
+/** A joint of the model, and where its values sit in qpos / qvel. */
+export interface MujocoJoint {
+	name: string;
+	type: "free" | "ball" | "slide" | "hinge";
+	/** First index in `qpos(frame)` (free: 7 values, ball: 4, else 1). */
+	qpos: number;
+	/** First index in `qvel(frame)` (free: 6, ball: 3, else 1). */
+	qvel: number;
+}
+
+/** A sensor of the model, and where its values sit in `sensordata(frame)`. */
+export interface MujocoSensor {
+	name: string;
+	adr: number;
+	dim: number;
+}
+
+/** What `camera()` takes. */
+export interface MujocoCameraOptions {
+	/** Layer id. Default `mujoco-camera:<name>`. */
+	id?: string;
 }
 
 const POSE_CHANNELS = ["x", "y", "z", "rotateX", "rotateY", "rotateZ"] as const;
@@ -292,6 +414,17 @@ export class MujocoWorld {
 	readonly geomNames: string[];
 	/** Body names by index (`body<index>` when unnamed; 0 is the world). */
 	readonly bodyNames: string[];
+	/** Joints, in model order, with their qpos / qvel addresses. */
+	readonly joints: MujocoJoint[];
+	/** Actuator names, in `ctrl` order (`actuator<index>` when unnamed). */
+	readonly actuatorNames: string[];
+	/** Sensors, in `sensordata` order. */
+	readonly sensors: MujocoSensor[];
+	/** The model's `<camera>` names (`camera<index>` when unnamed). */
+	readonly cameraNames: string[];
+	/** Tendon names (`tendon<index>` when unnamed). */
+	readonly tendonNames: string[];
+	private readonly tendonMaxSegments: number[];
 
 	private readonly origin: Vec3;
 	private readonly geomRecordings: Recording[];
@@ -303,9 +436,31 @@ export class MujocoWorld {
 	private readonly geomMeshes: Array<GeomMesh | undefined>;
 	private readonly geomTextures: Array<GeomTexture | undefined>;
 	private readonly qposFrames: Float64Array[] = [];
+	private readonly qvelFrames: Float64Array[] = [];
+	private readonly actFrames: Float64Array[] = [];
+	private readonly ctrlFrames: Float64Array[] = [];
+	private readonly sensorFrames: Float64Array[] = [];
+	/** Contacts seen in the steps since the last recorded frame, by geom pair. */
+	private readonly pendingContacts = new Map<string, MujocoContact>();
+	private forceBuffer?: DoubleBuffer;
+	private readonly cameraFovy: number[];
+	private readonly cameraRecordings: Recording[];
+	private readonly tendonWidth: Float64Array;
+	private readonly tendonRgba: Float32Array;
+	private readonly tendonGroup: Int32Array;
+	/** Per tendon: one recording per drawable segment of its path. */
+	private readonly tendonSegments: Recording[][];
 	private readonly stateFrames: Float64Array[] = [];
 	private readonly contactFrames: MujocoContact[][] = [];
-	private simulated = false;
+	/** The model and data of a run in progress, and the last frame stepped. */
+	private run?: {
+		model: MjModel;
+		data: MjData;
+		substeps: number;
+		current: number;
+	};
+	private finished = false;
+	private liveMode = false;
 	/** The model compiled for reading it, kept for `simulate()` to run and free. */
 	private compiled: MjModel | null;
 
@@ -340,14 +495,47 @@ export class MujocoWorld {
 					: undefined,
 			);
 			this.geomTextures = geomTextures(model);
+			const named = (adr: Int32Array, kind: string) =>
+				Array.from(adr, (a, i) => readName(model, a) || `${kind}${i}`);
+			const jointNames = named(model.name_jntadr, "joint");
+			this.joints = jointNames.map((name, i) => ({
+				name,
+				type: JOINT_TYPES[model.jnt_type[i]],
+				qpos: model.jnt_qposadr[i],
+				qvel: model.jnt_dofadr[i],
+			}));
+			this.actuatorNames = named(model.name_actuatoradr, "actuator");
+			this.sensors = named(model.name_sensoradr, "sensor").map((name, i) => ({
+				name,
+				adr: model.sensor_adr[i],
+				dim: model.sensor_dim[i],
+			}));
+			this.cameraNames = named(model.name_camadr, "camera");
+			this.cameraFovy = Array.from(model.cam_fovy);
+			this.tendonNames = named(model.name_tendonadr, "tendon");
+			this.tendonWidth = model.tendon_width.slice();
+			this.tendonRgba = model.tendon_rgba.slice();
+			this.tendonGroup = model.tendon_group.slice();
+			// A path has at most a few points per wrap object (sites one, wrapped
+			// geoms two tangent points): room for every segment it can draw.
+			this.tendonMaxSegments = Array.from(model.tendon_num, (n) =>
+				Math.max(1, 3 * n - 1),
+			);
 		} catch (error) {
 			model.delete();
 			throw error;
 		}
 		this.compiled = model;
 		const length = this.startFrame + this.frames;
-		this.geomRecordings = this.geomNames.map(
-			() => new Recording(length, this.fps, () => this.simulate()),
+		const recording = () =>
+			new Recording(length, this.fps, () => {
+				// A live world shows what it has stepped; the rest runs now.
+				if (!this.liveMode) this.stepTo(this.frames - 1);
+			});
+		this.geomRecordings = this.geomNames.map(recording);
+		this.cameraRecordings = this.cameraNames.map(recording);
+		this.tendonSegments = this.tendonMaxSegments.map((n) =>
+			Array.from({ length: n }, recording),
 		);
 	}
 
@@ -357,20 +545,78 @@ export class MujocoWorld {
 	 * shortened so they end exactly on the frame.
 	 */
 	simulate(): this {
-		if (this.simulated) return this;
-		this.simulated = true;
+		if (this.liveMode)
+			throw new Error(
+				"Physics.mujoco: this world is live; it steps as frames render.",
+			);
+		this.stepTo(this.frames - 1);
+		return this;
+	}
+
+	/**
+	 * Steps the world as the composition renders instead of all at once:
+	 * before each frame draws, the world advances to it, calling `control`
+	 * for every frame it steps. Use it for agents: set the action `control`
+	 * returns, then render the next frame. Frames already stepped are kept.
+	 */
+	live(comp: LiveHost): this {
+		if (this.run || this.finished)
+			throw new Error(
+				"Physics.mujoco: live() must come before simulate() or reading the run.",
+			);
+		if (this.options.qpos)
+			throw new Error(
+				"Physics.mujoco: a `qpos` replay is recorded already; it cannot be live.",
+			);
+		this.liveMode = true;
+		comp.onPrepareFrame((ctx) => {
+			this.stepTo(ctx.frame - this.startFrame);
+		});
+		return this;
+	}
+
+	/** The last frame stepped (relative to the start); -1 before the run starts. */
+	get steppedFrame(): number {
+		return this.finished ? this.frames - 1 : (this.run?.current ?? -1);
+	}
+
+	/** Runs (or continues) the simulation up to `target`, freeing it at the end. */
+	private stepTo(target: number): void {
+		if (this.finished) return;
+		const run = this.run ?? this.start();
+		if (!run) return;
+		const last = Math.min(this.frames - 1, Math.round(target));
+		try {
+			while (run.current < last) {
+				const f = run.current + 1;
+				this.step(run.model, run.data, f - 1, run.substeps);
+				this.record(run.model, run.data, f);
+				run.current = f;
+			}
+		} catch (error) {
+			this.free();
+			throw error;
+		}
+		if (run.current === this.frames - 1) this.free();
+	}
+
+	/** Compiles the model, sets the start state and records frame 0. */
+	private start(): typeof this.run {
 		const { mj } = this;
 		const model = this.compiled ?? this.compile();
 		this.compiled = null;
 		const data = new mj.MjData(model);
+		this.run = { model, data, substeps: 1, current: 0 };
 		try {
 			if (this.options.qpos) {
 				this.replay(model, data, this.options.qpos);
-				return this;
+				this.free();
+				return undefined;
 			}
 			const dt = 1 / this.fps;
 			const substeps = Math.max(1, Math.round(dt / model.opt.timestep));
 			model.opt.timestep = dt / substeps;
+			this.run.substeps = substeps;
 			if (this.options.initialState) {
 				mj.mj_setState(
 					model,
@@ -380,15 +626,22 @@ export class MujocoWorld {
 				);
 			}
 			mj.mj_forward(model, data);
-			for (let f = 0; f < this.frames; f++) {
-				if (f > 0) this.step(model, data, f - 1, substeps);
-				this.record(model, data, f);
-			}
-		} finally {
-			data.delete();
-			model.delete();
+			this.record(model, data, 0);
+		} catch (error) {
+			this.free();
+			throw error;
 		}
-		return this;
+		return this.run;
+	}
+
+	private free(): void {
+		this.finished = true;
+		this.forceBuffer?.delete();
+		this.forceBuffer = undefined;
+		if (!this.run) return;
+		this.run.data.delete();
+		this.run.model.delete();
+		this.run = undefined;
 	}
 
 	/**
@@ -413,6 +666,7 @@ export class MujocoWorld {
 			if (layer) layers.push(layer);
 			else skipped.push(`${name} (type ${this.geomType[i]})`);
 		});
+		layers.push(...this.tendonLayers(groups, `${prefix}tendon:`));
 		return { layers, skipped };
 	}
 
@@ -433,8 +687,7 @@ export class MujocoWorld {
 
 	/** Generalized positions at a frame (relative to the start). */
 	qpos(frame: number): Float64Array {
-		this.simulate();
-		return this.qposFrames[this.clamp(frame)];
+		return this.qposFrames[this.readable(frame)];
 	}
 
 	/**
@@ -442,14 +695,88 @@ export class MujocoWorld {
 	 * as `initialState` to branch a new run from there.
 	 */
 	state(frame: number): Float64Array {
-		this.simulate();
-		return this.stateFrames[this.clamp(frame)];
+		return this.stateFrames[this.readable(frame)];
+	}
+
+	/** Generalized velocities at a frame (relative to the start). */
+	qvel(frame: number): Float64Array {
+		return this.qvelFrames[this.readable(frame)];
+	}
+
+	/** Actuator activations at a frame (empty for stateless actuators). */
+	act(frame: number): Float64Array {
+		return this.actFrames[this.readable(frame)];
+	}
+
+	/** The actuator commands that stepped the world into `frame` (zeros at 0). */
+	ctrl(frame: number): Float64Array {
+		return this.ctrlFrames[this.readable(frame)];
+	}
+
+	/**
+	 * The commands that drive `frame` to the next one: what robot-learning
+	 * datasets call the action at `frame` (the last frame repeats its own).
+	 */
+	action(frame: number): Float64Array {
+		const f = this.readable(frame);
+		const next = Math.min(f + 1, this.steppedFrame);
+		return this.ctrlFrames[next > f ? next : f];
+	}
+
+	/** Every sensor's values at a frame (`sensors` says where each sits). */
+	sensordata(frame: number): Float64Array {
+		return this.sensorFrames[this.readable(frame)];
+	}
+
+	/** One sensor's values at a frame. */
+	sensor(name: string, frame: number): Float64Array {
+		const s = this.sensors.find((x) => x.name === name);
+		if (!s)
+			throw new Error(
+				`MuJoCo: no sensor "${name}" (sensors: ${this.sensors.map((x) => x.name).join(", ") || "none"}).`,
+			);
+		return this.sensordata(frame).subarray(s.adr, s.adr + s.dim);
+	}
+
+	/**
+	 * A scene camera at one of the model's `<camera>`s (a wrist camera, a
+	 * fixed overhead one): it follows the camera's pose every frame, with
+	 * its vertical field of view. Add it to the composition that should
+	 * see through it.
+	 */
+	camera(name: string, options: MujocoCameraOptions = {}): LayoutNode {
+		const i = this.cameraNames.indexOf(name);
+		if (i < 0)
+			throw new Error(
+				`MuJoCo: no camera "${name}" (cameras: ${this.cameraNames.join(", ") || "none"}).`,
+			);
+		const rec = this.cameraRecordings[i];
+		if (!this.run && !this.finished) {
+			if (this.liveMode) this.start();
+			else this.simulate();
+		}
+		const first = (c: string) => rec.channel(c)[this.startFrame];
+		const node = Layer.camera({
+			id: options.id ?? `mujoco-camera:${name}`,
+			x: first("cameraX"),
+			y: first("cameraY"),
+			z: first("cameraZ"),
+			targetX: first("targetX"),
+			targetY: first("targetY"),
+			targetZ: first("targetZ"),
+			roll: first("cameraRoll"),
+			fov: this.cameraFovy[i],
+		});
+		const anim = LayerAnimation.create();
+		for (const c of CAMERA_CHANNELS)
+			anim.signal(c as AnimatableProp, rec.signal(c));
+		(node as unknown as { animate(a: LayerAnimation): unknown }).animate(anim);
+		return node as unknown as LayoutNode;
 	}
 
 	/** Geom pairs in contact at a frame (relative to the start). */
 	contacts(frame: number): MujocoContact[] {
-		this.simulate();
-		return this.contactFrames[this.clamp(frame)];
+		return this.contactFrames[this.readable(frame)];
 	}
 
 	/**
@@ -511,6 +838,20 @@ export class MujocoWorld {
 		return this.mj.mjtState.mjSTATE_INTEGRATION.value;
 	}
 
+	/**
+	 * A recorded frame to read: the whole run is simulated first, or (live)
+	 * the frame must have been stepped.
+	 */
+	private readable(frame: number): number {
+		const f = this.clamp(frame);
+		if (!this.liveMode) this.stepTo(this.frames - 1);
+		else if (f > this.steppedFrame)
+			throw new Error(
+				`Physics.mujoco: frame ${f} has not been stepped yet (live, at ${this.steppedFrame}).`,
+			);
+		return f;
+	}
+
 	private clamp(frame: number): number {
 		return Math.max(0, Math.min(this.frames - 1, Math.round(frame)));
 	}
@@ -532,15 +873,30 @@ export class MujocoWorld {
 				);
 			data.ctrl.set(ctrl);
 		}
-		for (let s = 0; s < substeps; s++) this.mj.mj_step(model, data);
-		// mj_step computes positions before it integrates: bring poses and
-		// contacts up to the state it ends on (the solver's warmstart, which
-		// the next step uses, is left alone).
-		this.mj.mj_fwdPosition(model, data);
+		// RK4 cannot be split; the other integrators step as mj_step2 then
+		// mj_step1 (the same trajectory as mj_step), which leaves positions,
+		// velocities, contacts and sensors at the state each step ends on.
+		const split = model.opt.integrator !== RK4;
+		for (let s = 0; s < substeps; s++) {
+			if (split) this.mj.mj_step2(model, data);
+			else this.mj.mj_step(model, data);
+			// The contacts (and forces) this step solved: brief ones count too.
+			this.collectContacts(model, data);
+			if (split) this.mj.mj_step1(model, data);
+		}
+		// mj_step computes positions before it integrates: bring poses up to
+		// the state it ends on (the solver's warmstart is left alone).
+		if (!split) this.mj.mj_fwdPosition(model, data);
 	}
 
 	private record(model: MjModel, data: MjData, frame: number): void {
+		// The first frame (and a replayed one) has no steps: its own contacts.
+		if (frame === 0 || this.options.qpos) this.collectContacts(model, data);
 		this.qposFrames.push(data.qpos.slice());
+		this.qvelFrames.push(data.qvel.slice());
+		this.actFrames.push(data.act.slice());
+		this.ctrlFrames.push(data.ctrl.slice());
+		this.sensorFrames.push(data.sensordata.slice());
 		const size = this.mj.mj_stateSize(model, this.stateSpec);
 		const buffer = new this.mj.DoubleBuffer(size);
 		try {
@@ -549,7 +905,10 @@ export class MujocoWorld {
 		} finally {
 			buffer.delete();
 		}
-		this.contactFrames.push(this.readContacts(data));
+		this.contactFrames.push([...this.pendingContacts.values()]);
+		this.pendingContacts.clear();
+		this.recordCameras(data, frame);
+		this.recordTendons(data, frame);
 		const ppm = this.pixelsPerMeter;
 		const at = this.startFrame + frame;
 		this.geomRecordings.forEach((rec, i) => {
@@ -576,29 +935,237 @@ export class MujocoWorld {
 			POSE_CHANNELS.forEach((c, k) => {
 				const arr = rec.channel(c);
 				arr[at] = values[k];
-				// Before the run starts, the start pose.
-				if (frame === 0) arr.fill(values[k], 0, at);
+				// Before the run starts, the start pose (and, until they are
+				// stepped, every later frame of a live run).
+				if (frame === 0) arr.fill(values[k]);
 			});
 		});
 	}
 
-	private readContacts(data: MjData): MujocoContact[] {
-		if (data.ncon === 0) return [];
+	/**
+	 * Folds the contacts MuJoCo holds now into the frame's. A geom pair may
+	 * touch at several points (a box's corners): its force is their sum,
+	 * at their force-weighted center; the frame keeps each pair's peak.
+	 */
+	private collectContacts(model: MjModel, data: MjData): void {
+		if (data.ncon === 0) return;
+		this.forceBuffer ??= new this.mj.DoubleBuffer(6);
+		const buffer = this.forceBuffer;
 		const list = data.contact;
+		const now = new Map<
+			string,
+			{ g1: number; g2: number; force: number; at: Vec3; points: number }
+		>();
 		try {
-			const out: MujocoContact[] = [];
 			for (let i = 0; i < data.ncon; i++) {
 				const c = list.get(i);
-				if (c)
-					out.push({
-						geom1: this.geomNames[c.geom1],
-						geom2: this.geomNames[c.geom2],
-					});
+				if (!c) continue;
+				this.mj.mj_contactForce(model, data, i, buffer);
+				const force = Math.abs(buffer.GetView()[0]);
+				const key = `${c.geom1}:${c.geom2}`;
+				const p = c.pos;
+				const pair = now.get(key) ?? {
+					g1: c.geom1,
+					g2: c.geom2,
+					force: 0,
+					at: [0, 0, 0] as Vec3,
+					points: 0,
+				};
+				pair.force += force;
+				// Weighted by force; equally while nothing pushes yet.
+				const w = force > 0 ? force : 1e-9;
+				for (let k = 0; k < 3; k++) pair.at[k] += p[k] * w;
+				pair.points += w;
+				now.set(key, pair);
 			}
-			return out;
 		} finally {
 			list.delete();
 		}
+		for (const [key, pair] of now) {
+			const seen = this.pendingContacts.get(key);
+			if (seen && seen.force >= pair.force) continue;
+			const [x, y, z] = pair.at.map((v) => v / pair.points);
+			this.pendingContacts.set(key, {
+				geom1: this.geomNames[pair.g1],
+				geom2: this.geomNames[pair.g2],
+				force: pair.force,
+				position: this.toScene(x, y, z),
+			});
+		}
+	}
+
+	/** A model point (meters, z up) in scene px. */
+	private toScene(x: number, y: number, z: number): Vec3 {
+		const ppm = this.pixelsPerMeter;
+		return [
+			this.origin[0] + x * ppm,
+			this.origin[1] - z * ppm,
+			this.origin[2] + y * ppm,
+		];
+	}
+
+	/**
+	 * Each camera's eye, a target along its view axis and the roll that turns
+	 * the scene camera's up to the camera's: MuJoCo cameras look along their
+	 * -z with +y up.
+	 */
+	private recordCameras(data: MjData, frame: number): void {
+		const at = this.startFrame + frame;
+		this.cameraRecordings.forEach((rec, i) => {
+			const p = data.cam_xpos.subarray(i * 3, i * 3 + 3);
+			const m = data.cam_xmat.subarray(i * 9, i * 9 + 9);
+			// Columns of the row-major frame: the camera's axes in model space.
+			const axis = (k: number) => this.direction(m[k], m[3 + k], m[6 + k]);
+			const up = axis(1);
+			let fwd = axis(2).map((v) => -v) as Vec3;
+			// Looking straight up or down leaves look-at without a right: tilt a hair toward the camera's up.
+			if (Math.abs(fwd[1]) > 0.99999)
+				fwd = normalize([
+					fwd[0] + up[0] * 1e-3,
+					fwd[1] + up[1] * 1e-3,
+					fwd[2] + up[2] * 1e-3,
+				]);
+			const eye = this.toScene(p[0], p[1], p[2]);
+			const right0 = normalize(cross(fwd, [0, -1, 0]));
+			const up0 = cross(right0, fwd);
+			let roll = (Math.atan2(dot(up, right0), dot(up, up0)) * 180) / Math.PI;
+			if (frame > 0) roll = unwrap(rec.channel("cameraRoll")[at - 1], roll);
+			const values: Record<(typeof CAMERA_CHANNELS)[number], number> = {
+				cameraX: eye[0],
+				cameraY: eye[1],
+				cameraZ: eye[2],
+				targetX: eye[0] + fwd[0] * CAMERA_REACH,
+				targetY: eye[1] + fwd[1] * CAMERA_REACH,
+				targetZ: eye[2] + fwd[2] * CAMERA_REACH,
+				cameraRoll: roll,
+			};
+			for (const c of CAMERA_CHANNELS) {
+				const arr = rec.channel(c);
+				if (frame === 0) arr.fill(values[c]);
+				else arr[at] = values[c];
+			}
+		});
+	}
+
+	/** A model direction in scene axes (unit length). */
+	private direction(x: number, y: number, z: number): Vec3 {
+		return normalize([x, -z, y]);
+	}
+
+	/**
+	 * Each tendon path's segments (between consecutive path points, broken
+	 * at pulleys) as capsule poses: center, rotation turning +y along the
+	 * segment, length; segments the path does not use this frame hide.
+	 */
+	private recordTendons(data: MjData, frame: number): void {
+		const at = this.startFrame + frame;
+		this.tendonSegments.forEach((segments, t) => {
+			const adr = data.ten_wrapadr[t];
+			const num = data.ten_wrapnum[t];
+			const points: Array<Vec3 | null> = [];
+			for (let k = 0; k < num; k++) {
+				const j = adr + k;
+				// A pulley (-2) divides the path.
+				points.push(
+					data.wrap_obj[j] === -2
+						? null
+						: this.toScene(
+								data.wrap_xpos[j * 3],
+								data.wrap_xpos[j * 3 + 1],
+								data.wrap_xpos[j * 3 + 2],
+							),
+				);
+			}
+			const pairs: Array<[Vec3, Vec3]> = [];
+			for (let k = 0; k + 1 < points.length; k++) {
+				const a = points[k];
+				const b = points[k + 1];
+				if (a && b) pairs.push([a, b]);
+			}
+			segments.forEach((rec, k) => {
+				const pair = pairs[k];
+				const prev = (c: string) => rec.channel(c)[at - 1];
+				let values: Record<string, number>;
+				if (pair) {
+					const [a, b] = pair;
+					const d: Vec3 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+					const length = Math.hypot(...d);
+					const e = eulerFromQuat(
+						quatBetween([0, 1, 0], length > 0 ? normalize(d) : [0, 1, 0]),
+						frame > 0
+							? [prev("rotateX"), prev("rotateY"), prev("rotateZ")]
+							: undefined,
+					);
+					values = {
+						x: (a[0] + b[0]) / 2,
+						y: (a[1] + b[1]) / 2,
+						z: (a[2] + b[2]) / 2,
+						rotateX: e[0],
+						rotateY: e[1],
+						rotateZ: e[2],
+						scaleY: Math.max(length, 1e-3),
+						opacity: 1,
+					};
+				} else {
+					values = {
+						x: 0,
+						y: 0,
+						z: 0,
+						rotateX: 0,
+						rotateY: 0,
+						rotateZ: 0,
+						scaleY: 1,
+						opacity: 0,
+					};
+				}
+				for (const [c, v] of Object.entries(values)) {
+					const arr = rec.channel(c);
+					if (frame === 0) arr.fill(v);
+					else arr[at] = v;
+				}
+			});
+		});
+	}
+
+	/** Every tendon (in `groups`) as capsule segments that follow its path. */
+	private tendonLayers(groups: number[], prefix: string): LayoutNode[] {
+		const out: LayoutNode[] = [];
+		this.tendonSegments.forEach((segments, t) => {
+			if (!groups.includes(this.tendonGroup[t])) return;
+			const [r, g, b] = this.tendonRgba.subarray(t * 4, t * 4 + 3);
+			const hex = (v: number) =>
+				Math.round(Math.max(0, Math.min(1, v)) * 255)
+					.toString(16)
+					.padStart(2, "0");
+			const radius = Math.max(0.5, this.tendonWidth[t] * this.pixelsPerMeter);
+			segments.forEach((rec, k) => {
+				const node = Layer3D.cylinder({
+					id: `${prefix}${this.tendonNames[t]}:${k}`,
+					label: this.tendonNames[t],
+					radius,
+					// One px tall, stretched to the segment by scaleY.
+					height: 1,
+					color: `#${hex(r)}${hex(g)}${hex(b)}`,
+				});
+				const anim = LayerAnimation.create();
+				for (const c of [
+					"x",
+					"y",
+					"z",
+					"rotateX",
+					"rotateY",
+					"rotateZ",
+					"scaleY",
+					"opacity",
+				])
+					anim.signal(c as AnimatableProp, rec.signal(c));
+				(node as unknown as { animate(a: LayerAnimation): unknown }).animate(
+					anim,
+				);
+				out.push(node as LayoutNode);
+			});
+		});
+		return out;
 	}
 
 	private geomLayer(i: number, id: string): LayoutNode | null {
@@ -609,7 +1176,11 @@ export class MujocoWorld {
 				.padStart(2, "0");
 		const rec = this.geomRecordings[i];
 		const still = this.geomBody[i] === 0;
-		if (still) this.simulate();
+		if (still) {
+			if (this.liveMode) {
+				if (!this.run && !this.finished) this.start();
+			} else this.simulate();
+		}
 		// World geoms do not move: their pose, once; the rest follow signals.
 		const pose = still
 			? Object.fromEntries(

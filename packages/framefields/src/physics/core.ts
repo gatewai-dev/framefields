@@ -385,8 +385,8 @@ export abstract class WorldCore<
 	 * ```
 	 */
 	at(frame: number): PhysicsInterventions<V, B> {
-		this.assertOpen();
 		const f = Math.round(frame);
+		this.assertPlannable(f, `Physics.at(${frame})`);
 		if (!(f >= 1 && f < this.frames))
 			throw new Error(
 				`Physics.at(${frame}): interventions go at simulation frames 1 to ${this.frames - 1}.`,
@@ -547,6 +547,26 @@ export abstract class WorldCore<
 		);
 	}
 
+	/**
+	 * Impulses and interventions go in before the world starts; a live world
+	 * also takes them for frames it has not stepped yet, so an agent can act
+	 * frame by frame.
+	 */
+	private assertPlannable(frame: number, what: string): void {
+		if (!this.locked) return;
+		if (!this.liveMode) this.assertOpen();
+		const stepped = this.stepper?.current ?? 0;
+		if (frame <= stepped)
+			throw new Error(
+				`${what}: this live world has stepped to frame ${stepped}; act on a later frame.`,
+			);
+	}
+
+	/** The last simulation frame a live world has stepped (0 before it starts). */
+	get steppedFrame(): number {
+		return this.stepper?.current ?? 0;
+	}
+
 	protected assertOpen(): void {
 		if (this.locked) {
 			throw new Error(
@@ -578,7 +598,10 @@ export abstract class WorldCore<
 	}
 
 	protected addImpulse(body: B, frame: number, dv: V): void {
-		this.assertOpen();
+		this.assertPlannable(
+			Math.round(frame),
+			`Physics: an impulse at frame ${frame}`,
+		);
 		this.impulses.push({
 			body: body as unknown as CoreBody<number[], unknown>,
 			frame: Math.round(frame),

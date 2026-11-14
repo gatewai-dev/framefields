@@ -104,3 +104,8 @@ examples/35_robot_uprising/
 
 # Local showcase film (not committed)
 examples/37_lumen/
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/

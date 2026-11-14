@@ -2,7 +2,8 @@
  * pnpm render              → output/sculpture.mp4 (the sculpting film) and
  *                            output/sculpture.jpg (its last frame)
  * pnpm render frames 0 60  → output/frame-0.png, output/frame-60.png
- * pnpm render model        → output/guardian.glb: the finished bust, its
+ * pnpm render model        → output/guardian.glb: the finished bust (a mesh at
+ *                            resolution 640), its
  *                            plinth, camera and lights as glTF
  */
 import fs from "node:fs/promises";
@@ -18,7 +19,8 @@ const OUTPUT = path.join(
 );
 await fs.mkdir(OUTPUT, { recursive: true });
 const [mode = "film", ...rest] = process.argv.slice(2);
-const comp = sculptureFilm();
+// An export keeps the stone's finest relief: a mesh lattice finer than it.
+const comp = sculptureFilm({ modelResolution: mode === "model" ? 640 : 192 });
 const renderer = new HeadlessMediaRenderer();
 
 async function still(frame: number, file: string): Promise<void> {

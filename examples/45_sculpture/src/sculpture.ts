@@ -131,7 +131,7 @@ export function durationFrames(): number {
 }
 
 /** The bust at each stage, each on screen for its few frames. */
-function sculpture(scale: number): LayoutNode[] {
+function sculpture(scale: number, resolution: number): LayoutNode[] {
 	const all = stages();
 	return all.map((ops, i) => {
 		const last = i === all.length - 1;
@@ -146,15 +146,19 @@ function sculpture(scale: number): LayoutNode[] {
 			color: CLAY,
 			roughness: 0.6,
 			castShadow: true,
-			// The finished bust's mesh (for `pnpm render model`) at a finer lattice.
-			...(last && { resolution: 192 }),
+			// The finished bust's mesh: what an export writes (the film draws the field).
+			...(last && { resolution }),
 			startFrame: i * STAGE_FRAMES,
 			durationFrames: last ? HOLD_FRAMES : STAGE_FRAMES,
 		}) as LayoutNode;
 	});
 }
 
-export function sculptureFilm(): Composition {
+/**
+ * `modelResolution`: lattice cells along the finished bust's longest side
+ * in its mesh, which only an export reads. Finer keeps more of the stone.
+ */
+export function sculptureFilm({ modelResolution = 192 } = {}): Composition {
 	const frames = durationFrames();
 	const comp = new Composition({
 		width: W,
@@ -235,7 +239,7 @@ export function sculptureFilm(): Composition {
 			roughness: 0.45,
 			castShadow: true,
 		}),
-		...sculpture(scale),
+		...sculpture(scale, modelResolution),
 	] as LayoutNode[]);
 	return comp;
 }

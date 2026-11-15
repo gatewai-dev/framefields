@@ -14,20 +14,37 @@ into its slot before answering, so they are read here in place.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import mmap
 import os
 import subprocess
 import tempfile
 import uuid
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+from typing import Any
 
 import numpy as np
 
-#: The envs package (this file is in packages/envs/python/framefields_envs).
-ENVS_PACKAGE = Path(__file__).resolve().parents[2]
+
+def envs_package() -> Path:
+    """The ``@framefields/envs`` folder whose ``pnpm serve`` runs by default.
+
+    ``FRAMEFIELDS_ENVS_DIR`` names it; otherwise a source checkout finds its
+    own (this file is in ``packages/envs/python/src/framefields_envs``).
+    """
+    named = os.environ.get("FRAMEFIELDS_ENVS_DIR")
+    candidates = [Path(named)] if named else [Path(__file__).resolve().parents[3]]
+    for folder in candidates:
+        manifest = folder / "package.json"
+        if manifest.is_file() and json.loads(manifest.read_text()).get("name") == "@framefields/envs":
+            return folder
+    raise EnvError(
+        "No framefields envs package to serve: set FRAMEFIELDS_ENVS_DIR to a checkout's "
+        "packages/envs, or pass EnvServer(command=[...]) to run your own server."
+    )
 
 
 class EnvError(RuntimeError):
@@ -55,7 +72,7 @@ class EnvSpec:
     views: list[dict[str, Any]] = field(default_factory=list)
 
     @classmethod
-    def from_json(cls, s: dict[str, Any]) -> "EnvSpec":
+    def from_json(cls, s: dict[str, Any]) -> EnvSpec:
         return cls(
             name=s["name"],
             description=s["description"],
@@ -92,7 +109,7 @@ class EnvServer:
     ) -> None:
         if command is None:
             command = ["pnpm", "--silent", "serve"]
-            cwd = cwd or ENVS_PACKAGE
+            cwd = cwd or envs_package()
         self._proc = subprocess.Popen(
             list(command),
             cwd=cwd,
@@ -137,7 +154,7 @@ class EnvServer:
         count: int = 1,
         truth: bool = False,
         views: Sequence[str] | None = None,
-    ) -> "EnvBatch":
+    ) -> EnvBatch:
         """``count`` envs of one kind, stepped together on the server's GPU."""
         shm = os.path.join(_shm_dir(), f"framefields-env-{uuid.uuid4().hex}.bin")
         params: dict[str, Any] = {"env": env, "count": count, "shm": shm, "truth": truth}
@@ -160,7 +177,7 @@ class EnvServer:
             except subprocess.TimeoutExpired:
                 self._proc.kill()
 
-    def __enter__(self) -> "EnvServer":
+    def __enter__(self) -> EnvServer:
         return self
 
     def __exit__(self, *exc: object) -> None:
@@ -181,7 +198,7 @@ class EnvBatch:
         self.slot_bytes = made["layout"]["slotBytes"]
         self.layout = [ViewLayout(**v) for v in made["layout"]["views"]]
         self._path = shm
-        self._file = open(shm, "r+b")
+        self._file = open(shm, "r+b")  # noqa: SIM115 (held for the mapping's lifetime; close() closes it)
         self._map = mmap.mmap(self._file.fileno(), made["layout"]["bytes"])
         self._closed = False
 
@@ -191,13 +208,15 @@ class EnvBatch:
         out: dict[str, np.ndarray] = {}
         for v in self.layout:
             px = v.width * v.height
-            arrays = [("", v.rgba, np.uint8, (v.height, v.width, 4), px * 4)]
+            arrays: list[tuple[str, int, type[np.generic], tuple[int, ...], int]] = [
+                ("", v.rgba, np.uint8, (v.height, v.width, 4), px * 4)
+            ]
             if v.depth is not None:
                 arrays.append((".depth", v.depth, np.float32, (v.height, v.width), px))
             if v.object is not None:
                 arrays.append((".object", v.object, np.uint32, (v.height, v.width), px))
-            for suffix, offset, dtype, shape, items in arrays:
-                strided = np.ndarray(
+            for suffix, offset, dtype, shape, _size in arrays:
+                strided: np.ndarray = np.ndarray(
                     shape=(self.count, *shape),
                     dtype=dtype,
                     buffer=self._map,
@@ -221,9 +240,7 @@ class EnvBatch:
         self, actions: Sequence[Any]
     ) -> tuple[dict[str, np.ndarray], np.ndarray, np.ndarray, np.ndarray, list[dict[str, Any]]]:
         """One action per env. Returns observations, rewards, terminated, truncated, infos."""
-        result = self.server.call(
-            "step", handle=self.handle, actions=[_jsonable(a) for a in actions]
-        )
+        result = self.server.call("step", handle=self.handle, actions=[_jsonable(a) for a in actions])
         return (
             self.observations(),
             np.asarray(result["rewards"], dtype=np.float32),
@@ -236,16 +253,12 @@ class EnvBatch:
         if self._closed:
             return
         self._closed = True
-        try:
+        with contextlib.suppress(EnvError):
             self.server.call("close", handle=self.handle)
-        except EnvError:
-            pass
         self._map.close()
         self._file.close()
-        try:
+        with contextlib.suppress(FileNotFoundError):
             os.unlink(self._path)
-        except FileNotFoundError:
-            pass
 
 
 def _jsonable(action: Any) -> Any:

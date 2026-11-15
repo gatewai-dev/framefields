@@ -1,8 +1,9 @@
 """A reacher dataset exported by `pnpm lerobot`, read back as LeRobot reads
 LeRobot v3.0 datasets (needs a GPU, Node, pnpm; pyarrow, pandas and Hugging
-Face `datasets`; ffprobe for the videos):
+Face `datasets`; ffprobe for the videos; `lerobot[dataset]` to load it with
+`LeRobotDataset` itself):
 
-    cd packages/envs/python && python3 -m unittest tests.test_lerobot
+    cd packages/envs/python && pytest tests/test_lerobot.py
 """
 
 from __future__ import annotations
@@ -26,6 +27,13 @@ try:
     HAS_STACK = True
 except ImportError:
     HAS_STACK = False
+
+try:
+    from lerobot.datasets.lerobot_dataset import LeRobotDataset
+
+    HAS_LEROBOT = True
+except ImportError:
+    HAS_LEROBOT = False
 
 
 @unittest.skipUnless(HAS_STACK, "needs pandas, pyarrow and datasets")
@@ -75,27 +83,62 @@ class LeRobotExportTest(unittest.TestCase):
     def test_episode_and_task_tables(self) -> None:
         eps = pd.read_parquet(os.path.join(self.dir, "meta/episodes/chunk-000/file-000.parquet"))
         self.assertEqual(list(eps["dataset_from_index"]), [0, 72, 144])
-        self.assertEqual(list(eps["videos/observation.images.wrist/to_timestamp"]), [3.0, 3.0, 3.0])
+        # Episodes share one data file and one video per camera, back to back.
+        self.assertEqual(list(eps["data/file_index"]), [0, 0, 0])
+        self.assertEqual(list(eps["videos/observation.images.wrist/file_index"]), [0, 0, 0])
+        self.assertEqual(list(eps["videos/observation.images.wrist/from_timestamp"]), [0.0, 3.0, 6.0])
+        self.assertEqual(list(eps["videos/observation.images.wrist/to_timestamp"]), [3.0, 6.0, 9.0])
         self.assertEqual(list(eps["tasks"][0]), ["Sweep the arm across the table."])
         tasks = pd.read_parquet(os.path.join(self.dir, "meta/tasks.parquet"))
         self.assertEqual(int(tasks.loc["Sweep the arm across the table."].task_index), 0)
 
+    @unittest.skipUnless(HAS_LEROBOT, "needs lerobot[dataset]")
+    def test_lerobot_dataset(self) -> None:
+        # LeRobot itself: frames decoded from the shared videos at each episode's offset.
+        ds = LeRobotDataset("local/reacher", root=self.dir)
+        self.assertEqual((len(ds), ds.num_episodes, ds.fps), (216, 3, 24))
+        item = ds[100]
+        self.assertEqual((int(item["episode_index"]), int(item["frame_index"])), (1, 28))
+        self.assertEqual(tuple(item["observation.images.front"].shape), (3, 144, 192))
+        self.assertEqual(item["task"], "Sweep the arm across the table.")
+        chunked = LeRobotDataset(
+            "local/reacher",
+            root=self.dir,
+            delta_timestamps={"action": [0, 1 / 24, 2 / 24], "observation.images.wrist": [-1 / 24, 0]},
+        )
+        item = chunked[73]
+        self.assertEqual(tuple(item["action"].shape), (3, 2))
+        self.assertEqual(tuple(item["observation.images.wrist"].shape), (2, 3, 144, 192))
+        self.assertEqual(item["observation.images.wrist_is_pad"].tolist(), [False, False])
+
     @unittest.skipUnless(shutil.which("ffprobe"), "needs ffprobe")
     def test_videos(self) -> None:
         for cam in ["front", "wrist"]:
-            for episode in range(3):
-                path = os.path.join(self.dir, f"videos/observation.images.{cam}/chunk-000/file-{episode:03d}.mp4")
-                probe = json.loads(
-                    subprocess.run(
-                        ["ffprobe", "-v", "error", "-select_streams", "v:0", "-count_frames", "-show_entries",
-                         "stream=codec_name,pix_fmt,nb_read_frames,width,height", "-of", "json", path],
-                        capture_output=True, text=True, check=True,
-                    ).stdout
-                )["streams"][0]
-                self.assertEqual(
-                    (probe["codec_name"], probe["pix_fmt"], int(probe["nb_read_frames"]), probe["width"], probe["height"]),
-                    ("h264", "yuv420p", 72, 192, 144),
-                )
+            path = os.path.join(self.dir, f"videos/observation.images.{cam}/chunk-000/file-000.mp4")
+            probe = json.loads(
+                subprocess.run(
+                    [
+                        "ffprobe",
+                        "-v",
+                        "error",
+                        "-select_streams",
+                        "v:0",
+                        "-count_frames",
+                        "-show_entries",
+                        "stream=codec_name,pix_fmt,nb_read_frames,width,height",
+                        "-of",
+                        "json",
+                        path,
+                    ],
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                ).stdout
+            )["streams"][0]
+            self.assertEqual(
+                (probe["codec_name"], probe["pix_fmt"], int(probe["nb_read_frames"]), probe["width"], probe["height"]),
+                ("h264", "yuv420p", 216, 192, 144),
+            )
 
 
 if __name__ == "__main__":

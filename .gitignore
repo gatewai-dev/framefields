@@ -109,3 +109,4 @@ examples/37_lumen/
 __pycache__/
 *.pyc
 *.egg-info/
+.venv/

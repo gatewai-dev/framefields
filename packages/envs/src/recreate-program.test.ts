@@ -61,6 +61,13 @@ describe("recreate as a program", () => {
 		await expect(
 			scoreRecreateProgram(
 				view,
+				{ layout: [{ id: "m", kind: "model3d", modelData: { meshes: [] } }] },
+				0,
+			),
+		).rejects.toThrow('describe a solid with "primitive3d"');
+		await expect(
+			scoreRecreateProgram(
+				view,
 				{
 					layout: [
 						{ id: "a", kind: "model3d" },

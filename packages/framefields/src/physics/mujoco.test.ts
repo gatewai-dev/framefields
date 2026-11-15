@@ -157,4 +157,43 @@ describe("Physics.mujoco", () => {
 		expect(w.qpos(1)[0] + 0.02).toBeLessThan(0.09);
 		expect(w.contacts(2)).toEqual([]);
 	});
+
+	it("starts from a keyframe and gives control the velocities", async () => {
+		const mjcf = MJCF.replace(
+			"</mujoco>",
+			`<keyframe>
+    <key name="raised" qpos="0.5 0.2 0.05 1 0 0 0 -1.2" ctrl="-1.2"/>
+    <key qpos="0.5 0.2 0.05 1 0 0 0 0.4" qvel="0 0 0 0 0 0 3" ctrl="0.4"/>
+  </keyframe></mujoco>`,
+		);
+		const seen: number[] = [];
+		const w = await Physics.mujoco({
+			mjcf,
+			fps: FPS,
+			frames: 10,
+			keyframe: "raised",
+			control: (_f, { qvel }) => {
+				seen.push(qvel[6]);
+				return [-1.2];
+			},
+		});
+		expect(w.keyframeNames).toEqual(["raised", "key1"]);
+		expect(w.qpos(0)[7]).toBe(-1.2);
+		// Held there (gravity sags it a little against kp 20).
+		expect(w.qpos(9)[7]).toBeCloseTo(-1.2, 1);
+		expect(seen[0]).toBe(0);
+		// Without `control` the keyframe's ctrl holds; by index, with its qvel.
+		const held = await Physics.mujoco({
+			mjcf,
+			fps: FPS,
+			frames: 30,
+			keyframe: 1,
+		});
+		expect(held.qvel(0)[6]).toBe(3);
+		expect(Array.from(held.ctrl(29))).toEqual([0.4]);
+		expect(Math.abs(held.qpos(29)[7] - 0.4)).toBeLessThan(0.1);
+		await expect(
+			Physics.mujoco({ mjcf, fps: FPS, frames: 1, keyframe: "home" }),
+		).rejects.toThrow('no keyframe "home" (keyframes: raised, key1)');
+	});
 });

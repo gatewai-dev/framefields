@@ -10,9 +10,11 @@
 		"typecheck": "tsc --noEmit -p tsconfig.dev.json",
 		"test": "vitest run",
 		"serve": "tsx --tsconfig tsconfig.dev.json --conditions=development src/serve.ts",
+		"bench": "tsx --tsconfig tsconfig.dev.json --conditions=development src/bench/cli.ts",
 		"lerobot": "tsx --tsconfig tsconfig.dev.json --conditions=development src/lerobot.ts"
 	},
 	"dependencies": {
+		"@anthropic-ai/sdk": "^1.8.0",
 		"framefields": "workspace:*",
 		"sharp": "^0.35.4"
 	},

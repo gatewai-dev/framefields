@@ -40,7 +40,10 @@ def _observation_space(width: int, height: int, truth: bool) -> spaces.Space:
     )
 
 
-def _pick(obs: dict[str, np.ndarray], view: str, truth: bool, index: slice | int):
+Observation = np.ndarray | dict[str, np.ndarray]
+
+
+def _pick(obs: dict[str, np.ndarray], view: str, truth: bool, index: slice | int) -> Observation:
     rgb = obs[view][index, ..., :3]
     if not truth:
         return rgb
@@ -50,7 +53,7 @@ def _pick(obs: dict[str, np.ndarray], view: str, truth: bool, index: slice | int
 class FramefieldsEnv(gym.Env):
     """One framefields env as a Gymnasium env."""
 
-    metadata = {"render_modes": ["rgb_array"]}
+    metadata = {"render_modes": ["rgb_array"]}  # noqa: RUF012 (Gymnasium's own convention)
 
     def __init__(
         self,
@@ -72,7 +75,9 @@ class FramefieldsEnv(gym.Env):
         self.observation_space = _observation_space(layout.width, layout.height, truth)
         self._last: np.ndarray | None = None
 
-    def reset(self, *, seed: int | None = None, options: dict[str, Any] | None = None):
+    def reset(
+        self, *, seed: int | None = None, options: dict[str, Any] | None = None
+    ) -> tuple[Observation, dict[str, Any]]:
         super().reset(seed=seed)
         scene = (options or {}).get("scene")
         if scene is None:
@@ -81,15 +86,21 @@ class FramefieldsEnv(gym.Env):
         self._last = obs[self.view][0, ..., :3]
         return _pick(obs, self.view, self.truth, 0), infos[0]
 
-    def step(self, action):
+    def step(self, action: Any) -> tuple[Observation, float, bool, bool, dict[str, Any]]:
         obs, rewards, terminated, truncated, infos = self.batch.step([action])
         self._last = obs[self.view][0, ..., :3]
-        return _pick(obs, self.view, self.truth, 0), float(rewards[0]), bool(terminated[0]), bool(truncated[0]), infos[0]
+        return (
+            _pick(obs, self.view, self.truth, 0),
+            float(rewards[0]),
+            bool(terminated[0]),
+            bool(truncated[0]),
+            infos[0],
+        )
 
-    def render(self):
+    def render(self) -> np.ndarray | None:
         return self._last
 
-    def close(self):
+    def close(self) -> None:
         self.batch.close()
         if self._own:
             self.server.close()
@@ -125,7 +136,9 @@ class FramefieldsVectorEnv(gym.vector.VectorEnv):
     def _seeds(self, n: int) -> list[int]:
         return [int(s) for s in self._rng.integers(0, 2**31 - 1, size=n)]
 
-    def reset(self, *, seed: int | None = None, options: dict[str, Any] | None = None):
+    def reset(
+        self, *, seed: int | None = None, options: dict[str, Any] | None = None
+    ) -> tuple[Observation, dict[str, Any]]:
         if seed is not None:
             self._rng = np.random.default_rng(seed)
         scenes = (options or {}).get("scenes") or self._seeds(self.num_envs)
@@ -133,7 +146,7 @@ class FramefieldsVectorEnv(gym.vector.VectorEnv):
         self._done[:] = False
         return _pick(obs, self.view, self.truth, slice(None)), {"infos": infos}
 
-    def step(self, actions):
+    def step(self, actions: Any) -> tuple[Observation, np.ndarray, np.ndarray, np.ndarray, dict[str, Any]]:
         actions = list(actions)
         done = np.flatnonzero(self._done)
         if len(done):
@@ -146,7 +159,7 @@ class FramefieldsVectorEnv(gym.vector.VectorEnv):
         self._done = terminated | truncated
         return _pick(obs, self.view, self.truth, slice(None)), rewards, terminated, truncated, {"infos": infos}
 
-    def close(self, **kwargs):
+    def close(self, **kwargs: Any) -> None:
         self.batch.close()
         if self._own:
             self.server.close()

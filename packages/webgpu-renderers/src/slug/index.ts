@@ -1,5 +1,5 @@
 export type { FontLoadListener } from "./slug-font-cache.js";
-export { SlugFontCache } from "./slug-font-cache.js";
+export { localFontDirs, SlugFontCache } from "./slug-font-cache.js";
 export type {
 	SlugGeneratorOptions,
 	SlugGeneratorOutput,

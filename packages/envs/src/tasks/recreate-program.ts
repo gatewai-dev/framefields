@@ -61,6 +61,11 @@ export function recreateProgram(
 			throw new Error(
 				`layout[${i}].kind: "model3d" or "light" (the camera is given), got ${JSON.stringify(kind)}`,
 			);
+		// Solids are recipes; built mesh data is the engine's, not an answer's.
+		if (kind === "model3d" && "modelData" in (node as object))
+			throw new Error(
+				`layout[${i}]: describe a solid with "primitive3d", not "modelData"`,
+			);
 	});
 	const spec = target.toSpec();
 	const camera = spec.layout.find((n) => n.kind === "camera");

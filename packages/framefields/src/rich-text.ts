@@ -1,12 +1,61 @@
-import type { Signal, TextSpan, TextSpanMark } from "@framefields/core";
+import type {
+	FrameContext,
+	Signal,
+	TextSpan,
+	TextSpanMark,
+} from "@framefields/core";
 
 export type { TextSpan, TextSpanMark };
+
+/**
+ * Text that changes while the composition plays: a string signal, or a
+ * function of the frame that returns the string to draw. Read once per
+ * frame as the text is drawn, so it follows game state, input or data.
+ */
+export type LiveText = Signal<string> | ((ctx: FrameContext) => string);
+
+/** A span's text: fixed, or live. */
+export type SpanText = string | LiveText;
+
+const isGettable = (v: unknown): v is Signal<unknown> =>
+	typeof v === "object" &&
+	v !== null &&
+	typeof (v as { get?: unknown }).get === "function";
+
+/** The frame a live text is read for when no frame is given (authoring time). */
+const AUTHORING: FrameContext = {
+	frame: 0,
+	fps: 30,
+	time: 0,
+	duration: 0,
+	durationMs: 0,
+	progress: 0,
+	deltaTime: 1 / 30,
+};
+
+/** A span's text as spans carry it: a function of the frame becomes a string signal. */
+export function spanText(text: SpanText): string | Signal<string> {
+	if (typeof text !== "function") return text;
+	return {
+		get: (ctx?: FrameContext) => String(text(ctx ?? AUTHORING)),
+		peek: () => String(text(AUTHORING)),
+		get value() {
+			return String(text(AUTHORING));
+		},
+	};
+}
+
+/** Whether `text` is live (a signal or a function of the frame). */
+export function isLiveText(text: unknown): text is LiveText {
+	return typeof text === "function" || isGettable(text);
+}
 
 export type TextSpanItem =
 	| string
 	| number
 	| boolean
 	| Signal<unknown>
+	| ((ctx: FrameContext) => string)
 	| TextSpan
 	| (string | TextSpan)[]
 	| null
@@ -39,7 +88,9 @@ export function rich(
 				continue;
 			}
 
-			if (Array.isArray(val)) {
+			if (typeof val === "function") {
+				spans.push({ text: spanText(val) });
+			} else if (Array.isArray(val)) {
 				for (const item of val) {
 					if (typeof item === "string") {
 						if (item) spans.push({ text: item });
@@ -65,47 +116,51 @@ export function rich(
 }
 
 export function span(
-	text: string | Signal<string>,
+	text: SpanText,
 	options: Omit<TextSpan, "text"> = {},
 ): TextSpan {
-	return { text, ...options };
+	return { text: spanText(text), ...options };
 }
 
 export function bold(
-	text: string | Signal<string>,
+	text: SpanText,
 	options: Omit<TextSpan, "text"> = {},
 ): TextSpan {
-	return { text, fontWeight: options.fontWeight ?? 700, ...options };
+	return {
+		text: spanText(text),
+		fontWeight: options.fontWeight ?? 700,
+		...options,
+	};
 }
 
 export function italic(
-	text: string | Signal<string>,
+	text: SpanText,
 	options: Omit<TextSpan, "text"> = {},
 ): TextSpan {
-	return { text, fontStyle: "italic", ...options };
+	return { text: spanText(text), fontStyle: "italic", ...options };
 }
 
 export function accent(
-	text: string | Signal<string>,
+	text: SpanText,
 	options: Omit<TextSpan, "text"> = {},
 ): TextSpan {
-	return { text, fill: options.fill ?? "#6366f1", ...options };
+	return { text: spanText(text), fill: options.fill ?? "#6366f1", ...options };
 }
 
 export function color(
-	text: string | Signal<string>,
+	text: SpanText,
 	fill: string | Signal<string>,
 	options: Omit<TextSpan, "text" | "fill"> = {},
 ): TextSpan {
-	return { text, fill, ...options };
+	return { text: spanText(text), fill, ...options };
 }
 
 export function size(
-	text: string | Signal<string>,
+	text: SpanText,
 	fontSize: number | Signal<number>,
 	options: Omit<TextSpan, "text" | "fontSize"> = {},
 ): TextSpan {
-	return { text, fontSize, ...options };
+	return { text: spanText(text), fontSize, ...options };
 }
 
 export interface MarkOptions extends Omit<TextSpan, "text" | "mark" | "fill"> {
@@ -116,13 +171,10 @@ export interface MarkOptions extends Omit<TextSpan, "text" | "mark" | "fill"> {
 	paddingY?: number;
 }
 
-export function mark(
-	text: string | Signal<string>,
-	options: MarkOptions = {},
-): TextSpan {
+export function mark(text: SpanText, options: MarkOptions = {}): TextSpan {
 	const { bg, fill, radius, paddingX, paddingY, ...rest } = options;
 	return {
-		text,
+		text: spanText(text),
 		fill,
 		mark: {
 			background: bg ?? "#6366f133",
@@ -135,33 +187,33 @@ export function mark(
 }
 
 export function sup(
-	text: string | Signal<string>,
+	text: SpanText,
 	options: Omit<TextSpan, "text"> = {},
 ): TextSpan {
 	return {
-		text,
+		text: spanText(text),
 		baselineShift: options.baselineShift ?? -8,
 		...options,
 	};
 }
 
 export function sub(
-	text: string | Signal<string>,
+	text: SpanText,
 	options: Omit<TextSpan, "text"> = {},
 ): TextSpan {
 	return {
-		text,
+		text: spanText(text),
 		baselineShift: options.baselineShift ?? 6,
 		...options,
 	};
 }
 
 export function code(
-	text: string | Signal<string>,
+	text: SpanText,
 	options: Omit<TextSpan, "text"> = {},
 ): TextSpan {
 	return {
-		text,
+		text: spanText(text),
 		fontFamily: options.fontFamily ?? "JetBrains Mono",
 		mark: options.mark ?? {
 			background: "#ffffff18",

@@ -1,19 +1,15 @@
 """The client against a real env server (needs a GPU, Node and pnpm):
 
-    cd packages/envs/python && python3 -m unittest discover -s tests
+cd packages/envs/python && pip install -e ".[gym]" && pytest tests/test_client.py
 """
 
 from __future__ import annotations
 
-import sys
 import unittest
-from pathlib import Path
 
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-from framefields_envs import EnvError, EnvServer  # noqa: E402
+from framefields_envs import EnvError, EnvServer
 
 try:
     import gymnasium  # noqa: F401
@@ -85,16 +81,16 @@ class GymTest(unittest.TestCase):
 
         with EnvServer() as server:
             env = FramefieldsEnv("push", server=server)
-            obs, info = env.reset(seed=0)
+            obs, _info = env.reset(seed=0)
             self.assertIn(obs, env.observation_space)
-            obs, reward, terminated, truncated, info = env.step(env.action_space.sample())
+            obs, reward, _terminated, _truncated, _info = env.step(env.action_space.sample())
             self.assertIsInstance(reward, float)
             env.close()
 
             vec = FramefieldsVectorEnv("push", num_envs=2, server=server)
             obs, _ = vec.reset(seed=1)
             self.assertEqual(obs.shape, (2, 128, 128, 3))
-            obs, rewards, terminated, truncated, _ = vec.step(vec.action_space.sample())
+            obs, rewards, _terminated, _truncated, _ = vec.step(vec.action_space.sample())
             self.assertEqual(rewards.shape, (2,))
             vec.close()
 

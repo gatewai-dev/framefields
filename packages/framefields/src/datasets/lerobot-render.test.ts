@@ -4,9 +4,21 @@
  * features are refused. (The files are read back by pyarrow, Hugging Face
  * `datasets` and ffprobe in the envs package's demo.)
  */
-import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import {
+	existsSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+	statSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import {
+	ALL_FORMATS,
+	EncodedPacketSink,
+	FilePathSource,
+	Input,
+} from "mediabunny";
 import { afterAll, describe, expect, it } from "vitest";
 import { Composition, Layer, type LayoutNode } from "../index.js";
 import { Physics } from "../physics/index.js";
@@ -26,6 +38,22 @@ const MJCF = `<mujoco>
 
 const dir = mkdtempSync(path.join(tmpdir(), "ff-lerobot-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+async function videoFrames(file: string): Promise<number> {
+	const input = new Input({
+		source: new FilePathSource(file),
+		formats: ALL_FORMATS,
+	});
+	try {
+		const track = await input.getPrimaryVideoTrack();
+		let n = 0;
+		if (track)
+			for await (const _ of new EncodedPacketSink(track).packets()) n++;
+		return n;
+	} finally {
+		input.dispose();
+	}
+}
 
 async function episode(target: number, task: string) {
 	const world = await Physics.mujoco({
@@ -60,7 +88,7 @@ describe("LeRobotWriter", () => {
 		const b = await episode(-0.5, "Lower the arm.");
 		expect(await writer.addEpisode(a.ep)).toEqual({ index: 0, frames: 12 });
 		expect(await writer.addEpisode(b.ep)).toEqual({ index: 1, frames: 12 });
-		expect(writer.close()).toEqual({ episodes: 2, frames: 24 });
+		expect(await writer.close()).toEqual({ episodes: 2, frames: 24 });
 
 		const info = JSON.parse(
 			readFileSync(path.join(dir, "meta/info.json"), "utf8"),
@@ -114,7 +142,6 @@ describe("LeRobotWriter", () => {
 
 		for (const file of [
 			"data/chunk-000/file-000.parquet",
-			"data/chunk-000/file-001.parquet",
 			"meta/episodes/chunk-000/file-000.parquet",
 			"meta/tasks.parquet",
 		]) {
@@ -122,12 +149,45 @@ describe("LeRobotWriter", () => {
 			expect(bytes.subarray(0, 4).toString()).toBe("PAR1");
 			expect(bytes.subarray(-4).toString()).toBe("PAR1");
 		}
+		// Both episodes share one data file and one video, back to back.
+		expect(existsSync(path.join(dir, "data/chunk-000/file-001.parquet"))).toBe(
+			false,
+		);
+		expect(existsSync(path.join(dir, ".episodes"))).toBe(false);
 		const video = path.join(
 			dir,
-			"videos/observation.images.front/chunk-000/file-001.mp4",
+			"videos/observation.images.front/chunk-000/file-000.mp4",
 		);
 		expect(statSync(video).size).toBeGreaterThan(1000);
 		expect(readFileSync(video).subarray(4, 8).toString()).toBe("ftyp");
+		expect(await videoFrames(video)).toBe(24);
+	});
+
+	it("starts new files when one is full", async () => {
+		const out = path.join(dir, "small");
+		const writer = new LeRobotWriter({
+			dir: out,
+			fps: 12,
+			imageStatSamples: 1,
+			dataFileSizeMb: 1e-9,
+			videoFileSizeMb: 1e-9,
+		});
+		for (const t of [0.1, 0.2, 0.3])
+			await writer.addEpisode((await episode(t, "x")).ep);
+		await writer.close();
+		for (const k of [0, 1, 2]) {
+			expect(
+				existsSync(path.join(out, `data/chunk-000/file-00${k}.parquet`)),
+			).toBe(true);
+			expect(
+				await videoFrames(
+					path.join(
+						out,
+						`videos/observation.images.front/chunk-000/file-00${k}.mp4`,
+					),
+				),
+			).toBe(12);
+		}
 	});
 
 	it("refuses an episode with other features", async () => {
@@ -137,8 +197,8 @@ describe("LeRobotWriter", () => {
 		await expect(writer.addEpisode({ ...ep, features: {} })).rejects.toThrow(
 			"other features than episode 0",
 		);
-		expect(() =>
+		await expect(
 			new LeRobotWriter({ dir: path.join(dir, "empty"), fps: 12 }).close(),
-		).toThrow("no episodes");
+		).rejects.toThrow("no episodes");
 	});
 });

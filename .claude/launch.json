@@ -1,0 +1,17 @@
+{
+	"version": "0.0.1",
+	"configurations": [
+		{
+			"name": "robot-lab",
+			"runtimeExecutable": "pnpm",
+			"runtimeArgs": ["--filter", "@framefields/example-46-robot-lab", "dev"],
+			"port": 4646
+		},
+		{
+			"name": "topple",
+			"runtimeExecutable": "pnpm",
+			"runtimeArgs": ["--filter", "@framefields/example-47-topple", "dev"],
+			"port": 4747
+		}
+	]
+}

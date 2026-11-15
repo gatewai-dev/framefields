@@ -1,17 +1,70 @@
+[build-system]
+requires = ["hatchling>=1.26"]
+build-backend = "hatchling.build"
+
 [project]
 name = "framefields-envs"
 version = "0.1.0"
-description = "Python client for framefields training environments: step rendered 3D and physics scenes from an agent, with frames in shared memory."
+description = "Python client for framefields training environments and the framefields world bench: rendered 3D and physics scenes with exact ground truth."
+readme = "README.md"
 requires-python = ">=3.10"
 license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{ name = "framefields" }]
+keywords = ["reinforcement-learning", "gymnasium", "world-models", "benchmark", "physics", "robotics", "synthetic-data"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "Operating System :: MacOS",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Typing :: Typed",
+]
 dependencies = ["numpy>=1.24"]
 
 [project.optional-dependencies]
 gym = ["gymnasium>=1.0"]
+bench = ["datasets>=3.0", "pillow>=10"]
 
-[build-system]
-requires = ["setuptools>=68"]
-build-backend = "setuptools.build_meta"
+[project.urls]
+Homepage = "https://framefields.dev"
+Documentation = "https://framefields.dev/docs"
 
-[tool.setuptools]
+[project.scripts]
+framefields-bench = "framefields_envs.bench.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.6", "mypy>=1.11"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/framefields_envs"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/framefields_envs", "tests", "README.md", "LICENSE"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["-ra", "--strict-markers"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+src = ["src", "tests"]
+extend-exclude = ["*.md"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
+
+[tool.mypy]
+python_version = "3.10"
 packages = ["framefields_envs"]
+mypy_path = "src"
+warn_unused_ignores = true
+disallow_untyped_defs = true
+ignore_missing_imports = true

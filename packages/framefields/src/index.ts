@@ -39,7 +39,13 @@ import {
 	type TextMetrics,
 } from "./fonts/index.js";
 import { autoId } from "./ids.js";
-import { normalizeTextSpans, type TextSpan } from "./rich-text.js";
+import {
+	isLiveText,
+	type LiveText,
+	normalizeTextSpans,
+	spanText,
+	type TextSpan,
+} from "./rich-text.js";
 
 export {
 	encodeStereoWav,
@@ -57,11 +63,13 @@ export {
 	code,
 	color,
 	italic,
+	type LiveText,
 	type MarkOptions,
 	mark,
 	normalizeTextSpans,
 	parseMarkup,
 	rich,
+	type SpanText,
 	size,
 	span,
 	sub,
@@ -177,6 +185,18 @@ function layerLabels(nodes: readonly LayoutNode[]): Map<string, string> {
 	return out;
 }
 
+export {
+	CompositionInput,
+	type GamepadState,
+	type InputEvent,
+	type InputEventType,
+	type InputHit,
+	type InputPick,
+	type InputPicker,
+	type Ray3D,
+	rayPlane,
+} from "./input.js";
+
 /** A frame's picture and its 3D ground truth (`Composition.renderTruth`). */
 export interface FrameTruth {
 	frame: number;
@@ -280,6 +300,7 @@ import {
 import {
 	inputStore,
 	mediaDecoderCache,
+	PickCapture,
 	type Scene3DTruth,
 	Scene3DTruthReader,
 } from "@framefields/webgpu-renderers";
@@ -346,6 +367,7 @@ import {
 	Vision,
 	type VisionProps,
 } from "./effects/index.js";
+import { CompositionInput, type InputPick, inputPick } from "./input.js";
 import {
 	contextAtFrame,
 	MediaSignalTimeline,
@@ -1037,6 +1059,19 @@ export {
 	type PoseAxes,
 	PoseTrack,
 	type PoseTrackOptions,
+	type SteelDrag,
+	type SteelDragOptions,
+	type SteelFrameState,
+	type SteelLayersOptions,
+	type SteelLoaders,
+	type SteelSceneBuilder,
+	type SteelShape,
+	type SteelShapeStyle,
+	type SteelShapeType,
+	type SteelSolverOptions,
+	type SteelState,
+	SteelWorld,
+	type SteelWorldOptions,
 	type World2DOptions,
 	type World3DOptions,
 } from "./physics/index.js";
@@ -1406,6 +1441,7 @@ export class Composition {
 	public audioTracks: MediaNode[] = [];
 	public signals: Record<string, unknown> = {};
 	private _frameHooks: Array<(ctx: FrameContext) => void> = [];
+	private _input?: CompositionInput;
 	private _prepareHooks: Array<(ctx: FrameContext) => Promise<void> | void> =
 		[];
 	private readonly _clipVision = new Map<string, ClipVision>();
@@ -1750,6 +1786,70 @@ export class Composition {
 			runner.close();
 			decoder.destroy();
 		}
+	}
+
+	/**
+	 * Live input: pointer, keys, wheel and gamepads, fed by the preview
+	 * player from the page (or in code by agents and tests), latched once per
+	 * frame before the frame's hooks run; events as they arrive; and `pick`,
+	 * what a pixel of the frame on screen shows. See `CompositionInput`.
+	 */
+	public get input(): CompositionInput {
+		if (!this._input) {
+			const input = new CompositionInput();
+			this._input = input;
+			// Before every other hook, so a frame reads one state throughout.
+			this._frameHooks.unshift((ctx) => input.latch(ctx.frame));
+			input.setPicker((x, y) =>
+				this.pick(x, y, {
+					frame: Number.isNaN(input.frame) ? 0 : input.frame,
+				}),
+			);
+		}
+		return this._input;
+	}
+
+	/** @internal The input, if the composition uses it (the player wires only those). */
+	public get usedInput(): CompositionInput | undefined {
+		return this._input;
+	}
+
+	/** @internal Layer ids to their `label`, for naming picks. */
+	public layerLabels(): Map<string, string> {
+		return layerLabels(this.children);
+	}
+
+	/**
+	 * What frame pixel (`x`, `y`) shows at `frame`: the 3D layer drawn there
+	 * (`hit.layer`, `label`), the surface point and normal (scene px), and
+	 * `ray(x, y)` through any pixel from the same camera. Measured by the
+	 * renderer from its ground-truth targets; the picture is unchanged.
+	 */
+	public async pick(
+		x: number,
+		y: number,
+		options: {
+			frame?: number;
+			atMs?: number;
+			renderer?: HeadlessMediaRenderer;
+		} = {},
+	): Promise<InputPick> {
+		const { frame } = resolveFrameRequest(options, this.fps);
+		const vm = await this.frameMedia(frame);
+		const capture = new PickCapture(x, y, this.width, this.height);
+		const renderer = options.renderer ?? new HeadlessMediaRenderer();
+		await renderer.renderFrame(vm, {
+			fps: this.fps,
+			frame,
+			format: "rgba",
+			truth: capture,
+		});
+		return inputPick(
+			await capture.finish(),
+			this.width,
+			this.height,
+			layerLabels(this.children),
+		);
 	}
 
 	/**
@@ -3281,6 +3381,11 @@ export interface ShaderLayerOptions {
 	zIndex?: number;
 }
 
+/** `Layer.text` options: a text node's fields, with `text` fixed or live. */
+export type TextOptions = Omit<Partial<TextNode>, "text"> & {
+	text?: string | LiveText;
+};
+
 export const Layer = {
 	video: (
 		src: string,
@@ -3361,22 +3466,40 @@ export const Layer = {
 			volume: options.volume ?? 1,
 			...options,
 		}),
+	/**
+	 * A text layer. The content is a string, rich-text spans, or live text: a
+	 * string signal or a function of the frame (`() => \`Score ${score}\``),
+	 * read each frame as it is drawn, so it follows game state and input in
+	 * the player too. It grows from its left edge; give it a `width` and
+	 * `align` to keep it centered or right-aligned as it changes.
+	 */
 	text: (
 		contentOrOptions:
 			| string
+			| LiveText
 			| TextSpan[]
 			| (string | TextSpan)[]
-			| Partial<TextNode>,
-		maybeOptions: Partial<TextNode> = {},
+			| TextOptions,
+		maybeOptions: TextOptions = {},
 	): AnimatableNode<TextNode, "visual"> => {
+		if (isLiveText(contentOrOptions))
+			return Layer.text({ ...maybeOptions, text: contentOrOptions });
+		if (
+			typeof contentOrOptions === "object" &&
+			!Array.isArray(contentOrOptions) &&
+			isLiveText(contentOrOptions.text)
+		) {
+			const { text, ...rest } = contentOrOptions;
+			return Layer.text({ ...rest, spans: [{ text: spanText(text) }] });
+		}
 		const isArray = Array.isArray(contentOrOptions);
 		const isObj =
 			!isArray &&
 			typeof contentOrOptions === "object" &&
 			contentOrOptions !== null;
-		const options = isObj
-			? (contentOrOptions as Partial<TextNode>)
-			: maybeOptions;
+		const options = (
+			isObj ? contentOrOptions : maybeOptions
+		) as Partial<TextNode>;
 
 		let textContent = "";
 		let spans: TextSpan[] | undefined = options.spans;

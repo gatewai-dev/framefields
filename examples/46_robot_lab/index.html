@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Robot lab · framefields</title>
+		<style>
+			:root {
+				color-scheme: dark;
+				--bg: #0e0f11;
+				--panel: #16171a;
+				--line: #26282d;
+				--text: #e8e9eb;
+				--muted: #8b9099;
+				--accent: #f2731a;
+				--soft: #1d1f23;
+			}
+			* {
+				box-sizing: border-box;
+			}
+			body {
+				margin: 0;
+				min-height: 100vh;
+				background: var(--bg);
+				color: var(--text);
+				font: 13px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+				display: grid;
+				grid-template-columns: minmax(0, 1fr) 320px;
+			}
+			main {
+				position: relative;
+				display: grid;
+				place-items: center;
+				padding: 20px;
+				min-width: 0;
+			}
+			canvas {
+				display: block;
+				/* As wide as fits, and as tall as the window allows, at 16:9. */
+				width: min(100%, calc((100vh - 40px) * 16 / 9));
+				height: auto;
+				aspect-ratio: 16 / 9;
+				border-radius: 14px;
+				background: #141518;
+				box-shadow: 0 0 0 1px var(--line);
+				cursor: grab;
+				touch-action: none;
+			}
+			canvas:active {
+				cursor: grabbing;
+			}
+			#loading {
+				position: absolute;
+				color: var(--muted);
+			}
+			aside {
+				background: var(--panel);
+				border-left: 1px solid var(--line);
+				padding: 22px 20px;
+				display: flex;
+				flex-direction: column;
+				gap: 18px;
+				overflow-y: auto;
+				max-height: 100vh;
+			}
+			header h1 {
+				font-size: 17px;
+				font-weight: 650;
+				letter-spacing: -0.01em;
+				margin: 0;
+			}
+			header p {
+				margin: 2px 0 0;
+				color: var(--muted);
+			}
+			h2 {
+				font-size: 11px;
+				font-weight: 600;
+				text-transform: uppercase;
+				letter-spacing: 0.07em;
+				color: var(--muted);
+				margin: 0 0 8px;
+			}
+			.joint {
+				display: grid;
+				grid-template-columns: 84px 1fr 42px;
+				align-items: center;
+				gap: 10px;
+				margin: 6px 0;
+			}
+			.joint output {
+				text-align: right;
+				font-variant-numeric: tabular-nums;
+				color: var(--muted);
+			}
+			input[type="range"] {
+				accent-color: var(--accent);
+				width: 100%;
+			}
+			.buttons {
+				display: flex;
+				gap: 8px;
+				flex-wrap: wrap;
+				align-items: center;
+			}
+			button {
+				background: var(--soft);
+				color: var(--text);
+				border: 1px solid var(--line);
+				border-radius: 8px;
+				padding: 7px 14px;
+				font: inherit;
+				font-weight: 500;
+				cursor: pointer;
+			}
+			button:hover {
+				border-color: #3a3d44;
+				background: #24262b;
+			}
+			#scenes {
+				display: flex;
+				flex-wrap: wrap;
+				gap: 6px;
+			}
+			#scenes a {
+				color: var(--muted);
+				text-decoration: none;
+				border: 1px solid var(--line);
+				border-radius: 999px;
+				padding: 5px 12px;
+			}
+			#scenes a:hover {
+				color: var(--text);
+			}
+			#scenes a[aria-current="page"] {
+				color: var(--text);
+				border-color: var(--accent);
+				background: rgb(242 115 26 / 0.12);
+			}
+			.toggle {
+				display: inline-flex;
+				gap: 6px;
+				align-items: center;
+				margin-left: auto;
+				color: var(--muted);
+			}
+			.toggle input {
+				accent-color: var(--accent);
+			}
+			#things {
+				display: grid;
+				grid-template-columns: 1fr 1fr;
+				gap: 6px 12px;
+				margin: 0;
+				padding: 0;
+				list-style: none;
+			}
+			#things li {
+				display: flex;
+				align-items: center;
+				gap: 8px;
+				min-width: 0;
+				white-space: nowrap;
+				overflow: hidden;
+				text-overflow: ellipsis;
+			}
+			.swatch {
+				flex: none;
+				width: 12px;
+				height: 12px;
+				border-radius: 50%;
+				box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.15);
+			}
+			pre {
+				margin: 0;
+				font: 12px/1.6 ui-monospace, "SF Mono", monospace;
+				color: var(--muted);
+				white-space: pre-wrap;
+				background: var(--soft);
+				border: 1px solid var(--line);
+				border-radius: 8px;
+				padding: 10px 12px;
+			}
+			kbd {
+				font: 11px ui-monospace, monospace;
+				background: var(--soft);
+				border: 1px solid var(--line);
+				border-bottom-width: 2px;
+				border-radius: 4px;
+				padding: 0 5px;
+			}
+			.help {
+				color: var(--muted);
+			}
+			@media (max-width: 900px) {
+				body {
+					grid-template-columns: minmax(0, 1fr);
+				}
+				main {
+					padding: 16px;
+				}
+				canvas {
+					width: 100%;
+				}
+				aside {
+					border-left: none;
+					border-top: 1px solid var(--line);
+					max-height: none;
+					padding: 18px 16px;
+				}
+			}
+		</style>
+	</head>
+	<body>
+		<main>
+			<canvas id="canvas"></canvas>
+			<div id="loading">Loading the engine and Steel…</div>
+		</main>
+		<aside>
+			<header>
+				<h1 id="title">Robot lab</h1>
+				<p id="about"></p>
+			</header>
+			<nav id="scenes" aria-label="Scenes"></nav>
+			<section>
+				<h2>Arm</h2>
+				<div id="joints"></div>
+			</section>
+			<section class="buttons">
+				<button id="home">Home</button>
+				<button id="pause">Pause</button>
+				<button id="reset">Reset</button>
+				<label class="toggle"><input type="checkbox" id="demo" /> Demo</label>
+			</section>
+			<section class="help">
+				<h2>Keys</h2>
+				<kbd>Q</kbd>/<kbd>A</kbd> yaw · <kbd>W</kbd>/<kbd>S</kbd> shoulder ·
+				<kbd>E</kbd>/<kbd>D</kbd> elbow · <kbd>R</kbd>/<kbd>F</kbd> wrist ·
+				<kbd>T</kbd>/<kbd>G</kbd> roll · <kbd>Space</kbd> grip. Drag an object to
+				pull it around; drag empty space to orbit, scroll to zoom.
+			</section>
+			<section>
+				<h2>In the scene</h2>
+				<ul id="things"></ul>
+			</section>
+			<section>
+				<h2>Steel on WebGPU</h2>
+				<pre id="status">Starting…</pre>
+			</section>
+		</aside>
+		<script type="module" src="/@framefields/player.js"></script>
+	</body>
+</html>

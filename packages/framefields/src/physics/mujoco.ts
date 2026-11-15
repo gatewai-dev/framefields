@@ -15,6 +15,7 @@ import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import {
 	type AnimatableProp,
+	type JointPose,
 	LayerAnimation,
 } from "@framefields/compositions/program";
 import type { FrameSignal } from "@framefields/core";
@@ -30,6 +31,15 @@ import { Layer, type LayoutNode } from "../index.js";
 import { Layer3D } from "../shapes3d.js";
 import type { Quat, Vec3 } from "./backend.js";
 import { type LiveHost, Recording } from "./core.js";
+import {
+	type FlexInfo,
+	type FlexModel,
+	flexInfos,
+	flexJoint,
+	flexModel,
+	turnEuler,
+	vertexNormals,
+} from "./mujoco-flex.js";
 import { quatFromMatrix } from "./poses.js";
 import { eulerFromQuat } from "./world3d.js";
 
@@ -37,7 +47,7 @@ import { eulerFromQuat } from "./world3d.js";
 // The slice of the bindings this module uses (their typings are mostly `any`).
 // ---------------------------------------------------------------------------
 
-interface MjModel {
+interface MjModel extends FlexModel {
 	nbody: number;
 	ngeom: number;
 	nq: number;
@@ -48,6 +58,10 @@ interface MjModel {
 	nsensor: number;
 	ncam: number;
 	ntendon: number;
+	nkey: number;
+	name_keyadr: Int32Array;
+	neq: number;
+	name_eqadr: Int32Array;
 	jnt_type: Int32Array;
 	jnt_qposadr: Int32Array;
 	jnt_dofadr: Int32Array;
@@ -103,10 +117,15 @@ interface MjContact {
 	geom1: number;
 	geom2: number;
 	pos: ArrayLike<number>;
+	/** The flexes on each side (-1 where a side is a geom). */
+	flex: ArrayLike<number>;
+	delete(): void;
 }
 
 interface MjData {
 	time: number;
+	eq_active: Uint8Array;
+	flexvert_xpos: Float64Array;
 	ncon: number;
 	qpos: Float64Array;
 	qvel: Float64Array;
@@ -147,6 +166,7 @@ interface MujocoModule {
 	DoubleBuffer: new (size: number) => DoubleBuffer;
 	mj_forward(model: MjModel, data: MjData): void;
 	mj_step(model: MjModel, data: MjData): void;
+	mj_resetDataKeyframe(model: MjModel, data: MjData, key: number): void;
 	mj_fwdPosition(model: MjModel, data: MjData): void;
 	mj_step1(model: MjModel, data: MjData): void;
 	mj_step2(model: MjModel, data: MjData): void;
@@ -283,6 +303,14 @@ export interface MujocoFrameState {
 	time: number;
 	/** Generalized positions (MuJoCo's `qpos`), read-only. */
 	qpos: Float64Array;
+	/** Generalized velocities (MuJoCo's `qvel`), read-only: with `qpos`, what a PD controller needs. */
+	qvel: Float64Array;
+	/**
+	 * Turns one of the model's equality constraints on or off from this frame
+	 * (MuJoCo's `eq_active`), by name: a weld that holds what a gripper
+	 * picks up, a latch, a tether. Unknown names throw.
+	 */
+	setEquality(name: string, active: boolean): void;
 }
 
 export interface MujocoWorldOptions {
@@ -309,13 +337,20 @@ export interface MujocoWorldOptions {
 	 * held while that frame is stepped. `frame` is relative to the start.
 	 */
 	control?: (frame: number, state: MujocoFrameState) => ArrayLike<number>;
+	/**
+	 * A keyframe of the model to start from, by name or index: its qpos,
+	 * qvel, act, mocap poses and ctrl (held until `control` sets others),
+	 * as MuJoCo's `mj_resetDataKeyframe`. Menagerie robots name theirs "home".
+	 */
+	keyframe?: string | number;
 	/** A state from `world.state(frame)` to start from instead of the model's. */
 	initialState?: Float64Array;
 	/**
 	 * Generalized positions recorded by another simulator (native MuJoCo,
 	 * MJX, a policy rollout), one `nq`-long row per frame: each frame is
 	 * posed from its row through MuJoCo's kinematics instead of simulated.
-	 * Needs at least `frames` rows; `control` and `initialState` do not apply.
+	 * Needs at least `frames` rows; `control`, `keyframe` and `initialState`
+	 * do not apply.
 	 */
 	qpos?: ArrayLike<ArrayLike<number>>;
 }
@@ -424,6 +459,15 @@ export class MujocoWorld {
 	readonly cameraNames: string[];
 	/** Tendon names (`tendon<index>` when unnamed). */
 	readonly tendonNames: string[];
+	/** The model's keyframe names (`key<index>` when unnamed), for `keyframe`. */
+	readonly keyframeNames: string[];
+	/** The model's equality constraints by name (`equality<index>` when unnamed), for `setEquality`. */
+	readonly equalityNames: string[];
+	/** The model's flexes (cloth, soft bodies, cables), by name (`flex<index>` when unnamed). */
+	readonly flexNames: string[];
+	private readonly flexes: FlexInfo[];
+	/** Per flex, every frame's vertex positions (m, MuJoCo axes): frame-major, xyz per vertex. */
+	private readonly flexFrames: Float32Array[];
 	private readonly tendonMaxSegments: number[];
 
 	private readonly origin: Vec3;
@@ -511,6 +555,10 @@ export class MujocoWorld {
 				dim: model.sensor_dim[i],
 			}));
 			this.cameraNames = named(model.name_camadr, "camera");
+			this.keyframeNames = named(model.name_keyadr, "key");
+			this.flexes = flexInfos(model, (adr) => readName(model, adr));
+			this.equalityNames = named(model.name_eqadr, "equality");
+			this.flexNames = this.flexes.map((f) => f.name);
 			this.cameraFovy = Array.from(model.cam_fovy);
 			this.tendonNames = named(model.name_tendonadr, "tendon");
 			this.tendonWidth = model.tendon_width.slice();
@@ -521,6 +569,8 @@ export class MujocoWorld {
 			this.tendonMaxSegments = Array.from(model.tendon_num, (n) =>
 				Math.max(1, 3 * n - 1),
 			);
+			// A wrong keyframe fails here, not when the run first steps.
+			if (options.keyframe !== undefined) this.keyIndex(options.keyframe);
 		} catch (error) {
 			model.delete();
 			throw error;
@@ -536,6 +586,9 @@ export class MujocoWorld {
 		this.cameraRecordings = this.cameraNames.map(recording);
 		this.tendonSegments = this.tendonMaxSegments.map((n) =>
 			Array.from({ length: n }, recording),
+		);
+		this.flexFrames = this.flexes.map(
+			(f) => new Float32Array(this.frames * f.vertnum * 3),
 		);
 	}
 
@@ -617,6 +670,9 @@ export class MujocoWorld {
 			const substeps = Math.max(1, Math.round(dt / model.opt.timestep));
 			model.opt.timestep = dt / substeps;
 			this.run.substeps = substeps;
+			const { keyframe } = this.options;
+			if (keyframe !== undefined)
+				mj.mj_resetDataKeyframe(model, data, this.keyIndex(keyframe));
 			if (this.options.initialState) {
 				mj.mj_setState(
 					model,
@@ -667,7 +723,105 @@ export class MujocoWorld {
 			else skipped.push(`${name} (type ${this.geomType[i]})`);
 		});
 		layers.push(...this.tendonLayers(groups, `${prefix}tendon:`));
+		for (const [i, f] of this.flexes.entries()) {
+			if (!groups.includes(f.group)) continue;
+			if (f.triangles.length)
+				layers.push(this.flexLayer(i, `${prefix}flex:${f.name}`));
+			else skipped.push(`${f.name} (a ${f.dim}-D flex)`);
+		}
 		return { layers, skipped };
+	}
+
+	/**
+	 * A flex's vertex positions at `frame` (m, MuJoCo axes; xyz per vertex,
+	 * as `flexvert_xpos`): where a cloth's corners are, say.
+	 */
+	flexVertices(name: string, frame: number): Float32Array {
+		const i = this.flexNames.indexOf(name);
+		if (i < 0)
+			throw new Error(
+				`Physics.mujoco: no flex "${name}" (flexes: ${this.flexNames.join(", ") || "none"})`,
+			);
+		const f = this.readable(frame);
+		const n = this.flexes[i].vertnum * 3;
+		return this.flexFrames[i].slice(f * n, (f + 1) * n);
+	}
+
+	/** Flex `i`'s vertices at a run frame, in scene px. */
+	private flexScene(i: number, frame: number): Float32Array {
+		const n = this.flexes[i].vertnum;
+		const src = this.flexFrames[i].subarray(frame * n * 3, (frame + 1) * n * 3);
+		const out = new Float32Array(n * 3);
+		const ppm = this.pixelsPerMeter;
+		for (let v = 0; v < n; v++) {
+			out[v * 3] = this.origin[0] + src[v * 3] * ppm;
+			out[v * 3 + 1] = this.origin[1] - src[v * 3 + 2] * ppm;
+			out[v * 3 + 2] = this.origin[2] + src[v * 3 + 1] * ppm;
+		}
+		return out;
+	}
+
+	/**
+	 * A flex as a skinned surface: one joint per vertex, posed each frame at
+	 * the vertex and turned so the surface's normal follows the simulation.
+	 */
+	private flexLayer(i: number, id: string): LayoutNode {
+		const f = this.flexes[i];
+		// Its rest shape is the run's first frame.
+		if (this.liveMode) {
+			if (!this.run && !this.finished) this.start();
+		} else this.simulate();
+		const rest = this.flexScene(i, 0);
+		const restNormals = vertexNormals(rest, f.triangles);
+		// One frame's offsets and turns, computed once for all its joints.
+		let cached:
+			| { frame: number; at: Float32Array; turn: Float32Array }
+			| undefined;
+		const posed = (frame: number) => {
+			const run = Math.max(0, Math.round(frame) - this.startFrame);
+			const at = this.liveMode
+				? Math.min(run, Math.max(0, this.steppedFrame), this.frames - 1)
+				: this.readable(run);
+			if (cached?.frame === at) return cached;
+			const now = this.flexScene(i, at);
+			const normals = vertexNormals(now, f.triangles);
+			const turn = new Float32Array(f.vertnum * 3);
+			for (let v = 0; v < f.vertnum; v++)
+				turn.set(
+					turnEuler(
+						restNormals.subarray(v * 3, v * 3 + 3),
+						normals.subarray(v * 3, v * 3 + 3),
+					),
+					v * 3,
+				);
+			for (let k = 0; k < now.length; k++) now[k] -= rest[k];
+			cached = { frame: at, at: now, turn };
+			return cached;
+		};
+		const pose: Record<string, JointPose> = {};
+		for (let v = 0; v < f.vertnum; v++) {
+			const [x, y, z] = [v * 3, v * 3 + 1, v * 3 + 2];
+			pose[flexJoint(v)] = {
+				mode: "rest",
+				x: (frame: number) => posed(frame).at[x],
+				y: (frame: number) => posed(frame).at[y],
+				z: (frame: number) => posed(frame).at[z],
+				rotateX: (frame: number) => posed(frame).turn[x],
+				rotateY: (frame: number) => posed(frame).turn[y],
+				rotateZ: (frame: number) => posed(frame).turn[z],
+			};
+		}
+		const [r, g, b, a] = f.rgba;
+		return Layer.model({
+			id,
+			label: f.name,
+			modelData: flexModel(id, rest, f.triangles, [r, g, b, a]),
+			is3D: true,
+			x: 0,
+			y: 0,
+			z: 0,
+			pose,
+		}) as unknown as LayoutNode;
 	}
 
 	/** A geom's center (px) and rotation (degrees) as per-frame signals. */
@@ -808,15 +962,30 @@ export class MujocoWorld {
 		}
 	}
 
+	private keyIndex(key: string | number): number {
+		const index =
+			typeof key === "number" ? key : this.keyframeNames.indexOf(key);
+		if (
+			!Number.isInteger(index) ||
+			index < 0 ||
+			index >= this.keyframeNames.length
+		)
+			throw new Error(
+				`Physics.mujoco: no keyframe ${JSON.stringify(key)} (keyframes: ${this.keyframeNames.join(", ") || "none"}).`,
+			);
+		return index;
+	}
+
 	/** Poses each frame from its recorded `qpos` row (kinematics only). */
 	private replay(
 		model: MjModel,
 		data: MjData,
 		qpos: ArrayLike<ArrayLike<number>>,
 	): void {
-		if (this.options.control || this.options.initialState)
+		const { control, keyframe, initialState } = this.options;
+		if (control || keyframe !== undefined || initialState)
 			throw new Error(
-				"Physics.mujoco: `qpos` replays a recorded run; drop `control` and `initialState`.",
+				"Physics.mujoco: `qpos` replays a recorded run; drop `control`, `keyframe` and `initialState`.",
 			);
 		if (qpos.length < this.frames)
 			throw new Error(
@@ -865,6 +1034,15 @@ export class MujocoWorld {
 		const ctrl = this.options.control?.(frame, {
 			time: data.time,
 			qpos: data.qpos,
+			qvel: data.qvel,
+			setEquality: (name, active) => {
+				const i = this.equalityNames.indexOf(name);
+				if (i < 0)
+					throw new Error(
+						`Physics.mujoco: no equality "${name}" (equalities: ${this.equalityNames.join(", ") || "none"})`,
+					);
+				data.eq_active[i] = active ? 1 : 0;
+			},
 		});
 		if (ctrl) {
 			if (ctrl.length !== model.nu)
@@ -909,6 +1087,12 @@ export class MujocoWorld {
 		this.pendingContacts.clear();
 		this.recordCameras(data, frame);
 		this.recordTendons(data, frame);
+		this.flexes.forEach((f, i) => {
+			this.flexFrames[i].set(
+				data.flexvert_xpos.subarray(f.vertadr * 3, (f.vertadr + f.vertnum) * 3),
+				frame * f.vertnum * 3,
+			);
+		});
 		const ppm = this.pixelsPerMeter;
 		const at = this.startFrame + frame;
 		this.geomRecordings.forEach((rec, i) => {
@@ -947,6 +1131,13 @@ export class MujocoWorld {
 	 * touch at several points (a box's corners): its force is their sum,
 	 * at their force-weighted center; the frame keeps each pair's peak.
 	 */
+	/** A contact side: a geom's name, or `flex:<name>` (ids below 0 are flexes, -1 - index). */
+	private contactName(id: number): string {
+		return id >= 0
+			? this.geomNames[id]
+			: `flex:${this.flexNames[-1 - id] ?? -1 - id}`;
+	}
+
 	private collectContacts(model: MjModel, data: MjData): void {
 		if (data.ncon === 0) return;
 		this.forceBuffer ??= new this.mj.DoubleBuffer(6);
@@ -960,23 +1151,33 @@ export class MujocoWorld {
 			for (let i = 0; i < data.ncon; i++) {
 				const c = list.get(i);
 				if (!c) continue;
-				this.mj.mj_contactForce(model, data, i, buffer);
-				const force = Math.abs(buffer.GetView()[0]);
-				const key = `${c.geom1}:${c.geom2}`;
-				const p = c.pos;
-				const pair = now.get(key) ?? {
-					g1: c.geom1,
-					g2: c.geom2,
-					force: 0,
-					at: [0, 0, 0] as Vec3,
-					points: 0,
-				};
-				pair.force += force;
-				// Weighted by force; equally while nothing pushes yet.
-				const w = force > 0 ? force : 1e-9;
-				for (let k = 0; k < 3; k++) pair.at[k] += p[k] * w;
-				pair.points += w;
-				now.set(key, pair);
+				// Each element is a handle onto WASM memory: freed here, or a
+				// contact-heavy run (cloth) exhausts the heap.
+				try {
+					this.mj.mj_contactForce(model, data, i, buffer);
+					const force = Math.abs(buffer.GetView()[0]);
+					// A side touching a flex is named by the flex (geom -1).
+					const side = (geom: number, k: number) =>
+						geom >= 0 ? geom : -1 - (c.flex[k] as number);
+					const [g1, g2] = [side(c.geom1, 0), side(c.geom2, 1)];
+					const key = `${g1}:${g2}`;
+					const p = c.pos;
+					const pair = now.get(key) ?? {
+						g1,
+						g2,
+						force: 0,
+						at: [0, 0, 0] as Vec3,
+						points: 0,
+					};
+					pair.force += force;
+					// Weighted by force; equally while nothing pushes yet.
+					const w = force > 0 ? force : 1e-9;
+					for (let k = 0; k < 3; k++) pair.at[k] += p[k] * w;
+					pair.points += w;
+					now.set(key, pair);
+				} finally {
+					c.delete();
+				}
 			}
 		} finally {
 			list.delete();
@@ -986,8 +1187,8 @@ export class MujocoWorld {
 			if (seen && seen.force >= pair.force) continue;
 			const [x, y, z] = pair.at.map((v) => v / pair.points);
 			this.pendingContacts.set(key, {
-				geom1: this.geomNames[pair.g1],
-				geom2: this.geomNames[pair.g2],
+				geom1: this.contactName(pair.g1),
+				geom2: this.contactName(pair.g2),
 				force: pair.force,
 				position: this.toScene(x, y, z),
 			});

@@ -5,6 +5,7 @@ import {
 	mujocoWorld,
 } from "./mujoco.js";
 import { PoseTrack, type PoseTrackOptions } from "./poses.js";
+import { SteelWorld, type SteelWorldOptions } from "./steel.js";
 import { PhysicsWorld2D, type World2DOptions } from "./world2d.js";
 import { PhysicsWorld3D, type World3DOptions } from "./world3d.js";
 
@@ -40,6 +41,16 @@ export const Physics = {
 		return mujocoWorld(options);
 	},
 	/**
+	 * Rigid bodies and articulated robots on Steel, a GPU solver (WebGPU, on
+	 * the device the composition renders with). `build` adds the scene with
+	 * Steel's `SceneBuilder` (or its MJCF / URDF / USDA loaders, `build`'s second argument); `control`
+	 * drives joints before each frame; `await world.simulate()` (or
+	 * `world.live(comp)`), then `world.layers()` draws it.
+	 */
+	async steel(options: SteelWorldOptions): Promise<SteelWorld> {
+		return SteelWorld.create(options);
+	},
+	/**
 	 * Body trajectories recorded by another simulator, replayed as pose
 	 * signals: `track.follow(name, layer)` makes a layer follow one. For an
 	 * MJCF model, `Physics.mujoco({ qpos })` replays joint positions instead.
@@ -49,6 +60,11 @@ export const Physics = {
 	},
 };
 
+export type {
+	SceneBuilder as SteelSceneBuilder,
+	SimOptions as SteelSolverOptions,
+	SimState as SteelState,
+} from "@skild-ai/steel-webgpu";
 export type {
 	BodyCommonOptions,
 	PhysicsBakeOptions,
@@ -76,6 +92,18 @@ export {
 	PoseTrack,
 	type PoseTrackOptions,
 } from "./poses.js";
+export {
+	type SteelDrag,
+	type SteelDragOptions,
+	type SteelFrameState,
+	type SteelLayersOptions,
+	type SteelLoaders,
+	type SteelShape,
+	type SteelShapeStyle,
+	type SteelShapeType,
+	SteelWorld,
+	type SteelWorldOptions,
+} from "./steel.js";
 export {
 	type Body2DOptions,
 	type FieldSample2D,

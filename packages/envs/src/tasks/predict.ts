@@ -70,11 +70,12 @@ export interface PosePredictionScore {
 
 function parsePoses(answer: unknown): Record<string, Record<string, Pose>> {
 	const frames = (answer as { frames?: unknown } | null)?.frames;
-	if (typeof frames !== "object" || frames === null)
-		throw new Error('answer: {"frames": {"<frame>": {...}}}');
+	const isMap = (v: unknown): v is Record<string, unknown> =>
+		typeof v === "object" && v !== null && !Array.isArray(v);
+	if (!isMap(frames)) throw new Error('answer: {"frames": {"<frame>": {...}}}');
 	const out: Record<string, Record<string, Pose>> = {};
 	for (const [frame, objects] of Object.entries(frames)) {
-		if (typeof objects !== "object" || objects === null)
+		if (!isMap(objects))
 			throw new Error(`frames.${frame}: an object of obj<index> poses`);
 		out[frame] = {};
 		for (const [name, pose] of Object.entries(objects)) {
@@ -103,6 +104,22 @@ export function scorePredictedPoses(
 	frames: number[],
 	tolerance = 25,
 ): PosePredictionScore {
+	const truth = Object.fromEntries(
+		frames.map((f) => [String(f), truthPoses(view, f)]),
+	);
+	return scorePosesAgainst(truth, answer, tolerance);
+}
+
+/**
+ * Scores predicted object poses against recorded ones: `truth` holds, per
+ * frame, every object's pose (as `truthPoses` reads them), so an answer can
+ * be scored without the scene.
+ */
+export function scorePosesAgainst(
+	truth: Record<string, Record<string, Pose>>,
+	answer: unknown,
+	tolerance = 25,
+): PosePredictionScore {
 	const predicted = parsePoses(answer);
 	let within = 0;
 	let count = 0;
@@ -110,14 +127,13 @@ export function scorePredictedPoses(
 	let rotationSum = 0;
 	let rotationCount = 0;
 	const byFrame: Record<string, number> = {};
-	for (const frame of frames) {
-		const truth = truthPoses(view, frame);
+	for (const [frame, poses] of Object.entries(truth)) {
 		let frameSum = 0;
-		const names = Object.keys(truth);
+		const names = Object.keys(poses);
 		for (const name of names) {
-			const guess = predicted[String(frame)]?.[name];
+			const guess = predicted[frame]?.[name];
 			const e = guess
-				? poseError(guess, truth[name])
+				? poseError(guess, poses[name])
 				: { position: tolerance * 4 };
 			if (e.position <= tolerance) within++;
 			positionSum += e.position;

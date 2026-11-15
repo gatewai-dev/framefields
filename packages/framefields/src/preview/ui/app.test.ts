@@ -70,6 +70,7 @@ function fakePlayer() {
 		warm: async () => true,
 		mixAudio: () => Promise.reject(new Error("no mixing here")),
 		snapshot: () => Promise.reject(new Error("no snapshots here")),
+		pick: () => Promise.reject(new Error("no picking here")),
 		dispose: async () => {},
 	};
 	return { player, rendered };

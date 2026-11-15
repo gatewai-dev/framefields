@@ -89,7 +89,24 @@ export async function acquireDevice(
 		requiredFeatures.push("timestamp-query");
 	}
 
+	// Steel physics (Physics.steel) scans contacts across subgroups; it reads
+	// the feature and the compute limits below from the device it is given.
+	if (
+		adapter.features.has("subgroups") &&
+		(adapter.info?.subgroupMaxSize ?? 0) >= 32
+	) {
+		requiredFeatures.push("subgroups");
+	}
+
 	const requiredLimits: Record<string, number> = {};
+	for (const [limit, cap] of [
+		["maxComputeWorkgroupStorageSize", Number.POSITIVE_INFINITY],
+		["maxComputeInvocationsPerWorkgroup", 1024],
+		["maxComputeWorkgroupSizeX", 1024],
+	] as const) {
+		const max = adapter.limits?.[limit];
+		if (Number.isInteger(max)) requiredLimits[limit] = Math.min(cap, max);
+	}
 	if (
 		adapter.limits &&
 		Number.isInteger(adapter.limits.maxTextureDimension2D)

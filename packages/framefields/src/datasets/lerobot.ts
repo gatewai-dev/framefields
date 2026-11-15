@@ -8,18 +8,25 @@
  *   meta/episodes/chunk-000/file-000.parquet  per episode: length, tasks,
  *                                          where its rows and video sit, stats
  *   data/chunk-XXX/file-YYY.parquet        one row per frame
- *   videos/<key>/chunk-XXX/file-YYY.mp4    one file per camera per episode
+ *   videos/<key>/chunk-XXX/file-YYY.mp4    per camera, episodes back to back
  *
- * Each episode gets its own data and video files (v3.0 allows many per
- * file; one each keeps every episode at timestamp 0 of its video). Cameras
+ * As LeRobot's recorder does, episodes share a data file and a video file
+ * per camera until it reaches `dataFileSizeMb` / `videoFileSizeMb`; the
+ * episode table says where each one's rows and video stretch sit. Each
+ * episode's video is encoded on its own and the encoded frames are copied
+ * into the shared file (`stitchChunks`), nothing re-encoded. Cameras
  * are compositions, so a camera sees whatever the scene renders, with the
  * engine's lighting and materials. `mujocoEpisode` makes an episode of a
  * MuJoCo run: joint positions, the actuator commands as actions,
  * velocities and sensor readings.
  */
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { type Composition, HeadlessMediaRenderer } from "../index.js";
+import {
+	type Composition,
+	HeadlessMediaRenderer,
+	stitchChunks,
+} from "../index.js";
 import type { MujocoWorld } from "../physics/mujoco.js";
 import { encodeParquet, type ParquetColumn } from "./parquet.js";
 
@@ -59,6 +66,10 @@ export interface LeRobotWriterOptions {
 	renderer?: HeadlessMediaRenderer;
 	/** Frames sampled per episode for image statistics. Default 20. */
 	imageStatSamples?: number;
+	/** A data file takes episodes until it holds this many MB. Default 100. */
+	dataFileSizeMb?: number;
+	/** A video file takes episodes until it holds this many MB. Default 200. */
+	videoFileSizeMb?: number;
 }
 
 const CHUNK_SIZE = 1000;
@@ -143,19 +154,51 @@ interface FeatureInfo {
 	info?: Record<string, unknown>;
 }
 
+/** A file's place: `chunk-XXX/file-YYY`. */
+interface FileIndex {
+	chunk: number;
+	file: number;
+}
+
+interface VideoPlace extends FileIndex {
+	from: number;
+	to: number;
+}
+
 interface EpisodeRecord {
 	index: number;
 	length: number;
 	task: string;
 	from: number;
+	data: FileIndex;
+	videos: Record<string, VideoPlace>;
 	stats: Record<string, Stats>;
 }
 
-const chunkFile = (i: number) => ({
-	chunk: Math.floor(i / CHUNK_SIZE),
-	file: i % CHUNK_SIZE,
-});
+const nextFile = (at: FileIndex): FileIndex =>
+	at.file + 1 < CHUNK_SIZE
+		? { chunk: at.chunk, file: at.file + 1 }
+		: { chunk: at.chunk + 1, file: 0 };
 const pad3 = (n: number) => String(n).padStart(3, "0");
+const filePath = (at: FileIndex, ext: string) =>
+	path.join(`chunk-${pad3(at.chunk)}`, `file-${pad3(at.file)}.${ext}`);
+const MB = 1024 * 1024;
+
+/** The data file being filled: its episodes' frame-table columns. */
+interface OpenData {
+	at: FileIndex;
+	bytes: number;
+	episodes: ParquetColumn[][];
+}
+
+/** A camera's video file being filled: its episodes' own encodes. */
+interface OpenVideo {
+	at: FileIndex;
+	bytes: number;
+	seconds: number;
+	frames: number;
+	episodes: string[];
+}
 
 /** Writes episodes into a LeRobot v3.0 dataset; `close()` writes its metadata. */
 export class LeRobotWriter {
@@ -168,10 +211,15 @@ export class LeRobotWriter {
 	private readonly tasks: string[] = [];
 	private totalFrames = 0;
 	private readonly renderer: HeadlessMediaRenderer;
+	private data?: OpenData;
+	private readonly videos = new Map<string, OpenVideo>();
+	/** Each episode's own video encodes, until joined into the shared files. */
+	private readonly scratch: string;
 
 	constructor(private readonly options: LeRobotWriterOptions) {
 		this.renderer = options.renderer ?? new HeadlessMediaRenderer();
 		mkdirSync(options.dir, { recursive: true });
+		this.scratch = path.join(options.dir, ".episodes");
 	}
 
 	/** Renders and writes one episode. */
@@ -192,7 +240,6 @@ export class LeRobotWriter {
 		let task = this.tasks.indexOf(episode.task);
 		if (task < 0) task = this.tasks.push(episode.task) - 1;
 		const from = this.totalFrames;
-		const { chunk, file } = chunkFile(index);
 		const stats: Record<string, Stats> = {};
 
 		// The frame table.
@@ -246,25 +293,13 @@ export class LeRobotWriter {
 				values: defaults[key],
 			});
 		}
-		const dataPath = path.join(
-			this.options.dir,
-			"data",
-			`chunk-${pad3(chunk)}`,
-			`file-${pad3(file)}.parquet`,
-		);
-		mkdirSync(path.dirname(dataPath), { recursive: true });
-		writeFileSync(dataPath, encodeParquet(columns));
+		const data = this.addData(columns);
 
 		// The videos, and image statistics from evenly spaced frames.
 		const samples = Math.min(frames, this.options.imageStatSamples ?? 20);
+		const videos: Record<string, VideoPlace> = {};
 		for (const [key, comp] of cameras) {
-			const video = path.join(
-				this.options.dir,
-				"videos",
-				key,
-				`chunk-${pad3(chunk)}`,
-				`file-${pad3(file)}.mp4`,
-			);
+			const video = path.join(this.scratch, key, `episode-${index}.mp4`);
 			mkdirSync(path.dirname(video), { recursive: true });
 			const result = await comp.renderVideo({
 				outputPath: video,
@@ -274,6 +309,7 @@ export class LeRobotWriter {
 				renderer: this.renderer,
 			});
 			await result.cleanup();
+			videos[key] = await this.addVideo(key, video, frames);
 			const channels: number[][] = [];
 			for (let k = 0; k < samples; k++) {
 				const f =
@@ -294,16 +330,108 @@ export class LeRobotWriter {
 			length: frames,
 			task: episode.task,
 			from,
+			data,
+			videos,
 			stats,
 		});
 		this.totalFrames += frames;
 		return { index, frames };
 	}
 
-	/** Writes meta/: info.json, stats.json, tasks.parquet and the episodes table. */
-	close(): { episodes: number; frames: number } {
+	/** Puts an episode's rows in the open data file, or in a new one when it is full. */
+	private addData(columns: ParquetColumn[]): FileIndex {
+		const bytes = encodeParquet(columns).length;
+		const limit = (this.options.dataFileSizeMb ?? 100) * MB;
+		if (this.data && this.data.bytes + bytes > limit) {
+			const at = nextFile(this.data.at);
+			this.flushData();
+			this.data = { at, bytes: 0, episodes: [] };
+		}
+		this.data ??= { at: { chunk: 0, file: 0 }, bytes: 0, episodes: [] };
+		this.data.bytes += bytes;
+		this.data.episodes.push(columns);
+		return this.data.at;
+	}
+
+	private flushData(): void {
+		const open = this.data;
+		if (!open) return;
+		const columns = open.episodes[0].map((c, k) => ({
+			...c,
+			values: open.episodes.flatMap((ep) => ep[k].values),
+		}));
+		const file = path.join(
+			this.options.dir,
+			"data",
+			filePath(open.at, "parquet"),
+		);
+		mkdirSync(path.dirname(file), { recursive: true });
+		writeFileSync(file, encodeParquet(columns));
+		this.data = undefined;
+	}
+
+	/** Queues an episode's video for the camera's open file, or a new one when it is full. */
+	private async addVideo(
+		key: string,
+		video: string,
+		frames: number,
+	): Promise<VideoPlace> {
+		const bytes = statSync(video).size;
+		const limit = (this.options.videoFileSizeMb ?? 200) * MB;
+		let open = this.videos.get(key);
+		if (open && open.bytes + bytes > limit) {
+			const at = nextFile(open.at);
+			await this.flushVideo(key);
+			open = { at, bytes: 0, seconds: 0, frames: 0, episodes: [] };
+		}
+		open ??= {
+			at: { chunk: 0, file: 0 },
+			bytes: 0,
+			seconds: 0,
+			frames: 0,
+			episodes: [],
+		};
+		this.videos.set(key, open);
+		const from = open.seconds;
+		open.bytes += bytes;
+		open.frames += frames;
+		open.seconds = open.frames / this.options.fps;
+		open.episodes.push(video);
+		return { ...open.at, from, to: open.seconds };
+	}
+
+	/** Joins a camera's queued episodes into its video file. */
+	private async flushVideo(key: string): Promise<void> {
+		const open = this.videos.get(key);
+		if (!open) return;
+		const outputPath = path.join(
+			this.options.dir,
+			"videos",
+			key,
+			filePath(open.at, "mp4"),
+		);
+		const { frames } = await stitchChunks({
+			chunks: open.episodes,
+			outputPath,
+		});
+		if (frames !== open.frames)
+			throw new Error(
+				`LeRobot: ${outputPath} holds ${frames} frames, its episodes ${open.frames}`,
+			);
+		for (const file of open.episodes) rmSync(file);
+		this.videos.delete(key);
+	}
+
+	/**
+	 * Writes the open data and video files, then meta/: info.json,
+	 * stats.json, tasks.parquet and the episodes table.
+	 */
+	async close(): Promise<{ episodes: number; frames: number }> {
 		const features = this.features;
 		if (!features) throw new Error("LeRobot: no episodes were added.");
+		this.flushData();
+		for (const key of [...this.videos.keys()]) await this.flushVideo(key);
+		rmSync(this.scratch, { recursive: true, force: true });
 		const { dir, fps } = this.options;
 		const meta = path.join(dir, "meta");
 		const write = (rel: string, data: string | Uint8Array) => {
@@ -321,8 +449,8 @@ export class LeRobotWriter {
 					total_frames: this.totalFrames,
 					total_tasks: this.tasks.length,
 					chunks_size: CHUNK_SIZE,
-					data_files_size_in_mb: 100,
-					video_files_size_in_mb: 200,
+					data_files_size_in_mb: this.options.dataFileSizeMb ?? 100,
+					video_files_size_in_mb: this.options.videoFileSizeMb ?? 200,
 					fps,
 					splits: { train: `0:${this.episodes.length}` },
 					data_path:
@@ -376,7 +504,6 @@ export class LeRobotWriter {
 	/** The per-episode table, as LeRobot's `meta/episodes` holds it. */
 	private episodeColumns(): ParquetColumn[] {
 		const eps = this.episodes;
-		const fps = this.options.fps;
 		const col = (
 			name: string,
 			type: ParquetColumn["type"],
@@ -408,12 +535,12 @@ export class LeRobotWriter {
 			col(
 				"data/chunk_index",
 				"int64",
-				eps.map((e) => chunkFile(e.index).chunk),
+				eps.map((e) => e.data.chunk),
 			),
 			col(
 				"data/file_index",
 				"int64",
-				eps.map((e) => chunkFile(e.index).file),
+				eps.map((e) => e.data.file),
 			),
 			col(
 				"dataset_from_index",
@@ -431,22 +558,22 @@ export class LeRobotWriter {
 				col(
 					`videos/${key}/chunk_index`,
 					"int64",
-					eps.map((e) => chunkFile(e.index).chunk),
+					eps.map((e) => e.videos[key].chunk),
 				),
 				col(
 					`videos/${key}/file_index`,
 					"int64",
-					eps.map((e) => chunkFile(e.index).file),
+					eps.map((e) => e.videos[key].file),
 				),
 				col(
 					`videos/${key}/from_timestamp`,
 					"float64",
-					eps.map(() => 0),
+					eps.map((e) => e.videos[key].from),
 				),
 				col(
 					`videos/${key}/to_timestamp`,
 					"float64",
-					eps.map((e) => e.length / fps),
+					eps.map((e) => e.videos[key].to),
 				),
 			);
 		}

@@ -30,7 +30,7 @@ for (const seed of seeds) {
 		`episode ${index} (seed ${seed}): ${frames} frames, ${((performance.now() - started) / 1000).toFixed(1)} s`,
 	);
 }
-const done = writer.close();
+const done = await writer.close();
 console.error(
 	`${done.episodes} episodes, ${done.frames} frames: ${values.out}`,
 );

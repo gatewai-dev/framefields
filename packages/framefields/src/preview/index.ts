@@ -7,7 +7,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { VirtualMediaData } from "@framefields/core";
 import { type AssetLocator, openAssetLocator } from "@framefields/storage";
-import { inputStore } from "@framefields/webgpu-renderers";
+import { inputStore, localFontDirs } from "@framefields/webgpu-renderers";
 import { encodeStereoWav } from "../audio/index.js";
 import { HeadlessMediaRenderer } from "../renderer/index.js";
 import {
@@ -80,6 +80,17 @@ export interface PreviewOptions {
 	open?: boolean;
 	/** Title shown in the page header. */
 	title?: string;
+	/**
+	 * An HTML page of your own to serve at `/` instead of the preview's UI:
+	 * an app built around the composition (a simulator, a configurator). It
+	 * loads the composition with
+	 * `<script type="module" src="/@framefields/player.js"></script>` and
+	 * draws frames with the player `window.framefieldsPlayer` resolves to
+	 * (`await (await window.framefieldsPlayer).render(frame, { cache: false })`),
+	 * into the page's `<canvas id="canvas">` when it has one. Code the page
+	 * needs can live in the composition's module, which runs on the page.
+	 */
+	page?: string;
 	/** Mix and play the composition's audio. Defaults to true. */
 	audio?: boolean;
 	/** Optional shared renderer instance, used to mix the soundtrack. */
@@ -326,7 +337,10 @@ export async function startPreview(
 		try {
 			// The page: its HTML here, its script and styles under PAGE_URL.
 			if (req.method === "GET" && url.pathname === "/") {
-				await sendFile(req, res, path.join(await page, "index.html"), true);
+				const html = options.page
+					? path.resolve(options.page)
+					: path.join(await page, "index.html");
+				await sendFile(req, res, html, true);
 				return;
 			}
 			if (req.method === "GET" && url.pathname === "/meta") {
@@ -493,18 +507,17 @@ export async function startPreview(
 				return;
 			}
 			// Fonts referenced by family only resolve to assets/fonts/<Family>.ttf,
-			// read from the project's folder, as the export engine does.
+			// from the folders the export engine reads them from (the project's,
+			// a monorepo root's, FONTS_DIR).
 			const fontMatch = /^\/assets\/fonts\/([^/]+)$/.exec(url.pathname);
 			if (fontMatch && (req.method === "GET" || req.method === "HEAD")) {
-				const file = path.join(
-					process.cwd(),
-					"assets",
-					"fonts",
-					decodeURIComponent(fontMatch[1]),
-				);
-				if (await isFile(file)) {
-					await sendFile(req, res, file);
-					return;
+				const name = path.basename(decodeURIComponent(fontMatch[1]));
+				for (const dir of localFontDirs(path, process.cwd(), process.env)) {
+					const file = path.join(dir, name);
+					if (await isFile(file)) {
+						await sendFile(req, res, file);
+						return;
+					}
 				}
 			}
 			// The composition's files, by absolute path: what the program

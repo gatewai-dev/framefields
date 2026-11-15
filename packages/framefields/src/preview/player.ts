@@ -23,9 +23,12 @@ import {
 	ensureDevice,
 	getRenderer2D,
 	lutStore,
+	PickCapture,
 	type RenderContextValue,
+	type Scene3DTruthCapture,
 	SlugFontCache,
 } from "@framefields/webgpu-renderers";
+import { type CompositionInput, type InputPick, inputPick } from "../input.js";
 import {
 	type AudioTarget,
 	createAudioMixer,
@@ -80,6 +83,11 @@ export interface PreviewPlayer {
 		range: { startSec: number; endSec: number },
 		chain?: string,
 	): Promise<PreviewMix>;
+	/**
+	 * What frame pixel (`x`, `y`) shows: measured on the next frame drawn
+	 * (or the frame on screen drawn again, when nothing is drawing).
+	 */
+	pick(x: number, y: number): Promise<InputPick>;
 	/** A frame at full size as an image, e.g. to attach to a note. */
 	snapshot(frame: number): Promise<ImageBitmap>;
 	/**
@@ -91,7 +99,12 @@ export interface PreviewPlayer {
 	dispose(): Promise<void>;
 }
 
-type Renderable = AudioTarget & { fps?: number };
+type Renderable = AudioTarget & {
+	fps?: number;
+	/** A composition's input, when it uses it. */
+	usedInput?: CompositionInput;
+	layerLabels?(): Map<string, string>;
+};
 
 declare global {
 	interface Window {
@@ -207,6 +220,15 @@ async function createPlayer(
 	let disposed = false;
 
 	let offscreen: GPUTexture | undefined;
+	/** The frame last drawn on screen. */
+	let shown = 0;
+	/** Picks waiting for the next frame drawn on screen. */
+	const picks: Array<{
+		capture: PickCapture;
+		resolve: (pick: InputPick) => void;
+		reject: (error: unknown) => void;
+	}> = [];
+	const labels = target.layerLabels?.() ?? new Map<string, string>();
 
 	// Frames drawn on screen are kept so stepping or scrubbing back to one is a
 	// blit, not a re-render. Full resolution, bounded by a byte budget. Vision
@@ -319,6 +341,17 @@ async function createPlayer(
 			await lutStore.awaitAllPending(device);
 		}
 
+		// Picks ride on this frame: its ground-truth targets, one texel each.
+		const batch = toScreen ? picks.splice(0) : [];
+		const truth: Scene3DTruthCapture | undefined = batch.length
+			? {
+					capture: (dev, enc, pass) => {
+						for (const p of batch) p.capture.capture(dev, enc, pass);
+					},
+				}
+			: undefined;
+		if (input) input.setGamepads(readGamepads());
+
 		compositionStateStore.setState(renderId, frame, fps, true);
 		const encoder = device.createCommandEncoder();
 		if (!toScreen && !offscreen) {
@@ -338,16 +371,21 @@ async function createPlayer(
 		renderer
 			.beginFrame(encoder, view, { r: 0, g: 0, b: 0, a: 0 }, w, h, "clear")
 			.end();
-		await drawCompositionTree(
-			ctx,
-			encoder,
-			view,
-			tex,
-			w,
-			h,
-			vm as VirtualMediaData,
-			props,
-		);
+		try {
+			await drawCompositionTree(
+				ctx,
+				encoder,
+				view,
+				tex,
+				w,
+				h,
+				vm as VirtualMediaData,
+				truth ? { ...props, truth } : props,
+			);
+		} catch (error) {
+			for (const p of batch) p.reject(error);
+			throw error;
+		}
 		let cacheTex: GPUTexture | undefined;
 		if (cache) {
 			cacheTex = newRenderCacheTexture();
@@ -360,6 +398,14 @@ async function createPlayer(
 		if (toScreen) surface.present();
 		await device.queue.onSubmittedWorkDone();
 		if (cacheTex) storeRenderCache(frame, cacheTex);
+		if (toScreen) shown = frame;
+		for (const p of batch)
+			p.capture
+				.finish()
+				.then(
+					(result) => p.resolve(inputPick(result, width, height, labels)),
+					p.reject,
+				);
 	}
 
 	// One frame at a time. Requests made while a frame draws collapse to the
@@ -379,7 +425,8 @@ async function createPlayer(
 				wanted = null;
 				const started = performance.now();
 				try {
-					const cached = takeRenderCache(f);
+					// A pick needs the frame drawn, not blitted from the cache.
+					const cached = picks.length ? undefined : takeRenderCache(f);
 					if (cached) {
 						blitter.blit(cached, surface.getCurrentTexture());
 						surface.present();
@@ -411,6 +458,22 @@ async function createPlayer(
 		canvas,
 		lastRenderMs: 0,
 		hasVision,
+		pick(x, y) {
+			if (disposed) return Promise.reject(new Error("the player was disposed"));
+			return new Promise<InputPick>((resolve, reject) => {
+				picks.push({
+					capture: new PickCapture(x, y, width, height),
+					resolve,
+					reject,
+				});
+				// Nothing about to draw: draw the frame on screen again.
+				if (!drawing && wanted === null) {
+					wanted = shown;
+					wantedCached = false;
+					pump();
+				}
+			});
+		},
 		render(frame, options) {
 			if (disposed) return Promise.resolve(frame);
 			wanted = frame;
@@ -452,6 +515,9 @@ async function createPlayer(
 		async dispose() {
 			if (disposed) return;
 			disposed = true;
+			unwire?.();
+			for (const p of picks.splice(0))
+				p.reject(new Error("the player was disposed"));
 			wanted = null;
 			while (drawing) await drawing;
 			for (const { tex } of renderCache.values()) tex.destroy();
@@ -461,7 +527,107 @@ async function createPlayer(
 			surface.destroy();
 		},
 	};
+	const input = target.usedInput;
+	const unwire = input && wireInput(input, canvas, meta, player);
 	return player;
+}
+
+/**
+ * Feeds a composition's input from the page: the pointer over the canvas
+ * (in frame px), keys, the wheel; focus loss releases what is held. Picks
+ * go through the player. The page's own handlers keep working: nothing is
+ * prevented here.
+ */
+function wireInput(
+	input: CompositionInput,
+	canvas: HTMLCanvasElement,
+	meta: PlayerMeta,
+	player: PreviewPlayer,
+): () => void {
+	input.setPicker((x, y) => player.pick(x, y));
+	const at = (e: PointerEvent | WheelEvent): [number, number] => {
+		const box = canvas.getBoundingClientRect();
+		return [
+			((e.clientX - box.left) / Math.max(1, box.width)) * meta.width,
+			((e.clientY - box.top) / Math.max(1, box.height)) * meta.height,
+		];
+	};
+	/** Keys typed into a field belong to the field. */
+	const typing = (e: KeyboardEvent) => {
+		const t = e.target as HTMLElement | null;
+		return (
+			!!t &&
+			(t.isContentEditable ||
+				(t instanceof HTMLInputElement &&
+					t.type !== "range" &&
+					t.type !== "checkbox") ||
+				t instanceof HTMLTextAreaElement ||
+				t instanceof HTMLSelectElement)
+		);
+	};
+	const listeners: Array<[EventTarget, string, (e: Event) => void]> = [
+		[
+			canvas,
+			"pointerdown",
+			(e) => {
+				const p = e as PointerEvent;
+				canvas.setPointerCapture?.(p.pointerId);
+				input.pointerDown(...at(p), p.button);
+			},
+		],
+		[
+			canvas,
+			"pointermove",
+			(e) => {
+				const p = e as PointerEvent;
+				input.pointerMove(...at(p));
+			},
+		],
+		[
+			canvas,
+			"pointerup",
+			(e) => {
+				const p = e as PointerEvent;
+				input.pointerUp(...at(p), p.button);
+			},
+		],
+		[
+			canvas,
+			"pointerleave",
+			(e) => {
+				const p = e as PointerEvent;
+				if (!p.buttons) input.pointerMove(...at(p), false);
+			},
+		],
+		[canvas, "wheel", (e) => input.wheelBy((e as WheelEvent).deltaY)],
+		[
+			window,
+			"keydown",
+			(e) => {
+				const k = e as KeyboardEvent;
+				if (!typing(k)) input.keyDown(k.code);
+			},
+		],
+		[window, "keyup", (e) => input.keyUp((e as KeyboardEvent).code)],
+		[window, "blur", () => input.releaseAll()],
+	];
+	for (const [target, type, fn] of listeners) target.addEventListener(type, fn);
+	return () => {
+		input.setPicker(undefined);
+		for (const [target, type, fn] of listeners)
+			target.removeEventListener(type, fn);
+	};
+}
+
+/** The connected gamepads, standard mapping. */
+function readGamepads(): Array<{ axes: number[]; buttons: number[] }> {
+	const pads = navigator.getGamepads?.() ?? [];
+	return Array.from(pads)
+		.filter((p): p is Gamepad => !!p)
+		.map((p) => ({
+			axes: [...p.axes],
+			buttons: p.buttons.map((b) => b.value),
+		}));
 }
 
 /** Reads a texture back as an image (RGBA or BGRA, as the canvas format is). */

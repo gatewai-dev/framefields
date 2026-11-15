@@ -9,6 +9,7 @@ export * from "./lens-remap-pipeline.js";
 export * from "./matte3d.js";
 export * from "./mesh3d-pipeline.js";
 export * from "./motion-blur-pipeline.js";
+export * from "./pick.js";
 export * from "./primitive-geometry.js";
 export * from "./quad3d-pipeline.js";
 export * from "./renderer3d.js";

@@ -107,6 +107,10 @@ describe("predict task", () => {
 		expect(() =>
 			scorePredictedPoses(view, { frames: { 30: { obj0: {} } } }, asked),
 		).toThrow("frames.30.obj0.position");
+		// A list is not a map of frames, even an empty one.
+		expect(() => scorePredictedPoses(view, { frames: [] }, asked)).toThrow(
+			'answer: {"frames"',
+		);
 	});
 
 	it("scores predicted frames by PSNR and SSIM per horizon frame", async () => {

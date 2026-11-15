@@ -92,7 +92,8 @@ module.exports = stub();
 /**
  * Builds framefields for the browser into `outDir`: one module per public entry,
  * the player and the shims, with shared code split into chunks (node renderers
- * load only when a composition uses them).
+ * load only when a composition uses them), and MuJoCo's WebAssembly for
+ * `Physics.mujoco`.
  */
 export async function buildEngine(outDir: string): Promise<void> {
 	const { build } = await import("esbuild");
@@ -131,6 +132,13 @@ export async function buildEngine(outDir: string): Promise<void> {
 			},
 		],
 	});
+	// MuJoCo's loader fetches its WebAssembly from beside its own chunk
+	// (`new URL("mujoco.wasm", import.meta.url)`), which lands in `outDir`.
+	const mujoco = fileURLToPath(import.meta.resolve("@mujoco/mujoco"));
+	await fs.promises.copyFile(
+		path.join(path.dirname(mujoco), "mujoco.wasm"),
+		path.join(outDir, "mujoco.wasm"),
+	);
 }
 
 export interface ProjectBundle {

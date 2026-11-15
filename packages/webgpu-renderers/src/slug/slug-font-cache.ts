@@ -88,22 +88,7 @@ async function loadFontBuffer(
 		// Node.js local file environment
 		const fs = await import(/* webpackIgnore: true */ "node:fs/promises");
 		const path = await import(/* webpackIgnore: true */ "node:path");
-		const fontDirs: string[] = [];
-		if (process.env.FONTS_DIR) {
-			fontDirs.push(path.resolve(process.env.FONTS_DIR));
-		}
-		if (process.env.FRAMEFIELDS_FONTS_DIR) {
-			fontDirs.push(path.resolve(process.env.FRAMEFIELDS_FONTS_DIR));
-		}
-
-		// Upward traversal to locate assets/fonts in parent monorepo roots
-		let currentDir = process.cwd();
-		for (let i = 0; i < 5; i++) {
-			fontDirs.push(path.resolve(currentDir, "assets/fonts"));
-			const parent = path.dirname(currentDir);
-			if (parent === currentDir) break;
-			currentDir = parent;
-		}
+		const fontDirs = localFontDirs(path, process.cwd(), process.env);
 
 		const candidates: string[] = [];
 		const addCandidate = (candidatePath: string) => {
@@ -924,4 +909,29 @@ export class SlugFontCache {
 		SlugFontCache.emojiFontLoadPromise = null;
 		SlugFontCache.emojiFontFaceLoadPromise = null;
 	}
+}
+
+/**
+ * Where local font files are looked for, in order: `FONTS_DIR`,
+ * `FRAMEFIELDS_FONTS_DIR`, then `assets/fonts` in `cwd` and up to four of
+ * its parents (a monorepo's root). The preview server serves fonts from the
+ * same folders, so the page draws what the export does.
+ */
+export function localFontDirs(
+	path: { resolve(...parts: string[]): string; dirname(p: string): string },
+	cwd: string,
+	env: Record<string, string | undefined>,
+): string[] {
+	const dirs: string[] = [];
+	if (env.FONTS_DIR) dirs.push(path.resolve(env.FONTS_DIR));
+	if (env.FRAMEFIELDS_FONTS_DIR)
+		dirs.push(path.resolve(env.FRAMEFIELDS_FONTS_DIR));
+	let dir = cwd;
+	for (let i = 0; i < 5; i++) {
+		dirs.push(path.resolve(dir, "assets/fonts"));
+		const parent = path.dirname(dir);
+		if (parent === dir) break;
+		dir = parent;
+	}
+	return dirs;
 }

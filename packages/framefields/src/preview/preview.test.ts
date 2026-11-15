@@ -106,6 +106,29 @@ describe("startPreview", () => {
 		).toBe(404);
 	}, 60_000);
 
+	it("serves an app's own page around the player, and MuJoCo's WebAssembly", async () => {
+		const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "gf-page-"));
+		const page = path.join(dir, "app.html");
+		await fs.promises.writeFile(
+			page,
+			'<canvas id="canvas"></canvas><script type="module" src="/@framefields/player.js"></script>',
+		);
+		try {
+			const session = await start({ entry }, { open: false, port: 0, page });
+			const html = await (await fetch(session.url)).text();
+			expect(html).toContain('<canvas id="canvas">');
+			expect(html).not.toContain("<ff-preview>");
+			const player = await fetch(`${session.url}@framefields/player.js`);
+			expect(await player.text()).toContain("startPlayer");
+			// Beside the chunk that loads it (`new URL("mujoco.wasm", import.meta.url)`).
+			const wasm = await fetch(`${session.url}@framefields/engine/mujoco.wasm`);
+			expect(wasm.status).toBe(200);
+			expect(wasm.headers.get("content-type")).toBe("application/wasm");
+		} finally {
+			await fs.promises.rm(dir, { recursive: true, force: true });
+		}
+	}, 60_000);
+
 	it("serves project files by absolute path, with byte ranges", async () => {
 		const session = await start({ entry }, { open: false, port: 0 });
 		const file = fileURLToPath(entry);

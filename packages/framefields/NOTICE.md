@@ -104,3 +104,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+## Third-party code: Steel
+
+`Physics.steel`, `Physics.world2d` and `Physics.world3d` run on Steel, the WebGPU port of Newton's SolverSteel by Skild AI (https://github.com/skild-ai/steel-webgpu), forked in `packages/steel` with the changes listed in its `NOTICE.md`. Copyright 2026 Skild AI; copyright 2025 The Newton Developers. Licensed under the Apache License, Version 2.0.

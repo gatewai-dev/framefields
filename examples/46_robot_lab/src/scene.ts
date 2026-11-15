@@ -1,9 +1,9 @@
 /**
- * The gallery scene as the engine draws it: the Steel world stepped live
- * (each frame the player draws advances it, with the joint targets the page
- * or the demo sets), the arm and the scenario's objects drawn from it, on a
- * dark checker floor under a studio key light, seen from an orbiting camera
- * the page steers.
+ * The lab as the engine draws it: the Steel world stepped live (each frame
+ * the player draws advances it, with the joint targets the page or the demo
+ * sets), the SO-101 and the task's objects drawn from it, on a dark checker
+ * floor under a studio key light, seen from an orbiting camera the page
+ * steers.
  */
 import {
 	Composition,
@@ -16,11 +16,12 @@ import {
 	type SteelDrag,
 	type SteelShape,
 	type SteelShapeStyle,
+	type SteelSolverOptions,
 	type SteelWorld,
 } from "framefields";
-import { addArm, driveArm, FINGERS, HOME } from "./arm.js";
 import { Demo } from "./demo.js";
-import { scenarioFor } from "./scenarios.js";
+import { addSo101, driveArm, HOME } from "./so101.js";
+import * as task from "./task.js";
 
 export const FPS = 30;
 /** Ten minutes of simulation; Reset starts over. */
@@ -30,16 +31,13 @@ export const HEIGHT = 720;
 /** Scene px per meter: Steel (x, y, z) is scene (x, -z, y) × 1000. */
 const PPM = 1000;
 
-/** The scenario the page's `?scene=` names. */
-export const scenario = scenarioFor(globalThis.location?.search ?? "");
-
 /** What the page controls: joint targets, the demo and the camera. */
 export const controls = {
 	/** Joint targets in `JOINTS` order (the gripper drives both fingers). */
 	targets: [...HOME],
-	/** Run the scenario's demo. */
+	/** Run the task's demo. */
 	demo: true,
-	camera: { yaw: -38, pitch: 24, distance: 1900 },
+	camera: { yaw: -38, pitch: 24, distance: 620 },
 };
 
 /** The live world, once the composition is built (the page reads it). */
@@ -59,24 +57,41 @@ export function restartDemo(): void {
 // Looks.
 // ---------------------------------------------------------------------------
 
-const ARM_BODIES = new Set(["turret", "upper", "fore", "wrist", "hand"]);
+/** The arm's bodies, as its MJCF names them. */
+const ARM_BODIES = new Set([
+	"base",
+	"shoulder",
+	"upper_arm",
+	"lower_arm",
+	"wrist",
+	"gripper",
+	"moving_jaw_so101_v1",
+]);
 
-/** Gloss white arm, satin graphite fingers, matte gravel, satin objects. */
+/** `?colliders` on the page draws what the arm collides as, in place of its meshes. */
+const COLLIDERS = new URLSearchParams(globalThis.location?.search ?? "").has(
+	"colliders",
+);
+
+/**
+ * The arm drawn from its visual meshes in satin printed white (its
+ * colliders, hulls and jaw pads, stay unseen), the task's objects satin.
+ */
 function look(shape: SteelShape): SteelShapeStyle | false {
 	// The floor draws its own checker.
 	if (shape.type === "plane") return false;
 	const castShadow = true;
-	if (shape.body && ARM_BODIES.has(shape.body))
+	if (shape.body && ARM_BODIES.has(shape.body)) {
+		if (shape.visual === COLLIDERS) return false;
 		return {
 			castShadow,
-			roughness: 0.3,
-			clearcoat: 0.6,
-			clearcoatRoughness: 0.2,
+			color: "#eeece6",
+			roughness: 0.45,
+			clearcoat: 0.3,
+			clearcoatRoughness: 0.3,
 		};
-	if (shape.body && (FINGERS as readonly string[]).includes(shape.body))
-		return { castShadow, roughness: 0.45, metallic: 0.3 };
-	if (shape.body?.startsWith("pebble")) return { castShadow, roughness: 0.85 };
-	// The arm's base, pedestals and rims: furniture on the floor.
+	}
+	// The pad: furniture on the floor.
 	if (!shape.body) return { castShadow, roughness: 0.55, metallic: 0.1 };
 	return { castShadow, roughness: 0.4, clearcoat: 0.3 };
 }
@@ -99,10 +114,10 @@ function floor(): LayoutNode {
 		height: 4,
 		depth: 10 * PPM,
 		radius: 0,
-		// Projected in world space, a tile every 50 cm: 25 cm squares.
+		// Projected in world space, a tile every 20 cm: 10 cm squares.
 		texture: Layer.shader({ width: WIDTH, height: HEIGHT, fragment: CHECKER }),
 		triplanar: true,
-		triplanarScale: 256 / (0.5 * PPM),
+		triplanarScale: 256 / (0.2 * PPM),
 		roughness: 0.55,
 		castShadow: false,
 	}) as LayoutNode;
@@ -117,8 +132,8 @@ const rad = (deg: number) => (deg * Math.PI) / 180;
 const orbit = (fn: () => number) =>
 	Signal.builder({ type: "custom", fn: () => fn() });
 
-/** What the camera circles: just in front of the arm. */
-const TARGET = { x: 330, y: -180, z: 0 };
+/** What the camera circles: in front of the arm, at the cube's height. */
+const TARGET = { x: 160, y: -70, z: 0 };
 
 function orbitCamera(): LayoutNode {
 	const { camera } = controls;
@@ -162,7 +177,9 @@ function orbitCamera(): LayoutNode {
 /** The page's background. */
 export const BACKGROUND = "#141518";
 
-export default async function robotLab(): Promise<Composition> {
+export default async function robotLab(
+	solver: SteelSolverOptions = task.SOLVER,
+): Promise<Composition> {
 	const comp = new Composition({
 		width: WIDTH,
 		height: HEIGHT,
@@ -174,15 +191,15 @@ export default async function robotLab(): Promise<Composition> {
 		fps: FPS,
 		frames: FRAMES,
 		pixelsPerMeter: PPM,
-		solver: scenario.solver,
-		build(scene) {
+		solver,
+		async build(scene, load) {
 			scene.addGroundPlane({ mu: 0.9 });
-			addArm(scene);
-			scenario.build(scene);
+			await addSo101(scene, load);
+			task.build(scene);
 		},
 		control(frame, state) {
 			if (controls.demo && world) {
-				demo ??= new Demo(scenario.demo(), controls.targets);
+				demo ??= new Demo(task.demo(), controls.targets);
 				if (demo.done) controls.demo = false;
 				else controls.targets = demo.targets(world, frame);
 			}
@@ -230,7 +247,7 @@ export default async function robotLab(): Promise<Composition> {
 		floor(),
 		...lab.layers({ style: look }),
 	] as LayoutNode[]);
-	// Press on a block, a peg or a pebble and pull it around on Steel's spring.
+	// Press on the cube and pull it around on Steel's spring.
 	drag = lab.draggable(comp.input);
 	return comp;
 }

@@ -159,10 +159,6 @@
 		"zod": "^4.3.6"
 	},
 	"optionalDependencies": {
-		"@dimforge/rapier2d-deterministic-compat": "0.21.0",
-		"@dimforge/rapier3d-deterministic-compat": "0.21.0",
-		"@mujoco/mujoco": "4.0.1",
-		"@skild-ai/steel-webgpu": "0.1.0",
 		"onnxruntime-web": "^1.24.0"
 	},
 	"devDependencies": {
@@ -219,6 +215,7 @@
 		"@framefields/node-vision": "workspace:*",
 		"@framefields/renderer": "workspace:*",
 		"@framefields/renderers": "workspace:*",
+		"@framefields/steel": "workspace:*",
 		"@framefields/storage": "workspace:*",
 		"@framefields/tensor-webgpu": "workspace:*",
 		"@framefields/tsconfig": "workspace:*",

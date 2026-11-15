@@ -1,7 +1,7 @@
 /**
  * Randomized scenes from the scenario sampler: varied shapes, surfaces
  * (matte, plastic, metal, glass), pattern textures, lighting rigs and
- * cameras, objects either dropped (Rapier) or resting still.
+ * cameras, objects either dropped (Steel) or resting still.
  */
 import { scenario } from "../sampler.js";
 

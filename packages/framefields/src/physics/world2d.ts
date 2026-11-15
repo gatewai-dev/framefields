@@ -300,7 +300,8 @@ export interface PhysicsWallsOptions {
 }
 
 /**
- * A deterministic 2D rigid-body world (Rapier) in layer pixels. Build it,
+ * A 2D rigid-body world (Steel, on the GPU; a run repeats bit for bit on one
+ * GPU) in layer pixels. Build it,
  * add bodies from layers, then `simulate()`: each body's layer is bound to
  * its simulated `x` / `y` / `rotation`, and every body exposes signals
  * (`impact`, `speed`, …) for driving anything else. The simulation runs

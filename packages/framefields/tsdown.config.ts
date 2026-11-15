@@ -49,8 +49,6 @@ export default defineConfig({
 		/^@napi-rs\//,
 		/^@resvg\//,
 		/^@mediabunny\//,
-		/^@dimforge\//,
-		/^@mujoco\//,
 		/^@lottiefiles\//,
 		"mediabunny",
 		"onnxruntime-node",

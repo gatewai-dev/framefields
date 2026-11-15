@@ -6,7 +6,13 @@
 		"useIgnoreFile": true
 	},
 	"files": {
-		"ignoreUnknown": true
+		"ignoreUnknown": true,
+		"includes": [
+			"**",
+			"!packages/steel/src/*.js",
+			"!packages/steel/src/*.d.ts",
+			"!packages/steel/src/sceneTypes.ts"
+		]
 	},
 	"formatter": {
 		"enabled": true,

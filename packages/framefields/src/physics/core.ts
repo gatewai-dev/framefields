@@ -102,7 +102,12 @@ export interface BodyCommonOptions {
 	gravityScale?: number;
 	/** Never rotates. */
 	lockRotation?: boolean;
-	/** Continuous collision detection for very fast bodies (default false). */
+	/**
+	 * For very fast bodies (default false): contacts are kept from 1 m away, so a
+	 * body moving up to 1 m per solver step never passes through a thin wall.
+	 * A bounce (restitution) starts in the step the body would reach the wall,
+	 * so up to one step's travel before it.
+	 */
 	ccd?: boolean;
 	/** Collides with nothing; still moves, still reports contacts (triggers). */
 	sensor?: boolean;
@@ -351,6 +356,9 @@ export abstract class WorldCore<
 	private liveMode = false;
 	private stepper?: Stepper<B, V, R>;
 	private chain: Promise<void> = Promise.resolve();
+	/** The offline run, once started. */
+	private running?: Promise<void>;
+	private simulated = false;
 
 	protected constructor(
 		protected readonly sim: SimWorld<V, SimBody<V, R>, unknown>,
@@ -420,7 +428,7 @@ export abstract class WorldCore<
 			throw new Error(
 				`Physics: frame ${f}'s state was not kept; pass \`keepStates: [${f}]\` (or \`true\` for every frame) to the world.`,
 			);
-		this.ensureSimulated();
+		this.assertSimulated();
 		const state = this.states.get(f);
 		if (!state)
 			throw new Error(
@@ -442,7 +450,7 @@ export abstract class WorldCore<
 
 	/** First contacts so far (all of them once simulated), in frame order. */
 	get collisions(): ReadonlyArray<PhysicsCollision<B> & { body: B }> {
-		this.ensureSimulated();
+		this.assertSimulated();
 		return this.allCollisions;
 	}
 
@@ -451,25 +459,28 @@ export abstract class WorldCore<
 		return this.worldRecording.signal("impact");
 	}
 
-	/** Runs the whole simulation now (once) and binds every body's layer per its `output`. */
-	simulate(): this {
+	/**
+	 * Runs the whole simulation (once) and binds every body's layer per its
+	 * `output`. Await it before rendering or reading the run.
+	 */
+	async simulate(): Promise<this> {
 		if (this.liveMode)
 			throw new Error(
 				"Physics: this world is live; it steps as frames render.",
 			);
-		this.ensureSimulated();
+		await this.run();
 		return this;
 	}
 
 	/** Like {@link simulate}, but writes keyframes for every body whose `output` was left at its default. */
-	bakeKeyframes(options: PhysicsBakeOptions = {}): this {
+	async bakeKeyframes(options: PhysicsBakeOptions = {}): Promise<this> {
 		if (this.locked) {
 			throw new Error(
-				"Physics: bakeKeyframes() must come before simulate(), live() or reading any body signal.",
+				"Physics: bakeKeyframes() must come before simulate() or live().",
 			);
 		}
 		this.bakeDefault = options;
-		this.ensureSimulated();
+		await this.run();
 		return this;
 	}
 
@@ -522,13 +533,13 @@ export abstract class WorldCore<
 			);
 			if (!this.stepper) {
 				await this.prepareInputs?.(this.startFrame);
-				this.stepper = this.begin();
+				this.stepper = await this.begin();
 			}
 			const st = this.stepper;
 			while (st.current < target) {
 				const next = st.current + 1;
 				await this.prepareInputs?.(this.startFrame + next);
-				this.stepFrame(st, next);
+				await this.stepFrame(st, next);
 			}
 			if (st.current === this.frames - 1 && !st.freed) {
 				st.freed = true;
@@ -543,7 +554,7 @@ export abstract class WorldCore<
 
 	protected newRecording(): Recording {
 		return new Recording(this.startFrame + this.frames, this.fps, () =>
-			this.ensureSimulated(),
+			this.assertSimulated(),
 		);
 	}
 
@@ -609,19 +620,35 @@ export abstract class WorldCore<
 		});
 	}
 
-	protected ensureSimulated(): void {
-		if (this.locked) return;
+	/** The offline run, once: every frame, then the layers bound and the hooks run. */
+	private run(): Promise<void> {
+		if (this.running) return this.running;
+		this.assertOpen();
 		this.locked = true;
-		const st = this.begin();
-		for (let f = st.current + 1; f < this.frames; f++) this.stepFrame(st, f);
-		st.freed = true;
-		this.sim.free();
-		for (const body of this.bodies) this.bind(body);
-		for (const hook of this.simulatedHooks) hook();
+		this.running = (async () => {
+			const st = await this.begin();
+			for (let f = st.current + 1; f < this.frames; f++)
+				await this.stepFrame(st, f);
+			st.freed = true;
+			this.sim.free();
+			for (const body of this.bodies) this.bind(body);
+			for (const hook of this.simulatedHooks) hook();
+			this.simulated = true;
+		})();
+		return this.running;
+	}
+
+	/** Reading an offline run needs it simulated; a live world's frames fill in as it steps. */
+	protected assertSimulated(): void {
+		if (this.liveMode || this.simulated) return;
+		throw new Error(
+			"Physics: `await world.simulate()` before rendering or reading the run (or make the world live).",
+		);
 	}
 
 	/** Records frame 0 and sets every channel to it, so frames not simulated yet hold the start pose. */
-	private begin(): Stepper<B, V, R> {
+	private async begin(): Promise<Stepper<B, V, R>> {
+		await this.sim.start(1 / (this.fps * this.substeps));
 		const { startFrame } = this;
 		const bodies = this.bodies;
 		const bySim = new Map<SimBody<V, R>, B>();
@@ -651,8 +678,8 @@ export abstract class WorldCore<
 			hidden: new Set(),
 		};
 		for (const b of this.vanishing()) b.recording.channel("visible").fill(1);
-		if (this.from) this.restore(st, this.from);
-		else this.keepState(st, 0);
+		if (this.from) await this.restore(st, this.from);
+		else await this.keepState(st, 0);
 		return st;
 	}
 
@@ -666,7 +693,10 @@ export abstract class WorldCore<
 	}
 
 	/** Puts the stepper where `from` was: the simulation, history, impacts, contacts. */
-	private restore(st: Stepper<B, V, R>, from: PhysicsState): void {
+	private async restore(
+		st: Stepper<B, V, R>,
+		from: PhysicsState,
+	): Promise<void> {
 		const bodies = this.bodies;
 		if (from.bodies.length !== bodies.length)
 			throw new Error(
@@ -676,7 +706,7 @@ export abstract class WorldCore<
 			throw new Error(
 				"Physics: a world with fracture() cannot continue `from` a state yet.",
 			);
-		this.sim.restore(from.snapshot);
+		await this.sim.restore(from.snapshot);
 		const end = this.startFrame + from.frame;
 		bodies.forEach((b, i) => {
 			const saved = from.bodies[i];
@@ -708,14 +738,14 @@ export abstract class WorldCore<
 	}
 
 	/** Keeps the state after simulation frame `f`, when asked to. */
-	private keepState(st: Stepper<B, V, R>, f: number): void {
+	private async keepState(st: Stepper<B, V, R>, f: number): Promise<void> {
 		const keep = this.keepStates;
 		if (keep === false || (keep !== true && !keep.has(f))) return;
 		const end = this.startFrame + f;
 		const index = new Map(this.bodies.map((b, i) => [b, i]));
 		this.states.set(f, {
 			frame: f,
-			snapshot: this.sim.snapshot(),
+			snapshot: await this.sim.snapshot(),
 			bodies: this.bodies.map((b) => ({
 				channels: Object.fromEntries(
 					[...b.recording.channels].map(([k, v]) => [k, v.slice(0, end + 1)]),
@@ -737,7 +767,7 @@ export abstract class WorldCore<
 		});
 	}
 
-	private stepFrame(st: Stepper<B, V, R>, f: number): void {
+	private async stepFrame(st: Stepper<B, V, R>, f: number): Promise<void> {
 		const { fps, startFrame, substeps } = this;
 		const dt = 1 / (fps * substeps);
 		const bodies = this.bodies;
@@ -815,7 +845,7 @@ export abstract class WorldCore<
 					this.lerpRotation(from.rotation, to.rotation, k),
 				);
 			}
-			this.sim.step(dt);
+			await this.sim.step(dt);
 			for (const [sa, sb] of this.sim.drainCollisionStarts()) {
 				const a = st.bySim.get(sa);
 				const b = st.bySim.get(sb);
@@ -885,7 +915,7 @@ export abstract class WorldCore<
 		this.worldRecording.channel("impact")[frame] = loudest;
 		for (const hook of this.stepHooks) hook(f, pairs);
 		st.current = f;
-		this.keepState(st, f);
+		await this.keepState(st, f);
 	}
 
 	/** Applies one intervention as its frame starts. */

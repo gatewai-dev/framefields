@@ -6,7 +6,7 @@
  * just before it renders, and the live 3D physics world steps to that frame
  * right after, so the preview starts at once and fills in as it plays.
  *
- * - Each card is a 3D glass slab (Rapier rigid body) that refracts
+ * - Each card is a 3D glass slab (Steel rigid body) that refracts
  *   everything behind it, with its word in solid blue welded in front.
  * - Her arms and head are kinematic colliders that follow the tracked pose;
  *   her silhouette (dress included) pushes the embers out of the way.

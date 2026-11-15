@@ -40,9 +40,9 @@ const track = (s: { get(ctx?: never): number }) =>
 describe("branching", () => {
 	it("continues from a kept state exactly as the original run", async () => {
 		const source = await scene({ keepStates: [25] });
-		source.world.simulate();
+		await source.world.simulate();
 		const branch = await scene({ from: source.world.state(25) });
-		branch.world.simulate();
+		await branch.world.simulate();
 		for (const k of ["a", "b"] as const) {
 			expect(track(branch[k].y)).toEqual(track(source[k].y));
 			expect(track(branch[k].rotateZ)).toEqual(track(source[k].rotateZ));
@@ -55,10 +55,10 @@ describe("branching", () => {
 
 	it("replays the source up to the branch, then diverges with interventions", async () => {
 		const source = await scene({ keepStates: true });
-		source.world.simulate();
+		await source.world.simulate();
 		const branch = await scene({ from: source.world.state(20) });
 		branch.world.at(30).teleport(branch.a, [600, 100, 0]);
-		branch.world.simulate();
+		await branch.world.simulate();
 		expect(track(branch.a.x).slice(0, 30)).toEqual(
 			track(source.a.x).slice(0, 30),
 		);
@@ -70,6 +70,7 @@ describe("branching", () => {
 		const { world } = await scene();
 		expect(() => world.state(10)).toThrow("keepStates: [10]");
 		const source = await scene({ keepStates: [10] });
+		await source.world.simulate();
 		const state = source.world.state(10);
 		const other = await Physics.world3d({
 			fps: FPS,
@@ -77,7 +78,7 @@ describe("branching", () => {
 			from: state,
 		});
 		other.body(Layer3D.sphere({ radius: 10 }));
-		expect(() => other.simulate()).toThrow(
+		await expect(other.simulate()).rejects.toThrow(
 			"has 3 bodies, this world 1 (grounds and walls count)",
 		);
 		const late = await scene({ from: state });
@@ -109,9 +110,9 @@ describe("branching", () => {
 			return { world, box };
 		};
 		const source = await build({ keepStates: [15] });
-		source.world.simulate();
+		await source.world.simulate();
 		const branch = await build({ from: source.world.state(15) });
-		branch.world.simulate();
+		await branch.world.simulate();
 		expect(track(branch.box.y)).toEqual(track(source.box.y));
 	});
 });
@@ -120,7 +121,7 @@ describe("interventions", () => {
 	it("lets a body fall through the ground while passing through", async () => {
 		const { world, a } = await scene();
 		world.at(10).passThrough(a);
-		world.simulate();
+		await world.simulate();
 		// The ground's top is y = 400: a 30 px ball rests at 370 or sinks below.
 		expect(at(a.y, 59)).toBeGreaterThan(450);
 	});
@@ -128,14 +129,14 @@ describe("interventions", () => {
 	it("collides again after `until`", async () => {
 		const { world, a } = await scene();
 		world.at(2).passThrough(a, { until: 4 });
-		world.simulate();
+		await world.simulate();
 		expect(at(a.y, 59)).toBeLessThan(400);
 	});
 
 	it("flips gravity, vanishes a body, and lists what it did", async () => {
 		const { world, a, b } = await scene();
 		world.at(20).gravity([0, -2400, 0]).vanish(b);
-		world.simulate();
+		await world.simulate();
 		expect(at(a.vy, 40)).toBeLessThan(0);
 		// A vanished body stops where it was and its layer goes transparent.
 		expect(at(b.y, 59)).toBe(at(b.y, 20));

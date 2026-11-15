@@ -1,26 +1,21 @@
 /**
- * Reacher (MuJoCo): a two-joint arm sweeping over a table with a cube, seen
+ * Reacher (Steel): a two-joint arm sweeping over a table with a cube, seen
  * from a fixed front camera and a wrist camera at its tip. Each seed scripts
  * a sweep from one pose to another; `reacherEpisode` turns the run into a
- * LeRobot episode (joint state, actuator actions, velocities, sensors, both
+ * LeRobot episode (joint state, drive targets as actions, velocities, both
  * cameras' videos).
  */
-import { Composition, Layer, type LayoutNode, Physics } from "framefields";
+import { Composition, Layer, Physics } from "framefields";
 import {
 	type LeRobotEpisode,
-	mujocoEpisode,
 	random,
+	steelEpisode,
 } from "framefields/datasets";
 
 const MJCF = `<mujoco model="reacher">
-  <option timestep="0.002"/>
-  <asset>
-    <texture name="grid" type="2d" builtin="checker" rgb1="0.25 0.27 0.3" rgb2="0.4 0.42 0.45" width="64" height="64"/>
-    <material name="floor" texture="grid" texrepeat="6 6" texuniform="true"/>
-  </asset>
+  <compiler angle="radian"/>
   <worldbody>
-    <light pos="0 0 2"/>
-    <geom name="floor" type="plane" size="0.6 0.6 0.01" material="floor"/>
+    <geom name="floor" type="plane" size="0.6 0.6 0.01" rgba="0.3 0.32 0.36 1"/>
     <camera name="front" pos="0 -0.9 0.55" xyaxes="1 0 0 0 0.52 0.85" fovy="50"/>
     <body name="base" pos="0 0 0.05">
       <geom name="base" type="cylinder" size="0.05 0.05" rgba="0.2 0.2 0.25 1"/>
@@ -30,7 +25,6 @@ const MJCF = `<mujoco model="reacher">
         <body name="lower" pos="0.2 0 0">
           <joint name="elbow" type="hinge" axis="0 0 1" damping="0.5" range="-2.5 2.5"/>
           <geom name="lower" type="capsule" fromto="0 0 0 0.18 0 0" size="0.018" rgba="0.9 0.6 0.2 1"/>
-          <site name="tip" pos="0.18 0 0" size="0.02"/>
           <camera name="wrist" pos="0.18 0 0.12" xyaxes="0 -1 0 1 0 0.4" fovy="70"/>
         </body>
       </body>
@@ -44,14 +38,18 @@ const MJCF = `<mujoco model="reacher">
     <position name="shoulder" joint="shoulder" kp="4"/>
     <position name="elbow" joint="elbow" kp="4"/>
   </actuator>
-  <sensor>
-    <jointpos name="shoulder_pos" joint="shoulder"/>
-    <jointpos name="elbow_pos" joint="elbow"/>
-    <touch name="tip_touch" site="tip"/>
-  </sensor>
 </mujoco>`;
 
 export const REACHER_CLIP = { fps: 24, frames: 72, width: 192, height: 144 };
+
+/** Each body's color (Steel's MJCF loader keeps no `rgba`); the floor is the world's. */
+const COLORS: Record<string, string> = {
+	world: "#4d525c",
+	base: "#33333f",
+	upper: "#e6801a",
+	lower: "#e69933",
+	cube: "#d91a26",
+};
 
 /** Smoothly from `a` to `b` as `t` goes 0 → 1. */
 const ease = (a: number, b: number, t: number) =>
@@ -71,16 +69,20 @@ export function reacherSweep(seed: number): {
 export async function reacherEpisode(seed: number): Promise<LeRobotEpisode> {
 	const { fps, frames, width, height } = REACHER_CLIP;
 	const { from, to } = reacherSweep(seed);
-	const world = await Physics.mujoco({
-		mjcf: MJCF,
+	const world = await Physics.steel({
 		fps,
 		frames,
 		pixelsPerMeter: 600,
-		control: (frame) => {
+		build: async (scene, load) => {
+			await load.mjcf(scene, MJCF);
+		},
+		control: (frame, s) => {
 			const t = Math.min(1, frame / (frames * 0.8));
-			return [ease(from[0], to[0], t), ease(from[1], to[1], t)];
+			s.setJointTarget("shoulder", ease(from[0], to[0], t));
+			s.setJointTarget("elbow", ease(from[1], to[1], t));
 		},
 	});
+	await world.simulate();
 	const view = (camera: string) => {
 		const c = new Composition({
 			width,
@@ -101,11 +103,14 @@ export async function reacherEpisode(seed: number): Promise<LeRobotEpisode> {
 				targetZ: 0,
 				intensity: 0.9,
 			}),
-			...(world.layers().layers as LayoutNode[]),
+			...world.layers({
+				planeSize: 1.2,
+				style: (shape) => ({ color: COLORS[shape.body ?? "world"] }),
+			}),
 		]);
 		return c;
 	};
-	return mujocoEpisode(world, {
+	return steelEpisode(world, {
 		task: "Sweep the arm across the table.",
 		cameras: { front: view("front"), wrist: view("wrist") },
 	});

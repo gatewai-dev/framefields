@@ -41,7 +41,7 @@ describe("Physics.world2d", () => {
 		world.ground({ y: 1000 });
 		const layer = card("a", 860, 100);
 		const body = world.body(layer, { restitution: 0 });
-		world.simulate();
+		await world.simulate();
 
 		expect(at(body.y, 0)).toBeCloseTo(100, 3);
 		// Rests on the ground: bottom edge at y = 1000.
@@ -65,7 +65,7 @@ describe("Physics.world2d", () => {
 		});
 		const ground = world.ground({ y: 1000 });
 		const body = world.body(card("a", 860, 500), { restitution: 0 });
-		world.simulate();
+		await world.simulate();
 
 		expect(body.collisions.length).toBeGreaterThan(0);
 		const hit = body.collisions[0];
@@ -96,7 +96,7 @@ describe("Physics.world2d", () => {
 					},
 				),
 			);
-			world.simulate();
+			await world.simulate();
 			return bodies.flatMap((b) => [
 				at(b.x, 119),
 				at(b.y, 119),
@@ -115,7 +115,7 @@ describe("Physics.world2d", () => {
 			scale: 1.5,
 		});
 		const body = world.body(layer);
-		world.simulate();
+		await world.simulate();
 		expect(at(body.x, 1)).toBeCloseTo(300, 3);
 		expect(at(body.y, 1)).toBeCloseTo(400, 3);
 		expect(at(body.rotation, 1)).toBeCloseTo(30, 3);
@@ -138,7 +138,7 @@ describe("Physics.world2d", () => {
 			startFrame: 100,
 		});
 		const body = world.body(card("a", 0, 0), { startFrame: 10 });
-		world.simulate();
+		await world.simulate();
 		expect(at(body.y, 0)).toBe(0);
 		expect(at(body.y, 110)).toBe(0);
 		expect(at(body.y, 112)).toBeGreaterThan(0);
@@ -171,7 +171,7 @@ describe("Physics.world2d", () => {
 			shape: "circle",
 			size: [100, 100],
 		});
-		world.simulate();
+		await world.simulate();
 		expect(at(ball.y, 89) + 200).toBeCloseTo(1000, 0);
 		expect(at(star.y, 89)).toBeGreaterThan(600);
 		expect(at(text.centerY, 89)).toBeCloseTo(950, 0);
@@ -182,7 +182,7 @@ describe("Physics.world2d", () => {
 		world.ground({ y: 1000 });
 		const layer = card("a", 860, 100);
 		const body = world.body(layer, { restitution: 0, lockRotation: true });
-		world.bakeKeyframes();
+		await world.bakeKeyframes();
 
 		const tracks = tracksOf(layer);
 		expect(tracks.map((t) => t.prop)).toEqual(["x", "y"]);
@@ -210,7 +210,7 @@ describe("Physics.world2d", () => {
 			},
 		});
 		const target = world.body(card("t", 500, 400));
-		world.simulate();
+		await world.simulate();
 		expect(at(pusher.x, 30)).toBeCloseTo(600, 0);
 		expect(at(target.x, 59)).toBeGreaterThan(700);
 	});
@@ -219,12 +219,13 @@ describe("Physics.world2d", () => {
 		const world = await Physics.world2d({ fps: FPS, frames: 60, gravity: 0 });
 		const pushed = world.body(card("a", 0, 0));
 		world.force(pushed, { x: (frame) => (frame < 30 ? 600 : 0) });
-		const kicked = world.body(card("b", 0, 300));
+		// Each body clear of the others' paths (a collision would trade momentum).
+		const kicked = world.body(card("b", 2200, 300));
 		world.impulse(kicked, 10, [0, -900]);
-		const swing = world.body(card("c", 1000, 0), { gravityScale: 1 });
-		world.pin(swing, [1000, 50]);
+		const swing = world.body(card("c", 1500, 0), { gravityScale: 1 });
+		world.pin(swing, [1500, 50]);
 		world.force(swing, { y: 2400 });
-		world.simulate();
+		await world.simulate();
 		expect(at(pushed.vx, 29)).toBeCloseTo(580, -1);
 		expect(at(pushed.vx, 59)).toBeCloseTo(at(pushed.vx, 31), 1);
 		expect(at(kicked.vy, 9)).toBe(0);
@@ -235,8 +236,23 @@ describe("Physics.world2d", () => {
 		);
 		expect(Math.max(...swingAngles)).toBeGreaterThan(60);
 		expect(
-			Math.hypot(at(swing.centerX, 59) - 1000, at(swing.centerY, 59) - 50),
+			Math.hypot(at(swing.centerX, 59) - 1500, at(swing.centerY, 59) - 50),
 		).toBeCloseTo(100, -1);
+	});
+
+	it("hangs a body from a rope that falls slack until taut", async () => {
+		const world = await Physics.world2d({ fps: FPS, frames: 60 });
+		const weight = world.body(card("w", 400, 100));
+		// Anchored 300 px above the card's center, the rope 400 px long.
+		world.rope(weight, [500, -150], { anchorA: [500, 150], length: 400 });
+		await world.simulate();
+		const reach = (f: number) =>
+			Math.hypot(at(weight.centerX, f) - 500, at(weight.centerY, f) + 150);
+		// Free fall at first (slack), then held at the rope's length.
+		expect(at(weight.centerY, 5)).toBeGreaterThan(150 + 5);
+		for (let f = 0; f < 60; f++) expect(reach(f)).toBeLessThan(400 * 1.01);
+		expect(reach(59)).toBeCloseTo(400, -1);
+		expect(Math.abs(at(weight.vy, 59))).toBeLessThan(30);
 	});
 
 	it("pushes bodies with a position-dependent field", async () => {
@@ -248,7 +264,7 @@ describe("Physics.world2d", () => {
 		world.field((s) => [s.x < 960 ? -1200 : 1200, 0], {
 			bodies: [left, right],
 		});
-		world.simulate();
+		await world.simulate();
 		expect(at(left.vx, 29)).toBeLessThan(-1000);
 		expect(at(right.vx, 29)).toBeGreaterThan(1000);
 		expect(at(still.vx, 29)).toBe(0);
@@ -256,16 +272,18 @@ describe("Physics.world2d", () => {
 		expect(at(left.impact, 29)).toBe(0);
 	});
 
-	it("rejects layers without a position and locks after simulating", async () => {
+	it("rejects layers without a position, reads after simulating and locks", async () => {
 		const world = await Physics.world2d({ fps: FPS, frames: 2 });
 		expect(() => world.body(Layer.box({ width: 10, height: 10 }))).toThrow(
 			/x.*y/,
 		);
 		const b = world.body(card("a", 0, 0));
-		// Holding a signal is fine; reading a value runs the simulation and locks.
+		// Holding a signal is fine; reading it needs the run.
 		const y = b.y;
 		world.body(card("b", 0, 0));
-		at(y, 0);
+		expect(() => at(y, 0)).toThrow(/await world.simulate/);
+		await world.simulate();
+		expect(at(y, 0)).toBe(0);
 		expect(() => world.body(card("c", 0, 0))).toThrow(/already started/);
 	});
 });
@@ -302,7 +320,7 @@ describe("live worlds", () => {
 
 	it("steps on demand and matches simulate() exactly, in any request order", async () => {
 		const batch = await scene();
-		batch.world.simulate();
+		await batch.world.simulate();
 
 		const live = await scene();
 		const comp = host();
@@ -348,7 +366,7 @@ describe("live worlds", () => {
 		world.live(comp, { inputs: [{ ready: async (f) => void seen.push(f) }] });
 		await comp.render(3);
 		expect(seen).toEqual([0, 1, 2, 3]);
-		expect(() => world.simulate()).toThrow(/live/);
+		await expect(world.simulate()).rejects.toThrow(/live/);
 		expect(() => world.body(card("late", 0, 0))).toThrow(/already started/);
 	});
 });
@@ -371,7 +389,7 @@ describe("Physics.world3d", () => {
 		});
 		const s = world.body(sphere, { restitution: 0, angularDamping: 2 });
 		const b = world.body(box, { restitution: 0 });
-		world.simulate();
+		await world.simulate();
 		expect(at(s.y, 119)).toBeCloseTo(520, 0);
 		expect(at(b.y, 119)).toBeCloseTo(550, 0);
 		expect(Math.abs(at(b.rotateZ, 119)) % 90).toBeLessThan(1);
@@ -403,10 +421,39 @@ describe("Physics.world3d", () => {
 		const pill = await Physics.world2d({ fps: FPS, frames: 40 });
 		pill.ground({ y: 800 });
 		const p = pill.body(card("pill", 0, 100, { borderRadius: 50 }));
-		world.simulate();
-		pill.simulate();
+		await world.simulate();
+		await pill.simulate();
 		expect(at(slab.y, 39)).toBeGreaterThan(400);
 		expect(at(p.y, 39)).toBeGreaterThan(400);
+	});
+
+	it("stops a very fast ccd body at a thin wall that a plain one passes", async () => {
+		const shot = async (ccd: boolean) => {
+			const world = await Physics.world3d({ fps: FPS, frames: 20, gravity: 0 });
+			world.body(
+				Layer3D.roundedBox({
+					width: 2,
+					radius: 0,
+					height: 400,
+					depth: 400,
+					x: 1000,
+					y: 0,
+					z: 0,
+				}),
+				{ type: "fixed", restitution: 0 },
+			);
+			// 103 m/s: 86 cm per solver step against a 2 cm wall.
+			const ball = world.body(Layer3D.sphere({ radius: 5, x: 0, y: 0, z: 0 }), {
+				velocity: [10300, 0, 0],
+				restitution: 0,
+				ccd,
+			});
+			await world.simulate();
+			return at(ball.x, 19);
+		};
+		expect(await shot(false)).toBeGreaterThan(1000);
+		// Stopped against the wall's face.
+		expect(await shot(true)).toBeCloseTo(1000 - 1 - 5, 0);
 	});
 
 	it("locks rotation per axis", async () => {
@@ -425,7 +472,7 @@ describe("Physics.world3d", () => {
 			}),
 			{ lockRotation: { x: true, y: true }, angularVelocity: [200, 200, 0] },
 		);
-		world.simulate();
+		await world.simulate();
 		expect(Math.abs(at(card3.rotateX, 59))).toBeLessThan(0.01);
 		expect(Math.abs(at(card3.rotateY, 59))).toBeLessThan(0.01);
 	});
@@ -465,7 +512,7 @@ describe("Physics.world3d", () => {
 					}),
 				),
 			);
-			world.simulate();
+			await world.simulate();
 			return bodies.flatMap((b) => [
 				at(b.x, 89),
 				at(b.y, 89),

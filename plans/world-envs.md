@@ -45,7 +45,7 @@ checkable tasks, headless and reproducible.
 4. **Scenario sampler.** Distributions over objects, materials, lights,
    cameras and textures + seed → `Composition`. Built from procedural 3D,
    clay, primitives and the library.
-5. **MuJoCo for robots.** `Physics.mujoco` (spike done): MJCF → geoms as
+5. **Robots.** On Steel since 2026-11-15 (`plans/steel.md`); until then `Physics.mujoco`: MJCF → geoms as
    Layer3D primitives, actuator `control`, `state(frame)` / `initialState`
    branching, contacts, mesh geoms and materials; loads SO-101
    (TheRobotStudio SO-ARM100, `Simulation/SO101/scene.xml`) in 1.3 s.
@@ -96,4 +96,5 @@ checkable tasks, headless and reproducible.
 - [x] Robotics gaps: MuJoCo records qvel / act / ctrl / action / sensordata with joint, actuator and sensor names; contacts gathered from every MuJoCo step with peak normal force (a hit between frames counts); steps as mj_step2 + mj_step1 so recorded state is the frame's own; MJCF `<camera>`s as scene cameras (wrist cameras ride their body; straight-down works); tendons drawn; truth pass now drops back faces of one-sided meshes as the color pass does (a camera inside a solid); LeRobot v3.0 writer (Parquet, H.264 per camera, episodes packed per data / video file up to `dataFileSizeMb` / `videoFileSizeMb` as LeRobot's recorder, joined with `stitchChunks`, meta) + `mujocoEpisode`; env `reacher`, `pnpm lerobot`; verified with pyarrow, pandas, Hugging Face `datasets`, ffprobe and LeRobot 0.7's own `LeRobotDataset` (decoding across packed episodes, `delta_timestamps`)
 - [x] Menagerie robots: Panda, UR5e, SO-ARM100, ALOHA (its six cameras), Go2 load, render with meshes and textures, and match native MuJoCo 4.0.1 to ~1e-15 over 100 frames; `keyframe` option (Menagerie's "home"), `qvel` in `control`'s state (PD for torque robots like Go2); `MUJOCO_MENAGERIE=<checkout>` runs `mujoco-menagerie-render.test.ts`. Not drawn: MJCF skyboxes and lights (the scene's own lights apply)
 - [x] World bench v1 (`packages/envs/src/bench/`): 714 test items over four tasks (violation 200, predict 100, recreate 100, spatial 314) from fixed seeds 900000+, byte-reproducible; reference scorer; static baseline; Claude runner; Python package `framefields-envs` (pip-ready: wheel + sdist pass twine, clean installs on 3.11 / 3.14) with `framefields_envs.bench` (scorers agree with the TS ones item by item) and the Hub export (parquet per task + card with results)
+- [x] MuJoCo removed; robots on Steel (`Physics.steel`: joints, actions, MJCF cameras; `steelEpisode`; `reacher`, `so101`). Rapier removed too: film physics runs on a fork of Steel behind `PhysicsBackend` (`plans/steel.md`). The MuJoCo items above describe the engine as it was.
 - [ ] Publish: create the Hugging Face dataset repo and upload the exported folder (needs the account and approval); publish `framefields-envs` to PyPI

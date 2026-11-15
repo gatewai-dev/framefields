@@ -10,25 +10,31 @@
  * Steel's frame is MuJoCo's and Newton's: meters, z up. A point (x, y, z)
  * lands at `origin + pixelsPerMeter * (x, -z, y)` in the scene.
  */
-import { LayerAnimation } from "@framefields/compositions/program";
+import { readFile } from "node:fs/promises";
+import {
+	type AnimatableProp,
+	LayerAnimation,
+} from "@framefields/compositions/program";
+import type {
+	LoadedScene,
+	MeshData,
+	SceneBuilder,
+	Sim,
+	SimOptions,
+	SimState,
+} from "@framefields/steel";
 import {
 	ensureDevice,
 	finalizeModel3DData,
 	type Material3D,
 	type Mesh3DData,
 } from "@framefields/webgpu-renderers";
-import type {
-	LoadedScene,
-	SceneBuilder,
-	Sim,
-	SimOptions,
-	SimState,
-} from "@skild-ai/steel-webgpu";
 import { Layer, type LayoutNode } from "../index.js";
 import { type CompositionInput, type InputPick, rayPlane } from "../input.js";
 import { Layer3D, type Primitive3DNodeOptions } from "../shapes3d.js";
 import type { Quat, Vec3 } from "./backend.js";
 import { type LiveHost, Recording } from "./core.js";
+import { type MjcfCamera, mjcfCameras } from "./mjcf.js";
 import { eulerFromQuat } from "./world3d.js";
 import { ensureXmlParser } from "./xml.js";
 
@@ -79,12 +85,57 @@ export interface SteelWorldOptions {
 
 /** Steel's robot loaders, as `build` gets them. */
 export interface SteelLoaders {
-	/** An MJCF model (bodies, joints, geoms, position actuators). */
-	mjcf: typeof import("@skild-ai/steel-webgpu").loadMJCF;
-	/** A URDF robot. */
-	urdf: typeof import("@skild-ai/steel-webgpu").loadURDF;
+	/**
+	 * An MJCF model (bodies, joints, geoms, position actuators); its fixed
+	 * `<camera>`s become the world's `cameraNames`. Meshes resolve against
+	 * `baseUrl`, which may be a `file:` folder.
+	 */
+	mjcf: typeof import("@framefields/steel").loadMJCF;
+	/** A URDF robot (meshes as for `mjcf`). */
+	urdf: typeof import("@framefields/steel").loadURDF;
 	/** A USDA stage. */
-	usda: typeof import("@skild-ai/steel-webgpu").loadUSDA;
+	usda: typeof import("@framefields/steel").loadUSDA;
+}
+
+/** A joint of the scene, as Newton types it. */
+export interface SteelJoint {
+	name: string;
+	type: SteelJointType;
+	/** Where its coordinates start in `SimState.jointQ`. */
+	q: number;
+	/** Where its velocities (and dofs) start in `SimState.jointQd` and `target`. */
+	qd: number;
+	/** Its degrees of freedom. */
+	dofs: number;
+	/** A one-dof joint whose drive has a position gain (an actuated joint). */
+	driven: boolean;
+}
+
+export type SteelJointType =
+	| "prismatic"
+	| "revolute"
+	| "ball"
+	| "fixed"
+	| "free"
+	| "distance"
+	| "d6";
+
+/** A camera fixed to a body (or the world), as an MJCF `<camera>` places one. */
+export interface SteelCamera {
+	/** The body it rides; `null` (or absent) for the world. */
+	body?: string | null;
+	/** In the body's frame, m. Default [0, 0, 0]. */
+	position?: Vec3;
+	/** In the body's frame, x, y, z, w: the camera looks along its -z, +y up. Default none. */
+	quaternion?: Quat;
+	/** Vertical field of view, degrees. Default 45. */
+	fovy?: number;
+}
+
+/** What `camera()` takes. */
+export interface SteelCameraOptions {
+	/** Layer id. Default `steel-camera:<name>`. */
+	id?: string;
 }
 
 /** A shape as `layers()` describes it to `style`. */
@@ -178,11 +229,17 @@ interface BuiltScene {
 	joints: {
 		count: number;
 		label: string[];
+		type: number[];
 		q_start: number[];
 		qd_start: number[];
+		/** Per dof: the drive's position gain, and its target at the start. */
+		ke: number[];
+		target_q: number[];
 	};
 	shapes: BuiltShape[];
 	visuals: BuiltVisual[];
+	/** Newton's `JointType` names by value. */
+	joint_type_names: Record<string, number>;
 }
 
 /** Steel's geometry types (Newton's `GeoType`). */
@@ -195,6 +252,18 @@ const GEO: Record<number, SteelShapeType> = {
 };
 
 const POSE_CHANNELS = ["x", "y", "z", "rotateX", "rotateY", "rotateZ"] as const;
+/** Animated props of a camera on a body. */
+const CAMERA_CHANNELS = [
+	"cameraX",
+	"cameraY",
+	"cameraZ",
+	"targetX",
+	"targetY",
+	"targetZ",
+	"cameraRoll",
+] as const;
+/** How far ahead of a camera its look-at target sits, px. */
+const CAMERA_REACH = 1000;
 /** Frames between checks that the solver's buffers held. */
 const CHECK_EVERY = 30;
 /** Thickness of a drawn plane, px. */
@@ -234,12 +303,44 @@ function rotate(q: ArrayLike<number>, v: ArrayLike<number>): Vec3 {
 /** A quaternion in the scene's axes: the turn (x, y, z) → (x, -z, y) applied to its axis. */
 const toSceneQuat = (q: ArrayLike<number>): Quat => [q[0], -q[2], q[1], q[3]];
 
-let steelModule: Promise<typeof import("@skild-ai/steel-webgpu")> | undefined;
+const dot = (a: Vec3, b: Vec3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const cross = (a: Vec3, b: Vec3): Vec3 => [
+	a[1] * b[2] - a[2] * b[1],
+	a[2] * b[0] - a[0] * b[2],
+	a[0] * b[1] - a[1] * b[0],
+];
+const normalize = (v: Vec3): Vec3 => {
+	const l = Math.hypot(...v) || 1;
+	return [v[0] / l, v[1] / l, v[2] / l];
+};
+/** A Steel direction (z up) in scene axes (y down), unit length. */
+const sceneDirection = (v: Vec3): Vec3 => normalize([v[0], -v[2], v[1]]);
+/** `next` in degrees, moved by whole turns to sit nearest `previous`. */
+const unwrap = (previous: number, next: number) =>
+	next + 360 * Math.round((previous - next) / 360);
 
-/** Loads Steel (an optional dependency) once, on first use. */
-function loadSteel(): Promise<typeof import("@skild-ai/steel-webgpu")> {
-	steelModule ??= import("@skild-ai/steel-webgpu");
+let steelModule: Promise<typeof import("@framefields/steel")> | undefined;
+
+/** Loads Steel (bundled, in its own chunk) once, on first use. */
+function loadSteel(): Promise<typeof import("@framefields/steel")> {
+	steelModule ??= import("@framefields/steel");
 	return steelModule;
+}
+
+/**
+ * Steel's mesh loader, reading `file:` URLs too (Node's `fetch` cannot), so
+ * a robot's `baseUrl` may be a folder on disk: STL, or OBJ by extension.
+ */
+function meshLoader(
+	steel: typeof import("@framefields/steel"),
+): (url: string) => Promise<MeshData> {
+	return async (url) => {
+		if (!url.startsWith("file:")) return steel.fetchMesh(url);
+		const bytes = await readFile(new URL(url));
+		return new URL(url).pathname.toLowerCase().endsWith(".obj")
+			? steel.parseOBJ(new TextDecoder().decode(bytes))
+			: steel.parseSTL(bytes);
+	};
 }
 
 // ---------------------------------------------------------------------------
@@ -255,6 +356,37 @@ interface Part {
 	rec: Recording;
 }
 
+/** A camera on a body (-1: the world), its pose recorded per frame. */
+interface CameraPart {
+	name: string;
+	body: number;
+	position: Vec3;
+	quaternion: Quat;
+	fovy: number;
+	rec: Recording;
+}
+
+/** Newton's joint type value → its name here. */
+function jointTypes(
+	names: Record<string, number>,
+): Map<number, SteelJointType> {
+	const known = new Set<string>([
+		"prismatic",
+		"revolute",
+		"ball",
+		"fixed",
+		"free",
+		"distance",
+		"d6",
+	]);
+	const types = new Map<number, SteelJointType>();
+	for (const [name, value] of Object.entries(names)) {
+		const lower = name.toLowerCase();
+		if (known.has(lower)) types.set(value, lower as SteelJointType);
+	}
+	return types;
+}
+
 export class SteelWorld {
 	readonly fps: number;
 	readonly frames: number;
@@ -264,7 +396,16 @@ export class SteelWorld {
 	readonly bodyNames: string[];
 	/** Joint labels, in Steel's joint order. */
 	readonly jointNames: string[];
+	/** Every joint: its type, where its coordinates sit, whether a drive moves it. */
+	readonly joints: SteelJoint[];
+	/** The fixed `<camera>`s of the MJCF files `build` loaded. */
+	readonly cameraNames: string[];
 	private readonly origin: Vec3;
+	private readonly cameras: CameraPart[] = [];
+	/** Each dof's drive target now (what `setJointTarget` last set). */
+	private readonly target: Float32Array;
+	/** The targets that stepped each frame to the next. */
+	private readonly targets: Float32Array[] = [];
 	private readonly built: BuiltScene;
 	private readonly bodyIndex: Map<string, number>;
 	private readonly jointIndex: Map<string, number>;
@@ -286,6 +427,7 @@ export class SteelWorld {
 		private readonly scene: LoadedScene,
 		sim: Sim,
 		start: SimState,
+		cameras: MjcfCamera[],
 	) {
 		this.fps = options.fps;
 		this.frames = Math.max(1, Math.round(options.frames));
@@ -298,7 +440,24 @@ export class SteelWorld {
 		this.jointNames = [...this.built.joints.label];
 		this.bodyIndex = new Map(this.bodyNames.map((n, i) => [n, i]));
 		this.jointIndex = new Map(this.jointNames.map((n, i) => [n, i]));
+		const { type, q_start, qd_start, ke, target_q } = this.built.joints;
+		const types = jointTypes(this.built.joint_type_names);
+		this.joints = this.jointNames.map((name, j) => {
+			const dofs = qd_start[j + 1] - qd_start[j];
+			return {
+				name,
+				type: types.get(type[j]) ?? "d6",
+				q: q_start[j],
+				qd: qd_start[j],
+				dofs,
+				driven: dofs === 1 && (ke[qd_start[j]] ?? 0) > 0,
+			};
+		});
+		this.target = new Float32Array(qd_start[this.jointNames.length] ?? 0);
+		this.target.set(target_q.slice(0, this.target.length));
 		const length = this.startFrame + this.frames;
+		this.cameraNames = cameras.map((c) => c.name);
+		for (const c of cameras) this.addCamera(c.name, c, length);
 		const part = (p: {
 			body: number;
 			xf: number[];
@@ -322,16 +481,21 @@ export class SteelWorld {
 			gravity: options.gravity ?? [0, 0, -9.81],
 			fps: options.fps,
 		});
+		const cameras: MjcfCamera[] = [];
+		const loadMesh = meshLoader(steel);
 		await options.build(builder, {
-			mjcf: steel.loadMJCF,
-			urdf: steel.loadURDF,
+			mjcf: (b, text, robot) => {
+				cameras.push(...mjcfCameras(text));
+				return steel.loadMJCF(b, text, { loadMesh, ...robot });
+			},
+			urdf: (b, text, robot) => steel.loadURDF(b, text, { loadMesh, ...robot }),
 			usda: steel.loadUSDA,
 		});
 		const scene = builder.finalize();
 		const device = options.device ?? (await ensureDevice());
 		const sim = await steel.Sim.create(device, scene, options.solver);
 		try {
-			return new SteelWorld(options, scene, sim, await sim.state());
+			return new SteelWorld(options, scene, sim, await sim.state(), cameras);
 		} catch (error) {
 			sim.destroy();
 			throw error;
@@ -372,8 +536,19 @@ export class SteelWorld {
 
 	/** Drives a joint's (first) axis toward `position` from the next step on. */
 	setJointTarget(joint: string, position: number, velocity?: number): void {
-		const dof = this.built.joints.qd_start[this.jointOf(joint)];
-		this.command((sim) => sim.setJointTarget(dof, position, velocity));
+		const j = this.jointOf(joint);
+		this.command((sim) => this.drive(sim, j, position, velocity));
+	}
+
+	private drive(
+		sim: Sim,
+		joint: number,
+		position: number,
+		velocity?: number,
+	): void {
+		const dof = this.built.joints.qd_start[joint];
+		sim.setJointTarget(dof, position, velocity);
+		this.target[dof] = position;
 	}
 
 	/** Places a body at the next step: its center of mass at `position` (m), turned by `quaternion`. */
@@ -568,6 +743,122 @@ export class SteelWorld {
 	}
 
 	/**
+	 * Every dof's drive target that steps `frame` to the next: what
+	 * robot-learning datasets call the action at `frame` (the last frame
+	 * repeats the one before it). Indexed as `SimState.jointQd`.
+	 */
+	action(frame: number): Float32Array {
+		const f = Math.max(0, Math.min(this.targets.length - 1, Math.round(frame)));
+		return this.targets[f] ?? this.target;
+	}
+
+	/**
+	 * A scene camera at one of the MJCF's `<camera>`s (a wrist camera, a
+	 * fixed overhead one), or at `spec` on a body: it follows its pose every
+	 * frame, with its vertical field of view. Add it to the composition
+	 * that should see through it.
+	 */
+	camera(
+		camera: string | ({ name: string } & SteelCamera),
+		options: SteelCameraOptions = {},
+	): LayoutNode {
+		const name = typeof camera === "string" ? camera : camera.name;
+		let part = this.cameras.find((c) => c.name === name);
+		if (typeof camera !== "string") {
+			if (part)
+				throw new Error(`Physics.steel: there is a camera "${name}" already.`);
+			part = this.addCamera(name, camera, this.startFrame + this.frames);
+			const added = part;
+			for (const [f, s] of this.states.entries())
+				this.recordCamera(added, s, f);
+		}
+		if (!part)
+			throw new Error(
+				`Physics.steel: no camera "${name}" (cameras: ${this.cameras.map((c) => c.name).join(", ") || "none"}).`,
+			);
+		const rec = part.rec;
+		const first = (c: string) => rec.channel(c)[this.startFrame];
+		const node = Layer.camera({
+			id: options.id ?? `steel-camera:${name}`,
+			x: first("cameraX"),
+			y: first("cameraY"),
+			z: first("cameraZ"),
+			targetX: first("targetX"),
+			targetY: first("targetY"),
+			targetZ: first("targetZ"),
+			roll: first("cameraRoll"),
+			fov: part.fovy,
+		});
+		const anim = LayerAnimation.create();
+		for (const c of CAMERA_CHANNELS)
+			anim.signal(c as AnimatableProp, rec.signal(c));
+		(node as unknown as { animate(a: LayerAnimation): unknown }).animate(anim);
+		return node as unknown as LayoutNode;
+	}
+
+	private addCamera(
+		name: string,
+		spec: SteelCamera,
+		length: number,
+	): CameraPart {
+		const part: CameraPart = {
+			name,
+			body: spec.body ? this.bodyOf(spec.body) : -1,
+			position: spec.position ?? [0, 0, 0],
+			quaternion: spec.quaternion ?? [0, 0, 0, 1],
+			fovy: spec.fovy ?? 45,
+			rec: new Recording(length, this.fps, () => this.ensure()),
+		};
+		this.cameras.push(part);
+		return part;
+	}
+
+	/**
+	 * A camera's eye, a target along its view axis and the roll that turns
+	 * the scene camera's up to the camera's (it looks along its -z, +y up).
+	 */
+	private recordCamera(part: CameraPart, state: SimState, frame: number): void {
+		let p: Vec3 = part.position;
+		let q: Quat = part.quaternion;
+		if (part.body >= 0) {
+			const b = state.bodyQ.subarray(part.body * 7, part.body * 7 + 7);
+			const bq = b.subarray(3, 7);
+			const r = rotate(bq, p);
+			p = [b[0] + r[0], b[1] + r[1], b[2] + r[2]];
+			q = qmul(bq, q);
+		}
+		const up = sceneDirection(rotate(q, [0, 1, 0]));
+		let fwd = sceneDirection(rotate(q, [0, 0, -1]));
+		// Looking straight up or down leaves look-at without a right: tilt a hair toward the camera's up.
+		if (Math.abs(fwd[1]) > 0.99999)
+			fwd = normalize([
+				fwd[0] + up[0] * 1e-3,
+				fwd[1] + up[1] * 1e-3,
+				fwd[2] + up[2] * 1e-3,
+			]);
+		const eye = this.toScene(p);
+		const right0 = normalize(cross(fwd, [0, -1, 0]));
+		const up0 = cross(right0, fwd);
+		const at = this.startFrame + frame;
+		let roll = (Math.atan2(dot(up, right0), dot(up, up0)) * 180) / Math.PI;
+		if (frame > 0) roll = unwrap(part.rec.channel("cameraRoll")[at - 1], roll);
+		const values: Record<(typeof CAMERA_CHANNELS)[number], number> = {
+			cameraX: eye[0],
+			cameraY: eye[1],
+			cameraZ: eye[2],
+			targetX: eye[0] + fwd[0] * CAMERA_REACH,
+			targetY: eye[1] + fwd[1] * CAMERA_REACH,
+			targetZ: eye[2] + fwd[2] * CAMERA_REACH,
+			cameraRoll: roll,
+		};
+		for (const c of CAMERA_CHANNELS) {
+			const arr = part.rec.channel(c);
+			if (frame === 0) arr.fill(values[c]);
+			else arr[at] = values[c];
+		}
+	}
+
+	/**
 	 * Every shape and visual mesh as a layer that follows its body: spheres,
 	 * capsules, cylinders and boxes as primitives, planes as thin slabs (their
 	 * top at the plane), other hulls and meshes as flat-shaded triangles.
@@ -608,9 +899,11 @@ export class SteelWorld {
 			const style = options.style?.(shape);
 			if (style === false) return;
 			const id = `${prefix}visual:${i}`;
-			const mesh = this.scene.mesh(v.mesh);
+			// A built scene keeps its meshes in `bin` (no `mesh()`, which loaded scene folders have).
+			const pos = this.scene.f32(v.mesh.v);
+			const idx = this.scene.u32(v.mesh.i);
 			const part = this.visualParts[i];
-			const node = this.meshLayer(id, mesh.pos, mesh.idx, {
+			const node = this.meshLayer(id, pos, idx, {
 				id,
 				label: shape.body ?? "world",
 				color: shape.color,
@@ -670,6 +963,7 @@ export class SteelWorld {
 			const frame = this.states.length - 1;
 			for (const command of this.commands.splice(0)) command(sim);
 			this.options.control?.(frame, this.frameState(sim, frame));
+			this.targets[frame] = this.target.slice();
 			sim.step(1);
 			this.record(await sim.state(), frame + 1);
 			if (frame % CHECK_EVERY === 0 || frame + 2 === this.frames)
@@ -693,13 +987,12 @@ export class SteelWorld {
 	}
 
 	private frameState(sim: Sim, frame: number): SteelFrameState {
-		const { qd_start } = this.built.joints;
 		return {
 			frame,
 			time: frame / this.fps,
 			state: this.states[frame],
 			setJointTarget: (joint, position, velocity) =>
-				sim.setJointTarget(qd_start[this.jointOf(joint)], position, velocity),
+				this.drive(sim, this.jointOf(joint), position, velocity),
 			setBodyPose: (body, position, quaternion) =>
 				sim.setBodyPose(this.bodyOf(body), position, quaternion),
 			setBodyTwist: (body, twist) => sim.setBodyTwist(this.bodyOf(body), twist),
@@ -727,6 +1020,7 @@ export class SteelWorld {
 				if (frame === 0) arr.fill(values[k]);
 			});
 		}
+		for (const camera of this.cameras) this.recordCamera(camera, state, frame);
 	}
 
 	/** A part's scene pose (px, Euler degrees) from its body's. */

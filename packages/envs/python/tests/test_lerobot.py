@@ -21,7 +21,6 @@ ENVS = Path(__file__).resolve().parents[2]
 
 try:
     import datasets
-    import numpy as np
     import pandas as pd
 
     HAS_STACK = True
@@ -77,8 +76,8 @@ class LeRobotExportTest(unittest.TestCase):
         row = ds[100]
         self.assertEqual((row["episode_index"], row["frame_index"], row["index"]), (1, 28, 100))
         self.assertAlmostEqual(row["timestamp"], 28 / 24, places=5)
-        # The joint-position sensors read the state.
-        np.testing.assert_allclose(row["observation.sensors"][:2], row["observation.state"], atol=1e-5)
+        self.assertEqual(len(row["observation.state"]), 2)
+        self.assertEqual(len(row["observation.velocity"]), 2)
 
     def test_episode_and_task_tables(self) -> None:
         eps = pd.read_parquet(os.path.join(self.dir, "meta/episodes/chunk-000/file-000.parquet"))

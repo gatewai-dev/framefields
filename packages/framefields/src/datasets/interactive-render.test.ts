@@ -1,11 +1,15 @@
 /**
  * Interactive sessions: an action steers the live run (a push moves the
- * ball its way; a MuJoCo actuator follows its target), the same seed and
+ * ball its way; a Steel joint drive follows its target), the same seed and
  * actions render the same bytes, and the episode ends where it should.
  */
 import { describe, expect, it } from "vitest";
 import { Composition, Layer, Layer3D, type LayoutNode } from "../index.js";
-import { Physics } from "../physics/index.js";
+import {
+	Physics,
+	type SteelLoaders,
+	type SteelSceneBuilder,
+} from "../physics/index.js";
 import {
 	EnvSession,
 	type InteractiveEnv,
@@ -101,7 +105,7 @@ describe("EnvSession", () => {
 		expect(a[0].views[0].object?.some((id) => id > 0)).toBe(true);
 	});
 
-	it("drives a live MuJoCo model's actuator from the actions", async () => {
+	it("drives a live Steel joint from the actions", async () => {
 		const MJCF = `<mujoco>
   <worldbody>
     <body name="arm" pos="0 0 0.5">
@@ -111,6 +115,12 @@ describe("EnvSession", () => {
   </worldbody>
   <actuator><position joint="hinge" kp="20"/></actuator>
 </mujoco>`;
+		const build = async (
+			scene: SteelSceneBuilder,
+			load: SteelLoaders,
+		): Promise<void> => {
+			await load.mjcf(scene, MJCF);
+		};
 		let target = 0;
 		const arm: InteractiveEnv<object, number[]> = {
 			name: "arm",
@@ -122,12 +132,12 @@ describe("EnvSession", () => {
 			actionSpace: { type: "box", shape: [1], low: -1.5, high: 1.5 },
 			params: () => ({}),
 			async start(_params, host) {
-				const robot = await Physics.mujoco({
-					mjcf: MJCF,
+				const robot = await Physics.steel({
 					fps: 24,
 					frames: 40,
 					origin: [0, 200, 0],
-					control: () => [target],
+					build,
+					control: (_frame, s) => s.setJointTarget("hinge", target),
 				});
 				robot.live(host);
 				const c = new Composition({
@@ -146,16 +156,16 @@ describe("EnvSession", () => {
 						targetZ: 0,
 					}),
 					Layer.ambientLight("#ffffff", 1),
-					...robot.layers().layers,
+					...robot.layers(),
 				]);
 				return {
 					views: [{ name: "front", composition: c }],
 					act: (_frame, [a]) => {
 						target = a;
 					},
-					reward: (frame) => -Math.abs(robot.qpos(frame)[0] - 0.8),
+					reward: (frame) => -Math.abs(robot.joint("hinge", frame)[0] - 0.8),
 					info: (frame) => ({
-						hinge: robot.qpos(frame)[0],
+						hinge: robot.joint("hinge", frame)[0],
 						stepped: robot.steppedFrame,
 					}),
 				};
@@ -170,12 +180,13 @@ describe("EnvSession", () => {
 		expect(r.reward).toBeGreaterThan(-0.05);
 
 		// The same actions, run offline, give the same trajectory.
-		const offline = await Physics.mujoco({
-			mjcf: MJCF,
+		const offline = await Physics.steel({
 			fps: 24,
 			frames: 40,
-			control: () => [0.8],
+			build,
+			control: (_frame, s) => s.setJointTarget("hinge", 0.8),
 		});
-		expect(offline.qpos(31)[0]).toBe(r.info.hinge);
+		await offline.simulate();
+		expect(offline.joint("hinge", 31)[0]).toBe(r.info.hinge);
 	});
 });

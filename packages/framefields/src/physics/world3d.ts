@@ -403,7 +403,8 @@ export interface PhysicsRope3DOptions {
 }
 
 /**
- * A deterministic 3D rigid-body world (Rapier) for Layer3D primitives and
+ * A 3D rigid-body world (Steel, on the GPU; a run repeats bit for bit on one
+ * GPU) for Layer3D primitives and
  * models, in the 3D scene's pixels (y down). Same flow as 2D: add bodies,
  * `simulate()`, and each layer's `x/y/z` and `rotateX/Y/Z` follow the
  * simulation; bodies expose signals for everything else.

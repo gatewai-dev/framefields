@@ -1,0 +1,9 @@
+{
+	"extends": "@framefields/tsconfig/base.json",
+	"compilerOptions": {
+		"lib": ["ES2022", "ESNext", "DOM", "DOM.Iterable"],
+		"types": ["@webgpu/types", "node"]
+	},
+	"include": ["src", "test"],
+	"exclude": ["dist", "node_modules"]
+}

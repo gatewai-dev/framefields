@@ -20,9 +20,9 @@ import {
 	Input,
 } from "mediabunny";
 import { afterAll, describe, expect, it } from "vitest";
-import { Composition, Layer, type LayoutNode } from "../index.js";
+import { Composition, Layer } from "../index.js";
 import { Physics } from "../physics/index.js";
-import { LeRobotWriter, mujocoEpisode } from "./lerobot.js";
+import { LeRobotWriter, steelEpisode } from "./lerobot.js";
 
 const MJCF = `<mujoco>
   <worldbody>
@@ -33,7 +33,6 @@ const MJCF = `<mujoco>
     </body>
   </worldbody>
   <actuator><position name="hinge" joint="hinge" kp="20"/></actuator>
-  <sensor><jointpos name="angle" joint="hinge"/></sensor>
 </mujoco>`;
 
 const dir = mkdtempSync(path.join(tmpdir(), "ff-lerobot-"));
@@ -56,12 +55,15 @@ async function videoFrames(file: string): Promise<number> {
 }
 
 async function episode(target: number, task: string) {
-	const world = await Physics.mujoco({
-		mjcf: MJCF,
+	const world = await Physics.steel({
 		fps: 12,
 		frames: 12,
-		control: () => [target],
+		build: async (scene, load) => {
+			await load.mjcf(scene, MJCF);
+		},
+		control: (_frame, s) => s.setJointTarget("hinge", target),
 	});
+	await world.simulate();
 	const c = new Composition({
 		width: 64,
 		height: 48,
@@ -71,13 +73,13 @@ async function episode(target: number, task: string) {
 	c.add([
 		world.camera("front"),
 		Layer.ambientLight("#ffffff", 1),
-		...(world.layers().layers as LayoutNode[]),
+		...world.layers(),
 	]);
-	return { world, ep: mujocoEpisode(world, { task, cameras: { front: c } }) };
+	return { world, ep: steelEpisode(world, { task, cameras: { front: c } }) };
 }
 
 describe("LeRobotWriter", () => {
-	it("writes a v3.0 dataset of MuJoCo episodes", async () => {
+	it("writes a v3.0 dataset of Steel episodes", async () => {
 		const writer = new LeRobotWriter({
 			dir,
 			fps: 12,
@@ -106,7 +108,6 @@ describe("LeRobotWriter", () => {
 			"observation.state",
 			"action",
 			"observation.velocity",
-			"observation.sensors",
 			"observation.images.front",
 			"timestamp",
 			"frame_index",
@@ -125,8 +126,8 @@ describe("LeRobotWriter", () => {
 		});
 
 		// The state is the joint angle; the action, what drives the next frame.
-		expect(Array.from(a.ep.state.at(11))).toEqual([a.world.qpos(11)[0]]);
-		expect(Array.from(a.ep.action.at(0))).toEqual([0.8]);
+		expect(Array.from(a.ep.state.at(11))).toEqual(a.world.joint("hinge", 11));
+		expect(Array.from(a.ep.action.at(0))).toEqual([Math.fround(0.8)]);
 
 		const stats = JSON.parse(
 			readFileSync(path.join(dir, "meta/stats.json"), "utf8"),

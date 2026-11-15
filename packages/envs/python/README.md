@@ -97,7 +97,7 @@ pnpm bench score --data <folder> --run <run>    # the reference scorer, all four
 ## LeRobot
 
 `pnpm --filter @framefields/envs lerobot --out <dir> --seeds 0-9` writes
-reacher episodes (two cameras, joint state, actions, velocities, sensors) as a
+reacher episodes (two cameras, joint state, actions, velocities) as a
 LeRobot v3.0 dataset, episodes packed per data and video file as LeRobot's
 recorder does. `tests/test_lerobot.py` reads one back with pyarrow, Hugging
 Face `datasets` and ffprobe, and with `LeRobotDataset` itself when

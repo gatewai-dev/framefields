@@ -230,7 +230,7 @@ describe("Layer3D.terrain / sdf / scatter", () => {
 			Layer3D.sphere({ radius: 20, x: 200, y: 0, z: 40 }),
 			{ restitution: 0, angularDamping: 4, linearDamping: 2 },
 		);
-		world.simulate();
+		await world.simulate();
 		const y = ball.y.get({ frame: 89, fps: 30 } as never);
 		expect(y).toBeCloseTo(terrain.heightAt(200, 40) - 20, 0);
 	});

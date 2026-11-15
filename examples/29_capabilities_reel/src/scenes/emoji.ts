@@ -1,6 +1,6 @@
 /**
  * 03 — Emoji + physics. Thirty Noto animated emoji (each a Lottie, still playing) rain onto three
- * tilted glass bars and pile up on the floor in a Rapier world. The loudest hit each frame shakes
+ * tilted glass bars and pile up on the floor in a Steel world. The loudest hit each frame shakes
  * the stage.
  */
 import {
@@ -145,7 +145,7 @@ export async function emojiScene(): Promise<Node> {
 		});
 		return layer;
 	});
-	world.simulate();
+	await world.simulate();
 
 	return scene("emoji", BG, [
 		full({ background: Gradient.linear([WHITE, FROST], 180) }),

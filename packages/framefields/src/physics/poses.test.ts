@@ -1,7 +1,6 @@
 /**
  * Recorded poses: trajectories from another simulator, in its axes, land in
- * scene pixels by a proper rotation; a MuJoCo run replayed from its `qpos`
- * poses every geom where the simulated run did.
+ * scene pixels by a proper rotation.
  */
 import { describe, expect, it } from "vitest";
 import { Physics } from "./index.js";
@@ -97,66 +96,5 @@ describe("Physics.poses", () => {
 			bodies: { a: { position: [0, 0, 0] } },
 		});
 		expect(() => track.body("c")).toThrow('no body "c" (bodies: a)');
-	});
-});
-
-const MJCF = `<mujoco>
-  <option timestep="0.002"/>
-  <worldbody>
-    <geom name="floor" type="plane" size="0 0 0.1"/>
-    <body name="box" pos="0.5 0.2 1" euler="10 20 30">
-      <freejoint/>
-      <geom name="box" type="box" size="0.1 0.1 0.05"/>
-    </body>
-    <body name="arm" pos="-0.5 0 0.5">
-      <joint name="hinge" type="hinge" axis="0 1 0" damping="1"/>
-      <geom name="link" type="capsule" fromto="0 0 0 0.3 0 0" size="0.03"/>
-    </body>
-  </worldbody>
-  <actuator><position joint="hinge" kp="20"/></actuator>
-</mujoco>`;
-
-describe("Physics.mujoco qpos replay", () => {
-	it("poses every geom where the simulated run did", async () => {
-		const frames = 45;
-		const run = await Physics.mujoco({
-			mjcf: MJCF,
-			fps: FPS,
-			frames,
-			control: () => [0.8],
-		});
-		const qpos = Array.from({ length: frames }, (_, f) => run.qpos(f));
-		const replay = await Physics.mujoco({ mjcf: MJCF, fps: FPS, frames, qpos });
-		for (const name of ["box", "link"]) {
-			const a = run.geom(name);
-			const b = replay.geom(name);
-			for (let f = 0; f < frames; f += 4)
-				for (const c of [
-					"x",
-					"y",
-					"z",
-					"rotateX",
-					"rotateY",
-					"rotateZ",
-				] as const)
-					expect(at(b[c], f)).toBeCloseTo(at(a[c], f), 3);
-		}
-	});
-
-	it("checks the rows against the model", async () => {
-		const short = await Physics.mujoco({
-			mjcf: MJCF,
-			fps: FPS,
-			frames: 3,
-			qpos: [[0]],
-		});
-		expect(() => short.simulate()).toThrow("1 rows for 3 frames");
-		const wide = await Physics.mujoco({
-			mjcf: MJCF,
-			fps: FPS,
-			frames: 1,
-			qpos: [[0, 0]],
-		});
-		expect(() => wide.simulate()).toThrow("nq = 8");
 	});
 });

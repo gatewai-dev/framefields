@@ -42,7 +42,7 @@ describe("physics render", () => {
 		c.add(plank);
 		const world = await Physics.world2d({ fps: FPS, frames: 30, gravity: 0 });
 		const body = world.body(plank, { angularVelocity: 60 });
-		world.simulate();
+		await world.simulate();
 
 		const f = 20;
 		const img = await frame(c, f);
@@ -110,7 +110,7 @@ describe("physics render", () => {
 		});
 		world.walls({ width: 400, height: 380 });
 		const body = world.body(box, { restitution: 0 });
-		world.simulate();
+		await world.simulate();
 		flash.animate(
 			LayerAnimation.create().signal("opacity", body.impact, { multiplier: 2 }),
 		);
@@ -158,7 +158,7 @@ describe("physics render", () => {
 		const world = await Physics.world3d({ fps: FPS, frames: 60 });
 		world.ground({ y: 360 });
 		world.body(ball, { restitution: 0, angularDamping: 2 });
-		world.simulate();
+		await world.simulate();
 
 		const start = await frame(c, 0);
 		const end = await frame(c, 59);
@@ -201,7 +201,7 @@ describe("physics render", () => {
 		const world = await Physics.world3d({ fps: FPS, frames: 60 });
 		world.ground({ y: 360 });
 		world.body(shard, { restitution: 0, angularDamping: 2 });
-		world.simulate();
+		await world.simulate();
 
 		const start = await frame(c, 0);
 		const end = await frame(c, 59);

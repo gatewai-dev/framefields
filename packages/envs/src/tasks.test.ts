@@ -67,13 +67,13 @@ describe.skipIf(!existsSync(path.join(SO101, "so101_new_calib.xml")))(
 			const params = env.params(5);
 			const [view] = await env.build(params);
 			const state = view.physics?.(47) as { qpos: number[]; ctrl: number[] };
-			// Position actuators track their targets (the arm's 6 joints come first).
+			// The joint drives track their targets (the arm's 6 joints come first).
 			for (let j = 0; j < 4; j++) {
 				expect(Math.abs(state.qpos[j] - state.ctrl[j])).toBeLessThan(0.15);
 			}
 			const truth = await view.composition.renderTruth(47);
-			const layers = new Set(truth.scenes[0].objects.map((o) => o.layer));
-			expect(layers.has("mujoco:cube0")).toBe(true);
+			const labels = new Set(truth.scenes[0].objects.map((o) => o.label));
+			expect(labels.has("cube0")).toBe(true);
 			expect(truth.scenes[0].objects.length).toBeGreaterThan(15);
 		});
 	},

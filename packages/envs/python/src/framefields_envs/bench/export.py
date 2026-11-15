@@ -154,7 +154,7 @@ configs:
 # framefields world bench
 
 Physical and spatial reasoning over rendered 3D scenes, with exact answers. Every item is drawn
-from a seed by the [framefields](https://framefields.dev) engine (WebGPU rendering, Rapier rigid-body
+from a seed by the [framefields](https://framefields.dev) engine (WebGPU rendering, Steel rigid-body
 physics) and scored against the engine's own state: the simulation's poses, its interventions, its
 per-pixel object masks. Nothing is labeled by hand, and the whole set is rebuilt byte for byte from
 the code.

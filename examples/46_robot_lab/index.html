@@ -3,7 +3,7 @@
 	<head>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
-		<title>Robot lab · framefields</title>
+		<title>SO-101 lab · framefields</title>
 		<style>
 			:root {
 				color-scheme: dark;
@@ -117,26 +117,6 @@
 				border-color: #3a3d44;
 				background: #24262b;
 			}
-			#scenes {
-				display: flex;
-				flex-wrap: wrap;
-				gap: 6px;
-			}
-			#scenes a {
-				color: var(--muted);
-				text-decoration: none;
-				border: 1px solid var(--line);
-				border-radius: 999px;
-				padding: 5px 12px;
-			}
-			#scenes a:hover {
-				color: var(--text);
-			}
-			#scenes a[aria-current="page"] {
-				color: var(--text);
-				border-color: var(--accent);
-				background: rgb(242 115 26 / 0.12);
-			}
 			.toggle {
 				display: inline-flex;
 				gap: 6px;
@@ -218,10 +198,9 @@
 		</main>
 		<aside>
 			<header>
-				<h1 id="title">Robot lab</h1>
+				<h1 id="title">SO-101 lab</h1>
 				<p id="about"></p>
 			</header>
-			<nav id="scenes" aria-label="Scenes"></nav>
 			<section>
 				<h2>Arm</h2>
 				<div id="joints"></div>
@@ -234,9 +213,9 @@
 			</section>
 			<section class="help">
 				<h2>Keys</h2>
-				<kbd>Q</kbd>/<kbd>A</kbd> yaw · <kbd>W</kbd>/<kbd>S</kbd> shoulder ·
+				<kbd>Q</kbd>/<kbd>A</kbd> pan · <kbd>W</kbd>/<kbd>S</kbd> shoulder ·
 				<kbd>E</kbd>/<kbd>D</kbd> elbow · <kbd>R</kbd>/<kbd>F</kbd> wrist ·
-				<kbd>T</kbd>/<kbd>G</kbd> roll · <kbd>Space</kbd> grip. Drag an object to
+				<kbd>T</kbd>/<kbd>G</kbd> roll · <kbd>Space</kbd> jaw. Drag an object to
 				pull it around; drag empty space to orbit, scroll to zoom.
 			</section>
 			<section>

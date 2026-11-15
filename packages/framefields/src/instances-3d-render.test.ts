@@ -200,7 +200,7 @@ describe("Layer3D.instances hardware instancing", () => {
 				}),
 			);
 		}
-		physics.simulate();
+		await physics.simulate();
 
 		comp.add(
 			Layer3D.instances({

@@ -154,7 +154,7 @@ export interface ScenarioSpec {
 		fov?: Range;
 	};
 	/**
-	 * `drop`: objects fall from above with spin and settle (Rapier).
+	 * `drop`: objects fall from above with spin and settle (Steel).
 	 * `still`: they rest on the floor, upright, and nothing moves.
 	 * Default `drop`.
 	 */
@@ -573,7 +573,7 @@ export async function scenarioView(
 	const bodies = params.objects.map((o, i) =>
 		world.body(solids[i], { restitution: o.restitution, velocity: o.velocity }),
 	);
-	world.simulate();
+	await world.simulate();
 	return {
 		...view,
 		world,

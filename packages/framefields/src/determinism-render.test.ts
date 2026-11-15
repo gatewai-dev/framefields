@@ -74,7 +74,7 @@ async function scene(): Promise<Composition> {
 	const world = await Physics.world3d({ fps: FPS, frames: 48 });
 	world.ground({ y: 220 });
 	for (const body of bodies) world.body(body, { restitution: 0.4 });
-	world.simulate();
+	await world.simulate();
 	return c;
 }
 

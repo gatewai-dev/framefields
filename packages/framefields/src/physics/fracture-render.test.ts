@@ -82,7 +82,7 @@ describe("Physics.fracture", () => {
 			explosionSpeed: 300,
 			interiorColor: "#ff0000",
 		});
-		world.simulate();
+		await world.simulate();
 		expect(broken.frame).toBe(10);
 		expect(broken.pieces.length).toBeGreaterThan(8);
 
@@ -121,7 +121,7 @@ describe("Physics.fracture", () => {
 		const world = await Physics.world3d({ fps: FPS, frames: 40 });
 		const broken = world.fracture(target, { cells: 12, seed: 4 });
 		world.body(ball, { velocity: [0, 600, 0] });
-		world.simulate();
+		await world.simulate();
 		// Falling ~170 px at 600 px/s plus gravity: contact within a few frames of 0.25 s.
 		expect(broken.frame).toBeGreaterThan(4);
 		expect(broken.frame).toBeLessThan(12);
@@ -155,7 +155,7 @@ describe("Physics.fracture", () => {
 			fractureFrame: 5,
 			explosionSpeed: 200,
 		});
-		world.simulate();
+		await world.simulate();
 		const direct = await scene([target]).renderFrame({ frame: 25 });
 		// The renderer rebuilds the box from its options and fractures it again.
 		const copy = JSON.parse(
@@ -185,7 +185,7 @@ describe("Physics.fracture", () => {
 		const comp = scene([target]);
 		const world = await Physics.world3d({ fps: FPS, frames: 40, gravity: 0 });
 		const broken = world.fracture(target, { cells: 10, fractureFrame: 12 });
-		world.simulate();
+		await world.simulate();
 		expect(broken.frame).toBe(12);
 		const centroid = async (c: Composition, f: number) => {
 			const { pixels } = await decodePngPixels(
@@ -228,7 +228,7 @@ describe("Physics.fracture", () => {
 		const world = await Physics.world3d({ fps: FPS, frames: 30, gravity: 0 });
 		const broken = world.fracture(target, { cells: 8 });
 		world.body(ball);
-		world.simulate();
+		await world.simulate();
 		// The slab's right face (x + 80) meets the ball's left (C + 20) near frame 9.
 		expect(broken.frame).toBeGreaterThan(6);
 		expect(broken.frame).toBeLessThan(12);
@@ -263,7 +263,7 @@ describe("Physics.fracture", () => {
 		const comp = scene([group(target)]);
 		const world = await Physics.world3d({ fps: FPS, frames: 20, gravity: 0 });
 		world.fracture(target, { cells: 8, fractureFrame: 5 });
-		world.simulate();
+		await world.simulate();
 		// Still pieces (no burst, no gravity) stay exactly where the whole layer was.
 		const before = await comp.renderFrame({ frame: 3 });
 		const after = await comp.renderFrame({ frame: 15 });

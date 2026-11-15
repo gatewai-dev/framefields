@@ -16,9 +16,9 @@
  * episode's video is encoded on its own and the encoded frames are copied
  * into the shared file (`stitchChunks`), nothing re-encoded. Cameras
  * are compositions, so a camera sees whatever the scene renders, with the
- * engine's lighting and materials. `mujocoEpisode` makes an episode of a
- * MuJoCo run: joint positions, the actuator commands as actions,
- * velocities and sensor readings.
+ * engine's lighting and materials. `steelEpisode` makes an episode of a
+ * Steel run: joint positions, the drive targets as actions, and joint
+ * velocities.
  */
 import { mkdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -27,7 +27,7 @@ import {
 	HeadlessMediaRenderer,
 	stitchChunks,
 } from "../index.js";
-import type { MujocoWorld } from "../physics/mujoco.js";
+import type { SteelJoint, SteelWorld } from "../physics/steel.js";
 import { encodeParquet, type ParquetColumn } from "./parquet.js";
 
 /** A float32 vector per frame, and the name of each of its entries. */
@@ -706,67 +706,73 @@ const PANDAS_TASK_INDEX = JSON.stringify({
 	pandas_version: "2.2.3",
 });
 
-export interface MujocoEpisodeOptions {
+export interface SteelEpisodeOptions {
 	task: string;
 	/** Camera name → the composition seen through it. */
 	cameras: Record<string, Composition>;
-	/** Joints in the state (and velocity). Default every hinge and slide joint. */
+	/** Joints in the state (and velocity). Default every revolute and prismatic joint. */
 	joints?: string[];
-	/** Add `observation.velocity` (the joints' qvel). Default on. */
+	/** Joints in the action. Default the driven ones among `joints`. */
+	actions?: string[];
+	/** Add `observation.velocity` (the joints' velocities). Default on. */
 	velocity?: boolean;
-	/** Add `observation.sensors` (every sensor's values). Default on when the model has sensors. */
-	sensors?: boolean;
+}
+
+/** One-dof joints by name, checked. */
+function oneDof(
+	world: SteelWorld,
+	names: string[],
+	what: string,
+): SteelJoint[] {
+	return names.map((name) => {
+		const j = world.joints.find((x) => x.name === name);
+		if (!j)
+			throw new Error(
+				`steelEpisode: no joint "${name}" (joints: ${world.joints.map((x) => x.name).join(", ")})`,
+			);
+		if (j.dofs !== 1)
+			throw new Error(
+				`steelEpisode: joint "${name}" is a ${j.type} joint; the ${what} takes one-dof joints`,
+			);
+		return j;
+	});
 }
 
 /**
- * An episode of a MuJoCo run: `observation.state` the joints' positions,
- * `action` the actuator commands that step each frame to the next,
- * `observation.velocity` their velocities and `observation.sensors` the
- * sensor readings.
+ * An episode of a Steel run: `observation.state` the joints' positions,
+ * `action` the drive targets that step each frame to the next, and
+ * `observation.velocity` the joints' velocities.
  */
-export function mujocoEpisode(
-	world: MujocoWorld,
-	options: MujocoEpisodeOptions,
+export function steelEpisode(
+	world: SteelWorld,
+	options: SteelEpisodeOptions,
 ): LeRobotEpisode {
 	const joints = options.joints
-		? options.joints.map((name) => {
-				const j = world.joints.find((x) => x.name === name);
-				if (!j)
-					throw new Error(
-						`mujocoEpisode: no joint "${name}" (joints: ${world.joints.map((x) => x.name).join(", ")})`,
-					);
-				if (j.type === "free" || j.type === "ball")
-					throw new Error(
-						`mujocoEpisode: joint "${name}" is a ${j.type} joint; the state takes hinge and slide joints`,
-					);
-				return j;
-			})
-		: world.joints.filter((j) => j.type === "hinge" || j.type === "slide");
+		? oneDof(world, options.joints, "state")
+		: world.joints.filter(
+				(j) => j.type === "revolute" || j.type === "prismatic",
+			);
+	const driven = options.actions
+		? oneDof(world, options.actions, "action")
+		: joints.filter((j) => j.driven);
 	const names = joints.map((j) => j.name);
-	const pick = (data: Float64Array, adr: "qpos" | "qvel") =>
-		joints.map((j) => data[j[adr]]);
-	const sensorNames = world.sensors.flatMap((s) =>
-		s.dim === 1
-			? [s.name]
-			: Array.from({ length: s.dim }, (_, k) => `${s.name}.${k}`),
-	);
 	return {
 		task: options.task,
 		frames: world.frames,
 		cameras: options.cameras,
-		state: { names, at: (f) => pick(world.qpos(f), "qpos") },
-		action: { names: world.actuatorNames, at: (f) => world.action(f) },
+		state: {
+			names,
+			at: (f) => joints.map((j) => world.state(f).jointQ[j.q]),
+		},
+		action: {
+			names: driven.map((j) => j.name),
+			at: (f) => driven.map((j) => world.action(f)[j.qd]),
+		},
 		features: {
 			...((options.velocity ?? true) && {
 				"observation.velocity": {
 					names,
-					at: (f: number) => pick(world.qvel(f), "qvel"),
-				},
-			}),
-			...((options.sensors ?? sensorNames.length > 0) && {
-				"observation.sensors": {
-					names: sensorNames,
-					at: (f: number) => world.sensordata(f),
+					at: (f: number) => joints.map((j) => world.state(f).jointQd[j.qd]),
 				},
 			}),
 		},

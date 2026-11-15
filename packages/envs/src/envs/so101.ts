@@ -1,16 +1,26 @@
 /**
- * The SO-101 arm (TheRobotStudio SO-ARM100, Apache-2.0) in MuJoCo: its
- * position actuators follow seeded waypoints while a few cubes sit within
- * reach. The model's files are not shipped: point `dir` at the repository's
+ * The SO-101 arm (TheRobotStudio SO-ARM100, Apache-2.0) on Steel: its joint
+ * drives follow seeded waypoints while a few cubes sit within reach. The
+ * model's files are not shipped: point `dir` at the repository's
  * `Simulation/SO101` folder (`so101_new_calib.xml` and `assets/`).
  */
-import { readdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
-import { Composition, Layer, type LayoutNode, Physics } from "framefields";
+import { pathToFileURL } from "node:url";
+import { Composition, Layer, Physics } from "framefields";
 import type { Env, EnvView } from "framefields/datasets";
 import { random } from "framefields/datasets";
 import type { CameraParams } from "./falling.js";
 
+/** The driven joints, in the model's actuator order. */
+const JOINTS = [
+	"shoulder_pan",
+	"shoulder_lift",
+	"elbow_flex",
+	"wrist_flex",
+	"wrist_roll",
+	"gripper",
+];
 /** Actuator ranges (rad) from `so101_new_calib.xml`, in actuator order. */
 const CTRL_RANGE: Array<[number, number]> = [
 	[-1.91986, 1.91986], // shoulder_pan
@@ -68,25 +78,6 @@ function so101Params(seed: number): So101Params {
 	return { waypoints, cubes, camera };
 }
 
-/** The scene's MJCF: the arm (included from its own file), a floor and the cubes. */
-function sceneMjcf(params: So101Params): string {
-	const cubes = params.cubes
-		.map(
-			(c, i) => `
-    <body name="cube${i}" pos="${c.position[0]} ${c.position[1]} ${c.size}">
-      <freejoint/>
-      <geom name="cube${i}" type="box" size="${c.size} ${c.size} ${c.size}" rgba="${c.color.join(" ")} 1" mass="0.02"/>
-    </body>`,
-		)
-		.join("");
-	return `<mujoco model="so101-env">
-  <include file="so101_new_calib.xml"/>
-  <worldbody>
-    <geom name="floor" type="plane" size="1 1 0.05" rgba="0.55 0.57 0.6 1"/>${cubes}
-  </worldbody>
-</mujoco>`;
-}
-
 /** The actuator targets at `frame`: waypoints eased (smoothstep) between. */
 function targetsAt(
 	waypoints: number[][],
@@ -100,43 +91,52 @@ function targetsAt(
 	return waypoints[k].map((a, j) => a + (waypoints[k + 1][j] - a) * s);
 }
 
-/** Every file under `dir` by its path relative to it. */
-function folderFiles(dir: string): Record<string, Uint8Array> {
-	const files: Record<string, Uint8Array> = {};
-	for (const entry of readdirSync(dir, {
-		recursive: true,
-		withFileTypes: true,
-	})) {
-		if (!entry.isFile()) continue;
-		const full = path.join(entry.parentPath, entry.name);
-		files[path.relative(dir, full).split(path.sep).join("/")] = new Uint8Array(
-			readFileSync(full),
-		);
-	}
-	return files;
-}
-
 /** The SO-101 environment, its model read from `dir`. */
 export function so101(dir: string): Env<So101Params> {
 	const env = { fps: 24, frames: 48, width: 640, height: 480 };
-	let files: Record<string, Uint8Array> | null = null;
+	let arm: string | null = null;
 	return {
 		name: "so101",
 		description:
-			"The SO-101 arm following seeded joint waypoints in MuJoCo, with 2 or 3 cubes within reach; one orbiting camera.",
+			"The SO-101 arm following seeded joint waypoints on Steel, with 2 or 3 cubes within reach; one orbiting camera.",
 		...env,
 		params: (seed) => so101Params(seed),
 		async build(params): Promise<EnvView[]> {
-			files ??= folderFiles(dir);
-			const arm = await Physics.mujoco({
-				mjcf: sceneMjcf(params),
-				files,
+			arm ??= readFileSync(path.join(dir, "so101_new_calib.xml"), "utf8");
+			const xml = arm;
+			const world = await Physics.steel({
 				fps: env.fps,
 				frames: env.frames,
 				pixelsPerMeter: PPM,
 				origin: ORIGIN,
-				control: (frame) => targetsAt(params.waypoints, env.frames, frame),
+				build: async (scene, load) => {
+					await load.mjcf(scene, xml, {
+						baseUrl: pathToFileURL(`${dir}/`).href,
+					});
+					scene.addGroundPlane({ color: [0.55, 0.57, 0.6] });
+					params.cubes.forEach((c, i) => {
+						const size = c.size;
+						const body = scene.addBody({
+							xform: [c.position[0], c.position[1], size, 0, 0, 0, 1],
+							label: `cube${i}`,
+						});
+						scene.addJointFree(body, { label: `cube${i}` });
+						scene.addShapeBox(body, {
+							hx: size,
+							hy: size,
+							hz: size,
+							color: c.color,
+							density: 0.02 / (2 * size) ** 3,
+						});
+					});
+				},
+				control: (frame, s) => {
+					const targets = targetsAt(params.waypoints, env.frames, frame);
+					for (const [j, t] of targets.entries())
+						s.setJointTarget(JOINTS[j], t);
+				},
 			});
+			await world.simulate();
 			const c = new Composition({
 				width: env.width,
 				height: env.height,
@@ -165,16 +165,15 @@ export function so101(dir: string): Env<So101Params> {
 					intensity: 0.9,
 					castShadow: true,
 				}),
-				...(arm.layers().layers as LayoutNode[]),
+				...world.layers({ planeSize: 2 }),
 			]);
 			return [
 				{
 					name: params.camera.name,
 					composition: c,
 					physics: (frame) => ({
-						qpos: Array.from(arm.qpos(frame)),
+						qpos: Array.from(world.state(frame).jointQ),
 						ctrl: targetsAt(params.waypoints, env.frames, frame),
-						contacts: arm.contacts(frame),
 					}),
 				},
 			];

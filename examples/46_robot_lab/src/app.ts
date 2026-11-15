@@ -2,20 +2,12 @@
 /**
  * The page's entry: the composition (for the player) and, in the browser,
  * the app around it: a real-time loop that advances the simulation with the
- * wall clock and draws each frame, the scenario tabs, joint sliders and
- * keys, an orbit camera dragged with the mouse, and the scene's progress.
+ * wall clock and draws each frame, joint sliders and keys, an orbit camera
+ * dragged with the mouse, and the task's progress.
  */
-import { HOME, JOINTS } from "./arm.js";
-import { SCENARIOS } from "./scenarios.js";
-import {
-	controls,
-	drag,
-	FPS,
-	FRAMES,
-	restartDemo,
-	scenario,
-	world,
-} from "./scene.js";
+import { controls, drag, FPS, FRAMES, restartDemo, world } from "./scene.js";
+import { CLOSED, HOME, JOINTS, OPEN } from "./so101.js";
+import * as task from "./task.js";
 
 export { default } from "./scene.js";
 
@@ -51,7 +43,7 @@ function sliders(): Array<(value: number) => void> {
 		const show = (v: number) => {
 			input.value = String(v);
 			value.textContent =
-				joint.name === "grip"
+				joint.name === "gripper"
 					? `${Math.round(((v - joint.min) / (joint.max - joint.min)) * 100)}%`
 					: `${Math.round((v * 180) / Math.PI)}°`;
 		};
@@ -67,7 +59,7 @@ function sliders(): Array<(value: number) => void> {
 	});
 }
 
-/** Keys nudge a joint each frame they are held: Q/A, W/S, E/D, R/F, T/G; space grips. */
+/** Keys nudge a joint each frame they are held: Q/A, W/S, E/D, R/F, T/G; space opens or closes the jaw. */
 const KEYS: Record<string, [number, number]> = {
 	q: [0, 1],
 	a: [0, -1],
@@ -89,9 +81,8 @@ function setUpInput(show: Array<(v: number) => void>, held: Set<string>) {
 		if (key === " ") {
 			takeOver();
 			const grip = JOINTS.length - 1;
-			const { min, max } = JOINTS[grip];
 			controls.targets[grip] =
-				controls.targets[grip] > (min + max) / 2 ? min : max;
+				controls.targets[grip] > (CLOSED + OPEN) / 2 ? CLOSED : OPEN;
 			show[grip](controls.targets[grip]);
 			e.preventDefault();
 		} else if (KEYS[key]) held.add(key);
@@ -159,24 +150,15 @@ function reloadOnRestart() {
 	});
 }
 
-/** One tab per scenario; each loads the page with its `?scene=`. */
-function tabs() {
-	const nav = $("scenes");
-	for (const s of SCENARIOS) {
-		const link = document.createElement("a");
-		link.href = `?scene=${s.id}`;
-		link.textContent = s.title;
-		if (s === scenario) link.setAttribute("aria-current", "page");
-		nav.append(link);
-	}
-	$("title").textContent = scenario.title;
-	$("about").textContent = scenario.about;
+function header() {
+	$("title").textContent = task.TITLE;
+	$("about").textContent = task.ABOUT;
 }
 
 /** What is in the scene, each with a swatch of its color. */
 function legend() {
 	const list = $("things");
-	for (const thing of scenario.things) {
+	for (const thing of task.THINGS) {
 		const item = document.createElement("li");
 		const swatch = document.createElement("span");
 		swatch.className = "swatch";
@@ -188,9 +170,9 @@ function legend() {
 
 async function start() {
 	reloadOnRestart();
-	tabs();
+	header();
 	legend();
-	// For the devtools console: `robotLab.world.body("hand", frame)`, `robotLab.controls`.
+	// For the devtools console: `robotLab.world.body("gripper", frame)`, `robotLab.controls`.
 	Object.assign(window, {
 		robotLab: {
 			controls,
@@ -265,7 +247,7 @@ async function start() {
 			if (controls.demo)
 				for (const [i, v] of controls.targets.entries()) show[i](v);
 			status.textContent = [
-				world ? scenario.metric(world, frame) : "",
+				world ? task.metric(world, frame) : "",
 				`Holding: ${drag?.grabbed ?? "nothing"}`,
 				"",
 				`${fps.toFixed(0)} fps · frame ${player.lastRenderMs.toFixed(1)} ms`,

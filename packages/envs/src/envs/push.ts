@@ -1,5 +1,5 @@
 /**
- * Push (interactive, Rapier): the agent is a blue ball on a floor; the
+ * Push (interactive, Steel): the agent is a blue ball on a floor; the
  * action pushes it (a 2D impulse each frame, x and depth). The task: get
  * the red box onto the green goal. Reward each step is minus the box's
  * distance to the goal in meters; the episode ends when the box's center

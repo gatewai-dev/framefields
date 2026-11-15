@@ -56,7 +56,7 @@ async function scene(
 	if (!fall) return { c, centerY: () => 150 };
 	const world = await Physics.world3d({ fps: FPS, frames: 30 });
 	const body = world.body(ball, {});
-	world.simulate();
+	await world.simulate();
 	const centerY = (frame: number) =>
 		body.y.get({ frame, fps: FPS } as never) as number;
 	return { c, centerY };
@@ -221,7 +221,7 @@ describe("truthLabels", () => {
 		if (!ball?.box3d || !ball.box2d || !ball.projectedBox2d || !wall)
 			throw new Error("missing labels");
 		expect(ball.box3d.center.map((v) => Math.round(v))).toEqual([150, 150, 0]);
-		ball.box3d.size.forEach((v) => expect(v).toBeCloseTo(100, 0));
+		for (const v of ball.box3d.size) expect(v).toBeCloseTo(100, 0);
 		// The pixels it shows sit inside where its box projects, and the wall
 		// in front hides part of it.
 		const [x0, y0, x1, y1] = ball.box2d;

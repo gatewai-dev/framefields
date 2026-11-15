@@ -1,5 +1,5 @@
 /**
- * Objects falling and colliding (Rapier): a few solids of random shape,
+ * Objects falling and colliding (Steel): a few solids of random shape,
  * size and color dropped with random spin onto a floor. `falling` sees it
  * from one camera; `fallingMultiView` from three at once (every view runs
  * the same deterministic simulation, so they agree frame by frame).
@@ -256,7 +256,7 @@ export async function fallingView(
 		}),
 	);
 	options.intervene?.(world, bodies);
-	world.simulate();
+	await world.simulate();
 	return {
 		name: options.name ?? camera.name,
 		composition: c,

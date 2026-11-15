@@ -1,30 +1,16 @@
 /**
- * Runs a scenario's demo: each step's goal (fingertips' point, fingers'
- * heading, grip) is read when the step starts, turned into joint targets,
- * and eased toward over the step's frames.
+ * Runs the task's demo: each step's goal (the point between the jaws, the
+ * line they close along, grip) is read when the step starts, turned into
+ * joint targets, and eased toward over the step's frames.
  */
 import type { SteelWorld } from "framefields";
-import { CLOSED, OPEN, reachDown } from "./arm.js";
-import type { Goal, Step } from "./scenarios.js";
+import { CLOSED, OPEN, reachDown } from "./so101.js";
+import type { Goal, Step } from "./task.js";
 
-/** Wraps `a` into [-period/2, period/2). */
-const wrap = (a: number, period: number) =>
-	a - period * Math.floor(a / period + 0.5);
-
-/**
- * Joint targets (yaw, shoulder, elbow, wrist, roll, grip) for a goal. With
- * the hand pointing down the fingers' line lies at yaw + π/2 - roll.
- */
+/** Joint targets (`JOINTS` order) for a goal. */
 export function jointsFor(goal: Goal): number[] {
-	const [x, y, z] = goal.at;
-	const yaw = Math.atan2(y, x);
-	const roll = goal.fingers
-		? wrap(yaw + Math.PI / 2 - goal.fingers.axis, goal.fingers.period)
-		: 0;
 	return [
-		yaw,
-		...reachDown(Math.hypot(x, y), z),
-		roll,
+		...reachDown(goal.at, goal.jaws.axis, goal.jaws.period),
 		goal.grip === "open" ? OPEN : CLOSED,
 	];
 }

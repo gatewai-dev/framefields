@@ -210,7 +210,7 @@ describe("shutter motion blur", () => {
 				fractureFrame: 5,
 				explosionSpeed: 900,
 			});
-			world.simulate();
+			await world.simulate();
 			return scene([slab], blur);
 		};
 		const sharp = await build(false);

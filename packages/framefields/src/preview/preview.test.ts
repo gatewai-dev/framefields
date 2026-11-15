@@ -106,7 +106,7 @@ describe("startPreview", () => {
 		).toBe(404);
 	}, 60_000);
 
-	it("serves an app's own page around the player, and MuJoCo's WebAssembly", async () => {
+	it("serves an app's own page around the player", async () => {
 		const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "gf-page-"));
 		const page = path.join(dir, "app.html");
 		await fs.promises.writeFile(
@@ -120,10 +120,6 @@ describe("startPreview", () => {
 			expect(html).not.toContain("<ff-preview>");
 			const player = await fetch(`${session.url}@framefields/player.js`);
 			expect(await player.text()).toContain("startPlayer");
-			// Beside the chunk that loads it (`new URL("mujoco.wasm", import.meta.url)`).
-			const wasm = await fetch(`${session.url}@framefields/engine/mujoco.wasm`);
-			expect(wasm.status).toBe(200);
-			expect(wasm.headers.get("content-type")).toBe("application/wasm");
 		} finally {
 			await fs.promises.rm(dir, { recursive: true, force: true });
 		}

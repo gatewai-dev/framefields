@@ -1,0 +1,39 @@
+{
+	"name": "@framefields/steel",
+	"version": "0.0.0",
+	"private": true,
+	"description": "Steel (skild-ai's WebGPU port of Newton's SolverSteel), forked for framefields: the solver, scene builder and robot loaders.",
+	"type": "module",
+	"sideEffects": false,
+	"license": "Apache-2.0",
+	"module": "./dist/index.mjs",
+	"types": "./dist/index.d.mts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.mts",
+			"development": "./src/index.ts",
+			"import": "./dist/index.mjs",
+			"default": "./dist/index.mjs"
+		}
+	},
+	"files": [
+		"dist/**",
+		"LICENSE.md",
+		"NOTICE.md"
+	],
+	"scripts": {
+		"build": "tsdown",
+		"typecheck": "tsc --noEmit -p .",
+		"test": "vitest run",
+		"clean": "rm -rf .turbo && rm -rf node_modules && rm -rf dist"
+	},
+	"devDependencies": {
+		"@framefields/tsconfig": "workspace:*",
+		"@framefields/webgpu-renderers": "workspace:*",
+		"@webgpu/types": "^0.1.70",
+		"jsdom": "^29.1.0",
+		"tsdown": "^0.19.0",
+		"typescript": "^5.8.3",
+		"vitest": "^4.1.5"
+	}
+}

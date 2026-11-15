@@ -353,6 +353,31 @@ importers:
         specifier: ^4.1.11
         version: 4.1.11(@opentelemetry/api@1.9.0)(@types/node@24.10.14)(@vitest/coverage-v8@4.1.11)(jsdom@29.1.0(@noble/hashes@2.0.1)(canvas@3.2.3))(vite@8.2.1(@types/node@24.10.14)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.3))
 
+  examples/25_bakery:
+    dependencies:
+      '@framefields/compositions':
+        specifier: workspace:*
+        version: link:../../packages/compositions
+      framefields:
+        specifier: workspace:*
+        version: link:../../packages/framefields
+      mediabunny:
+        specifier: ^1.61.6
+        version: 1.61.6
+    devDependencies:
+      '@framefields/tsconfig':
+        specifier: workspace:*
+        version: link:../../packages/tsconfig
+      '@types/node':
+        specifier: ^24.1.0
+        version: 24.10.14
+      tsx:
+        specifier: ^4.20.3
+        version: 4.21.0
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+
   examples/26_mac_keyboard_from_3d_primitives:
     dependencies:
       framefields:
@@ -543,6 +568,69 @@ importers:
       world-atlas:
         specifier: 2.0.2
         version: 2.0.2
+
+  examples/34_spatial_styling:
+    dependencies:
+      framefields:
+        specifier: workspace:*
+        version: link:../../packages/framefields
+    devDependencies:
+      '@framefields/tsconfig':
+        specifier: workspace:*
+        version: link:../../packages/tsconfig
+      '@types/node':
+        specifier: ^24.1.0
+        version: 24.10.14
+      tsx:
+        specifier: ^4.20.3
+        version: 4.21.0
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      vitest:
+        specifier: ^4.1.11
+        version: 4.1.11(@opentelemetry/api@1.9.0)(@types/node@24.10.14)(@vitest/coverage-v8@4.1.11)(jsdom@29.1.0(@noble/hashes@2.0.1)(canvas@3.2.3))(vite@8.2.1(@types/node@24.10.14)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.3))
+
+  examples/35_robot_uprising:
+    dependencies:
+      framefields:
+        specifier: workspace:*
+        version: link:../../packages/framefields
+    devDependencies:
+      '@framefields/tsconfig':
+        specifier: workspace:*
+        version: link:../../packages/tsconfig
+      '@types/node':
+        specifier: ^24.1.0
+        version: 24.10.14
+      tsx:
+        specifier: ^4.20.3
+        version: 4.21.0
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      vitest:
+        specifier: ^4.1.11
+        version: 4.1.11(@opentelemetry/api@1.9.0)(@types/node@24.10.14)(@vitest/coverage-v8@4.1.11)(jsdom@29.1.0(@noble/hashes@2.0.1)(canvas@3.2.3))(vite@8.2.1(@types/node@24.10.14)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.3))
+
+  examples/37_lumen:
+    dependencies:
+      framefields:
+        specifier: workspace:*
+        version: link:../../packages/framefields
+    devDependencies:
+      '@framefields/tsconfig':
+        specifier: workspace:*
+        version: link:../../packages/tsconfig
+      '@types/node':
+        specifier: ^24.1.0
+        version: 24.10.14
+      tsx:
+        specifier: ^4.20.3
+        version: 4.21.0
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
 
   examples/41_hawking_radiation:
     dependencies:
@@ -3274,6 +3362,9 @@ importers:
       '@framefields/renderers':
         specifier: workspace:*
         version: link:../renderers
+      '@framefields/steel':
+        specifier: workspace:*
+        version: link:../steel
       '@framefields/storage':
         specifier: workspace:*
         version: link:../storage
@@ -3329,18 +3420,6 @@ importers:
         specifier: ^2.8.3
         version: 2.8.3
     optionalDependencies:
-      '@dimforge/rapier2d-deterministic-compat':
-        specifier: 0.21.0
-        version: 0.21.0
-      '@dimforge/rapier3d-deterministic-compat':
-        specifier: 0.21.0
-        version: 0.21.0
-      '@mujoco/mujoco':
-        specifier: 4.0.1
-        version: 4.0.1
-      '@skild-ai/steel-webgpu':
-        specifier: 0.1.0
-        version: 0.1.0
       onnxruntime-web:
         specifier: ^1.24.0
         version: 1.30.0
@@ -3702,6 +3781,30 @@ importers:
       vitest:
         specifier: ^5.0.1
         version: 5.0.1(@opentelemetry/api@1.9.0)(@types/node@25.9.9)(jsdom@29.1.0(@noble/hashes@2.0.1)(canvas@3.2.3))(vite@8.2.1(@types/node@25.9.9)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.3))
+
+  packages/steel:
+    devDependencies:
+      '@framefields/tsconfig':
+        specifier: workspace:*
+        version: link:../tsconfig
+      '@framefields/webgpu-renderers':
+        specifier: workspace:*
+        version: link:../webgpu-renderers
+      '@webgpu/types':
+        specifier: ^0.1.70
+        version: 0.1.70
+      jsdom:
+        specifier: ^29.1.0
+        version: 29.1.0(@noble/hashes@2.0.1)(canvas@3.2.3)
+      tsdown:
+        specifier: ^0.19.0
+        version: 0.19.0(oxc-resolver@11.19.1)(typescript@5.9.3)
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      vitest:
+        specifier: ^4.1.11
+        version: 4.1.11(@opentelemetry/api@1.9.0)(@types/node@25.9.9)(@vitest/coverage-v8@4.1.11)(jsdom@29.1.0(@noble/hashes@2.0.1)(canvas@3.2.3))(vite@8.2.1(@types/node@25.9.9)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.3))
 
   packages/storage:
     dependencies:
@@ -4195,12 +4298,6 @@ packages:
     resolution: {integrity: sha512-QxULHAm7cNu72w97JUNCBFODFaXpbDg+dP8b/oWFAZ2MTRppA3U00Y2L1HqaS4J6yBqxwa/Y3nMBaxVKbB/NsA==}
     engines: {node: '>=20.19.0'}
 
-  '@dimforge/rapier2d-deterministic-compat@0.21.0':
-    resolution: {integrity: sha512-qVwHqqpRX73ktQRqiAa/0JdBfWdzsGHg8r8d+snaZB0WRXaTs3m7GU6jN+Qf3gEjMEUqk3Rc9q87yGXHkktTbA==}
-
-  '@dimforge/rapier3d-deterministic-compat@0.21.0':
-    resolution: {integrity: sha512-n7JuU62Obljlgq+OeH2DHhTmRSjRzwuJPl54tS9pFIzVQyvXsO5CH+a5KkIRBtnFWDbg1Zicv9BulG0jfBAopA==}
-
   '@emnapi/core@1.8.1':
     resolution: {integrity: sha512-AvT9QFpxK0Zd8J0jopedNm+w/2fIzvtPKPjqyw9jwvBaReTTqPBk9Hixaz7KbjimP+QNz605/XnjFcDAL2pqBg==}
 
@@ -4618,9 +4715,6 @@ packages:
 
   '@minhducsun2002/leb128@1.0.0':
     resolution: {integrity: sha512-eFrYUPDVHeuwWHluTG1kwNQUEUcFjVKYwPkU8z9DR1JH3AW7JtJsG9cRVGmwz809kKtGfwGJj58juCZxEvnI/g==}
-
-  '@mujoco/mujoco@4.0.1':
-    resolution: {integrity: sha512-vLuwD6biiyo2D2LG1fwpwJUfWSDZhBIr6aUd3AuPJR8P7FAIeSHgofGC+0XgIpZ0vYi0EOyju+Kv7zPJepX7wA==}
 
   '@napi-rs/canvas-android-arm64@1.0.3':
     resolution: {integrity: sha512-7kSCdUhoXiO+AaIMXdBGdtp6EctZNkmF62Rea/BmVQlwKaM3bBhOzyGUzxyxz9dv5vdBfpyAaxhSRSJF4kqK4A==}
@@ -5466,23 +5560,6 @@ packages:
 
   '@shinyoshiaki/jspack@0.0.6':
     resolution: {integrity: sha512-SdsNhLjQh4onBlyPrn4ia1Pdx5bXT88G/LIEpOYAjx2u4xeY/m/HB5yHqlkJB1uQR3Zw4R3hBWLj46STRAN0rg==}
-
-  '@skild-ai/steel-webgpu@0.1.0':
-    resolution: {integrity: sha512-+v6UfgPSOYWLYNRUckE0IKopWWCTxd73JWphmgEM4WlCNlWes0OM+Q24jINN6fRCfdMUIOWcsTIs5c4m9S37KQ==}
-    peerDependencies:
-      '@react-three/fiber': ^9.8.2
-      react: ^19.0.0
-      three: '>=0.187.0'
-      typegpu: ^0.12.9
-    peerDependenciesMeta:
-      '@react-three/fiber':
-        optional: true
-      react:
-        optional: true
-      three:
-        optional: true
-      typegpu:
-        optional: true
 
   '@smithy/core@3.36.0':
     resolution: {integrity: sha512-3hJiwG1F5t1SoXqp/yOCmYXziyx7ZVqF63S5W6YU201e/qwVaHPex+E/3vvyY9a3ORq/b+BydeNZpP2saQ9X2g==}
@@ -7754,12 +7831,6 @@ snapshots:
 
   '@csstools/css-tokenizer@4.0.0': {}
 
-  '@dimforge/rapier2d-deterministic-compat@0.21.0':
-    optional: true
-
-  '@dimforge/rapier3d-deterministic-compat@0.21.0':
-    optional: true
-
   '@emnapi/core@1.8.1':
     dependencies:
       '@emnapi/wasi-threads': 1.1.0
@@ -8056,9 +8127,6 @@ snapshots:
       - supports-color
 
   '@minhducsun2002/leb128@1.0.0':
-    optional: true
-
-  '@mujoco/mujoco@4.0.1':
     optional: true
 
   '@napi-rs/canvas-android-arm64@1.0.3':
@@ -8657,9 +8725,6 @@ snapshots:
   '@shinyoshiaki/jspack@0.0.6':
     optional: true
 
-  '@skild-ai/steel-webgpu@0.1.0':
-    optional: true
-
   '@smithy/core@3.36.0':
     dependencies:
       '@smithy/types': 4.19.0
@@ -8801,7 +8866,7 @@ snapshots:
       obug: 2.2.1
       std-env: 4.2.0
       tinyrainbow: 3.1.0
-      vitest: 4.1.11(@opentelemetry/api@1.9.0)(@types/node@24.10.14)(@vitest/coverage-v8@4.1.11)(jsdom@29.1.0(@noble/hashes@2.0.1)(canvas@3.2.3))(vite@8.2.1(@types/node@24.10.14)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.3))
+      vitest: 4.1.11(@opentelemetry/api@1.9.0)(@types/node@25.9.9)(@vitest/coverage-v8@4.1.11)(jsdom@29.1.0(@noble/hashes@2.0.1)(canvas@3.2.3))(vite@8.2.1(@types/node@25.9.9)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.3))
 
   '@vitest/expect@4.1.11':
     dependencies:

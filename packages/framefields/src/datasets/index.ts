@@ -131,8 +131,8 @@ export {
 	type LeRobotVector,
 	LeRobotWriter,
 	type LeRobotWriterOptions,
-	type MujocoEpisodeOptions,
-	mujocoEpisode,
+	type SteelEpisodeOptions,
+	steelEpisode,
 } from "./lerobot.js";
 export {
 	maskAndDepth,

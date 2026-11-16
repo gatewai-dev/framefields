@@ -13,6 +13,12 @@ import type { formatQaReport } from "../index.js";
 import type { startPreview } from "../preview/index.js";
 import { pickComposition } from "./pick-composition.js";
 
+/** render --model: one frame, or every frame as an animation. */
+export interface ModelJob {
+	frame?: number;
+	animation?: boolean;
+}
+
 export interface LocalJob {
 	mode: "render" | "preview";
 	/** Absolute module path. */
@@ -24,8 +30,8 @@ export interface LocalJob {
 	select?: string;
 	/** render: where the video (or the model) goes. */
 	outputPath?: string;
-	/** render: write the 3D scene at this frame as glTF (.glb) instead of the video. */
-	modelFrame?: number;
+	/** render: write the 3D scene as glTF (.glb) instead of the video. */
+	model?: ModelJob;
 	codec?: string;
 	quality?: string;
 	/** preview: the page's title. */
@@ -54,13 +60,16 @@ async function run(job: LocalJob): Promise<LocalResult> {
 		pathToFileURL(job.entry).href
 	);
 	const comp = await pickComposition(mod, job);
-	if (job.modelFrame !== undefined) {
+	if (job.model) {
 		const model = await comp.exportModel({
-			frame: job.modelFrame,
+			...job.model,
 			outputPath: job.outputPath,
 		});
+		const when = job.model.animation
+			? `${model.frames} frames, ${model.channels} animation channels`
+			: `frame ${job.model.frame ?? 0}`;
 		process.stdout.write(
-			`${model.meshes} meshes, ${model.triangles} triangles at frame ${job.modelFrame}\n`,
+			`${model.meshes} meshes, ${model.triangles} triangles, ${when}\n`,
 		);
 		for (const what of model.skipped)
 			process.stdout.write(`Not in the file: ${what}\n`);

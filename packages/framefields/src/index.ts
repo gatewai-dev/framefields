@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { resolveFrameRequest } from "@framefields/core";
 
 export {
@@ -148,7 +149,11 @@ export type {
 	Sam3Prompt,
 } from "@framefields/vision-sam";
 // Types only, so SAM stays in its own lazily loaded chunk; the trackers are in `framefields/sam`.
-export type { ModelExport, ModelExportOptions } from "./model-export.js";
+export type {
+	ModelAnimationRange,
+	ModelExport,
+	ModelExportOptions,
+} from "./model-export.js";
 
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -307,6 +312,7 @@ import {
 import {
 	type ModelExport,
 	type ModelExportOptions,
+	modelFrames,
 	writeModel,
 } from "./model-export.js";
 import { Particles, type ParticlesOptions } from "./particles.js";
@@ -2428,44 +2434,69 @@ export class Composition {
 	}
 
 	/**
-	 * The 3D scene at a frame as glTF 2.0 binary (`.glb`), the standard
-	 * format Blender, Maya, Unreal, Unity and the web read: every mesh in
-	 * its pose that frame (morphs and skins applied; clay, SDF and terrain
-	 * as their triangles, clay at its `resolution`), layers on 3D planes as
-	 * textured quads, instances as nodes sharing one mesh, materials with
-	 * their maps and Khronos extensions, the camera and the lights.
-	 * 100 px is a meter (`metersPerPixel`) and y is up, so a model standing
-	 * in the scene stands in the file. `skipped` lists what the frame drew
-	 * that the file cannot carry.
+	 * The 3D scene as glTF 2.0 binary (`.glb`), the standard format Blender,
+	 * Maya, Unreal, Unity and the web read: every mesh in its pose (morphs
+	 * and skins applied; clay, SDF and terrain as their triangles, clay at
+	 * its `resolution`), layers on 3D planes as textured quads, instances as
+	 * nodes sharing one mesh, materials with their maps and Khronos
+	 * extensions, the camera and the lights. 100 px is a meter
+	 * (`metersPerPixel`) and y is up, so a model standing in the scene stands
+	 * in the file. One frame by default; `animation` samples every frame of a
+	 * range into an animation: layer, instance, camera and light motion as
+	 * channels, a layer that changes shape as one child per shape, shown in
+	 * turn. `skipped` lists what the frames drew that the file cannot carry.
 	 *
 	 * ```ts
 	 * const { filePath, skipped } = await comp.exportModel({ frame: 30, outputPath: "out/scene.glb" });
+	 * await comp.exportModel({ animation: true, outputPath: "out/scene-animated.glb" });
 	 * ```
 	 */
 	public async exportModel(
 		options: ModelExportOptions & { renderer?: HeadlessMediaRenderer } = {},
 	): Promise<ModelExport> {
 		const { frame } = resolveFrameRequest(options, this.fps);
-		const vm = await this.frameMedia(frame);
+		const totalFrames = options.animation
+			? Math.max(
+					1,
+					Math.round(
+						((this.durationMs ?? (await this.computeDuration())) / 1000) *
+							this.fps,
+					),
+				)
+			: frame + 1;
+		const { first, count } = modelFrames(options, frame, totalFrames);
+		const vm = this.toVirtualMedia();
 		const exporter = new Scene3DExporter(options);
 		const renderer = options.renderer ?? new HeadlessMediaRenderer();
-		await renderer.renderFrame(vm, {
-			fps: this.fps,
-			frame,
-			format: "rgba",
-			scene3d: exporter,
-		});
-		const result = await exporter.finish();
+		// One id for the whole range, so compiled timelines carry from frame to frame.
+		const renderId = `model-${randomUUID()}`;
+		for (let f = first; f < first + count; f++) {
+			await this.frameMedia(f, vm);
+			if (options.animation) exporter.beginFrame((f - first) / this.fps);
+			await renderer.renderFrame(vm, {
+				fps: this.fps,
+				frame: f,
+				renderId,
+				// Only the scene is wanted: no pixel readback.
+				format: "none",
+				scene3d: exporter,
+			});
+			await exporter.endFrame();
+		}
+		// A clip of `count` frames lasts as long as they play.
+		const result = await exporter.finish(count / this.fps);
 		if (result.meshes === 0)
 			throw new Error(
-				`exportModel: frame ${frame} draws no 3D meshes (add a Layer.camera and Layer3D layers).`,
+				`exportModel: frame ${first} draws no 3D meshes (add a Layer.camera and Layer3D layers).`,
 			);
-		return writeModel(result, options.outputPath);
+		return writeModel({ ...result, frames: count }, options.outputPath);
 	}
 
 	/** Compiles the composition for `frame` and runs its frame hooks, which record the live signal time. */
-	private async frameMedia(frame: number): Promise<VirtualMediaData> {
-		const vm = this.toVirtualMedia();
+	private async frameMedia(
+		frame: number,
+		vm: VirtualMediaData = this.toVirtualMedia(),
+	): Promise<VirtualMediaData> {
 		if (this.hasFrameHooks()) {
 			await this.notifyFrame({
 				frame,

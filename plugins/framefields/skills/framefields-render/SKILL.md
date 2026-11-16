@@ -100,7 +100,7 @@ Always end render scripts with `process.exit(0)`: native GPU and encoder threads
 
 ### 7. 3D models (`exportModel`)
 
-A frame's 3D scene exports as glTF 2.0 binary (`.glb`), the standard interchange format: Blender, Maya, Houdini, Unreal, Unity, three.js and every glTF viewer open it.
+A frame's 3D scene, or a stretch of its animation, exports as glTF 2.0 binary (`.glb`), the standard interchange format: Blender, Maya, Houdini, Unreal, Unity, three.js and every glTF viewer open it.
 
 ```typescript
 const { filePath, meshes, triangles, skipped } = await comp.exportModel({
@@ -109,14 +109,19 @@ const { filePath, meshes, triangles, skipped } = await comp.exportModel({
   metersPerPixel: 0.01,            // default: 100 px is a meter
   // camera: false, lights: false, maxTextureSize: 4096
 });
+
+// The motion too: every frame of the composition (or { startFrame, durationFrames }).
+const { frames, channels } = await comp.exportModel({ animation: true, outputPath: "output/scene.glb" });
 ```
 
-From the CLI: `npx framefields render <name> --model [--frame 30] [--output scene.glb]` (default: the video's path as `.glb`; local only).
+From the CLI: `npx framefields render <name> --model [--frame 30 | --animation] [--output scene.glb]` (default: the video's path as `.glb`; local only).
 
 - **What is in it:** what the frame draws. That means every mesh in its pose at that frame, with morphs and skins applied and models placed as in the scene. Clay, SDF, terrain and extruded text go in as their triangles. Clay uses its `resolution`, so raise it for a finer file. Layers on 3D planes become textured quads. Scattered and instanced meshes become nodes that share one mesh. Materials go in as PBR with their maps and Khronos extensions: glass, clearcoat, sheen, iridescence and anisotropy, plus subsurface in `extras`. The camera and the directional, point and spot lights are included, and nodes are named by layer id.
-- **Axes:** y is up and units are meters. A model upright in the scene stands upright in the file, and the file's camera frames what the render shows. To load it back into framefields, use `Layer.glb(file, { scale: 100, rotateX: 180 })`.
-- **`skipped`** lists what the frame drew that the file cannot carry: text on 3D planes (use `Layer3D.extrudedText`), rect lights, the environment's floor, rounded corners and borders of layers on planes, and GPU-computed motion (wind, audio deformation, crowds), which is written at rest. Print it.
-- A single frame: no animation tracks. Export several frames for several poses.
+- **Animation:** `animation` samples every frame of the range (the clip's time starts at its first frame, and it lasts as long as the frames play). Layer, instance, camera and light motion become translation, rotation and scale channels; keys a linear or slerp interpolation reproduces within 0.05 px and 0.01° are dropped (a constant-speed move keeps its ends; eased moves keep keys where they speed up or slow down). A layer that appears or leaves part-way, or changes shape (its mesh differs between frames), gets one child per shape with stepped visibility. Meshes are written once; it exports about as fast as the frames render (no pixel readback).
+- **Axes:** y is up and units are meters. A model upright in the scene stands upright in the file, and the file's camera frames what the render shows. To load it back into framefields, use `Layer.glb(file, { scale: 100, rotateX: 180 })`; an animated file plays on the composition's clock.
+- **Lights** are photometric: an engine light of 1 is 683 lux (directional) or candela (point, spot), as Blender reads them. A viewer that does not expose for that (three.js) needs `toneMappingExposure = 1 / 683`.
+- **`skipped`** lists what the frames drew that the file cannot carry: text on 3D planes (use `Layer3D.extrudedText`), rect lights, the environment's floor, rounded corners and borders of layers on planes, and GPU-computed motion (wind, audio deformation, crowds), which is written at rest. Across frames, also material, camera zoom and light color or intensity changes (written as first drawn), skin and morph animation (the mesh keeps its first pose; its node still moves), and shear. Print it. A layer picture on a plane is captured where it first appears.
+- **Shadows:** glTF has no shadow flags. Flat layers cast none unless `castShadow: true`, meshes do; set it on cards you want to round-trip exactly.
 
 ## Named renders (`framefields.json`)
 

@@ -114,6 +114,9 @@ Options for render and preview:
                     Blender, Maya, Unreal, Unity and three.js. Default output
                     is the video's path as .glb.
   --frame <n>       render --model: the frame to export (default 0).
+  --animation       render --model: every frame of the composition as a
+                    glTF animation (layer, instance, camera and light motion)
+                    instead of one frame.
 
 Options for render --cloud:
   --workers <n|auto>  1 (default) renders on one GPU. auto measures the film
@@ -211,6 +214,7 @@ async function main(argv: string[]): Promise<number> {
 			cloud: { type: "boolean" },
 			model: { type: "boolean" },
 			frame: { type: "string" },
+			animation: { type: "boolean" },
 			workers: { type: "string" },
 			"max-workers": { type: "string" },
 			plan: { type: "boolean" },
@@ -270,6 +274,12 @@ async function main(argv: string[]): Promise<number> {
 		);
 		return 2;
 	}
+	if (values.animation && (!values.model || values.frame !== undefined)) {
+		process.stderr.write(
+			"--animation goes with render --model, instead of --frame.\n",
+		);
+		return 2;
+	}
 	const modelFrame = values.model ? Number(values.frame ?? 0) : undefined;
 	if (
 		modelFrame !== undefined &&
@@ -278,6 +288,12 @@ async function main(argv: string[]): Promise<number> {
 		process.stderr.write("--frame must be a frame number (0, 1, 2 …).\n");
 		return 2;
 	}
+	const model =
+		modelFrame === undefined
+			? undefined
+			: values.animation
+				? { animation: true }
+				: { frame: modelFrame };
 	if (command === "preview" || (command === "render" && !values.cloud)) {
 		if (names.length > 1) {
 			process.stderr.write(
@@ -294,7 +310,7 @@ async function main(argv: string[]): Promise<number> {
 				codec: values.codec,
 				quality: values.quality,
 				output: values.output,
-				modelFrame: command === "render" ? modelFrame : undefined,
+				model: command === "render" ? model : undefined,
 			},
 			log,
 		);

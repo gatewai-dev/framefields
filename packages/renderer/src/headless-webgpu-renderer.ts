@@ -705,8 +705,12 @@ export class HeadlessWebGPURenderer {
 		fps = 24,
 		options: {
 			renderId?: string;
-			/** "rgba" / "raw" skips image encoding and returns width*height*4 raw pixels. */
-			format?: "png" | "rgba" | "raw" | "jpeg" | "jpg" | "webp";
+			/**
+			 * "rgba" / "raw" skips image encoding and returns width*height*4 raw
+			 * pixels; "none" skips the readback too (the frame is drawn for its
+			 * `scene3d` capture) and returns an empty buffer.
+			 */
+			format?: "png" | "rgba" | "raw" | "jpeg" | "jpg" | "webp" | "none";
 			/** Receives the frame's 3D passes as data (model export). */
 			scene3d?: Scene3DCapture;
 		} = {},
@@ -830,6 +834,7 @@ export class HeadlessWebGPURenderer {
 			);
 
 			device.queue.submit([encoder.finish()]);
+			if (options.format === "none") return Buffer.alloc(0);
 
 			const pixels = await surface.readPixels();
 			const pixelsArr = new Uint8Array(
@@ -892,8 +897,8 @@ export class HeadlessWebGPURenderer {
 			fps?: number;
 			/** Reuse compiled state across calls; see `renderImage`. */
 			renderId?: string;
-			/** "rgba" / "raw" returns raw width*height*4 pixels instead of an encoded image. */
-			format?: "png" | "rgba" | "raw" | "jpeg" | "jpg" | "webp";
+			/** "rgba" / "raw" returns raw width*height*4 pixels instead of an encoded image; "none" returns nothing (see `renderImage`). */
+			format?: "png" | "rgba" | "raw" | "jpeg" | "jpg" | "webp" | "none";
 			/** Receives the frame's 3D passes as data (model export). */
 			scene3d?: Scene3DCapture;
 		} = {},

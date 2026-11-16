@@ -3677,6 +3677,353 @@ fn momentum_step(tid: u32, ncol: u32, it: u32) {
   workgroupBarrier();
 }
 
+// framefields: light-body blocks. A free body squeezed between links (a cube in a gripper: the jaw's
+// armature and the arm's drives make both sides hundreds of times heavier), or pressed by a link into
+// the floor, converges in Gauss-Seidel by about its mass over theirs per sweep: a grip crushes it through
+// a finger, and friction cannot carry a tilted finger's push through it. Its rows in touch (normals, and
+// friction against links) are solved together instead, exactly, with the articulation's own coupling
+// between its links (J H^-1 J^T): a small convex QP per light body, after each position sweep's colors,
+// on the links' exact twists. For free bodies touching a link and something else; the workgroup solves it.
+var<workgroup> lb_count: u32;
+var<workgroup> lb_n: array<u32, LBMAX>;
+var<workgroup> lb_x: array<i32, LBMAX>;     // the light body
+var<workgroup> lb_row: array<u32, LBMAX * LBR>;   // row index
+var<workgroup> lb_unit: array<u32, LBMAX * LBR>;  // its unit
+var<workgroup> lb_body: array<vec2i, LBMAX * LBR>; // (the light body's side: 0 = a, 1 = b; the other body)
+
+fn light_free(b: i32) -> bool { return b >= 0 && body_kind(b) == 1u && (body_flags(b) & 1u) == 0u; }
+
+fn build_light_blocks(nu: u32) {
+  var n = 0u;
+  for (var us = 0u; us < nu && n < LBMAX; us++) {
+    let key = atomicLoad(&sched[S_UKEY + us]);
+    let a = i32(key & 0xffffu) - 1; let b = i32(key >> 16u) - 1;
+    for (var side = 0u; side < 2u; side++) {
+      let x = select(a, b, side == 1u); let o = select(b, a, side == 1u);
+      if (!light_free(x) || o < 0 || body_kind(o) != 2u || !lb_touch(us)) { continue; }
+      var seen = false;
+      for (var k = 0u; k < n; k++) { if (lb_x[k] == x) { seen = true; } }
+      if (seen || n >= LBMAX) { continue; }
+      // Its rows in touch (within F_LB_GAP) in every unit (links, free bodies, the world), and how many
+      // units they span: rows further apart stay in the sweep.
+      var m = 0u; var units = 0u;
+      for (var vs = 0u; vs < nu; vs++) {
+        let kv = atomicLoad(&sched[S_UKEY + vs]);
+        let va = i32(kv & 0xffffu) - 1; let vb = i32(kv >> 16u) - 1;
+        if ((va != x && vb != x) || !lb_touch(vs)) { continue; }
+        units++;
+        let s0 = atomicLoad(&sched[S_USTART + vs]);
+        for (var r = s0; r < s0 + atomicLoad(&sched[S_USIZE + vs]) && m < LBR; r++) {
+          if (rows[r * ROWS + 6u].w > F_LB_GAP) { continue; }
+          lb_row[n * LBR + m] = r; lb_unit[n * LBR + m] = vs;
+          lb_body[n * LBR + m] = vec2i(select(0, 1, vb == x), select(vb, va, vb == x));
+          m++;
+        }
+      }
+      if (units < 2u) { continue; }
+      lb_x[n] = x;
+      lb_n[n] = m;
+      n++;
+    }
+  }
+  lb_count = n;
+}
+
+// A unit with a row in touch: within F_LB_GAP (the velocity pass's phi; restitution rows carry 1e30).
+fn lb_touch(us: u32) -> bool {
+  let s0 = atomicLoad(&sched[S_USTART + us]);
+  for (var r = s0; r < s0 + atomicLoad(&sched[S_USIZE + us]); r++) { if (rows[r * ROWS + 6u].w <= F_LB_GAP) { return true; } }
+  return false;
+}
+
+// The block's unknowns: every row's normal, then a tangent pair for each row against a link that
+// carries friction (with patches: anchors only, at the anchor). Unknown u's row (in the block) and kind
+// (0 normal, 1 t1, 2 t2). Friction against the world or other free bodies stays in the sweep: the light
+// body's own mass conditions those rows, and only links make the chain heavy-light-heavy.
+fn lb_dir(o: u32, kind: u32) -> vec3f { return rows[o + kind].xyz; }
+// Lever arms of an unknown on (the light body's side, the other side): the contact's for normals, the
+// friction point's for tangents.
+fn lb_arms(o: u32, kind: u32, side: u32) -> array<vec3f, 2> {
+  var ra = rows[o + 3u].xyz; var rb = rows[o + 4u].xyz;
+  if (kind > 0u && EXTRA == 1u) { ra = rows[o + PO].xyz; rb = rows[o + PO + 1u].xyz; }
+  return array<vec3f, 2>(select(ra, rb, side == 1u), select(rb, ra, side == 1u));
+}
+
+// A free body's twist change from an impulse (f, t) at its COM: exact, as the rows' responses are.
+fn lb_response(b: i32, f: vec3f, t: vec3f) -> array<vec3f, 2> {
+  if (b < 0 || body_kind(b) != 1u) { return array<vec3f, 2>(vec3f(0.0), vec3f(0.0)); }
+  let R = qmat(poses[P_BODY + u32(b) * 2u + 1u]);
+  return array<vec3f, 2>(f * body_inv_mass(b), R * (body_inv_inertia(b) * (transpose(R) * t)));
+}
+
+// The block's matrices in art (A_LB): K, the Newton step's system, each unknown's Jacobian over its
+// articulation's dofs and Y = H^-1 J^T, and the twist changes of the light body and the other body.
+const LBK: u32 = A_LB;
+const LBAO: u32 = A_LB + LBU * LBU;
+const LBJ: u32 = A_LB + 2u * LBU * LBU;
+const LBY: u32 = LBJ + LBU * NDA;
+const LBD: u32 = LBY + LBU * NDA;
+var<workgroup> lb_nu: u32;
+var<workgroup> lb_m: u32;
+var<workgroup> lb_go: u32;
+var<workgroup> lb_eps: f32;
+var<workgroup> lbu_row: array<u32, LBU>;
+var<workgroup> lbu_kind: array<u32, LBU>;
+var<workgroup> lbu_art: array<i32, LBU>;
+var<workgroup> lb_res: array<f32, LBU>;
+var<workgroup> lb_lam: array<f32, LBU>;
+var<workgroup> lb_z: array<f32, LBU>;
+var<workgroup> lb_lo: array<f32, LBU>;
+var<workgroup> lb_hi: array<f32, LBU>;
+var<workgroup> lb_g: array<f32, LBU>;
+var<workgroup> lb_p: array<f32, LBU>;
+var<workgroup> lb_at: array<u32, LBU>;  // 0 free, 1 at lo, 2 at hi, 3 fixed (lo = hi)
+var<workgroup> lb_idx: array<u32, LBU>;
+
+// Twist change w of unknown u: 0, 1 the light body's (v, w); 2, 3 a free other body's.
+fn lb_dx(u: u32, w: u32) -> vec3f { let o = LBD + u * 16u + w * 4u; return vec3f(art[o], art[o + 1u], art[o + 2u]); }
+fn lb_set_dx(u: u32, w: u32, v: vec3f) { let o = LBD + u * 16u + w * 4u; art[o] = v.x; art[o + 1u] = v.y; art[o + 2u] = v.z; }
+
+// Unknown u's responses, Jacobian, residual and impulse (one thread each).
+fn lb_unknown(k: u32, u: u32, x: i32, tx: array<vec3f, 2>) {
+  let i = lbu_row[u]; let kind = lbu_kind[u];
+  let o = lb_row[k * LBR + i] * ROWS;
+  let si = u32(lb_body[k * LBR + i].x); let oi = lb_body[k * LBR + i].y;
+  let dir = lb_dir(o, kind);
+  let arm = lb_arms(o, kind, si);
+  let sx = select(-1.0, 1.0, si == 1u);
+  let rx = lb_response(x, sx * dir, sx * cross(arm[0], dir));
+  lb_set_dx(u, 0u, rx[0]); lb_set_dx(u, 1u, rx[1]);
+  var ro = array<vec3f, 2>(vec3f(0.0), vec3f(0.0));
+  if (oi >= 0 && body_kind(oi) != 2u) { ro = lb_response(oi, -sx * dir, -sx * cross(arm[1], dir)); }
+  lb_set_dx(u, 2u, ro[0]); lb_set_dx(u, 3u, ro[1]);
+  lbu_art[u] = -1;
+  if (oi >= 0 && body_kind(oi) == 2u) {
+    let al = u32(body_art(oi));
+    let ai = art_info(al);
+    let lk = u32(body_link(oi));
+    var J3: array<f32, JDIM>;
+    // The other body enters the row's relative velocity with the light body's opposite sign.
+    add_gen_jac(lk, ld3(lo(lk) + L_COM) + arm[1], -sx, dir, dir, dir, ai.z, &J3);
+    var tau: array<f32, NDA>; var y: array<f32, NDA>;
+    for (var q = 0u; q < NDA; q++) { tau[q] = select(0.0, J3[q], q < ai.w); }
+    art_solve_gen(al, &tau, &y);
+    for (var q = 0u; q < NDA; q++) { art[LBJ + u * NDA + q] = tau[q]; art[LBY + u * NDA + q] = select(0.0, y[q], q < ai.w); }
+    lbu_art[u] = i32(al);
+  }
+  let to = load_tw(oi);
+  var r = sx * dot(dir, (tx[0] + cross(tx[1], arm[0])) - (to[0] + cross(to[1], arm[1])));
+  let lm = rows[o + 6u];
+  if (kind == 0u) {
+    r += rows[o + 1u].w;
+    lb_lam[u] = lm.x;
+  } else {
+    lb_lam[u] = select(lm.y, lm.z, kind == 2u);
+    // A patch anchor's displacement bias, as in the sweep.
+    if (PATCH == 1u && rows[o + PO].w == 2.0 && !vpass) { r += F_ANCHOR_BETA * dot(dir, rows[o + PO + 2u].xyz) / P.dt; }
+  }
+  lb_res[u] = r;
+}
+
+// K_uv: the change in unknown u's velocity from a unit impulse of unknown v, through the light body, a
+// free other body they share, or the articulation they share (J_u Y_v, exact across its links).
+fn lb_kentry(k: u32, u: u32, v: u32) -> f32 {
+  let i = lbu_row[u];
+  let o = lb_row[k * LBR + i] * ROWS;
+  let si = u32(lb_body[k * LBR + i].x); let oi = lb_body[k * LBR + i].y;
+  let dir = lb_dir(o, lbu_kind[u]);
+  let arm = lb_arms(o, lbu_kind[u], si);
+  let sx = select(-1.0, 1.0, si == 1u);
+  var kuv = sx * dot(dir, lb_dx(v, 0u) + cross(lb_dx(v, 1u), arm[0]));
+  if (lbu_art[u] >= 0 && lbu_art[u] == lbu_art[v]) {
+    for (var q = 0u; q < NDA; q++) { kuv += art[LBJ + u * NDA + q] * art[LBY + v * NDA + q]; }
+  } else if (lbu_art[u] < 0 && oi >= 0 && lb_body[k * LBR + lbu_row[v]].y == oi) {
+    kuv -= sx * dot(dir, lb_dx(v, 2u) + cross(lb_dx(v, 3u), arm[1]));
+  }
+  if (u == v && COMPL == 1u && lbu_kind[u] == 0u) { kuv += rows[o + CO].x; }
+  return kuv;
+}
+
+// The QP's gradient at z for unknown u.
+fn lb_grad(u: u32, nu: u32) -> f32 {
+  var gu = lb_res[u] + lb_eps * lb_z[u];
+  for (var v = 0u; v < nu; v++) { gu += art[LBK + u * LBU + v] * (lb_z[v] - lb_lam[v]); }
+  return gu;
+}
+
+// The friction disk's radius for block row i with the normals at z: mu times the row's own normal, or
+// for a patch anchor its unit's pooled load (the unit's rows outside the block keep theirs).
+fn lb_limit(k: u32, i: u32, n: u32) -> f32 {
+  let o = lb_row[k * LBR + i] * ROWS;
+  let mu = rows[o + 2u].w;
+  if (PATCH == 0u || rows[o + PO].w != 2.0) { return mu * max(lb_z[i], 0.0); }
+  let us = lb_unit[k * LBR + i];
+  var load = unit_load(us);
+  for (var j = 0u; j < n; j++) {
+    if (lb_unit[k * LBR + j] != us || rows[lb_row[k * LBR + j] * ROWS + PO].w == 1.0) { continue; }
+    load += lb_z[j] - lb_lam[j];
+  }
+  return mu * max(load, 0.0);
+}
+
+// One light body's block, solved by the whole workgroup.
+//
+// It is a convex QP over the impulses z: minimize 1/2 (z - lam)^T K (z - lam) + res^T (z - lam) + eps/2 |z|^2,
+// each unknown in a box: normals at or above zero (inert rows, r0.w = 0, held as they are) and each
+// friction pair in the square inscribed in its disk, whose radius follows the normals (solved again when
+// they move it). Regularizing the impulses themselves (not their change) makes the solution unique where
+// the rows are dependent (points on one face, two anchors that could pull against each other): the
+// least-impulse one. A primal active set: Newton steps on the free unknowns, stopped at the first bound,
+// then releasing the bound unknown whose gradient points inward most; it terminates (strictly convex),
+// usually in a few steps. K + eps I is positive definite, so its elimination needs no pivoting: one row
+// per thread.
+fn light_block(k: u32, it: u32, tid: u32) {
+  let x = lb_x[k];
+  let n = lb_n[k];
+  // Friction joins the block in Steel's default friction path (the sliding pair per row); other
+  // friction modes keep their rows in the sweep.
+  let fric = FMODE == 0u && ANG == 0u && TORS == 0u && it >= FSTART;
+  if (tid == 0u) {
+    var nu = n;
+    for (var i = 0u; i < n; i++) { lbu_row[i] = i; lbu_kind[i] = 0u; }
+    if (fric) {
+      for (var i = 0u; i < n && nu + 2u <= LBU; i++) {
+        let o = lb_row[k * LBR + i] * ROWS;
+        let oi = lb_body[k * LBR + i].y;
+        if (rows[o].w <= 0.0 || rows[o + 2u].w <= 0.0 || oi < 0 || body_kind(oi) != 2u) { continue; }
+        if (EXTRA == 1u && rows[o + PO].w == 0.0) { continue; }
+        lbu_row[nu] = i; lbu_kind[nu] = 1u; lbu_row[nu + 1u] = i; lbu_kind[nu + 1u] = 2u;
+        nu += 2u;
+      }
+    }
+    lb_nu = nu;
+  }
+  let nu = workgroupUniformLoad(&lb_nu);
+  let tx = load_tw(x);
+  if (tid < nu) { lb_unknown(k, tid, x, tx); }
+  storageBarrier(); workgroupBarrier();
+  for (var e = tid; e < nu * nu; e += WG) { art[LBK + (e / nu) * LBU + e % nu] = lb_kentry(k, e / nu, e % nu); }
+  storageBarrier(); workgroupBarrier();
+  if (tid == 0u) {
+    var dmax = 0.0;
+    for (var u = 0u; u < nu; u++) { dmax = max(dmax, art[LBK + u * LBU + u]); }
+    lb_eps = 1e-5 * dmax;
+    for (var u = 0u; u < n; u++) {
+      let inert = rows[lb_row[k * LBR + u] * ROWS].w <= 0.0;
+      lb_lo[u] = select(0.0, lb_lam[u], inert); lb_hi[u] = select(1e30, lb_lam[u], inert);
+      lb_z[u] = clamp(lb_lam[u], lb_lo[u], lb_hi[u]);
+    }
+    for (var u = n; u < nu; u++) { lb_z[u] = lb_lam[u]; lb_hi[u] = -1.0; }
+  }
+  for (var sw = 0u; sw < 3u; sw++) {
+    if (tid == 0u) {
+      // Friction boxes from the normals so far.
+      var moved = false;
+      for (var u = n; u < nu; u += 2u) {
+        let r = lb_limit(k, lbu_row[u], n) * 0.70710678;
+        moved = moved || abs(r - lb_hi[u]) > 1e-3 * r + 1e-12;
+        lb_lo[u] = -r; lb_hi[u] = r; lb_lo[u + 1u] = -r; lb_hi[u + 1u] = r;
+      }
+      lb_go = select(1u, 0u, sw > 0u && !moved);
+      for (var u = 0u; u < nu; u++) {
+        lb_z[u] = clamp(lb_z[u], lb_lo[u], lb_hi[u]);
+        lb_at[u] = select(select(select(0u, 2u, lb_z[u] >= lb_hi[u]), 1u, lb_z[u] <= lb_lo[u]), 3u, lb_lo[u] >= lb_hi[u]);
+      }
+    }
+    if (workgroupUniformLoad(&lb_go) == 0u) { break; }
+    for (var step = 0u; step < 3u * LBU; step++) {
+      if (tid < nu) { lb_g[tid] = lb_grad(tid, nu); }
+      workgroupBarrier();
+      if (tid == 0u) {
+        var m = 0u;
+        for (var u = 0u; u < nu; u++) { if (lb_at[u] == 0u) { lb_idx[m] = u; m++; } }
+        lb_m = m;
+      }
+      // Newton step on the free unknowns: (K_FF + eps I) p = -g_F.
+      let m = workgroupUniformLoad(&lb_m);
+      for (var e = tid; e < m * m; e += WG) {
+        let a2 = e / m; let b2 = e % m;
+        art[LBAO + a2 * LBU + b2] = art[LBK + lb_idx[a2] * LBU + lb_idx[b2]] + select(0.0, lb_eps, a2 == b2);
+      }
+      if (tid < m) { lb_p[tid] = -lb_g[lb_idx[tid]]; }
+      storageBarrier(); workgroupBarrier();
+      for (var c = 0u; c < m; c++) {
+        let piv = art[LBAO + c * LBU + c];
+        let r = c + 1u + tid;
+        if (r < m && abs(piv) >= 1e-30) {
+          let f = art[LBAO + r * LBU + c] / piv;
+          for (var q = c; q < m; q++) { art[LBAO + r * LBU + q] -= f * art[LBAO + c * LBU + q]; }
+          lb_p[r] -= f * lb_p[c];
+        }
+        storageBarrier(); workgroupBarrier();
+      }
+      if (tid == 0u) { lb_step(k, n, nu, m); }
+      if (workgroupUniformLoad(&lb_go) == 0u) { break; }
+    }
+  }
+  if (tid == 0u) { lb_apply(k, x, nu); }
+}
+
+// Back substitution, the step to the first bound, and at the face's optimum the release (thread 0);
+// lb_go = 0 when the QP is solved.
+fn lb_step(k: u32, n: u32, nu: u32, m: u32) {
+  for (var cc = 0u; cc < m; cc++) {
+    let c = m - 1u - cc;
+    var s = lb_p[c];
+    for (var q = c + 1u; q < m; q++) { s -= art[LBAO + c * LBU + q] * lb_p[q]; }
+    let piv = art[LBAO + c * LBU + c];
+    lb_p[c] = select(0.0, s / piv, abs(piv) >= 1e-30);
+  }
+  var alpha = 1.0; var blk = LBU; var side = 0u;
+  for (var a2 = 0u; a2 < m; a2++) {
+    let u = lb_idx[a2]; let pu = lb_p[a2];
+    if (pu < 0.0 && lb_z[u] + pu < lb_lo[u]) { let t = (lb_lo[u] - lb_z[u]) / pu; if (t < alpha) { alpha = t; blk = u; side = 1u; } }
+    if (pu > 0.0 && lb_z[u] + pu > lb_hi[u]) { let t = (lb_hi[u] - lb_z[u]) / pu; if (t < alpha) { alpha = t; blk = u; side = 2u; } }
+  }
+  for (var a2 = 0u; a2 < m; a2++) { lb_z[lb_idx[a2]] += alpha * lb_p[a2]; }
+  lb_go = 1u;
+  if (blk < LBU) {
+    lb_z[blk] = select(lb_hi[blk], lb_lo[blk], side == 1u); lb_at[blk] = side;
+    return;
+  }
+  // At the optimum of this face: release the bound unknown whose gradient points inward most.
+  var best = 1e-7; var rel = LBU;
+  for (var u = 0u; u < nu; u++) {
+    let gu = lb_grad(u, nu);
+    let inward = select(select(0.0, gu, lb_at[u] == 2u), -gu, lb_at[u] == 1u);
+    if (inward > best) { best = inward; rel = u; }
+  }
+  if (rel == LBU) { lb_go = 0u; } else { lb_at[rel] = 0u; }
+}
+
+// The solution's changes (thread 0): the rows' impulses, the light body's twist (and a free other
+// body's), and the links' impulses for propagation.
+fn lb_apply(k: u32, x: i32, nu: u32) {
+  for (var u = 0u; u < nu; u++) { if (!(abs(lb_z[u] - lb_lam[u]) < 1e30)) { return; } }
+  for (var u = 0u; u < nu; u++) {
+    let du = lb_z[u] - lb_lam[u];
+    if (du == 0.0) { continue; }
+    let i = lbu_row[u];
+    let o = lb_row[k * LBR + i] * ROWS;
+    var lm = rows[o + 6u];
+    if (lbu_kind[u] == 0u) { lm.x = max(lm.x + du, 0.0); } else if (lbu_kind[u] == 1u) { lm.y += du; } else { lm.z += du; }
+    rows[o + 6u] = lm;
+    let oi = lb_body[k * LBR + i].y;
+    tw[u32(x) * 2u] += vec4f(lb_dx(u, 0u) * du, 0.0); tw[u32(x) * 2u + 1u] += vec4f(lb_dx(u, 1u) * du, 0.0);
+    if (oi >= 0 && body_kind(oi) != 2u) {
+      tw[u32(oi) * 2u] += vec4f(lb_dx(u, 2u) * du, 0.0); tw[u32(oi) * 2u + 1u] += vec4f(lb_dx(u, 3u) * du, 0.0);
+    }
+    // The impulse on b is +dir, at a's and b's arms as the sweep applies them.
+    let dir = lb_dir(o, lbu_kind[u]);
+    let arm = lb_arms(o, lbu_kind[u], 1u);
+    let key = atomicLoad(&sched[S_UKEY + lb_unit[k * LBR + i]]);
+    let a = i32(key & 0xffffu) - 1; let b = i32(key >> 16u) - 1;
+    add_imp(a, -dir * du, -cross(arm[1], dir * du));
+    add_imp(b, dir * du, cross(arm[0], dir * du));
+    if (lbu_kind[u] == 0u && PATCH == 1u && rows[o + PO].w != 1.0) { add_unit_load(lb_unit[k * LBR + i], du); }
+  }
+}
+
 fn sweep(tid: u32, mode: u32, ncol0: u32, it: u32, ph: u32) {
   let ncol = select(ncol0, 0u, ph == 2u);
   // Steel's interleaved schedule: internal rows, dense rows, contacts, then velocity limits.
@@ -3702,6 +4049,14 @@ fn sweep(tid: u32, mode: u32, ncol0: u32, it: u32, ph: u32) {
     }
   }
   workgroupBarrier();
+  if (LBLOCK == 1u && mode == 1u && ph != 2u) {
+    // On the links' exact twists: their sweep impulses propagated first, the block's after it.
+    if (tid < NA) { art_contact_impulses(tid); }
+    workgroupBarrier();
+    let lbn = workgroupUniformLoad(&lb_count);
+    for (var k = 0u; k < lbn; k++) { light_block(k, it, tid); }
+    workgroupBarrier();
+  }
   if (tid < NA) { art_contact_impulses(tid); if (ph != 1u) { art_propagate(tid, true, false); } }
   workgroupBarrier();
   // Free-body velocity limits (Steel's rigid velocity-limit rows): a per-axis box on v and w,
@@ -3810,6 +4165,10 @@ fn main(@builtin(local_invocation_index) tid: u32) {
   workgroupBarrier();
   dense_phase(tid, 0u, 0u, 0u);
   let ws = workgroupUniformLoad(&wn);
+  if (LBLOCK == 1u) {
+    if (tid == 0u) { build_light_blocks(ws.x); }
+    workgroupBarrier();
+  }
   sweep(tid, 0u, ws.y, 0u, 0u);
   if (CTI == 1u) {
     // row_schedule="contact_then_internal": all contact iterations, then the joint-internal rows.

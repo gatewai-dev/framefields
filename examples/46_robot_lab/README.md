@@ -21,12 +21,13 @@ Needs a browser with WebGPU (current Chrome, Edge or Safari). `dev` restarts
 the server on every edit and the page reloads itself. `?colliders` draws what
 the arm collides as (mesh hulls and jaw pads) in place of its meshes.
 
-The grasp is real: the moving jaw squeezes the cube against the fixed one
-and friction holds it. It needs 16 solver substeps at 24 iterations
-(`SOLVER` in `src/task.ts`): at Steel's defaults the jaw closes through the
-20 g cube and squeezes it out (skild-ai/steel-webgpu#8). That is about 75 ms
-of stepping a frame on an M-series Mac, so the simulation runs at about 0.4×
-real time; the page shows the pace.
+The grasp is real: the moving jaw squeezes the cube against the fixed one,
+each servo limited to its 3.35 N·m, and friction holds it. It runs at Steel's
+default solver settings (`SOLVER` in `src/task.ts`), about 20 ms of stepping
+a frame on an M-series Mac; the page shows the pace. A 20 g cube between
+links hundreds of times heavier is where Gauss-Seidel converges slowest
+(skild-ai/steel-webgpu#8), so our fork of Steel solves such a body's contacts
+exactly (`packages/steel/NOTICE.md`).
 
 ## What is in it
 

@@ -544,12 +544,16 @@ export class Sim {
     const NQ = q0.length;
     const NDA = Math.max(1, ...arts.map((a) => a.dofCount));
     const DHDR = 25, DPS = DHDR + 6 * NDA;
+    // framefields: light-body blocks (light_block in wgsl.js): at most LBU unknowns; their matrices live in A_LB.
+    const LBLOCK = NA > 0 && SV.light_body_blocks !== false ? 1 : 0, LBU = 32;
     for (const [k, n] of [['A_Q', NQ], ['A_QD', ND], ['A_QDH', ND], ['A_INT', ND], ['A_TGT', ND], ['A_TGTV', ND],
-      ['A_LIM', 2 * ND], ['A_DRV', ND], ['A_JFL', ND], ['A_JF', ND], ['A_BF', NB * 8], ['A_SLP', (NB + NA) * 4], ['A_FRIC', ND], ['A_HINV', ND], ['A_LINK', Math.max(NL, 1) * LB], ['A_SNAP', NB * 8 + ND], ['A_VLG', ND + NB * 6], ['A_AVL', NA], ['A_LG', ND], ['A_RL', ND], ['A_RLN', NA], ['A_ULOAD', anchorBeta > 0 ? MAXU : 0], ['A_DENSE', MAXDENSE * DPS]]) {
+      ['A_LIM', 2 * ND], ['A_DRV', ND], ['A_JFL', ND], ['A_JF', ND], ['A_BF', NB * 8], ['A_SLP', (NB + NA) * 4], ['A_FRIC', ND], ['A_HINV', ND], ['A_LINK', Math.max(NL, 1) * LB], ['A_SNAP', NB * 8 + ND], ['A_VLG', ND + NB * 6], ['A_AVL', NA], ['A_LG', ND], ['A_RL', ND], ['A_RLN', NA], ['A_ULOAD', anchorBeta > 0 ? MAXU : 0], ['A_DENSE', MAXDENSE * DPS], ['A_LB', LBLOCK ? 2 * LBU * LBU + 2 * LBU * NDA + 16 * LBU : 0]]) {
       A[k] = ao; ao += Math.max(n, 1);
     }
     this.C = {
       TGT_HELD: S.targets_held ? 1 : 0, NEST: nest ? 1 : 0, MO, NB, NBP: Math.max(NB, 1), NBP2: Math.max(NB, 1) * 2, NCOLW: ncolw, NCOL: ncolw * 32, NS, NA, NAP: Math.max(NA, 1), NL, ND, NDP: Math.max(ND, 1),
+      // framefields: exact blocks for free bodies squeezed between links (see light_block in wgsl.js).
+      LBLOCK, LBMAX: 8, LBR: 16, LBU, F_LB_GAP: SV.light_body_gap ?? 0.002,
       NLOOP: loops.length, NROPE: (S.ropes ?? []).length, NSPRING: (S.springs ?? []).length, ROPE_G0: rkeys.size, NMIMIC: mimics.length, CTRL_KIND: ctrlKind, CTRL_A: ctrlA, CTRL_B: ctrlB,
       NLP: Math.max(NL, 1), NDA, JDIM: 3 * NDA, MAXDENSE, DHDR, DPS, MAXP, MAXC, MAXU, UH, WH, ROWS, PO, FMO, FMODE: fmode, PATCH: anchorBeta > 0 ? 1 : 0, F_ANCHOR_BETA: anchorBeta,
       EXTRA: anchorBeta > 0 || SV.contact_friction_shared_anchor ? 1 : 0, SHARED: SV.contact_shared_anchor ? 1 : 0, FSHARED: SV.contact_friction_shared_anchor ? 1 : 0,

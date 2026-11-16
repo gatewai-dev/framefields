@@ -53,12 +53,12 @@ export const THINGS: Thing[] = [
 ];
 
 /**
- * The solver work the grasp needs. At Steel's defaults (4 substeps, 12
- * iterations) the jaw closes through the 20 g cube and squeezes it out
- * (skild-ai/steel-webgpu#8); 16 substeps at 24 iterations is the least that
- * holds it, about 75 ms of stepping a frame on an M-series Mac.
+ * The solver settings: Steel's defaults (4 substeps, 12 iterations). The
+ * 20 g cube between the jaw and the gripper is the case Gauss-Seidel
+ * converges slowest on (skild-ai/steel-webgpu#8); our fork of Steel solves a
+ * light body's contacts with links exactly (`NOTICE.md` in packages/steel).
  */
-export const SOLVER: SteelSolverOptions = { substeps: 16, iterations: 24 };
+export const SOLVER: SteelSolverOptions = {};
 
 export function build(scene: SteelSceneBuilder): void {
 	const cube = scene.addBody({

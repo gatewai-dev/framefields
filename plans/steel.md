@@ -91,10 +91,28 @@ the browser, and its batched worlds are the path to many envs per GPU.
   fixed here and offered upstream (skild-ai/steel-webgpu#9).
 - A light body squeezed between two links of one articulation sinks into
   them and is pushed out at default settings, upstream too
-  (skild-ai/steel-webgpu#8). Substeps hold it (the lab's grasp needs 16 at
-  24 iterations, ~75 ms a frame); more iterations alone do not. The default
-  drive also decides its effort clamp from the free-motion torque, so a
-  blocked joint can push past `effortLimit`.
+  (skild-ai/steel-webgpu#8): Gauss-Seidel converges on it at about its mass
+  over the links' per sweep. The default drive also decided its effort
+  clamp from the free-motion torque, so a blocked joint pushed past
+  `effortLimit`.
+
+## Done (squeeze and blocked drive, 2026-11-16)
+
+- **Blocked drive:** past `effortLimit`, the implicit drive pushes with the
+  limit (the PD torque it delivered over the last substep tells).
+- **Light-body blocks:** a free body touching a link and something else has
+  its rows in touch (normals, and friction against links) solved exactly
+  after each position sweep, as a convex QP with the articulation's own
+  coupling (NOTICE). A tilted jaw presses the cube into the floor with
+  several newtons, which only friction through the 20 g cube can carry, so
+  the normals alone were not enough.
+- Pinch (two prismatic fingers, 10 N, a 20 g cube on a pedestal): fingers
+  stop at 30.0 mm at defaults, from 18.4 mm (16.2 with 0.5 kg armature).
+- SO-101 lab: picks and places the cube at Steel's defaults (4 substeps,
+  12 iterations), also with warm start, 8/12 and 16/24; ~20 ms of stepping
+  a frame on an M-series Mac, from ~16 without the block (and ~75 at the
+  16/24 the lab needed). The fixed finger now clears the cube by 8 mm on the
+  way down (at 3 mm, 16/24 rested it on the cube's edge).
 
 ## Next
 
@@ -104,7 +122,10 @@ the browser, and its batched worlds are the path to many envs per GPU.
    tolerance and the task answers, not bytes. No CPU path.
 2. Speculative restitution fires a step early (one step's travel, visible
    only with `ccd`'s wide gap): a time-of-impact split of the bounce.
-3. The squeeze (#8) and the blocked drive's effort limit, in the solver.
+3. Light-body blocks for the other friction paths (`contact_block` modes,
+   torsional and rolling friction, which keep their rows in the sweep) and
+   the full disk instead of its inscribed square; the caps (8 bodies, 16
+   rows, 32 unknowns each) reported when hit.
 4. Soft rows in the dense articulation path (springs between jointed
    bodies), and mesh-mesh pairs (two moving meshes never collide now).
 5. Upstream pull requests for each `framefields:` change (NOTICE list).

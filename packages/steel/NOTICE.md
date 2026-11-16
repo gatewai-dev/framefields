@@ -65,3 +65,16 @@ Each change is marked `framefields:` in the source.
   stiffness whatever `effortLimit` said. The PD torque at the step's start
   is what the drive delivered over the last substep; past the limit, the
   drive now pushes with the limit.
+- Light-body blocks (`wgsl.js`, `light_block`; solver options
+  `light_body_blocks: false` to turn them off, `light_body_gap`, 2 mm, for
+  the rows they take): a free body touching a link and something else (a
+  cube in a gripper, or pressed into the floor by a finger) has its rows in
+  touch solved together after each position sweep's colors, normals and
+  friction against links, with the articulation's exact coupling between
+  links (J H^-1 J^T). Gauss-Seidel converges on such a body at about its
+  mass over the links' per sweep, so a 20 g cube in the SO-101's gripper
+  was squeezed out at default settings (skild-ai/steel-webgpu#8). The block
+  is a small convex QP (normals at or above zero, each friction pair in the
+  square inscribed in its disk, the impulses regularized so dependent rows
+  get the least-impulse solution) solved by a primal active set, with the
+  workgroup building it and eliminating one row per thread.

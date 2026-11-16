@@ -96,12 +96,13 @@ const CHAIN: { p: V3; q: Q }[] = [
 ];
 /**
  * The point the IK places, in the gripper's frame: the center of a 3 cm
- * cube held between the open jaws, 3 mm off the fixed finger's inner face
- * (x = -0.010) and 11 mm up from the fingertips (z = -0.104), so they stay
+ * cube held between the open jaws, 8 mm off the fixed finger's inner face
+ * (x = -0.010; the descent eases in joint space, so the tip does not travel
+ * straight down) and 11 mm up from the fingertips (z = -0.104), so they stay
  * 4 mm off the floor under a cube resting on it. The jaws close along the
  * gripper's x and reach out along its -z, which is also the roll axis.
  */
-const TIP: V3 = [0.008, 0, -0.093];
+const TIP: V3 = [0.013, 0, -0.093];
 
 const qmul = (a: Q, b: Q): Q => [
 	a[0] * b[0] - a[1] * b[1] - a[2] * b[2] - a[3] * b[3],

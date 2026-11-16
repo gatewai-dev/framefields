@@ -309,11 +309,17 @@ fn art_factor(a: u32) {
         let m = max(D[r * JM + r], 1e-9);
         let qdn = (m * qd + P.dt * (dr.y * err + dr.z * tv)) / (m + P.dt * dr.z + P.dt * P.dt * dr.y);
         let ti = dr.y * (err - P.dt * qdn) + dr.z * (tv - qdn);
-        if (abs(ti) <= dr.w || dr.w <= 0.0) {
+        // framefields: ti assumes the dof moves freely. Against a contact it does not, and the implicit drive
+        // pushes with its full stiffness. The PD torque at this state is what the implicit drive delivered over
+        // the last substep (q moved by dt qd), so past the effort it was held back: push with the effort.
+        let held = dr.y * err + dr.z * (tv - qd);
+        if (dr.w <= 0.0 || (abs(ti) <= dr.w && abs(held) <= dr.w)) {
           D[r * JM + r] += P.dt * P.dt * dr.y + P.dt * dr.z;
           tau += dr.y * err - P.dt * dr.y * qd + dr.z * (tv - qd);
-        } else {
+        } else if (abs(ti) > dr.w) {
           tau += clamp(ti, -dr.w, dr.w);
+        } else {
+          tau += clamp(held, -dr.w, dr.w);
         }
       }
       u[r] = tau - sdot(ldS(l, r), pA);

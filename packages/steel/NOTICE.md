@@ -59,3 +59,9 @@ Each change is marked `framefields:` in the source.
 - MJCF actuators: `forcerange` (with `forcelimited`, or `autolimits` as
   MuJoCo defaults) becomes the drive's `effortLimit`; before, servos such as
   the SO-101's (±3.35 N·m) drove with unbounded torque.
+- The implicit drive's effort limit when the joint is blocked
+  (`artwgsl.js`): upstream clamps from the torque the drive would apply if
+  the joint moved freely, so against a contact it pushed with its full
+  stiffness whatever `effortLimit` said. The PD torque at the step's start
+  is what the drive delivered over the last substep; past the limit, the
+  drive now pushes with the limit.

@@ -2158,9 +2158,9 @@ export const MediaNodeSchema: z.ZodType<MediaNode> = z
 	.object({
 		...BaseNodeFields,
 		kind: z.literal("media"),
-		/** Graph binding — which connected input this node renders. */
-		inputHandleId: z.string().min(1),
-		src: z.string().optional(),
+		/** Graph binding — which connected input this node renders (omitted for inline procedural sources such as shader/particles/vfx). */
+		inputHandleId: z.string().min(1).optional(),
+		src: z.union([z.string(), z.record(z.string(), z.unknown())]).optional(),
 		dataType: z.string().optional(),
 		fit: z.enum(["cover", "contain", "fill", "none"]).default("contain"),
 		dpr: z.number().min(1).max(4).optional(),
@@ -2194,6 +2194,20 @@ export const MediaNodeSchema: z.ZodType<MediaNode> = z
 	})
 	.strict()
 	.superRefine((node, ctx) => {
+		const hasHandle =
+			typeof node.inputHandleId === "string" && node.inputHandleId.length > 0;
+		const hasSrc =
+			node.src !== undefined &&
+			(typeof node.src === "string"
+				? node.src.length > 0
+				: typeof node.src === "object" && node.src !== null);
+		if (!hasHandle && !hasSrc) {
+			ctx.addIssue({
+				code: "custom",
+				path: ["inputHandleId"],
+				message: "Media node requires either inputHandleId or src",
+			});
+		}
 		if (!node.timeRemap) return;
 		if (node.trimStartSec !== undefined)
 			ctx.addIssue({

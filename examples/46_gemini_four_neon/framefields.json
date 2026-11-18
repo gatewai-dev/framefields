@@ -1,0 +1,13 @@
+{
+	"renders": {
+		"film": {
+			"title": "Gemini 4 Neon — Light-Speed Intelligence",
+			"description": "20-second showcase film demonstrating Gemini 4 Neon capabilities in native WebGPU.",
+			"entry": "src/film.ts",
+			"export": "buildFilm",
+			"codec": "h264",
+			"quality": "very_high",
+			"output": "output/gemini-4-neon.mp4"
+		}
+	}
+}

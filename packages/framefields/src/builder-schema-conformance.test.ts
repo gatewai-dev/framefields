@@ -18,6 +18,15 @@ const builders = {
 	svg: () => Layer.svg("logo.svg"),
 	lottie: () => Layer.lottie("anim.json"),
 	audio: () => Layer.audio("track.mp3"),
+	particles: () => Layer.particles({ width: 100, height: 100 }),
+	vfx: () => Layer.vfx({ effectType: "Aurora", width: 100, height: 100 }),
+	shader: () =>
+		Layer.shader({
+			width: 100,
+			height: 100,
+			fragment:
+				"fn shade(uv: vec2<f32>) -> vec4<f32> { return vec4<f32>(1.0); }",
+		}),
 	text: () => Layer.text("Hello", { align: "start" }),
 	richText: () => Layer.text(["Hello ", { text: "world", fontWeight: 700 }]),
 	shape: () => Layer.shape("circle", { width: 100, height: 100 }),
